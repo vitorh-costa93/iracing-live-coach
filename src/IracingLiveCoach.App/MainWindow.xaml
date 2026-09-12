@@ -8,16 +8,19 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False">
-    <ItemsControl ItemsSource="{Binding RecentCorners}">
-        <ItemsControl.ItemTemplate>
-            <DataTemplate>
-                <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
-                    <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
-                    <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
-                    <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
-                    <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
-                </StackPanel>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+    <StackPanel>
+        <TextBlock Text="{Binding StatusText}" Foreground="White" Background="#AA000000" Margin="4" Padding="4" />
+        <ItemsControl ItemsSource="{Binding RecentCorners}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
+                        <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
+                        <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
+                        <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
+                        <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
+                    </StackPanel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
 </Window>
