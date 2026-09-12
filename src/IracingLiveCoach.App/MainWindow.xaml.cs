@@ -28,7 +28,8 @@ public partial class MainWindow : Window
 
         var cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "baselines");
         var importKey = Environment.GetEnvironmentVariable("LOCAL_COACH_SECRET") ?? "";
-        var sync = new BaselineSync(new HttpClient(), cacheDir, "https://iracing-analytics.vercel.app", importKey);
+        var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var sync = new BaselineSync(httpClient, cacheDir, "https://iracing-analytics.vercel.app", importKey);
         var baseline = await sync.GetBaselineAsync(placeholderCarId, placeholderTrackId);
 
         var engine = new LiveCoachEngine(baseline.Corners, baseline.GearModel, baseline.TrackLengthMeters);

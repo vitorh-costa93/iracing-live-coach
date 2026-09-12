@@ -119,6 +119,48 @@ public class LiveCoachEngineTests
     }
 
     [Fact]
+    public void Reports_a_braking_delta_when_the_driver_brakes_before_the_corners_own_StartPct()
+    {
+        // Baseline brakes at 13% (within the corner's own body); this lap brakes 3 pct-points
+        // before StartPct (at 7%, corner starts at 10) -- inside the 8-pct approach window, so
+        // Update must still pick this sample up even though it's outside [StartPct, EndPct).
+        var corners = new List<CornerBaseline> { CornerWithBraking(1, 10, 20, brakingPointPct: 13) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: 5891);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        // Approach window is [StartPct-8, StartPct) = [2, 10) here.
+        engine.Update(new TelemetrySample(4, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(6, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(7, Brake: 0.8, null, null, null, null, null)); // onset at 7%, before StartPct=10
+        engine.Update(new TelemetrySample(12, Brake: 0.8, null, null, null, null, null));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null)); // exits corner
+
+        Assert.NotNull(feedback);
+        Assert.NotNull(feedback!.BrakingDeltaMeters);
+        // (7 - 13) / 100 * 5891 = -353.46 -- braked earlier than baseline, a negative delta.
+        Assert.True(feedback.BrakingDeltaMeters < 0, "earlier braking should be a negative delta");
+        Assert.Equal(-353.46, feedback.BrakingDeltaMeters!.Value, precision: 1);
+    }
+
+    [Fact]
+    public void Fires_CornerCompleted_exactly_once_even_though_samples_span_approach_and_body()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: null);
+        var completedCount = 0;
+        engine.CornerCompleted += _ => completedCount++;
+
+        // 3 (before approach window), 4 (enters approach window, 10-8=2), 9 (still approach), 10
+        // (enters body), 15 (body), 25 (exits) -- the approach->body transition at pct 10 must not
+        // itself trigger a completion; only leaving the corner altogether at pct 25 should.
+        foreach (var pct in new[] { 3.0, 4.0, 9.0, 10.0, 15.0, 25.0 })
+            engine.Update(new TelemetrySample(pct, null, null, null, null, null, null));
+
+        Assert.Equal(1, completedCount);
+    }
+
+    [Fact]
     public void Reports_wasted_steering_motion_for_the_corner_just_completed()
     {
         var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
@@ -186,6 +228,27 @@ public class LiveCoachEngineTests
 
         Assert.NotNull(feedback);
         Assert.False(feedback!.WheelspinDetected);
+    }
+
+    [Fact]
+    public void Does_not_detect_wheelspin_when_a_nearby_gear_shift_explains_the_RPM_surplus()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) }; // exit half is [15, 20)
+        var gearModel = new Dictionary<string, GearFit> { ["3"] = new GearFit(A: 100, B: 0) }; // RPM = 100*speed
+        var engine = new LiveCoachEngine(corners, gearModel, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        // Same 15% RPM surplus as the "detects wheelspin" test above (predicted 3000, actual 3450),
+        // but a neighboring sample within the +/-3 index window reports a different gear (a shift
+        // just happened nearby) -- the gear-stability gate must suppress this as a false positive.
+        engine.Update(new TelemetrySample(12, null, Throttle: 0.5, null, Rpm: 3000, Gear: 3, SpeedMs: 30));
+        engine.Update(new TelemetrySample(16, null, Throttle: 0.95, null, Rpm: 3450, Gear: 3, SpeedMs: 30)); // would trigger under old code
+        engine.Update(new TelemetrySample(17, null, Throttle: 0.95, null, Rpm: 3400, Gear: 4, SpeedMs: 34)); // neighbor gear differs -- a shift
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null)); // exits corner
+
+        Assert.NotNull(feedback);
+        Assert.NotEqual(true, feedback!.WheelspinDetected);
     }
 
     [Fact]

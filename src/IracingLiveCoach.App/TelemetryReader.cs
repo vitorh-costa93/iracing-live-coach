@@ -24,15 +24,25 @@ public class TelemetryReader : IDisposable
 
     private void OnTelemetryData()
     {
-        var lapDistPct = _sdk.Data.GetFloat("LapDistPct") * 100.0;
-        var brake = (double?)_sdk.Data.GetFloat("Brake");
-        var throttle = (double?)_sdk.Data.GetFloat("Throttle");
-        var steeringRad = (double?)_sdk.Data.GetFloat("SteeringWheelAngle");
-        var rpm = (double?)_sdk.Data.GetFloat("RPM");
-        var gear = (int?)_sdk.Data.GetInt("Gear");
-        var speedMs = (double?)_sdk.Data.GetFloat("Speed");
+        // IRSDKSharper can throw when a requested channel is momentarily unavailable/unpublished
+        // for the current car or session state; a live coaching overlay must never crash the whole
+        // process over one bad telemetry tick, so a bad tick is silently skipped, not surfaced.
+        try
+        {
+            var lapDistPct = _sdk.Data.GetFloat("LapDistPct") * 100.0;
+            var brake = (double?)_sdk.Data.GetFloat("Brake");
+            var throttle = (double?)_sdk.Data.GetFloat("Throttle");
+            var steeringRad = (double?)_sdk.Data.GetFloat("SteeringWheelAngle");
+            var rpm = (double?)_sdk.Data.GetFloat("RPM");
+            var gear = (int?)_sdk.Data.GetInt("Gear");
+            var speedMs = (double?)_sdk.Data.GetFloat("Speed");
 
-        _engine.Update(new TelemetrySample(lapDistPct, brake, throttle, steeringRad, rpm, gear, speedMs));
+            _engine.Update(new TelemetrySample(lapDistPct, brake, throttle, steeringRad, rpm, gear, speedMs));
+        }
+        catch
+        {
+            // Skip this tick.
+        }
     }
 
     public void Dispose()

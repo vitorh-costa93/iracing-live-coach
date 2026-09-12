@@ -34,14 +34,18 @@ public class LiveCoachEngine
 
     public LiveCoachEngine(List<CornerBaseline> corners, Dictionary<string, GearFit>? gearModel, double? trackLengthMeters)
     {
-        _corners = corners;
+        _corners = corners ?? new();
         _gearModel = gearModel;
         _trackLengthMeters = trackLengthMeters;
     }
 
+    private const double ApproachWindowPct = 8; // matches iracing-analytics's own APPROACH_WINDOW_PCT
+
     public void Update(TelemetrySample sample)
     {
-        var corner = _corners.FirstOrDefault(c => sample.LapDistPct >= c.StartPct && sample.LapDistPct < c.EndPct);
+        var bodyCorner = _corners.FirstOrDefault(c => sample.LapDistPct >= c.StartPct && sample.LapDistPct < c.EndPct);
+        var corner = bodyCorner ?? _corners.FirstOrDefault(c =>
+            sample.LapDistPct >= c.StartPct - ApproachWindowPct && sample.LapDistPct < c.StartPct);
 
         if (!ReferenceEquals(corner, _currentCorner))
         {
@@ -70,7 +74,8 @@ public class LiveCoachEngine
             }
         }
 
-        var correctionDeg = ComputeWastedSteeringDeg(samples);
+        var inCornerSamples = samples.Where(s => s.LapDistPct >= corner.StartPct).ToList();
+        var correctionDeg = ComputeWastedSteeringDeg(inCornerSamples);
 
         var wheelspinDetected = DetectWheelspin(corner, samples);
 
@@ -81,8 +86,11 @@ public class LiveCoachEngine
 
     /// <summary>First sample, in distance order, where Brake crosses above BrakeThreshold after
     /// being below it -- the onset of braking, not "any sample with the pedal down" (which would
-    /// also catch trail-braking deep into the corner). Mirrors
-    /// iracing-analytics/lib/local-coach-baselines.ts's own brakeOnsetDistance exactly.</summary>
+    /// also catch trail-braking deep into the corner). This method itself is unchanged from
+    /// iracing-analytics/lib/local-coach-baselines.ts's own brakeOnsetDistance: the approach-window
+    /// widening (8 pct-points before the corner's own StartPct) now happens in the caller's
+    /// corner-membership lookup (see Update), so `samples` here already spans approach+body exactly
+    /// like that function's own windowed `inWindow` list.</summary>
     private static double? FindBrakeOnset(List<TelemetrySample> samples)
     {
         for (var i = 1; i < samples.Count; i++)
@@ -114,28 +122,44 @@ public class LiveCoachEngine
 
     private const double WheelspinThrottleMin = 0.85; // matches iracing-analytics's own WHEELSPIN_THROTTLE_MIN
     private const double WheelspinRpmSurplusPct = 8; // matches iracing-analytics's own WHEELSPIN_RPM_SURPLUS_PCT
+    private const int WheelspinGearStableWindow = 3; // matches iracing-analytics's own WHEELSPIN_GEAR_STABLE_WINDOW
 
     /// <summary>Checks only the corner's EXIT half (from the midpoint of [StartPct, EndPct) to
-    /// EndPct) for an RPM surplus over the pooled per-gear model, at high throttle -- mirrors
-    /// iracing-analytics/lib/local-coach-baselines.ts's own hasWheelspinInCorner exactly,
-    /// including the exit-half restriction added after that codebase's own final review found
-    /// entry-corner downshifts were misread as wheelspin under a whole-corner-window check.
-    /// Returns null (not false) when there's no usable data to judge with, so "never spins" stays
-    /// distinguishable from "couldn't tell" at the overlay layer.</summary>
+    /// EndPct) for an RPM surplus over the pooled per-gear model, at high throttle, with a
+    /// gear-stability neighbor check -- mirrors iracing-analytics/lib/local-coach-baselines.ts's
+    /// own hasWheelspinInCorner exactly, including the exit-half restriction added after that
+    /// codebase's own final review found entry-corner downshifts were misread as wheelspin under a
+    /// whole-corner-window check, and the ±WheelspinGearStableWindow index-adjacency gear check
+    /// that skips a candidate sample when any neighbor within that window reports a different gear
+    /// (a nearby shift produces its own brief RPM/speed mismatch that isn't real wheelspin).
+    /// Gear-adjacency is checked by array index within `samples` (which spans the approach zone and
+    /// the whole corner body after Update's own windowing), not by distance -- same as the ported
+    /// function's own index-ordered neighbor scan. Returns null (not false) when there's no usable
+    /// data to judge with, so "never spins" stays distinguishable from "couldn't tell" at the
+    /// overlay layer.</summary>
     private bool? DetectWheelspin(CornerBaseline corner, List<TelemetrySample> samples)
     {
         if (_gearModel is null) return null;
 
         var exitStart = (corner.StartPct + corner.EndPct) / 2;
-        var exitSamples = samples.Where(s => s.LapDistPct >= exitStart && s.LapDistPct < corner.EndPct).ToList();
-        if (exitSamples.Count == 0) return null;
-
         var anyJudged = false;
-        foreach (var sample in exitSamples)
+
+        for (var index = 0; index < samples.Count; index++)
         {
+            var sample = samples[index];
+            if (sample.LapDistPct < exitStart || sample.LapDistPct >= corner.EndPct) continue;
             if (sample.Throttle is not double throttle || throttle < WheelspinThrottleMin) continue;
             if (sample.Gear is not int gear || sample.Rpm is not double rpm || sample.SpeedMs is not double speed) continue;
             if (!_gearModel.TryGetValue(gear.ToString(), out var fit)) continue;
+
+            var windowStart = Math.Max(0, index - WheelspinGearStableWindow);
+            var windowEnd = Math.Min(samples.Count - 1, index + WheelspinGearStableWindow);
+            var gearStable = true;
+            for (var i = windowStart; i <= windowEnd; i++)
+            {
+                if (samples[i].Gear != gear) { gearStable = false; break; }
+            }
+            if (!gearStable) continue;
 
             anyJudged = true;
             var predicted = fit.A * speed + fit.B;
