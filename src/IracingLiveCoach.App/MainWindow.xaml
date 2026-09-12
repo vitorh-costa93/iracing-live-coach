@@ -2,25 +2,39 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Live Coach Overlay"
-        Width="320" Height="200"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         Topmost="True"
-        ShowInTaskbar="False">
-    <StackPanel>
-        <TextBlock Text="{Binding StatusText}" Foreground="White" Background="#AA000000" Margin="4" Padding="4" />
-        <ItemsControl ItemsSource="{Binding RecentCorners}">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
-                        <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
-                        <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
-                        <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
-                        <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
-                    </StackPanel>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
-    </StackPanel>
+        ShowInTaskbar="False"
+        MinWidth="200" MinHeight="120"
+        SizeToContent="Manual">
+    <!-- 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável, igual
+         os overlays do Kapps": WindowStyle=None means there is no native title bar or border to
+         drag or resize from, so both are hand rolled here. Dragging the background (the Grid,
+         everywhere except the resize grip) moves the window (MainWindow.xaml.cs calls DragMove).
+         The small grip in the bottom right corner resizes it via a Thumb's DragDelta. Position
+         and size are persisted to AppSettings after each interaction, so the overlay reopens
+         wherever the driver last put it. -->
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <StackPanel>
+            <TextBlock Text="{Binding StatusText}" Foreground="White" Background="#AA000000" Margin="4" Padding="4" />
+            <ItemsControl ItemsSource="{Binding RecentCorners}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
+                            <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
+                            <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
+                            <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
+                            <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+        <Thumb x:Name="ResizeGrip" Width="16" Height="16" Cursor="SizeNWSE"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Background="#66FFFFFF"
+               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+    </Grid>
 </Window>
