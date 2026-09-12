@@ -1,12 +1,23 @@
-﻿<Window x:Class="IracingLiveCoach.App.MainWindow"
+<Window x:Class="IracingLiveCoach.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:IracingLiveCoach.App"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+        Title="Live Coach Overlay"
+        Width="320" Height="200"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False">
+    <ItemsControl ItemsSource="{Binding RecentCorners}">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate>
+                <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
+                    <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
+                    <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
+                    <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
+                    <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
+                </StackPanel>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
 </Window>
