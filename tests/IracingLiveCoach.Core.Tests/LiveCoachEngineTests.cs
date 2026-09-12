@@ -218,6 +218,6 @@ public class LiveCoachEngineTests
         engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
 
         Assert.NotNull(feedback);
-        Assert.False(feedback!.WheelspinDetected);
+        Assert.Null(feedback!.WheelspinDetected);
     }
 }

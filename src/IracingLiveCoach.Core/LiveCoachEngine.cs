@@ -133,12 +133,11 @@ public class LiveCoachEngine
         var anyJudged = false;
         foreach (var sample in exitSamples)
         {
+            if (sample.Throttle is not double throttle || throttle < WheelspinThrottleMin) continue;
             if (sample.Gear is not int gear || sample.Rpm is not double rpm || sample.SpeedMs is not double speed) continue;
             if (!_gearModel.TryGetValue(gear.ToString(), out var fit)) continue;
 
             anyJudged = true;
-            if (sample.Throttle is not double throttle || throttle < WheelspinThrottleMin) continue;
-
             var predicted = fit.A * speed + fit.B;
             if (predicted <= 0) continue;
             var surplusPct = (rpm - predicted) / predicted * 100;
