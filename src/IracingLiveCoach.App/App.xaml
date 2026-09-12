@@ -3,7 +3,17 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:IracingLiveCoach.App"
              StartupUri="MainWindow.xaml">
+    <!-- HUD palette, shared across the overlay so every signal reads consistently instead of the
+         old per-field arbitrary colors (Yellow/Orange/Red picked with no real meaning). -->
     <Application.Resources>
-         
+        <SolidColorBrush x:Key="HudBackgroundBrush" Color="#DC0B1220" />
+        <SolidColorBrush x:Key="HudBorderBrush" Color="#332DE2B2" />
+        <SolidColorBrush x:Key="HudBorderActiveBrush" Color="#FF2DE2B2" />
+        <SolidColorBrush x:Key="HudAccentBrush" Color="#FF2DE2B2" />
+        <SolidColorBrush x:Key="HudWarnBrush" Color="#FFFF5470" />
+        <SolidColorBrush x:Key="HudNeutralBrush" Color="#FF8A93A6" />
+        <SolidColorBrush x:Key="HudTextBrush" Color="#FFEAF0F6" />
+        <SolidColorBrush x:Key="HudMutedTextBrush" Color="#FFAEB8C4" />
+        <FontFamily x:Key="HudMonoFont">Consolas</FontFamily>
     </Application.Resources>
 </Application>

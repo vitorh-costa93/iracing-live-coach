@@ -7,34 +7,71 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        MinWidth="200" MinHeight="120"
+        MinWidth="220" MinHeight="130"
         SizeToContent="Manual">
     <!-- 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável, igual
          os overlays do Kapps": WindowStyle=None means there is no native title bar or border to
-         drag or resize from, so both are hand rolled here. Dragging the background (the Grid,
-         everywhere except the resize grip) moves the window (MainWindow.xaml.cs calls DragMove).
-         The small grip in the bottom right corner resizes it via a Thumb's DragDelta. Position
-         and size are persisted to AppSettings after each interaction, so the overlay reopens
-         wherever the driver last put it. -->
+         drag or resize from, so both are hand rolled here. Dragging the background (anywhere on
+         the root Grid except the resize grip) moves the window (MainWindow.xaml.cs calls
+         DragMove); the small grip in the bottom right corner resizes it via a Thumb's DragDelta.
+         Position and size are persisted to AppSettings after each interaction, so the overlay
+         reopens wherever the driver last put it. Locked by default (see ClickThrough.cs / the
+         tray icon's "Destravar posição" item): while locked, clicks pass straight through to
+         iRacing and neither the drag nor the resize handler below ever fires. -->
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
-        <StackPanel>
-            <TextBlock Text="{Binding StatusText}" Foreground="White" Background="#AA000000" Margin="4" Padding="4" />
-            <ItemsControl ItemsSource="{Binding RecentCorners}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Margin="4" Background="#AA000000">
-                            <TextBlock Text="{Binding CornerName}" Foreground="White" Margin="4" />
-                            <TextBlock Text="{Binding BrakingDeltaMeters}" Foreground="Yellow" Margin="4" />
-                            <TextBlock Text="{Binding CorrectionDeg}" Foreground="Orange" Margin="4" />
-                            <TextBlock Text="{Binding WheelspinDetected}" Foreground="Red" Margin="4" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
+        <Border x:Name="OuterBorder" CornerRadius="10" Background="{StaticResource HudBackgroundBrush}"
+                BorderBrush="{StaticResource HudBorderBrush}" BorderThickness="1.5">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Header: status dot (color = OverlayViewModel.StatusBrush) + status text. -->
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse Grid.Column="0" Width="9" Height="9" Fill="{Binding StatusBrush}"
+                              VerticalAlignment="Top" Margin="0,3,8,0" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="LIVE COACH" FontSize="10" FontWeight="Bold"
+                                   Foreground="{StaticResource HudMutedTextBrush}" />
+                        <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                   Foreground="{StaticResource HudTextBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- Per-corner cards, most recent first (OverlayViewModel.OnCornerCompleted caps at
+                     5). CornerRowViewModel does all label/unit/color formatting; see that class's
+                     own doc comment for why only Wheelspin gets a good/bad color. -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding RecentCorners}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#14FFFFFF" CornerRadius="6" Padding="8" Margin="0,0,0,6">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="12"
+                                                   Foreground="{StaticResource HudTextBrush}" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding BrakingText}" FontFamily="{StaticResource HudMonoFont}"
+                                                   FontSize="11" Foreground="{StaticResource HudAccentBrush}" />
+                                        <TextBlock Text="{Binding CorrectionText}" FontFamily="{StaticResource HudMonoFont}"
+                                                   FontSize="11" Foreground="{StaticResource HudAccentBrush}" />
+                                        <TextBlock Text="{Binding WheelspinText}" FontFamily="{StaticResource HudMonoFont}"
+                                                   FontSize="11" Foreground="{Binding WheelspinBrush}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
         <Thumb x:Name="ResizeGrip" Width="16" Height="16" Cursor="SizeNWSE"
                HorizontalAlignment="Right" VerticalAlignment="Bottom"
-               Background="#66FFFFFF"
+               Background="{StaticResource HudAccentBrush}" Opacity="0.5"
                DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
     </Grid>
 </Window>

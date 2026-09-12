@@ -14,6 +14,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- UseWindowsForms: only for System.Windows.Forms.NotifyIcon (the system tray icon used to
+         lock/unlock the overlay for repositioning); WPF has no tray-icon API of its own. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>
