@@ -12,6 +12,8 @@ public class LiveCoachEngineTests
     private static CornerBaseline CornerWithBraking(int number, double start, double end, double brakingPointPct) =>
         new(number, $"Turn {number}", start, end, brakingPointPct, 0.3, null, null, null, null);
 
+    private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180.0;
+
     [Fact]
     public void Fires_CornerCompleted_exactly_once_when_the_car_leaves_a_corners_window()
     {
@@ -114,5 +116,40 @@ public class LiveCoachEngineTests
 
         Assert.NotNull(feedback);
         Assert.Null(feedback!.BrakingDeltaMeters);
+    }
+
+    [Fact]
+    public void Reports_wasted_steering_motion_for_the_corner_just_completed()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        // A wheel movement that goes out to +5 degrees then back to 0 within the corner window --
+        // total absolute movement (10 deg) minus net displacement (0 deg) = 10 degrees wasted.
+        engine.Update(new TelemetrySample(12, null, null, SteeringRad: 0.0, null, null, null));
+        engine.Update(new TelemetrySample(15, null, null, SteeringRad: DegreesToRadians(5), null, null, null));
+        engine.Update(new TelemetrySample(18, null, null, SteeringRad: 0.0, null, null, null));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null)); // exits corner
+
+        Assert.NotNull(feedback);
+        Assert.NotNull(feedback!.CorrectionDeg);
+        Assert.Equal(10.0, feedback.CorrectionDeg!.Value, precision: 1);
+    }
+
+    [Fact]
+    public void Reports_null_correction_when_fewer_than_two_steering_samples_are_available()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(15, null, null, SteeringRad: 0.1, null, null, null)); // only 1 sample with steering data
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.Null(feedback!.CorrectionDeg);
     }
 }

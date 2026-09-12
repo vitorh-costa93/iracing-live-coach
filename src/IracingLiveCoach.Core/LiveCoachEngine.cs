@@ -70,7 +70,9 @@ public class LiveCoachEngine
             }
         }
 
-        return new(corner.Number, corner.Name, brakingDeltaMeters, CorrectionDeg: null, WheelspinDetected: null);
+        var correctionDeg = ComputeWastedSteeringDeg(samples);
+
+        return new(corner.Number, corner.Name, brakingDeltaMeters, correctionDeg, WheelspinDetected: null);
     }
 
     private const double BrakeThreshold = 0.1; // matches iracing-analytics's own BRAKE_THRESHOLD
@@ -89,5 +91,22 @@ public class LiveCoachEngine
                 return samples[i].LapDistPct;
         }
         return null;
+    }
+
+    /// <summary>Total absolute steering movement minus net displacement, over samples that have
+    /// SteeringRad data -- near zero for a smooth monotonic turn-in, large when the wheel moves
+    /// back and forth without progressing the angle. Mirrors
+    /// iracing-analytics/lib/local-coach-baselines.ts's own wastedSteeringDeg exactly.</summary>
+    private static double? ComputeWastedSteeringDeg(List<TelemetrySample> samples)
+    {
+        var withSteering = samples.Where(s => s.SteeringRad is not null).Select(s => s.SteeringRad!.Value).ToList();
+        if (withSteering.Count < 2) return null;
+
+        var totalMoveDeg = 0.0;
+        for (var i = 1; i < withSteering.Count; i++)
+            totalMoveDeg += Math.Abs((withSteering[i] - withSteering[i - 1]) * (180.0 / Math.PI));
+
+        var netMoveDeg = Math.Abs((withSteering[^1] - withSteering[0]) * (180.0 / Math.PI));
+        return totalMoveDeg - netMoveDeg;
     }
 }
