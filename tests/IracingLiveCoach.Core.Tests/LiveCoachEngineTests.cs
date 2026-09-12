@@ -152,4 +152,72 @@ public class LiveCoachEngineTests
         Assert.NotNull(feedback);
         Assert.Null(feedback!.CorrectionDeg);
     }
+
+    [Fact]
+    public void Detects_wheelspin_when_exit_half_RPM_exceeds_the_gear_model_by_the_threshold()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) }; // exit half is [15, 20)
+        var gearModel = new Dictionary<string, GearFit> { ["3"] = new GearFit(A: 100, B: 0) }; // RPM = 100*speed
+        var engine = new LiveCoachEngine(corners, gearModel, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        // Entry half (before 15): normal throttle, doesn't matter for this signal.
+        engine.Update(new TelemetrySample(12, null, Throttle: 0.5, null, Rpm: 3000, Gear: 3, SpeedMs: 30));
+        // Exit half: predicted RPM = 100*30 = 3000; actual 3450 is a 15% surplus at high throttle.
+        engine.Update(new TelemetrySample(16, null, Throttle: 0.95, null, Rpm: 3450, Gear: 3, SpeedMs: 30));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null)); // exits corner
+
+        Assert.NotNull(feedback);
+        Assert.True(feedback!.WheelspinDetected);
+    }
+
+    [Fact]
+    public void Does_not_detect_wheelspin_when_exit_half_RPM_matches_the_gear_model()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var gearModel = new Dictionary<string, GearFit> { ["3"] = new GearFit(A: 100, B: 0) };
+        var engine = new LiveCoachEngine(corners, gearModel, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(16, null, Throttle: 0.95, null, Rpm: 3000, Gear: 3, SpeedMs: 30)); // matches model exactly
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.False(feedback!.WheelspinDetected);
+    }
+
+    [Fact]
+    public void Reports_null_wheelspin_when_there_is_no_gear_model_for_the_gear_used()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: null); // no gear model at all
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(16, null, Throttle: 0.95, null, Rpm: 3450, Gear: 3, SpeedMs: 30));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.Null(feedback!.WheelspinDetected);
+    }
+
+    [Fact]
+    public void Ignores_low_throttle_samples_when_checking_for_wheelspin()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) };
+        var gearModel = new Dictionary<string, GearFit> { ["3"] = new GearFit(A: 100, B: 0) };
+        var engine = new LiveCoachEngine(corners, gearModel, trackLengthMeters: null);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        // Big RPM surplus, but throttle is only 50% -- below the 85% gate, so this isn't spin, it's
+        // more likely a lift or a gearshift artifact (same reasoning as the original TS detector).
+        engine.Update(new TelemetrySample(16, null, Throttle: 0.5, null, Rpm: 3450, Gear: 3, SpeedMs: 30));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.False(feedback!.WheelspinDetected);
+    }
 }

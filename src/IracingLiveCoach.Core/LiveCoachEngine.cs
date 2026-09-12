@@ -72,7 +72,9 @@ public class LiveCoachEngine
 
         var correctionDeg = ComputeWastedSteeringDeg(samples);
 
-        return new(corner.Number, corner.Name, brakingDeltaMeters, correctionDeg, WheelspinDetected: null);
+        var wheelspinDetected = DetectWheelspin(corner, samples);
+
+        return new(corner.Number, corner.Name, brakingDeltaMeters, correctionDeg, wheelspinDetected);
     }
 
     private const double BrakeThreshold = 0.1; // matches iracing-analytics's own BRAKE_THRESHOLD
@@ -108,5 +110,41 @@ public class LiveCoachEngine
 
         var netMoveDeg = Math.Abs((withSteering[^1] - withSteering[0]) * (180.0 / Math.PI));
         return totalMoveDeg - netMoveDeg;
+    }
+
+    private const double WheelspinThrottleMin = 0.85; // matches iracing-analytics's own WHEELSPIN_THROTTLE_MIN
+    private const double WheelspinRpmSurplusPct = 8; // matches iracing-analytics's own WHEELSPIN_RPM_SURPLUS_PCT
+
+    /// <summary>Checks only the corner's EXIT half (from the midpoint of [StartPct, EndPct) to
+    /// EndPct) for an RPM surplus over the pooled per-gear model, at high throttle -- mirrors
+    /// iracing-analytics/lib/local-coach-baselines.ts's own hasWheelspinInCorner exactly,
+    /// including the exit-half restriction added after that codebase's own final review found
+    /// entry-corner downshifts were misread as wheelspin under a whole-corner-window check.
+    /// Returns null (not false) when there's no usable data to judge with, so "never spins" stays
+    /// distinguishable from "couldn't tell" at the overlay layer.</summary>
+    private bool? DetectWheelspin(CornerBaseline corner, List<TelemetrySample> samples)
+    {
+        if (_gearModel is null) return null;
+
+        var exitStart = (corner.StartPct + corner.EndPct) / 2;
+        var exitSamples = samples.Where(s => s.LapDistPct >= exitStart && s.LapDistPct < corner.EndPct).ToList();
+        if (exitSamples.Count == 0) return null;
+
+        var anyJudged = false;
+        foreach (var sample in exitSamples)
+        {
+            if (sample.Gear is not int gear || sample.Rpm is not double rpm || sample.SpeedMs is not double speed) continue;
+            if (!_gearModel.TryGetValue(gear.ToString(), out var fit)) continue;
+
+            anyJudged = true;
+            if (sample.Throttle is not double throttle || throttle < WheelspinThrottleMin) continue;
+
+            var predicted = fit.A * speed + fit.B;
+            if (predicted <= 0) continue;
+            var surplusPct = (rpm - predicted) / predicted * 100;
+            if (surplusPct >= WheelspinRpmSurplusPct) return true;
+        }
+
+        return anyJudged ? false : null;
     }
 }
