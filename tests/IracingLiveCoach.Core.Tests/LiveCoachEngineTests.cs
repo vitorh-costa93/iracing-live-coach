@@ -9,6 +9,9 @@ public class LiveCoachEngineTests
     private static CornerBaseline Corner(int number, double start, double end) =>
         new(number, $"Turn {number}", start, end, null, null, null, null, null, null);
 
+    private static CornerBaseline CornerWithBraking(int number, double start, double end, double brakingPointPct) =>
+        new(number, $"Turn {number}", start, end, brakingPointPct, 0.3, null, null, null, null);
+
     [Fact]
     public void Fires_CornerCompleted_exactly_once_when_the_car_leaves_a_corners_window()
     {
@@ -57,5 +60,59 @@ public class LiveCoachEngineTests
         Assert.Equal(2, completed.Count);
         Assert.Equal(1, completed[0].CornerNumber);
         Assert.Equal(2, completed[1].CornerNumber);
+    }
+
+    [Fact]
+    public void Reports_a_positive_braking_delta_when_the_live_lap_brakes_later_than_baseline()
+    {
+        // Baseline brakes at 13%; this lap starts braking at 15% -- later, within a 5891m track.
+        var corners = new List<CornerBaseline> { CornerWithBraking(1, 10, 20, brakingPointPct: 13) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: 5891);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(12, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(14, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(15, Brake: 0.8, null, null, null, null, null)); // onset at 15%
+        engine.Update(new TelemetrySample(18, Brake: 0.8, null, null, null, null, null));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null)); // exits corner
+
+        Assert.NotNull(feedback);
+        Assert.NotNull(feedback!.BrakingDeltaMeters);
+        // (15 - 13) / 100 * 5891 = 117.82
+        Assert.True(feedback.BrakingDeltaMeters > 0, "later braking should be a positive delta");
+        Assert.Equal(117.82, feedback.BrakingDeltaMeters!.Value, precision: 1);
+    }
+
+    [Fact]
+    public void Reports_null_braking_delta_when_the_baseline_has_no_braking_point_for_this_corner()
+    {
+        var corners = new List<CornerBaseline> { Corner(1, 10, 20) }; // no braking baseline (all nulls)
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: 5891);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(12, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(15, Brake: 0.8, null, null, null, null, null));
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.Null(feedback!.BrakingDeltaMeters);
+    }
+
+    [Fact]
+    public void Reports_null_braking_delta_when_this_pass_never_actually_braked()
+    {
+        var corners = new List<CornerBaseline> { CornerWithBraking(1, 10, 20, brakingPointPct: 13) };
+        var engine = new LiveCoachEngine(corners, gearModel: null, trackLengthMeters: 5891);
+        CornerFeedback? feedback = null;
+        engine.CornerCompleted += f => feedback = f;
+
+        engine.Update(new TelemetrySample(12, Brake: 0.0, null, null, null, null, null));
+        engine.Update(new TelemetrySample(15, Brake: 0.0, null, null, null, null, null)); // never brakes
+        engine.Update(new TelemetrySample(25, null, null, null, null, null, null));
+
+        Assert.NotNull(feedback);
+        Assert.Null(feedback!.BrakingDeltaMeters);
     }
 }

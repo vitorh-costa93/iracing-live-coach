@@ -55,6 +55,39 @@ public class LiveCoachEngine
             _cornerSamples.Add(sample);
     }
 
-    private CornerFeedback BuildFeedback(CornerBaseline corner, List<TelemetrySample> samples) =>
-        new(corner.Number, corner.Name, BrakingDeltaMeters: null, CorrectionDeg: null, WheelspinDetected: null);
+    private CornerFeedback BuildFeedback(CornerBaseline corner, List<TelemetrySample> samples)
+    {
+        double? brakingDeltaMeters = null;
+        if (corner.BrakingPointPct is double baselinePct)
+        {
+            var liveOnsetPct = FindBrakeOnset(samples);
+            if (liveOnsetPct is double onsetPct)
+            {
+                var deltaPct = onsetPct - baselinePct;
+                brakingDeltaMeters = _trackLengthMeters is double trackLength
+                    ? deltaPct / 100 * trackLength
+                    : deltaPct; // degraded fallback: no track length known, report raw pct-points instead of meters
+            }
+        }
+
+        return new(corner.Number, corner.Name, brakingDeltaMeters, CorrectionDeg: null, WheelspinDetected: null);
+    }
+
+    private const double BrakeThreshold = 0.1; // matches iracing-analytics's own BRAKE_THRESHOLD
+
+    /// <summary>First sample, in distance order, where Brake crosses above BrakeThreshold after
+    /// being below it -- the onset of braking, not "any sample with the pedal down" (which would
+    /// also catch trail-braking deep into the corner). Mirrors
+    /// iracing-analytics/lib/local-coach-baselines.ts's own brakeOnsetDistance exactly.</summary>
+    private static double? FindBrakeOnset(List<TelemetrySample> samples)
+    {
+        for (var i = 1; i < samples.Count; i++)
+        {
+            var previous = samples[i - 1].Brake ?? 0;
+            var current = samples[i].Brake ?? 0;
+            if (previous < BrakeThreshold && current >= BrakeThreshold)
+                return samples[i].LapDistPct;
+        }
+        return null;
+    }
 }
