@@ -1,0 +1,112 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+
+namespace IracingLiveCoach.Core;
+
+/// <summary>One widget's own position/size/visibility. Left/Top are null until the driver has
+/// actually moved the widget once (matching AppSettings's own existing Left/Top nullability
+/// convention) -- a window with null Left/Top uses WPF's own default startup placement.</summary>
+public class WidgetLayout
+{
+    public double? Left { get; set; }
+    public double? Top { get; set; }
+    public double Width { get; set; }
+    public double Height { get; set; }
+    public bool Visible { get; set; } = true;
+}
+
+/// <summary>Keyed replacement for AppSettings's old flat Left/Top/Width/Height fields -- one entry
+/// per widget ("coach", "p2p", "relative", "standings", and any future key), so adding a widget
+/// later never needs a schema change, just a new Get(key, ...) call. Plain JSON under
+/// %APPDATA%\iracing-live-coach\settings.json -- the SAME file AppSettings already used, with a
+/// "Widgets" dictionary added alongside the pre-existing ImportKey field (both classes read/write
+/// disjoint parts of one JSON document via System.Text.Json's own tolerance for unknown
+/// properties, so neither class needs to know about the other's fields).</summary>
+public class WidgetLayoutStore
+{
+    private static string FilePath => Path.Combine(
+        Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "iracing-live-coach",
+        "settings.json");
+
+    public Dictionary<string, WidgetLayout> Widgets { get; set; } = new();
+
+    public IReadOnlyDictionary<string, WidgetLayout> All => Widgets;
+
+    public WidgetLayout Get(string key, double defaultWidth, double defaultHeight)
+    {
+        if (Widgets.TryGetValue(key, out var existing)) return existing;
+        var layout = new WidgetLayout { Width = defaultWidth, Height = defaultHeight };
+        Widgets[key] = layout;
+        return layout;
+    }
+
+    public static WidgetLayoutStore Load()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+            {
+                var json = File.ReadAllText(FilePath);
+                var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("Widgets", out var widgetsElement))
+                {
+                    var widgets = JsonSerializer.Deserialize<Dictionary<string, WidgetLayout>>(widgetsElement.GetRawText());
+                    if (widgets is not null) return new WidgetLayoutStore { Widgets = widgets };
+                }
+                // Pre-this-task shape: flat Left/Top/Width/Height with no "Widgets" dictionary at
+                // all. Migrate the coach widget's own already-saved position so an upgrading
+                // driver doesn't lose it -- every other (new) widget just starts at its defaults.
+                var store = new WidgetLayoutStore();
+                if (doc.RootElement.TryGetProperty("Width", out var widthEl))
+                {
+                    var coach = new WidgetLayout
+                    {
+                        Left = doc.RootElement.TryGetProperty("Left", out var l) && l.ValueKind != JsonValueKind.Null ? l.GetDouble() : null,
+                        Top = doc.RootElement.TryGetProperty("Top", out var t) && t.ValueKind != JsonValueKind.Null ? t.GetDouble() : null,
+                        Width = widthEl.GetDouble(),
+                        Height = doc.RootElement.TryGetProperty("Height", out var h) ? h.GetDouble() : 200,
+                    };
+                    store.Widgets["coach"] = coach;
+                }
+                return store;
+            }
+        }
+        catch
+        {
+            // Corrupted/unreadable settings file -- fall back to defaults rather than crash on startup.
+        }
+        return new WidgetLayoutStore();
+    }
+
+    public void Save()
+    {
+        try
+        {
+            // Preserve ImportKey (owned by AppSettings, read here only to avoid clobbering it --
+            // this store never interprets or validates that field, just round-trips it).
+            string? importKey = null;
+            if (File.Exists(FilePath))
+            {
+                try
+                {
+                    var existingDoc = JsonDocument.Parse(File.ReadAllText(FilePath));
+                    if (existingDoc.RootElement.TryGetProperty("ImportKey", out var keyEl) && keyEl.ValueKind == JsonValueKind.String)
+                        importKey = keyEl.GetString();
+                }
+                catch { /* ignore -- best effort preservation only */ }
+            }
+
+            var dir = Path.GetDirectoryName(FilePath)!;
+            Directory.CreateDirectory(dir);
+            var merged = new Dictionary<string, object?> { ["Widgets"] = Widgets, ["ImportKey"] = importKey };
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            // Best-effort -- a failed save shouldn't crash the overlay, just means layout won't persist.
+        }
+    }
+}

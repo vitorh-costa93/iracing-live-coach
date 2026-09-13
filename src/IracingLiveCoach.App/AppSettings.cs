@@ -1,35 +1,25 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
 namespace IracingLiveCoach.App;
 
-/// <summary>Persisted app configuration: the overlay window's own position/size (request: "quero
-/// que o lugar que ele ocupa na tela e tamanho seja personalizável, igual os overlays do Kapps")
-/// and the shared secret this app uses to authenticate with iracing-analytics's baselines endpoint.
-/// Plain JSON under %APPDATA%\iracing-live-coach\settings.json -- reading a local file instead of
-/// an environment variable means the published .exe needs zero manual machine-wide setup after
-/// install: the installer/publish step seeds ImportKey here directly. LOCAL_COACH_SECRET (if set)
-/// still wins when present, so a user who prefers an env var can still use one.</summary>
+/// <summary>Persisted app configuration: the shared secret this app uses to authenticate with
+/// iracing-analytics's baselines endpoint. Plain JSON under %APPDATA%\iracing-live-coach\settings.json
+/// (the SAME file WidgetLayoutStore uses for per-widget layout persistence). Reading a local file
+/// instead of an environment variable means the published .exe needs zero manual machine-wide setup
+/// after install: the installer/publish step seeds ImportKey here directly. LOCAL_COACH_SECRET (if
+/// set) still wins when present, so a user who prefers an env var can still use one. Layout
+/// persistence is now owned by WidgetLayoutStore (separate key-per-widget entries), not AppSettings.</summary>
 public class AppSettings
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "settings.json");
+    private static string FilePath => Path.Combine(
+        Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "iracing-live-coach",
+        "settings.json");
 
-    public double? Left { get; set; }
-    public double? Top { get; set; }
-    public double Width { get; set; } = 320;
-    public double Height { get; set; } = 200;
     public string? ImportKey { get; set; }
-
-    // 13/09/2026: "eu queria que isso estivesse junto da black box de relative do iRacing" -- the
-    // P2P strip (RelativeOverlayWindow) is a second, independently positioned window so it can sit
-    // right against the driver's own native Relative box, wherever that is on their layout. Kept
-    // as its own Left/Top/Width/Height, separate from the main coaching card above.
-    public double? RelativeLeft { get; set; }
-    public double? RelativeTop { get; set; }
-    public double RelativeWidth { get; set; } = 90;
-    public double RelativeHeight { get; set; } = 130;
 
     public static AppSettings Load()
     {
@@ -38,8 +28,11 @@ public class AppSettings
             if (File.Exists(FilePath))
             {
                 var json = File.ReadAllText(FilePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json);
-                if (settings is not null) return settings;
+                var doc = JsonDocument.Parse(json);
+                var settings = new AppSettings();
+                if (doc.RootElement.TryGetProperty("ImportKey", out var keyEl) && keyEl.ValueKind == JsonValueKind.String)
+                    settings.ImportKey = keyEl.GetString();
+                return settings;
             }
         }
         catch
@@ -53,13 +46,28 @@ public class AppSettings
     {
         try
         {
+            // Preserve Widgets (owned by WidgetLayoutStore, read here only to avoid clobbering it --
+            // this class never interprets or validates that field, just round-trips it).
+            object? widgets = null;
+            if (File.Exists(FilePath))
+            {
+                try
+                {
+                    var existingDoc = JsonDocument.Parse(File.ReadAllText(FilePath));
+                    if (existingDoc.RootElement.TryGetProperty("Widgets", out var widgetsEl))
+                        widgets = JsonSerializer.Deserialize<Dictionary<string, object>>(widgetsEl.GetRawText());
+                }
+                catch { /* ignore -- best effort preservation only */ }
+            }
+
             var dir = Path.GetDirectoryName(FilePath)!;
             Directory.CreateDirectory(dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            var merged = new Dictionary<string, object?> { ["ImportKey"] = ImportKey, ["Widgets"] = widgets };
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
         {
-            // Best-effort -- a failed save shouldn't crash the overlay, just means layout won't persist.
+            // Best-effort -- a failed save shouldn't crash the overlay, just means ImportKey won't persist.
         }
     }
 }
