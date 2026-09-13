@@ -13,6 +13,14 @@ namespace IracingLiveCoach.App;
 /// doc comment for why the whole event just doesn't fire in that case instead of firing with nulls.</summary>
 public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 
+/// <summary>One row of the full running-order relative widget (Task 5) -- unlike
+/// RelativeCarStatus above (P2P-strip only, behind-only), this carries driver code/gap/tire/P2P
+/// together and can be ahead (negative PositionOffset) or behind (positive).</summary>
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive);
+
+/// <summary>One row of the full classification/standings widget (Task 6).</summary>
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer);
+
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
 /// own LapDistPct is 0-1; the baseline endpoint's corner boundaries (and this app's
@@ -34,6 +42,20 @@ public class TelemetryReader : IDisposable
     private LiveCoachEngine? _engine;
     private bool _sessionDetected;
     private int _playerCarIdx = -1;
+    private Dictionary<int, string> _driverCodesByCarIdx = new();
+
+    // Populated once alongside SessionDetected/_playerCarIdx -- driver identities don't change
+    // mid-session, so this is read once from OnSessionInfo, not re-parsed every telemetry tick.
+    private static Dictionary<int, string> BuildDriverCodes(IRacingSdkSessionInfo? sessionInfo)
+    {
+        var map = new Dictionary<int, string>();
+        foreach (var driver in sessionInfo?.DriverInfo?.Drivers ?? new List<IRacingSdkSessionInfo.DriverInfoModel.DriverModel>())
+        {
+            var code = !string.IsNullOrWhiteSpace(driver.AbbrevName) ? driver.AbbrevName : driver.CarNumber ?? "?";
+            map[driver.CarIdx] = code;
+        }
+        return map;
+    }
 
     /// <summary>Fires once per app run, the first time the SDK reports a session with both a
     /// track and the local driver's own car resolved. (carId, trackId) match iRacing's own
@@ -47,6 +69,17 @@ public class TelemetryReader : IDisposable
     /// (GT3, etc.) -- so the strip can just show "sem push-to-pass" once and stop updating, instead
     /// of flickering a meaningless "sem dado" every tick.</summary>
     public event Action<List<RelativeCarStatus>>? RelativeUpdated;
+
+    /// <summary>Fires every telemetry tick once the player's own position is known, with one row
+    /// per nearby car (3 ahead, 3 behind, same window as the existing P2P-only RelativeUpdated)
+    /// but carrying driver code/gap/tire/P2P together -- feeds the new full RelativeWidget
+    /// (Task 5), distinct from the existing narrow P2P strip which keeps consuming
+    /// RelativeUpdated unchanged.</summary>
+    public event Action<List<RelativeRow>>? FullRelativeUpdated;
+
+    /// <summary>Fires every telemetry tick once the session is detected, with one row per
+    /// currently-classified car (CarIdxPosition > 0), ordered by position.</summary>
+    public event Action<List<StandingsRow>>? StandingsUpdated;
 
     public TelemetryReader()
     {
@@ -77,6 +110,7 @@ public class TelemetryReader : IDisposable
             if (trackId <= 0 || carId <= 0) return;
 
             _playerCarIdx = driverCarIdx;
+            _driverCodesByCarIdx = BuildDriverCodes(sessionInfo);
             _sessionDetected = true;
             SessionDetected?.Invoke(carId, trackId);
         }
@@ -91,7 +125,12 @@ public class TelemetryReader : IDisposable
         // Relative/P2P doesn't depend on a baseline (there's no "history" for it), so it's read
         // regardless of whether a LiveCoachEngine has been attached yet -- only the corner-coaching
         // half below needs that.
-        if (_playerCarIdx >= 0) UpdateRelative();
+        if (_playerCarIdx >= 0)
+        {
+            UpdateRelative();
+            UpdateFullRelative();
+            UpdateStandings();
+        }
 
         if (_engine is null) return; // no baseline attached yet -- nothing to compare corners against.
 
@@ -147,6 +186,75 @@ public class TelemetryReader : IDisposable
             // CarIdxP2P_Status not published this session (no push-to-pass in this car class) --
             // simply don't fire RelativeUpdated; the strip keeps showing its own "sem push-to-pass"
             // idle state instead of a misleading always-false reading.
+        }
+    }
+
+    // 13/09/2026: full running-order relative (F1-style widget), extending 3-ahead/3-behind --
+    // reads the SAME CarIdxPosition scan as UpdateRelative but is a SEPARATE pass (not merged into
+    // it) so a change here can never affect the already-shipped P2P strip's own behavior.
+    private void UpdateFullRelative()
+    {
+        try
+        {
+            var myPosition = _sdk.Data.GetInt("CarIdxPosition", _playerCarIdx);
+            if (myPosition <= 0) return;
+            var myEstTime = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
+
+            var maxCars = IRacingSdkConst.MaxNumCars;
+            var rows = new List<RelativeRow>();
+            for (var idx = 0; idx < maxCars; idx++)
+            {
+                if (idx == _playerCarIdx) continue;
+                var position = _sdk.Data.GetInt("CarIdxPosition", idx);
+                if (position <= 0) continue;
+                var offset = position - myPosition;
+                if (Math.Abs(offset) > RelativeCarsBehind) continue;
+
+                var theirEstTime = _sdk.Data.GetFloat("CarIdxEstTime", idx);
+                // Simple same-lap gap estimate -- does not correct for a lap-count difference
+                // between the two cars, a known, disclosed simplification for this first version
+                // (see this task's own plan text / the spec's Phase 1 scope).
+                double gap = theirEstTime - myEstTime;
+                var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
+                bool? p2p = null;
+                try { p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx); } catch { /* no P2P this session */ }
+
+                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+                rows.Add(new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p));
+            }
+
+            FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
+        }
+        catch
+        {
+            // Skip this tick -- same defensive posture as every other telemetry read in this class.
+        }
+    }
+
+    private void UpdateStandings()
+    {
+        try
+        {
+            var maxCars = IRacingSdkConst.MaxNumCars;
+            var rows = new List<StandingsRow>();
+            for (var idx = 0; idx < maxCars; idx++)
+            {
+                var position = _sdk.Data.GetInt("CarIdxPosition", idx);
+                if (position <= 0) continue; // not currently classified
+
+                var lapsCompleted = _sdk.Data.GetInt("CarIdxLap", idx);
+                var lastLap = _sdk.Data.GetFloat("CarIdxLastLapTime", idx);
+                var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
+                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+
+                rows.Add(new StandingsRow(position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null, idx == _playerCarIdx));
+            }
+
+            StandingsUpdated?.Invoke(rows.OrderBy(row => row.Position).ToList());
+        }
+        catch
+        {
+            // Skip this tick.
         }
     }
 
