@@ -901,7 +901,7 @@ public class RelativeWidgetViewModel
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding DriverCode}" FontFamily="{StaticResource F1MonoFont}"
                                            FontSize="12" Foreground="{StaticResource F1TextBrush}"
-                                           FontWeight="{Binding IsPlayerRow, Converter={x:Null}}" />
+                                           FontWeight="Bold" />
                                 <TextBlock Grid.Column="1" Text="{Binding GapText}" FontFamily="{StaticResource F1MonoFont}"
                                            FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" Margin="8,0" />
                                 <TextBlock Grid.Column="2" Text="{Binding P2PText}" FontFamily="{StaticResource F1MonoFont}"
@@ -920,13 +920,11 @@ public class RelativeWidgetViewModel
 </Window>
 ```
 
-Remove the `FontWeight="{Binding IsPlayerRow, Converter={x:Null}}"` line above before implementing
-(it's a placeholder for "the player's own row should stand out" -- replace it with a plain static
-`FontWeight="Bold"` for now, since a working IValueConverter for this is a nice-to-have polish
-pass, not required for this task's own acceptance; leaving the actually-invalid `{x:Null}`
-converter reference in would fail to compile). Every row's driver code renders in the SAME bold
-weight in this version -- distinguishing the player's own row visually is a follow-up polish item,
-noted here rather than silently dropped.
+The XAML above already uses a plain static `FontWeight="Bold"` for every row's driver code, so
+`RelativeRowViewModel.IsPlayerRow` (already computed in the view model above) is currently unused
+by the XAML -- that's expected for this task. Visually distinguishing the player's own row (e.g. a
+highlighted row background bound to `IsPlayerRow`) is a nice-to-have polish item, explicitly out of
+scope here; do not introduce an `IValueConverter` or extra styling for it.
 
 - [ ] **Step 3: Write `RelativeWidget.xaml.cs`**
 
