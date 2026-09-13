@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Forms;
 using IracingLiveCoach.Core;
+using System.Collections.Generic;
 using Application = System.Windows.Application;
 using Brush = System.Windows.Media.Brush;
 using DrawingIcon = System.Drawing.Icon;
@@ -18,11 +19,14 @@ namespace IracingLiveCoach.App;
 public partial class MainWindow : Window
 {
     private readonly OverlayViewModel _viewModel = new();
-    private readonly AppSettings _settings = AppSettings.Load();
+    private readonly AppSettings _appSettings = AppSettings.Load();
+    private readonly WidgetLayoutStore _layoutStore = WidgetLayoutStore.Load();
+    private readonly WidgetLayout _coachLayout;
     private TelemetryReader? _telemetryReader;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _lockMenuItem;
     private RelativeOverlayWindow? _relativeWindow;
+    private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
     // by default so the overlay never eats a click meant for iRacing itself; the driver unlocks it
@@ -34,9 +38,10 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
 
-        Width = _settings.Width;
-        Height = _settings.Height;
-        if (_settings.Left is double left && _settings.Top is double top)
+        _coachLayout = _layoutStore.Get("coach", 320, 200);
+        Width = _coachLayout.Width;
+        Height = _coachLayout.Height;
+        if (_coachLayout.Left is double left && _coachLayout.Top is double top)
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = left;
@@ -54,8 +59,15 @@ public partial class MainWindow : Window
         // 13/09/2026: "eu queria que isso estivesse junto da black box de relative do iRacing" --
         // a second window, not a section of this one, so the driver can drag it to sit right next
         // to their own native Relative box independently of where this coaching card ends up.
-        _relativeWindow = new RelativeOverlayWindow(_settings);
+        _relativeWindow = new RelativeOverlayWindow(_layoutStore.Get("p2p", 90, 130), () => _layoutStore.Save());
         _relativeWindow.Show();
+
+        _controlPanel = new ControlPanelWindow(_layoutStore, new (string, string, Window)[]
+        {
+            ("coach", "Coach", this),
+            ("p2p", "P2P", _relativeWindow),
+        });
+        _controlPanel.Show();
 
         SetupTrayIcon();
         ApplyClickThrough();
@@ -82,7 +94,7 @@ public partial class MainWindow : Window
         // AppSettings.ImportKey (seeded at publish/setup time -- see AppSettings.cs) is the normal
         // path so the app needs zero manual configuration; LOCAL_COACH_SECRET still wins if set,
         // for a driver who prefers an environment variable or is running multiple keys.
-        var importKey = Environment.GetEnvironmentVariable("LOCAL_COACH_SECRET") ?? _settings.ImportKey ?? "";
+        var importKey = Environment.GetEnvironmentVariable("LOCAL_COACH_SECRET") ?? _appSettings.ImportKey ?? "";
         var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         var sync = new BaselineSync(httpClient, cacheDir, "https://iracing-analytics.vercel.app", importKey);
         var baseline = await sync.GetBaselineAsync(carId, trackId);
@@ -123,11 +135,11 @@ public partial class MainWindow : Window
 
     private void PersistLayout()
     {
-        _settings.Left = Left;
-        _settings.Top = Top;
-        _settings.Width = Width;
-        _settings.Height = Height;
-        _settings.Save();
+        _coachLayout.Left = Left;
+        _coachLayout.Top = Top;
+        _coachLayout.Width = Width;
+        _coachLayout.Height = Height;
+        _layoutStore.Save();
     }
 
     // 12/09/2026: system tray icon (WPF has no tray API of its own -- System.Windows.Forms.NotifyIcon
@@ -200,6 +212,7 @@ public partial class MainWindow : Window
         // -- one tray toggle moves both the coaching card and the P2P strip in and out of edit mode
         // together, since they're meant to be positioned once and then both stay out of the way.
         _relativeWindow?.SetLocked(_locked);
+        _controlPanel?.SetLocked(_locked);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -208,6 +221,7 @@ public partial class MainWindow : Window
         if (_trayIcon is not null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
         _telemetryReader?.Dispose();
         _relativeWindow?.Close();
+        _controlPanel?.Close();
         base.OnClosed(e);
     }
 }

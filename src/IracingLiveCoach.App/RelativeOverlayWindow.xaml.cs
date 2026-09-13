@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using IracingLiveCoach.Core;
 using Brush = System.Windows.Media.Brush;
 
 namespace IracingLiveCoach.App;
@@ -16,20 +17,22 @@ namespace IracingLiveCoach.App;
 /// the way while actually driving.</summary>
 public partial class RelativeOverlayWindow : Window
 {
-    private readonly AppSettings _settings;
+    private readonly WidgetLayout _layout;
+    private readonly Action _onChanged;
     private readonly RelativeViewModel _viewModel = new();
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
-    public RelativeOverlayWindow(AppSettings settings)
+    public RelativeOverlayWindow(WidgetLayout layout, Action onChanged)
     {
         InitializeComponent();
-        _settings = settings;
+        _layout = layout;
+        _onChanged = onChanged;
         DataContext = _viewModel;
 
-        Width = _settings.RelativeWidth;
-        Height = _settings.RelativeHeight;
-        if (_settings.RelativeLeft is double left && _settings.RelativeTop is double top)
+        Width = _layout.Width;
+        Height = _layout.Height;
+        if (_layout.Left is double left && _layout.Top is double top)
         {
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = left;
@@ -64,10 +67,10 @@ public partial class RelativeOverlayWindow : Window
 
     private void PersistLayout()
     {
-        _settings.RelativeLeft = Left;
-        _settings.RelativeTop = Top;
-        _settings.RelativeWidth = Width;
-        _settings.RelativeHeight = Height;
-        _settings.Save();
+        _layout.Left = Left;
+        _layout.Top = Top;
+        _layout.Width = Width;
+        _layout.Height = Height;
+        _onChanged();
     }
 }
