@@ -12,10 +12,14 @@
         SizeToContent="Manual">
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
         <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
-            <StackPanel Margin="8">
-                <TextBlock Text="STANDINGS" FontFamily="{StaticResource F1HeaderFont}" FontSize="11"
+            <Grid Margin="8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="STANDINGS" FontFamily="{StaticResource F1HeaderFont}" FontSize="11"
                            Foreground="{StaticResource F1AccentBrush}" Margin="0,0,0,6" />
-                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="400">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding Rows}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -36,7 +40,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>
-            </StackPanel>
+            </Grid>
         </Border>
         <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
                HorizontalAlignment="Right" VerticalAlignment="Bottom"

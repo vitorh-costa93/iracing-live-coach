@@ -44,8 +44,8 @@ public partial class StandingsWidget : Window
     {
         ClickThrough.Set(Handle, locked);
         OuterBorder.BorderBrush = locked
-            ? (Brush)FindResource("F1AccentBrush")
-            : (Brush)FindResource("F1AccentBrush"); // no separate "unlocked" accent yet in F1Theme -- same brush both states for this first version, a visual "you're in edit mode" cue is a follow-up polish item like the Coach widget's own HudBorderActiveBrush pattern
+            ? (Brush)FindResource("F1BorderIdleBrush")
+            : (Brush)FindResource("F1BorderActiveBrush");
     }
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

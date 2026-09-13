@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -11,7 +10,11 @@ namespace IracingLiveCoach.App;
 /// instead of an environment variable means the published .exe needs zero manual machine-wide setup
 /// after install: the installer/publish step seeds ImportKey here directly. LOCAL_COACH_SECRET (if
 /// set) still wins when present, so a user who prefers an env var can still use one. Layout
-/// persistence is now owned by WidgetLayoutStore (separate key-per-widget entries), not AppSettings.</summary>
+/// persistence is now owned by WidgetLayoutStore (separate key-per-widget entries), not AppSettings.
+/// Save() was removed entirely: nothing in this app ever writes ImportKey at runtime -- it is
+/// written once, externally, by the publish process -- so there was no live caller left, and a
+/// future caller would have hit a lost-update hazard (its old "preserve Widgets" logic read
+/// Widgets from disk, not from the live WidgetLayoutStore instance).</summary>
 public class AppSettings
 {
     private static string FilePath => Path.Combine(
@@ -40,34 +43,5 @@ public class AppSettings
             // Corrupted/unreadable settings file -- fall back to defaults rather than crash on startup.
         }
         return new AppSettings();
-    }
-
-    public void Save()
-    {
-        try
-        {
-            // Preserve Widgets (owned by WidgetLayoutStore, read here only to avoid clobbering it --
-            // this class never interprets or validates that field, just round-trips it).
-            object? widgets = null;
-            if (File.Exists(FilePath))
-            {
-                try
-                {
-                    var existingDoc = JsonDocument.Parse(File.ReadAllText(FilePath));
-                    if (existingDoc.RootElement.TryGetProperty("Widgets", out var widgetsEl))
-                        widgets = JsonSerializer.Deserialize<Dictionary<string, object>>(widgetsEl.GetRawText());
-                }
-                catch { /* ignore -- best effort preservation only */ }
-            }
-
-            var dir = Path.GetDirectoryName(FilePath)!;
-            Directory.CreateDirectory(dir);
-            var merged = new Dictionary<string, object?> { ["ImportKey"] = ImportKey, ["Widgets"] = widgets };
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(merged, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch
-        {
-            // Best-effort -- a failed save shouldn't crash the overlay, just means ImportKey won't persist.
-        }
     }
 }

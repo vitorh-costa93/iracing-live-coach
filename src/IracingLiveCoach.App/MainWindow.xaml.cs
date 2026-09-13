@@ -67,10 +67,10 @@ public partial class MainWindow : Window
         _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 260, 240), () => _layoutStore.Save());
         _relativeWidget.Show();
 
-        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 260, 300), () => _layoutStore.Save());
+        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 320, 360), () => _layoutStore.Save());
         _standingsWidget.Show();
 
-        _controlPanel = new ControlPanelWindow(_layoutStore, new (string, string, Window)[]
+        _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
             ("coach", "Coach", this),
             ("p2p", "P2P", _relativeWindow),

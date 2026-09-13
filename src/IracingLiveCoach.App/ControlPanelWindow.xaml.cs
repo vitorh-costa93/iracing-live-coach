@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using IracingLiveCoach.Core;
 using Brush = System.Windows.Media.Brush;
@@ -16,21 +18,24 @@ namespace IracingLiveCoach.App;
 public partial class ControlPanelWindow : Window
 {
     private readonly WidgetLayoutStore _store;
+    private readonly Action _onChanged;
+    private readonly WidgetLayout _layout;
     private readonly ControlPanelViewModel _viewModel = new();
     private readonly Dictionary<string, Window> _widgetsByKey = new();
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
-    public ControlPanelWindow(WidgetLayoutStore store, IEnumerable<(string Key, string DisplayName, Window Window)> widgets)
+    public ControlPanelWindow(WidgetLayoutStore store, Action onChanged, IEnumerable<(string Key, string DisplayName, Window Window)> widgets)
     {
         InitializeComponent();
         _store = store;
+        _onChanged = onChanged;
         DataContext = _viewModel;
 
-        var layout = _store.Get("controlPanel", 220, 160);
-        Width = layout.Width;
-        Height = layout.Height;
-        if (layout.Left is double left && layout.Top is double top) { WindowStartupLocation = WindowStartupLocation.Manual; Left = left; Top = top; }
+        _layout = _store.Get("controlPanel", 220, 160);
+        Width = _layout.Width;
+        Height = _layout.Height;
+        if (_layout.Left is double left && _layout.Top is double top) { WindowStartupLocation = WindowStartupLocation.Manual; Left = left; Top = top; }
 
         foreach (var (key, displayName, window) in widgets)
         {
@@ -51,4 +56,28 @@ public partial class ControlPanelWindow : Window
     // Locking hides this window's own content entirely (Visibility), not just click-through --
     // per this class's own doc comment, it should never be visible while actually driving.
     public void SetLocked(bool locked) => Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
+
+    private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ButtonState != MouseButtonState.Pressed) return;
+        DragMove();
+        PersistLayout();
+    }
+
+    private void OnResizeGripDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        Width = Math.Max(MinWidth, Width + e.HorizontalChange);
+        Height = Math.Max(MinHeight, Height + e.VerticalChange);
+    }
+
+    private void OnResizeGripDragCompleted(object sender, DragCompletedEventArgs e) => PersistLayout();
+
+    private void PersistLayout()
+    {
+        _layout.Left = Left;
+        _layout.Top = Top;
+        _layout.Width = Width;
+        _layout.Height = Height;
+        _onChanged();
+    }
 }

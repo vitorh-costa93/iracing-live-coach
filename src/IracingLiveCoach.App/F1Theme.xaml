@@ -11,6 +11,8 @@
     <SolidColorBrush x:Key="F1MutedTextBrush" Color="#FF9AA3AF" />
     <SolidColorBrush x:Key="F1PositionGainBrush" Color="#FF2DE2B2" />
     <SolidColorBrush x:Key="F1PositionLossBrush" Color="#FFE10600" />
+    <SolidColorBrush x:Key="F1BorderIdleBrush" Color="#33E10600" />
+    <SolidColorBrush x:Key="F1BorderActiveBrush" Color="#FFE10600" />
     <FontFamily x:Key="F1HeaderFont">Segoe UI Semibold</FontFamily>
     <FontFamily x:Key="F1MonoFont">Consolas</FontFamily>
 

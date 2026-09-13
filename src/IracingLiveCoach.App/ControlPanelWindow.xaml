@@ -9,18 +9,24 @@
         ShowInTaskbar="False"
         MinWidth="220" MinHeight="120"
         SizeToContent="Manual">
-    <Border Style="{StaticResource F1PanelBorder}">
-        <StackPanel Margin="10">
-            <TextBlock Text="PAINEL DE CONTROLE" FontFamily="{StaticResource F1HeaderFont}"
-                       FontSize="12" Foreground="{StaticResource F1AccentBrush}" Margin="0,0,0,8" />
-            <ItemsControl ItemsSource="{Binding Rows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding DisplayName}"
-                                  Foreground="{StaticResource F1TextBrush}" Margin="0,3" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-    </Border>
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border Style="{StaticResource F1PanelBorder}">
+            <StackPanel Margin="10">
+                <TextBlock Text="PAINEL DE CONTROLE" FontFamily="{StaticResource F1HeaderFont}"
+                           FontSize="12" Foreground="{StaticResource F1AccentBrush}" Margin="0,0,0,8" />
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding DisplayName}"
+                                      Foreground="{StaticResource F1TextBrush}" Margin="0,3" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Background="{StaticResource F1AccentBrush}" Opacity="0.5"
+               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+    </Grid>
 </Window>
