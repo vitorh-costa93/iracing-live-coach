@@ -21,6 +21,19 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// <summary>One row of the full classification/standings widget (Task 6).</summary>
 public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer);
 
+/// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
+/// null until at least one full lap has completed since the app started watching (see UpdateFuel's
+/// own doc comment) -- never show a number computed from zero samples.</summary>
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds);
+
+/// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
+/// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
+/// real track shape (see the spec's own Phase 2 section for why).</summary>
+public record TrackPositionDot(string DriverCode, double LapDistPct, bool IsPlayer);
+
+/// <summary>One (throttled, ~10Hz) weather/track-usage snapshot.</summary>
+public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, List<TrackPositionDot> CarPositions);
+
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
 /// own LapDistPct is 0-1; the baseline endpoint's corner boundaries (and this app's
@@ -43,6 +56,19 @@ public class TelemetryReader : IDisposable
     private bool _sessionDetected;
     private int _playerCarIdx = -1;
     private Dictionary<int, string> _driverCodesByCarIdx = new();
+
+    // 13/09/2026: rolling-average fuel calculator state -- see UpdateFuel's own doc comment for
+    // why a per-lap rolling average is used instead of the SDK's own instantaneous FuelUsePerHour.
+    private const int FuelWindowSize = 5;
+    private double? _lastFuelLevel;
+    private int _lastLapCompleted = -1;
+    private readonly Queue<double> _fuelPerLapWindow = new();
+    private readonly Queue<double> _lapTimeWindow = new();
+
+    // 13/09/2026: WeatherUpdated is throttled to ~10Hz (every 6th telemetry tick, 60Hz/6=10) --
+    // see this plan's own Global Constraints for why a full-MaxNumCars scan doesn't need 60Hz here.
+    private const int WeatherTickInterval = 6;
+    private int _weatherTickCounter;
 
     // Populated once alongside SessionDetected/_playerCarIdx -- driver identities don't change
     // mid-session, so this is read once from OnSessionInfo, not re-parsed every telemetry tick.
@@ -80,6 +106,15 @@ public class TelemetryReader : IDisposable
     /// <summary>Fires every telemetry tick once the session is detected, with one row per
     /// currently-classified car (CarIdxPosition > 0), ordered by position.</summary>
     public event Action<List<StandingsRow>>? StandingsUpdated;
+
+    /// <summary>Fires every telemetry tick once the session is detected, with the player's own
+    /// current fuel state and a rolling-average-based remaining-laps/time estimate.</summary>
+    public event Action<FuelStatus>? FuelUpdated;
+
+    /// <summary>Fires roughly every 10th of a second (throttled -- see WeatherTickInterval) once
+    /// the session is detected, with the current weather/track-wetness readout and every car's
+    /// current lap position.</summary>
+    public event Action<WeatherStatus>? WeatherUpdated;
 
     public TelemetryReader()
     {
@@ -130,6 +165,14 @@ public class TelemetryReader : IDisposable
             UpdateRelative();
             UpdateFullRelative();
             UpdateStandings();
+            UpdateFuel();
+
+            _weatherTickCounter++;
+            if (_weatherTickCounter >= WeatherTickInterval)
+            {
+                _weatherTickCounter = 0;
+                UpdateWeather();
+            }
         }
 
         if (_engine is null) return; // no baseline attached yet -- nothing to compare corners against.
@@ -251,6 +294,88 @@ public class TelemetryReader : IDisposable
             }
 
             StandingsUpdated?.Invoke(rows.OrderBy(row => row.Position).ToList());
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+
+    // 13/09/2026: a rolling average over the last FuelWindowSize completed laps, not the SDK's own
+    // instantaneous FuelUsePerHour -- an instantaneous rate swings with throttle/braking on any
+    // single sample, while the rolling average is what every established fuel calculator actually
+    // uses for a stable "laps remaining" estimate. LapCompleted (not Lap) is the correct edge to
+    // watch: it increments exactly once per finished lap, where Lap reports the currently-STARTED
+    // lap and would double-count the boundary tick (see LapCompleted's own confirmed SDK doc).
+    private void UpdateFuel()
+    {
+        try
+        {
+            var fuelLevel = _sdk.Data.GetFloat("FuelLevel");
+            var fuelUsePerHour = _sdk.Data.GetFloat("FuelUsePerHour");
+            var lapCompleted = _sdk.Data.GetInt("LapCompleted");
+
+            if (_lastLapCompleted < 0)
+            {
+                _lastLapCompleted = lapCompleted;
+                _lastFuelLevel = fuelLevel;
+            }
+            else if (lapCompleted > _lastLapCompleted && _lastFuelLevel is double previousFuel)
+            {
+                var used = previousFuel - fuelLevel;
+                // Only a positive, plausible consumption sample is trusted -- a pit stop refuel
+                // between ticks would otherwise register as a large negative "used" value and
+                // corrupt the rolling average with a nonsense sample.
+                if (used > 0)
+                {
+                    _fuelPerLapWindow.Enqueue(used);
+                    if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
+
+                    var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
+                    if (lapTime > 0)
+                    {
+                        _lapTimeWindow.Enqueue(lapTime);
+                        if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
+                    }
+                }
+                _lastLapCompleted = lapCompleted;
+                _lastFuelLevel = fuelLevel;
+            }
+
+            double? avgFuelPerLap = _fuelPerLapWindow.Count > 0 ? _fuelPerLapWindow.Average() : null;
+            double? avgLapTime = _lapTimeWindow.Count > 0 ? _lapTimeWindow.Average() : null;
+            double? lapsRemaining = avgFuelPerLap is double perLap && perLap > 0 ? fuelLevel / perLap : null;
+            double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
+
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining));
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+
+    private void UpdateWeather()
+    {
+        try
+        {
+            var airTemp = _sdk.Data.GetFloat("AirTemp");
+            var trackTemp = _sdk.Data.GetFloat("TrackTemp");
+            var precipitation = _sdk.Data.GetFloat("Precipitation") * 100.0;
+            var trackWetness = _sdk.Data.GetInt("TrackWetness");
+            var declaredWet = _sdk.Data.GetBool("WeatherDeclaredWet");
+
+            var maxCars = IRacingSdkConst.MaxNumCars;
+            var positions = new List<TrackPositionDot>();
+            for (var idx = 0; idx < maxCars; idx++)
+            {
+                var lapDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                if (lapDistPct < 0) continue; // car not currently on track / not in this session
+                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+                positions.Add(new TrackPositionDot(code, lapDistPct, idx == _playerCarIdx));
+            }
+
+            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, positions));
         }
         catch
         {
