@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _lockMenuItem;
     private RelativeOverlayWindow? _relativeWindow;
+    private RelativeWidget? _relativeWidget;
     private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
@@ -62,10 +63,14 @@ public partial class MainWindow : Window
         _relativeWindow = new RelativeOverlayWindow(_layoutStore.Get("p2p", 90, 130), () => _layoutStore.Save());
         _relativeWindow.Show();
 
+        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 260, 240), () => _layoutStore.Save());
+        _relativeWidget.Show();
+
         _controlPanel = new ControlPanelWindow(_layoutStore, new (string, string, Window)[]
         {
             ("coach", "Coach", this),
             ("p2p", "P2P", _relativeWindow),
+            ("relative", "Relative (F1)", _relativeWidget),
         });
         _controlPanel.Show();
 
@@ -75,6 +80,7 @@ public partial class MainWindow : Window
         _telemetryReader = new TelemetryReader();
         _telemetryReader.SessionDetected += (carId, trackId) => _ = OnSessionDetectedAsync(carId, trackId);
         _telemetryReader.RelativeUpdated += statuses => Dispatcher.Invoke(() => _relativeWindow?.UpdateRows(statuses));
+        _telemetryReader.FullRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget?.UpdateRows(rows));
         _telemetryReader.Start();
     }
 
@@ -212,6 +218,7 @@ public partial class MainWindow : Window
         // -- one tray toggle moves both the coaching card and the P2P strip in and out of edit mode
         // together, since they're meant to be positioned once and then both stay out of the way.
         _relativeWindow?.SetLocked(_locked);
+        _relativeWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
 
@@ -221,6 +228,7 @@ public partial class MainWindow : Window
         if (_trayIcon is not null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
         _telemetryReader?.Dispose();
         _relativeWindow?.Close();
+        _relativeWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
     }
