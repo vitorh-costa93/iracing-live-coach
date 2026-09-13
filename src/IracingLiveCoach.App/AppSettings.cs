@@ -22,6 +22,15 @@ public class AppSettings
     public double Height { get; set; } = 200;
     public string? ImportKey { get; set; }
 
+    // 13/09/2026: "eu queria que isso estivesse junto da black box de relative do iRacing" -- the
+    // P2P strip (RelativeOverlayWindow) is a second, independently positioned window so it can sit
+    // right against the driver's own native Relative box, wherever that is on their layout. Kept
+    // as its own Left/Top/Width/Height, separate from the main coaching card above.
+    public double? RelativeLeft { get; set; }
+    public double? RelativeTop { get; set; }
+    public double RelativeWidth { get; set; } = 90;
+    public double RelativeHeight { get; set; } = 130;
+
     public static AppSettings Load()
     {
         try
