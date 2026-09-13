@@ -14,7 +14,7 @@
          drag or resize from, so both are hand rolled here. Dragging the background (anywhere on
          the root Grid except the resize grip) moves the window (MainWindow.xaml.cs calls
          DragMove); the small grip in the bottom right corner resizes it via a Thumb's DragDelta.
-         Position and size are persisted to AppSettings after each interaction, so the overlay
+         Position and size are persisted to WidgetLayoutStore after each interaction, so the overlay
          reopens wherever the driver last put it. Locked by default (see ClickThrough.cs / the
          tray icon's "Destravar posição" item): while locked, clicks pass straight through to
          iRacing and neither the drag nor the resize handler below ever fires. -->
