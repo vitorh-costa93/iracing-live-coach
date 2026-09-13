@@ -37,9 +37,15 @@
 ### Task 1: `WidgetLayoutStore` — keyed layout persistence, replacing `AppSettings`'s flat fields
 
 **Files:**
-- Create: `src/IracingLiveCoach.App/WidgetLayoutStore.cs`
+- Create: `src/IracingLiveCoach.Core/WidgetLayoutStore.cs` (namespace `IracingLiveCoach.Core`, NOT
+  `IracingLiveCoach.App` — `IracingLiveCoach.Core.Tests` targets plain `net8.0` and only has a
+  `ProjectReference` to `IracingLiveCoach.Core`, the same project `LiveCoachEngine`/`BaselineSync`
+  already live in and are already tested from; `IracingLiveCoach.App` targets `net8.0-windows`
+  (WPF) and a `net8.0` test project cannot reference a `net8.0-windows` project. `App`'s own files
+  already have `using IracingLiveCoach.Core;` (see `MainWindow.xaml.cs`), so this class is usable
+  from `App` with no new `using` needed.)
 - Test: `tests/IracingLiveCoach.Core.Tests/WidgetLayoutStoreTests.cs` (this test project already
-  exists and is referenced by the App project's build; a plain C# class with no WPF types can be
+  exists and already references `IracingLiveCoach.Core`; a plain C# class with no WPF types can be
   tested from here the same way `LiveCoachEngine`/`BaselineSync` already are)
 - Modify: `src/IracingLiveCoach.App/AppSettings.cs` (keep `ImportKey` here, since it's not a
   per-widget layout concern; nothing else changes in this file in this task)
@@ -60,7 +66,7 @@
 // tests/IracingLiveCoach.Core.Tests/WidgetLayoutStoreTests.cs
 using System;
 using System.IO;
-using IracingLiveCoach.App;
+using IracingLiveCoach.Core;
 using Xunit;
 
 namespace IracingLiveCoach.Core.Tests;
@@ -160,13 +166,13 @@ Expected: FAIL — `WidgetLayoutStore` doesn't exist yet.
 - [ ] **Step 3: Write the implementation**
 
 ```csharp
-// src/IracingLiveCoach.App/WidgetLayoutStore.cs
+// src/IracingLiveCoach.Core/WidgetLayoutStore.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace IracingLiveCoach.App;
+namespace IracingLiveCoach.Core;
 
 /// <summary>One widget's own position/size/visibility. Left/Top are null until the driver has
 /// actually moved the widget once (matching AppSettings's own existing Left/Top nullability
@@ -298,7 +304,7 @@ some unrelated break), then stop -- do not fix those two files in this task.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/IracingLiveCoach.App/WidgetLayoutStore.cs src/IracingLiveCoach.App/AppSettings.cs tests/IracingLiveCoach.Core.Tests/WidgetLayoutStoreTests.cs
+git add src/IracingLiveCoach.Core/WidgetLayoutStore.cs src/IracingLiveCoach.App/AppSettings.cs tests/IracingLiveCoach.Core.Tests/WidgetLayoutStoreTests.cs
 git commit -m "feat: WidgetLayoutStore -- keyed per-widget layout persistence, replacing AppSettings's flat fields"
 ```
 
@@ -671,6 +677,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Interop;
+using IracingLiveCoach.Core;
 using Brush = System.Windows.Media.Brush;
 
 namespace IracingLiveCoach.App;
@@ -759,7 +766,10 @@ already covered).
 
 - [ ] **Step 5: Update `RelativeOverlayWindow.xaml.cs`**
 
-Read the current file. Change its constructor from `RelativeOverlayWindow(AppSettings settings)`
+Read the current file. It does not currently have a `using IracingLiveCoach.Core;` line (it only
+uses `RelativeCarStatus`, which lives in `IracingLiveCoach.App`'s own `TelemetryReader.cs`) — add
+one, since its constructor is changing to accept a `WidgetLayout` (Task 1, `IracingLiveCoach.Core`
+namespace). Change its constructor from `RelativeOverlayWindow(AppSettings settings)`
 to `RelativeOverlayWindow(WidgetLayout layout)` (it no longer needs a whole `AppSettings`/
 `WidgetLayoutStore` reference, just its OWN already-resolved layout object, since `MainWindow` now
 owns the one shared `WidgetLayoutStore` and passes each widget only its own slice). Update its
@@ -934,6 +944,7 @@ using System.Windows;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using IracingLiveCoach.Core;
 using Brush = System.Windows.Media.Brush;
 
 namespace IracingLiveCoach.App;
