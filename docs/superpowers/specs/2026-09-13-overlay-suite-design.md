@@ -147,6 +147,60 @@ means editing one file, not N:
   a rebuild — the coaching logic (`LiveCoachEngine`, `BaselineSync`, `AppSettings`'s `ImportKey`)
   carries over unchanged.
 
+## Widget specs (Phase 2 — detailed now, telemetry independently confirmed 13/09/2026)
+
+Every variable below was independently confirmed against `sajax.github.io/irsdkdocs` before being
+designed against, following this session's own established rule (see the tire-wear correction
+above): `FuelLevel` (float, liters), `FuelUsePerHour` (float, liters/hour), `LapCompleted` (int,
+player's own completed-lap counter — distinct from `Lap`, which reports the currently-*started*
+lap and would double-count a lap-boundary tick), `LapLastLapTime` (float, seconds), `AirTemp`
+(float), `TrackTemp` (float), `Precipitation` (float, 0-1 fraction — iRacing's own docs note
+uncertainty whether this is track-wide or start/finish-line-local; disclosed as such in the UI,
+not presented as more precise than it is), `TrackWetness` (enum 0-7:
+Unknown/Dry/MostlyDry/VeryLightlyWet/LightlyWet/ModeratelyWet/VeryWet/ExtremelyWet),
+`WeatherDeclaredWet` (bool), `CarIdxLapDistPct` (float 0-1 per car, already used by this same
+session's own Phase 3 spotter design below).
+
+### FuelWidget (new)
+
+- Fuel calculator, matching the shape every established sim-racing fuel tool already uses (Kapps'
+  own `fuelCalc` widget, confirmed present in `%AppData%\Kapps\settings.json` this session) —
+  reading the same telemetry, not reinventing the calculation:
+  - **Current fuel**: `FuelLevel`, shown as a plain liters readout.
+  - **Fuel per lap (rolling average)**: `TelemetryReader` watches `LapCompleted` for an increment;
+    on each increment it records `FuelLevel`'s delta since the previous increment as one lap's
+    consumption, and keeps a rolling window of the last 5 completed laps (rather than 1, so an
+    outlier lap — a spin, an off-track excursion burning extra fuel briefly, or a formation/caution
+    lap — doesn't swing the estimate) . `FuelUsePerHour` is shown alongside as iRacing's own
+    instantaneous secondary figure, not used for the primary estimate (an instantaneous rate is
+    noisier than a rolling per-lap average, which is why standard fuel calculators use the latter).
+  - **Laps remaining**: `FuelLevel / averageFuelPerLap`, `null`/"--" until at least one full lap's
+    rolling average exists (never show a number computed from zero samples).
+  - **Time remaining**: `lapsRemaining × averageLapTime`, where `averageLapTime` is the same
+    rolling-5-lap average applied to `LapLastLapTime`.
+  - No target-fuel-for-race-distance input in this pass (Kapps' own fuel calculator has one, but it
+    requires the driver to enter a target lap count/time the app has no other source for) — logged
+    as a natural, disclosed Phase 4 candidate rather than a half-built input field now.
+
+### Weather / Track Usage widget (new — combines four related readouts the driver asked to see
+### together, per "eu quero que você coloque no mesmo overlay")
+
+- **Weather row**: `AirTemp`/`TrackTemp` as plain numeric readouts (°C, matching iRacing's own
+  session default unit for this driver's region), `Precipitation` as a percentage bar with the
+  disclosed track-vs-point-source caveat in a tooltip/label, `TrackWetness` rendered as its own
+  7-step enum label (not a raw number) with a color ramp from dry (muted gray) to extremely wet
+  (accent-saturated blue), `WeatherDeclaredWet` as a small badge that only appears when true (it's
+  a boolean rules-flag, not a continuous value, so it doesn't need its own permanent row).
+- **Track usage row**: a single-file horizontal bar representing one full lap (0% to 100%), with
+  one dot per car positioned by that car's own current `CarIdxLapDistPct`. This is explicitly a
+  **linear** representation, not a geometrically accurate track shape — this app has no per-track
+  GPS boundary dataset (that data lives in the separate `iracing-analytics` web project's Supabase
+  store, built from real OSM boundaries, and isn't available to this offline desktop app). Drawing
+  a fake curved track shape without real geometry would be the same kind of overclaim this session
+  already corrected once for tire wear; a plain linear bar honestly shows the same underlying
+  information (where on the lap every car currently is) without pretending to know the track's
+  actual layout.
+
 ## Widget specs (Phase 3 — designed now so Phase 1's architecture doesn't box it out later)
 
 ### Tire wear widget (honest about the pit-stall-only refresh)
