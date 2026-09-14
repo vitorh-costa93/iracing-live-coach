@@ -46,7 +46,8 @@
                         <TextBlock Text="Linhas da minha classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
                         <TextBox Text="{Binding StandingsClassRows.MyClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="50" HorizontalAlignment="Left" Margin="0,0,0,6"/>
                         <TextBlock Text="Linhas por outra classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
-                        <TextBox Text="{Binding StandingsClassRows.OtherClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="50" HorizontalAlignment="Left"/>
+                        <TextBox Text="{Binding StandingsClassRows.OtherClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="50" HorizontalAlignment="Left" Margin="0,0,0,6"/>
+                        <CheckBox Content="Mostrar INTERVAL (carro à frente) em vez de GAP (líder)" IsChecked="{Binding StandingsClassRows.ShowInterval, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" FontSize="10"/>
                     </StackPanel>
                 </Expander>
             </StackPanel>

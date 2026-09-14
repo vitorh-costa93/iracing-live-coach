@@ -45,7 +45,7 @@ public class StandingsRowViewModel
     private static readonly Brush GainBrush = new SolidColorBrush(Color.FromRgb(0x2D, 0xE2, 0xB2));
     private static readonly Brush LossBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
 
-    public StandingsRowViewModel(StandingsRow row)
+    public StandingsRowViewModel(StandingsRow row, bool showInterval)
     {
         IsPlayer = row.IsPlayer;
         PositionText = row.Position.ToString(CultureInfo.InvariantCulture);
@@ -88,12 +88,17 @@ public class StandingsRowViewModel
             ? RowForegroundBrush
             : (Brush)System.Windows.Application.Current.Resources["F1AccentBrush"];
 
-        // "LEADER" for P1 -- CarIdxF2Time reads ~0 for the leader rather than null, so the text is
-        // keyed off position, not a missing value (a missing value means the session just doesn't
-        // publish gap data, e.g. outside a race -- shown as "--").
+        // "quero em standings ter a opção de interval, não só gap" (14/09/2026) -- INTERVAL (gap to
+        // the car directly ahead) or GAP (gap to the leader), both derived from the same real
+        // CarIdxF2Time (see StandingsRow's own doc comment). "LEADER"/P1 has no car ahead either
+        // way. CarIdxF2Time reads ~0 for the leader rather than null, so the leader text is keyed
+        // off position, not a missing value (a missing value means the session just doesn't publish
+        // gap data at all, e.g. outside a race -- shown as "--").
         GapText = row.Position == 1
             ? "LEADER"
-            : row.GapToLeaderSeconds is double gap ? $"+{gap.ToString("0.000", CultureInfo.InvariantCulture)}" : "--";
+            : showInterval
+                ? row.IntervalSeconds is double interval ? $"+{interval.ToString("0.000", CultureInfo.InvariantCulture)}" : "--"
+                : row.GapToLeaderSeconds is double gap ? $"+{gap.ToString("0.000", CultureInfo.InvariantCulture)}" : "--";
 
         // ΔiR* compiled into the same iR column (not a separate one) per the driver's own request
         // (14/09/2026, "não quero uma coluna adicional... o Kapps faz isso compilado em uma só") --
@@ -158,15 +163,45 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
     public string SofText { get => _sofText; private set => Set(ref _sofText, value); }
     public string DriverCountText { get => _driverCountText; private set => Set(ref _driverCountText, value); }
 
+    // "queria que tivesse a possibilidade de dimensionar as colunas de forma personalizável, como
+    // uma tabela do Excel" (14/09/2026) -- one GridLength per fixed-width column, shared via
+    // ElementName binding between the header Grid and every row's own Grid (see StandingsWidget.xaml)
+    // so a GridSplitter dragged in the header reflows every row at once. PILOTO stays "*" (absorbs
+    // whatever's left) and is not user-resizable on its own -- shrinking any fixed column simply
+    // gives PILOTO more room, same as the width/height resize behavior already shipped.
+    private System.Windows.GridLength _posColumnWidth = new(38);
+    private System.Windows.GridLength _licColumnWidth = new(58);
+    private System.Windows.GridLength _iRatingColumnWidth = new(72);
+    private System.Windows.GridLength _gapColumnWidth = new(62);
+    private System.Windows.GridLength _lastLapColumnWidth = new(84);
+    private System.Windows.GridLength _deltaColumnWidth = new(62);
+    public System.Windows.GridLength PosColumnWidth { get => _posColumnWidth; set => Set(ref _posColumnWidth, value); }
+    public System.Windows.GridLength LicColumnWidth { get => _licColumnWidth; set => Set(ref _licColumnWidth, value); }
+    public System.Windows.GridLength IRatingColumnWidth { get => _iRatingColumnWidth; set => Set(ref _iRatingColumnWidth, value); }
+    public System.Windows.GridLength GapColumnWidth { get => _gapColumnWidth; set => Set(ref _gapColumnWidth, value); }
+    public System.Windows.GridLength LastLapColumnWidth { get => _lastLapColumnWidth; set => Set(ref _lastLapColumnWidth, value); }
+    public System.Windows.GridLength DeltaColumnWidth { get => _deltaColumnWidth; set => Set(ref _deltaColumnWidth, value); }
+    private string _gapHeaderText = "GAP";
+    public string GapHeaderText { get => _gapHeaderText; private set => Set(ref _gapHeaderText, value); }
+
     public ObservableCollection<StandingsRowViewModel> Rows { get; } = new();
 
     private System.Collections.Generic.List<StandingsRow> _lastRows = new();
     private int _myClassLimit;
     private int _otherClassLimit = 3;
+    private bool _showInterval;
 
     public void SetRows(System.Collections.Generic.List<StandingsRow> rows)
     {
         _lastRows = rows;
+        ApplyGroupedRows();
+    }
+
+    // "quero em standings ter a opção de interval, não só gap" (14/09/2026).
+    public void SetGapDisplayMode(bool showInterval)
+    {
+        _showInterval = showInterval;
+        GapHeaderText = showInterval ? "INTERVAL" : "GAP";
         ApplyGroupedRows();
     }
 
@@ -222,7 +257,7 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
         }
 
         Rows.Clear();
-        foreach (var row in grouped) Rows.Add(new StandingsRowViewModel(row));
+        foreach (var row in grouped) Rows.Add(new StandingsRowViewModel(row, _showInterval));
     }
 
     // All real SDK fields except StrengthOfField (see SessionStatus's own doc comment for its formula).

@@ -44,6 +44,8 @@ public partial class StandingsWidget : Window
 
     public void SetClassRowLimits(int myClassLimit, int otherClassLimit) => _viewModel.SetClassRowLimits(myClassLimit, otherClassLimit);
 
+    public void SetGapDisplayMode(bool showInterval) => _viewModel.SetGapDisplayMode(showInterval);
+
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);

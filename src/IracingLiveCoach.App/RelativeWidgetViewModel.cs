@@ -175,17 +175,26 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
 {
     private string _brakeBiasText = "--";
     private string _trackRubberText = "--";
-    private string _bestLapText = "--";
-    private string _lastLapText = "--";
     private string _trackTempText = "--";
     private string _classSessionText = "--";
     private string _rubberBlocksText = "□□□□□";
 
     public string BrakeBiasText { get => _brakeBiasText; private set => Set(ref _brakeBiasText, value); }
     public string TrackRubberText { get => _trackRubberText; private set => Set(ref _trackRubberText, value); }
-    public string BestLapText { get => _bestLapText; private set => Set(ref _bestLapText, value); }
-    public string LastLapText { get => _lastLapText; private set => Set(ref _lastLapText, value); }
     public string TrackTempText { get => _trackTempText; private set => Set(ref _trackTempText, value); }
+
+    // "queria que tivesse a possibilidade de dimensionar as colunas de forma personalizável, como
+    // uma tabela do Excel" (14/09/2026) -- see StandingsWidgetViewModel's own copy of this comment.
+    private System.Windows.GridLength _posColumnWidth = new(38);
+    private System.Windows.GridLength _licColumnWidth = new(56);
+    private System.Windows.GridLength _iRatingColumnWidth = new(48);
+    private System.Windows.GridLength _deltaColumnWidth = new(55);
+    private System.Windows.GridLength _otColumnWidth = new(54);
+    public System.Windows.GridLength PosColumnWidth { get => _posColumnWidth; set => Set(ref _posColumnWidth, value); }
+    public System.Windows.GridLength LicColumnWidth { get => _licColumnWidth; set => Set(ref _licColumnWidth, value); }
+    public System.Windows.GridLength IRatingColumnWidth { get => _iRatingColumnWidth; set => Set(ref _iRatingColumnWidth, value); }
+    public System.Windows.GridLength DeltaColumnWidth { get => _deltaColumnWidth; set => Set(ref _deltaColumnWidth, value); }
+    public System.Windows.GridLength OtColumnWidth { get => _otColumnWidth; set => Set(ref _otColumnWidth, value); }
     public string ClassSessionText { get => _classSessionText; private set => Set(ref _classSessionText, value); }
     public string RubberBlocksText { get => _rubberBlocksText; private set => Set(ref _rubberBlocksText, value); }
 
@@ -207,8 +216,6 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
     {
         BrakeBiasText = status.BrakeBiasPct is double bias ? bias.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "--";
         TrackRubberText = status.TrackRubberState ?? "--";
-        if (status.BestLapTimeSeconds is double best) BestLapText = IracingLiveCoach.Core.LapTimeFormatting.Format(best);
-        LastLapText = status.LastLapTimeSeconds is double last ? IracingLiveCoach.Core.LapTimeFormatting.Format(last) : "--";
         TrackTempText = status.TrackTempC is double temp ? temp.ToString("0", CultureInfo.InvariantCulture) + "°C" : "--";
         RubberBlocksText = RubberBlocks(status.TrackRubberState);
     }

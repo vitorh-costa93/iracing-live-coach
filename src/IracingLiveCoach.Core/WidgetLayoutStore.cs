@@ -29,6 +29,9 @@ public class WidgetLayout
     // quantos eu quero mostrar da minha classe e das outras" -- 0 means "show all" for either field.
     public int StandingsMyClassRows { get; set; } = 0;
     public int StandingsOtherClassRows { get; set; } = 3;
+    // "quero em standings ter a opção de interval, não só gap" -- INTERVAL (gap to the car directly
+    // ahead) instead of GAP (gap to the leader). False = GAP, matching the existing default.
+    public bool StandingsShowInterval { get; set; } = false;
 }
 
 /// <summary>Keyed replacement for AppSettings's old flat Left/Top/Width/Height fields -- one entry

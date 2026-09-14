@@ -22,11 +22,6 @@ public partial class RelativeWidget : Window
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
-    public RelativeWidget(WidgetLayout layout, Action onChanged, string title = "RELATIVE") : this(layout, onChanged)
-    {
-        HeaderText.Text = title;
-    }
-
     public RelativeWidget(WidgetLayout layout, Action onChanged)
     {
         InitializeComponent();

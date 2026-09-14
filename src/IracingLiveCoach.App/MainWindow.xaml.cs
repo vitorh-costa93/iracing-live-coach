@@ -141,9 +141,10 @@ public partial class MainWindow : Window
         var standings = gt3.Select((row, index) =>
         {
             var lastLap = 108.0 + index * .4;
+            var interval = index == 0 ? (double?)null : gaps[index] - gaps[index - 1];
             return new StandingsRow(index + 1, row.DriverCode, 12, lastLap, null, row.IsPlayer, row.FlagEmoji,
                 row.LicString, row.LicColorHex, row.IRating, row.CarClassId, row.ManufacturerBadge,
-                gaps[index], deltaIRs[index], lastLap - playerLastLap, "GT3", "#FF1976FF", index + 1);
+                gaps[index], deltaIRs[index], lastLap - playerLastLap, "GT3", "#FF1976FF", index + 1, interval);
         }).ToList();
 
         _standingsWidget?.UpdateRows(standings);

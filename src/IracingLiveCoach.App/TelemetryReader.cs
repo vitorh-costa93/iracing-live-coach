@@ -35,7 +35,7 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// rather than omit the column. LapDeltaVsPlayerSeconds is real (this driver's own CarIdxLastLapTime
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition);
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds);
 
 /// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
@@ -647,16 +647,25 @@ public class TelemetryReader : IDisposable
                 .ToDictionary(x => x.Position, x => x.Rank);
 
             var rows = new List<StandingsRow>();
-            foreach (var r in ordered)
+            for (var i = 0; i < ordered.Count; i++)
             {
+                var r = ordered[i];
                 double? deltaIR = null;
                 if (sof is double sofValue && expectedRankByPosition.TryGetValue(r.Position, out var expectedRank))
                     deltaIR = Math.Round((expectedRank - r.Position) * sofValue / 500.0);
 
                 double? lapDelta = r.LastLap is double own && playerLastLap is double mine ? own - mine : null;
 
+                // INTERVAL (gap to the car directly ahead, not the leader) -- derived from the same
+                // real CarIdxF2Time values already used for GAP: the difference between two
+                // consecutive cars' "time behind leader" is exactly their gap to each other. Null
+                // for the leader (no car ahead) or whenever either car's own F2Time is unavailable.
+                double? interval = i > 0 && r.Gap is double gapHere && ordered[i - 1].Gap is double gapAhead
+                    ? gapHere - gapAhead
+                    : null;
+
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
-                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition));
+                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval));
             }
 
             StandingsUpdated?.Invoke(rows);

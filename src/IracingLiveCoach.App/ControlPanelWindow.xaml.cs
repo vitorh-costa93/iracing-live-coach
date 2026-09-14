@@ -89,12 +89,15 @@ public partial class ControlPanelWindow : Window
         {
             _viewModel.StandingsClassRows.Load(standingsLayout);
             standings.SetClassRowLimits(_viewModel.StandingsClassRows.MyClassRows, _viewModel.StandingsClassRows.OtherClassRows);
+            standings.SetGapDisplayMode(_viewModel.StandingsClassRows.ShowInterval);
             _viewModel.StandingsClassRows.Changed += () =>
             {
                 standingsLayout.StandingsMyClassRows = _viewModel.StandingsClassRows.MyClassRows;
                 standingsLayout.StandingsOtherClassRows = _viewModel.StandingsClassRows.OtherClassRows;
+                standingsLayout.StandingsShowInterval = _viewModel.StandingsClassRows.ShowInterval;
                 _store.Save();
                 standings.SetClassRowLimits(_viewModel.StandingsClassRows.MyClassRows, _viewModel.StandingsClassRows.OtherClassRows);
+                standings.SetGapDisplayMode(_viewModel.StandingsClassRows.ShowInterval);
             };
         }
     }
