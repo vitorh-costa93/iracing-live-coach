@@ -35,21 +35,27 @@ which mockup elements are real telemetry/session data and which are honest subst
   that name instead), `SessionInfoModel.SessionModel.SessionTrackRubberState`, `CarIdxClass`,
   `CarIdxClassPosition`. Do not introduce any other telemetry variable without the same level of
   confirmation.
-- The OT/P2P column's exact activation/recharge countdown-in-seconds is NOT a published constant
-  (confirmed absent after two independent targeted searches) — this plan only shows
-  `CarIdxP2P_Status` (real, already used), `CarIdxP2P_Count` (real, uses remaining), and a
-  **locally-measured** elapsed-active-seconds value (a stopwatch this app itself keeps since
-  `P2P_Status` last flipped true) labeled as elapsed time, never as a precise remaining/recharge
-  countdown.
+- The OT/P2P column shows a REAL countdown, corrected after the driver confirmed this is a feature
+  they use today: iRacing's SDK exposes no activation-/recharge-duration CONSTANT, but the SF23's
+  own Overtake System rules are publicly documented (20s active window, 100s cooldown, 200s total
+  budget per race — from iRacing's own car page). This plan hardcodes those two constants
+  (`OtsActiveSeconds`/`OtsCooldownSeconds`) the same way the sibling `iracing-analytics` project
+  already hardcodes per-car setup domain knowledge, and combines them with the REAL
+  `CarIdxP2P_Status` transition (and `CarIdxP2P_Count` for uses remaining) to compute an actual
+  ATIVO/RECARGA/PRONTO countdown — not a fabricated number, but also disclosed (in code comments,
+  never a UI caption per the driver's own "no explanatory legends" request) as SF23-sourced and
+  potentially inaccurate for a different P2P-enabled car this app hasn't researched.
 - National flags render as Unicode regional-indicator emoji via a bounded country-name lookup
   table (`IracingLiveCoach.Core.CountryFlags`) with an explicit fallback for unrecognized names —
   never silently show nothing or crash on an unmapped `FlairName`.
 - `LicColor` is a `String` (confirmed via reflection — NOT the packed-int this session originally
   assumed), parsed defensively (try/catch, same posture as every other telemetry read in this
   file) with a neutral gray fallback on parse failure.
-- Team/constructor logos are NOT implemented (no logo asset exists in the SDK, `TeamName` is
-  text-only and empty for most public races) — `TeamName` is shown as plain text only when
-  non-empty, never a placeholder/generic logo image.
+- A manufacturer BADGE (text, e.g. "FERRARI") is shown, derived from `CarScreenName`'s own
+  "<Manufacturer> <Model>" naming convention — corrected after the driver confirmed every
+  competing overlay shows this; real logo IMAGES are still not implemented, since the SDK ships no
+  logo asset and bundling real trademarked manufacturer logos is a separate, larger effort with
+  its own asset-sourcing/legal considerations this plan does not take on.
 - ΔiR (projected iRating change) is a disclosed *estimate* (SoF-based projection over the visible
   `IRating` spread), marked with a small `*`, per the spec — no explanatory caption/legend text
   anywhere in these widgets (the driver explicitly asked those removed).
@@ -293,12 +299,14 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 ```
 to:
 ```csharp
-/// <summary>P2PUsesRemaining/P2PActiveSeconds are only meaningful when P2PActive is non-null (the
-/// session publishes P2P at all) -- P2PActiveSeconds is a LOCALLY-measured elapsed-active time
-/// (this app's own stopwatch since P2PActive last flipped true), NOT a precise remaining/recharge
-/// countdown, since iRacing publishes no activation- or recharge-duration constant (confirmed
-/// absent after two independent searches -- see this plan's own Global Constraints).</summary>
-public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PActiveSeconds, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId);
+/// <summary>P2PUsesRemaining/P2PSecondsRemaining/P2PInCooldown are only meaningful when P2PActive
+/// is non-null (the session publishes P2P at all). P2PSecondsRemaining/P2PInCooldown are computed
+/// from the SF23's OWN PUBLICLY DOCUMENTED Overtake System rules (20s active window, 100s
+/// cooldown -- see UpdateFullRelative's own doc comment for the source and the disclosed
+/// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
+/// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
+/// driver confirmed this is a real feature they use today.</summary>
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge);
 ```
 
 Change:
@@ -307,7 +315,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 ```
 to:
 ```csharp
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId);
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge);
 ```
 
 Add the two new records, alongside the existing ones:
@@ -334,15 +342,26 @@ Add the new events, alongside the existing ones:
     public event Action<List<RelativeRow>>? SecondaryRelativeUpdated;
 ```
 
-- [ ] **Step 2: Add per-car P2P-elapsed-time tracking fields and a best-lap tracker**
+- [ ] **Step 2: Add per-car P2P phase-tracking fields and a best-lap tracker**
 
 Alongside the existing fuel/weather/radar fields:
 ```csharp
-    // 14/09/2026: locally-measured P2P active duration -- see RelativeRow's own doc comment for
-    // why this is elapsed time, not a precise remaining/recharge countdown. Keyed by CarIdx so
-    // each car's own activation is timed independently.
+    // 14/09/2026: SF23's Overtake System rules, publicly documented on iRacing's own car page --
+    // 20s of activation per use, at least 100s cooldown ("ReTime") afterward. This is car-specific
+    // domain knowledge (the same kind the sibling iracing-analytics project already hardcodes for
+    // ARB/differential/spring targets per car architecture), not a telemetry read -- combined with
+    // the REAL CarIdxP2P_Status transition below to compute an actual countdown. Disclosed caveat:
+    // these constants are SF23-specific and could be wrong for a different P2P-enabled car this
+    // app hasn't researched, or if iRacing rebalances SF23's own system in a future season -- the
+    // underlying CarIdxP2P_Status/CarIdxP2P_Count are always real regardless of whether the
+    // countdown numbers happen to be exactly right for the car actually being driven.
+    private const double OtsActiveSeconds = 20.0;
+    private const double OtsCooldownSeconds = 100.0;
+
+    // Keyed by CarIdx so each car's own activation/cooldown phase is timed independently.
+    // _p2pPhaseEndUtcByCarIdx holds the UTC instant the CURRENT phase (active or cooldown) ends.
     private readonly Dictionary<int, bool> _lastP2PActiveByCarIdx = new();
-    private readonly Dictionary<int, DateTime> _p2pActivatedAtUtcByCarIdx = new();
+    private readonly Dictionary<int, DateTime> _p2pPhaseEndUtcByCarIdx = new();
 
     private double? _bestLapTimeSeconds;
 ```
@@ -351,7 +370,7 @@ Alongside the existing fuel/weather/radar fields:
 
 Add this private method, near `BuildDriverCodes`:
 ```csharp
-    private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId) GetIdentity(int carIdx)
+    private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge) GetIdentity(int carIdx)
     {
         var sessionInfo = _sdk.Data.SessionInfo;
         var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == carIdx);
@@ -360,7 +379,23 @@ Add this private method, near `BuildDriverCodes`:
         var licColorHex = driver?.LicColor; // "String" per the real IRSDKSharper 1.3.0 type -- parsed defensively by the view model, not here.
         var iRating = driver?.IRating ?? 0;
         var carClassId = driver?.CarClassID ?? 0;
-        return (flagEmoji, licString, licColorHex, iRating, carClassId);
+        var manufacturerBadge = ExtractManufacturer(driver?.CarScreenName);
+        return (flagEmoji, licString, licColorHex, iRating, carClassId, manufacturerBadge);
+    }
+
+    // 14/09/2026: "team logo" -- iRacing has no real "team" concept for pickup/public racing and
+    // no logo asset for anything via the SDK, but CarScreenName (confirmed real, e.g. "Ferrari 296
+    // GT3 EVO") DOES let us derive the car's own manufacturer, which is what every competing
+    // overlay's "team badge" actually shows in practice. iRacing's own car names consistently
+    // follow a "<Manufacturer> <Model>" convention, so the first whitespace-delimited token is the
+    // manufacturer in the overwhelming majority of cases -- a plain text badge (e.g. "FERRARI"),
+    // not an image logo (bundling real trademarked logo graphics is a materially larger, separate
+    // effort with its own legal/asset-sourcing considerations -- see this plan's own spec section).
+    private static string ExtractManufacturer(string? carScreenName)
+    {
+        if (string.IsNullOrWhiteSpace(carScreenName)) return "";
+        var firstToken = carScreenName.Split(' ', 2)[0];
+        return firstToken.ToUpperInvariant();
     }
 ```
 
@@ -372,25 +407,51 @@ preemptively here.)
 
 - [ ] **Step 4: Update `UpdateFullRelative` to populate the new `RelativeRow` fields**
 
-Read the current method. Inside the loop, right after the existing `p2p` read, add:
+Read the current method. Add this private helper, right above `UpdateFullRelative` (the countdown
+math is shared with `UpdateSecondaryRelative` in Step 7, so it's factored out once):
+```csharp
+    // Returns (SecondsRemaining, InCooldown) for the given car's P2P phase, given its current
+    // active/inactive telemetry state -- see OtsActiveSeconds/OtsCooldownSeconds's own doc comment
+    // for the SF23-sourced constants this is built from.
+    private (double? SecondsRemaining, bool InCooldown) UpdateP2PPhase(int idx, bool active)
+    {
+        var wasActive = _lastP2PActiveByCarIdx.TryGetValue(idx, out var previouslyActive) && previouslyActive;
+        if (active && !wasActive)
+        {
+            // Activation just started -- the active window ends OtsActiveSeconds from now.
+            _p2pPhaseEndUtcByCarIdx[idx] = DateTime.UtcNow.AddSeconds(OtsActiveSeconds);
+        }
+        else if (!active && wasActive)
+        {
+            // Deactivation just happened (driver released it early, or it auto-expired) -- the
+            // cooldown window starts now and ends OtsCooldownSeconds later.
+            _p2pPhaseEndUtcByCarIdx[idx] = DateTime.UtcNow.AddSeconds(OtsCooldownSeconds);
+        }
+        _lastP2PActiveByCarIdx[idx] = active;
+
+        if (!_p2pPhaseEndUtcByCarIdx.TryGetValue(idx, out var phaseEnd)) return (null, false);
+        var remaining = (phaseEnd - DateTime.UtcNow).TotalSeconds;
+        if (remaining <= 0) return (null, false); // phase already elapsed -- PRONTO, no countdown to show
+        return (remaining, !active); // still counting down: if not currently active, this is the cooldown countdown
+    }
+```
+
+Inside the loop, right after the existing `p2p` read, add:
 ```csharp
                 int? p2pUses = null;
-                double? p2pActiveSeconds = null;
+                double? p2pSecondsRemaining = null;
+                var p2pInCooldown = false;
                 if (p2p is bool active)
                 {
                     p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
-                    var wasActive = _lastP2PActiveByCarIdx.TryGetValue(idx, out var previouslyActive) && previouslyActive;
-                    if (active && !wasActive) _p2pActivatedAtUtcByCarIdx[idx] = DateTime.UtcNow;
-                    if (active && _p2pActivatedAtUtcByCarIdx.TryGetValue(idx, out var activatedAt))
-                        p2pActiveSeconds = (DateTime.UtcNow - activatedAt).TotalSeconds;
-                    _lastP2PActiveByCarIdx[idx] = active;
+                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
                 }
 
                 var identity = GetIdentity(idx);
 ```
 Change the final `rows.Add(...)` line to:
 ```csharp
-                rows.Add(new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pActiveSeconds, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+                rows.Add(new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
 ```
 
 - [ ] **Step 5: Update `UpdateStandings` to populate the new `StandingsRow` fields**
@@ -401,7 +462,7 @@ Inside the loop, right after `var code = ...`, add:
 ```
 Change the `rows.Add(...)` line to:
 ```csharp
-                rows.Add(new StandingsRow(position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null, idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+                rows.Add(new StandingsRow(position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null, idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
 ```
 
 - [ ] **Step 6: Add `UpdatePlayerCarStatus` and wire it into `OnTelemetryData`**
@@ -487,12 +548,21 @@ Add this private method, after `UpdateFullRelative`:
             {
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
                 bool? p2p = null;
-                try { p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx); } catch { /* no P2P for this class */ }
-                int? p2pUses = p2p is bool ? _sdk.Data.GetInt("CarIdxP2P_Count", idx) : null;
+                int? p2pUses = null;
+                double? p2pSecondsRemaining = null;
+                var p2pInCooldown = false;
+                try
+                {
+                    var active = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
+                    p2p = active;
+                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
+                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
+                }
+                catch { /* no P2P for this class */ }
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
-                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, null, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
             }
 
             SecondaryRelativeUpdated?.Invoke(rows);
@@ -512,7 +582,7 @@ formats it accordingly; this is documented in Task 3's own brief, not assumed si
 - [ ] **Step 8: Verify the build and tests**
 
 Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
-Run: `dotnet test` — expect the existing 26 tests plus the new `CountryFlagsTests` (7) = 33 passing.
+Run: `dotnet test` — expect the existing 26 tests plus the new `CountryFlagsTests` (7) = 34 passing.
 
 - [ ] **Step 9: Commit**
 
@@ -556,6 +626,7 @@ public class FullRelativeRowViewModel
 {
     public string PositionText { get; }
     public string FlagAndCode { get; }
+    public string ManufacturerText { get; }
     public string LicText { get; }
     public Brush LicBrush { get; }
     public string IRatingText { get; }
@@ -565,6 +636,7 @@ public class FullRelativeRowViewModel
     public bool IsPlayerRow { get; }
 
     private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
+    private static readonly Brush P2PCooldownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA5, 0x2C));
     private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
     private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
 
@@ -574,17 +646,39 @@ public class FullRelativeRowViewModel
         PositionText = showClassPositionAsAbsolute
             ? row.PositionOffset.ToString(CultureInfo.InvariantCulture)
             : (row.PositionOffset > 0 ? "+" : "") + row.PositionOffset.ToString(CultureInfo.InvariantCulture);
-        FlagAndCode = $"{row.FlagEmoji} {row.DriverCode}";
+        // Manufacturer badge folded inline (no separate column) to keep this widget's column count
+        // matching the mockup's own Relative layout -- Standings (Task 4) gives it its own column
+        // instead, since that mockup panel shows the badge more prominently.
+        FlagAndCode = string.IsNullOrEmpty(row.ManufacturerBadge)
+            ? $"{row.FlagEmoji} {row.DriverCode}"
+            : $"{row.FlagEmoji} {row.DriverCode} · {row.ManufacturerBadge}";
+        ManufacturerText = row.ManufacturerBadge;
         LicText = row.LicString;
         LicBrush = ParseLicColor(row.LicColorHex);
         IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
         GapText = row.GapSeconds is double gap ? $"{(gap >= 0 ? "+" : "")}{gap.ToString("0.0", CultureInfo.InvariantCulture)}" : "--";
 
+        // P2PSecondsRemaining/P2PInCooldown are derived from the SF23's own documented Overtake
+        // System rules (20s active/100s cooldown) applied to the real CarIdxP2P_Status transition
+        // -- see TelemetryReader.UpdateP2PPhase's own doc comment for the source and caveat.
         if (row.P2PActive is bool active)
         {
             var uses = row.P2PUsesRemaining is int u ? u.ToString(CultureInfo.InvariantCulture) : "?";
-            P2PText = active ? $"ATIVO ({uses})" : $"PRONTO ({uses})";
-            P2PBrush = active ? P2PActiveBrush : P2PIdleBrush;
+            if (active && row.P2PSecondsRemaining is double activeRemaining)
+            {
+                P2PText = $"ATIVO {activeRemaining.ToString("0", CultureInfo.InvariantCulture)}s ({uses})";
+                P2PBrush = P2PActiveBrush;
+            }
+            else if (row.P2PInCooldown && row.P2PSecondsRemaining is double cooldownRemaining)
+            {
+                P2PText = $"RECARGA {cooldownRemaining.ToString("0", CultureInfo.InvariantCulture)}s ({uses})";
+                P2PBrush = P2PCooldownBrush;
+            }
+            else
+            {
+                P2PText = $"PRONTO ({uses})";
+                P2PBrush = P2PIdleBrush;
+            }
         }
         else
         {
@@ -807,7 +901,7 @@ a breaking change for `MainWindow.xaml.cs`'s existing call site, which keeps com
 - [ ] **Step 4: Verify the build and tests**
 
 Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
-Run: `dotnet test` — expect the same 33 tests passing (no new tests in this task — WPF/view-model
+Run: `dotnet test` — expect the same 34 tests passing (no new tests in this task — WPF/view-model
 code depending on the real telemetry-shaped records, same established boundary).
 
 - [ ] **Step 5: Commit**
@@ -844,6 +938,7 @@ public class StandingsRowViewModel
 {
     public string PositionText { get; }
     public string FlagAndCode { get; }
+    public string ManufacturerText { get; }
     public string LicText { get; }
     public Brush LicBrush { get; }
     public string IRatingText { get; }
@@ -857,6 +952,7 @@ public class StandingsRowViewModel
         IsPlayer = row.IsPlayer;
         PositionText = row.Position.ToString(CultureInfo.InvariantCulture);
         FlagAndCode = $"{row.FlagEmoji} {row.DriverCode}";
+        ManufacturerText = row.ManufacturerBadge;
         LicText = row.LicString;
         LicBrush = ParseLicColor(row.LicColorHex);
         IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
@@ -926,15 +1022,17 @@ public class StandingsWidgetViewModel
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="56" />
                         <ColumnDefinition Width="48" />
                         <ColumnDefinition Width="52" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="POS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
                     <TextBlock Grid.Column="1" Text="PILOTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
-                    <TextBlock Grid.Column="2" Text="LIC" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
-                    <TextBlock Grid.Column="3" Text="iR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
-                    <TextBlock Grid.Column="4" Text="ÚLT. VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="MARCA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="3" Text="LIC" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="4" Text="iR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="5" Text="ÚLT. VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
                 </Grid>
 
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
@@ -955,17 +1053,19 @@ public class StandingsWidgetViewModel
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="28" />
                                             <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="56" />
                                             <ColumnDefinition Width="48" />
                                             <ColumnDefinition Width="52" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1AccentBrush}" />
                                         <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
-                                        <Border Grid.Column="2" Background="{Binding LicBrush}" Padding="3,1" HorizontalAlignment="Left">
+                                        <TextBlock Grid.Column="2" Text="{Binding ManufacturerText}" FontFamily="{StaticResource F1MonoFont}" FontSize="9" FontWeight="Bold" Foreground="{StaticResource F1MutedTextBrush}" />
+                                        <Border Grid.Column="3" Background="{Binding LicBrush}" Padding="3,1" HorizontalAlignment="Left">
                                             <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
                                         </Border>
-                                        <TextBlock Grid.Column="3" Text="{Binding IRatingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
-                                        <TextBlock Grid.Column="4" Text="{Binding LastLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                        <TextBlock Grid.Column="4" Text="{Binding IRatingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                        <TextBlock Grid.Column="5" Text="{Binding LastLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -988,7 +1088,7 @@ unchanged; only the row's own shape (via `StandingsRowViewModel`) and the XAML g
 - [ ] **Step 3: Verify the build and tests**
 
 Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
-Run: `dotnet test` — expect the same 33 tests passing.
+Run: `dotnet test` — expect the same 34 tests passing.
 
 - [ ] **Step 4: Commit**
 
@@ -1042,7 +1142,7 @@ one, per Task 2's own Step 6.)
 - [ ] **Step 2: Verify the build and tests**
 
 Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
-Run: `dotnet test` — expect the same 33 tests passing.
+Run: `dotnet test` — expect the same 34 tests passing.
 
 - [ ] **Step 3: Commit**
 
@@ -1064,7 +1164,7 @@ git commit -m "feat: second auto-detecting Relative instance for multiclass sess
 dotnet build
 dotnet test
 ```
-Expected: `Build succeeded.`, 0 errors, 0 warnings; 33 tests passing (26 existing + 7
+Expected: `Build succeeded.`, 0 errors, 0 warnings; 34 tests passing (26 existing + 8
 `CountryFlagsTests`).
 
 - [ ] **Step 2: Cross-check every widget-owning file's `Save()`/lock/shutdown wiring**
