@@ -18,6 +18,9 @@ public class FullRelativeRowViewModel
     public string FlagSymbol { get; }
     public string FlagImagePath { get; }
     public string ManufacturerText { get; }
+    public string BrandPathData { get; }
+    public Brush BrandColorBrush { get; }
+    public bool HasBrandIcon { get; }
     public string LicText { get; }
     public Brush LicBrush { get; }
     public string IRatingText { get; }
@@ -47,6 +50,10 @@ public class FullRelativeRowViewModel
         (FlagBackground, FlagSymbolBrush, FlagSymbol) = FlagStyle.For(row.FlagEmoji);
         FlagImagePath = FlagStyle.ImageFor(row.FlagEmoji);
         ManufacturerText = row.ManufacturerBadge;
+        var brandIcon = BrandIcons.TryGet(row.ManufacturerBadge);
+        HasBrandIcon = brandIcon is not null;
+        BrandPathData = brandIcon?.PathData ?? "";
+        BrandColorBrush = brandIcon is (_, string hex) ? ParseLicColor(hex) : LicFallbackBrush;
         LicText = row.LicString;
         LicBrush = ParseLicColor(row.LicColorHex);
         IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
