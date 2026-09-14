@@ -56,7 +56,7 @@ public record RadarBlip(double DistanceMeters, string DriverCode);
 /// "car X is on that side". Blips are the separate far-field distance list (see RadarBlip); the
 /// two are rendered differently on purpose (see this plan's own Global Constraints) so a driver
 /// never mistakes a far blip's centered position for "directly in my lane".</summary>
-public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips);
+public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips, bool HasTrackLength);
 
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
@@ -498,8 +498,10 @@ public class TelemetryReader : IDisposable
             var blindRight = leftRight is 3 or 4 or 6;
 
             var blips = new List<RadarBlip>();
-            if (_trackLengthMeters is double trackLength && trackLength > 0)
+            var hasTrackLength = _trackLengthMeters is double trackLength0 && trackLength0 > 0;
+            if (hasTrackLength)
             {
+                var trackLength = _trackLengthMeters!.Value;
                 var myDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
                 var maxCars = IRacingSdkConst.MaxNumCars;
                 for (var idx = 0; idx < maxCars; idx++)
@@ -507,6 +509,7 @@ public class TelemetryReader : IDisposable
                     if (idx == _playerCarIdx) continue;
                     var theirDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
                     if (theirDistPct < 0) continue; // car not currently on track / not in this session
+                    if (_sdk.Data.GetBool("CarIdxOnPitRoad", idx)) continue; // pit-lane cars aren't a real proximity signal
 
                     // Shortest signed distance around the lap, wrapping at the start/finish line so
                     // a car just ahead across the line doesn't register as almost a full lap behind.
@@ -522,7 +525,7 @@ public class TelemetryReader : IDisposable
                 }
             }
 
-            RadarUpdated?.Invoke(new RadarStatus(blindLeft, blindRight, blips));
+            RadarUpdated?.Invoke(new RadarStatus(blindLeft, blindRight, blips, hasTrackLength));
         }
         catch
         {

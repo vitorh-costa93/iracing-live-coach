@@ -18,11 +18,15 @@
                 <Canvas Width="120" Height="200">
                     <!-- Far-field distance ticks: centered, dim; honestly convey "somewhere at
                          this distance", never a lateral lane (see this plan's own Global Constraints). -->
-                    <ItemsControl ItemsSource="{Binding Blips}">
+                    <ItemsControl ItemsSource="{Binding Blips}" Canvas.Left="45">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <Canvas Width="30" Height="200" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Rectangle Width="30" Height="3" Fill="{StaticResource F1MutedTextBrush}"
-                                           Canvas.Left="45" ToolTip="{Binding ToolTip}">
+                                <Rectangle Width="30" Height="3" Fill="{StaticResource F1MutedTextBrush}" ToolTip="{Binding ToolTip}">
                                     <Rectangle.RenderTransform>
                                         <TranslateTransform Y="{Binding Top}" />
                                     </Rectangle.RenderTransform>
@@ -41,6 +45,13 @@
                               Visibility="{Binding BlindLeft, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <Ellipse Width="16" Height="16" Fill="{StaticResource F1AccentBrush}" Canvas.Left="84" Canvas.Top="162"
                               Visibility="{Binding BlindRight, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                    <!-- Secondary disclosure: distinguishes "no distance data available at all"
+                         from the normal, unremarkable "no cars currently in range", matching
+                         this suite's own convention of always saying why data is missing. -->
+                    <TextBlock Text="Sem dados de distância" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}"
+                               Canvas.Left="10" Canvas.Top="188"
+                               Visibility="{Binding ShowNoTrackLength, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </Canvas>
             </StackPanel>
         </Border>

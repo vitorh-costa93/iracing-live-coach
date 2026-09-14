@@ -48,15 +48,18 @@ public class RadarWidgetViewModel : INotifyPropertyChanged
 
     private bool _blindLeft;
     private bool _blindRight;
+    private bool _showNoTrackLength;
 
     public bool BlindLeft { get => _blindLeft; private set => Set(ref _blindLeft, value); }
     public bool BlindRight { get => _blindRight; private set => Set(ref _blindRight, value); }
+    public bool ShowNoTrackLength { get => _showNoTrackLength; private set => Set(ref _showNoTrackLength, value); }
     public ObservableCollection<RadarBlipViewModel> Blips { get; } = new();
 
     public void Apply(RadarStatus status)
     {
         BlindLeft = status.BlindSpotLeft;
         BlindRight = status.BlindSpotRight;
+        ShowNoTrackLength = !status.HasTrackLength;
 
         Blips.Clear();
         foreach (var blip in status.Blips)
