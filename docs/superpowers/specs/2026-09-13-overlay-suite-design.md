@@ -288,14 +288,36 @@ telemetry claim in this document, just applied a second time after getting it wr
   this app's existing `_playerCarIdx` detection already uses, not a per-tick telemetry channel),
   shown as its own plain-text readout rather than parsed into a synthetic numeric scale iRacing
   itself doesn't publish as a number.
-- **OT (Overtake/P2P) column**: `CarIdxP2P_Status` (active bool, already used) and
-  `CarIdxP2P_Count` (uses remaining, confirmed real) shown together as "ATIVO" / "PRONTO" + a real
-  remaining-uses count. The mockup's literal countdown-in-seconds with a RECARGA state remains
-  the one element NOT confirmed as a published constant after two independent, targeted searches
-  for an activation- or recharge-duration variable — none surfaced. This one piece stays an
-  approximation: a locally-measured stopwatch since `CarIdxP2P_Status` last flipped true, labeled
-  as elapsed active time, not a precise remaining/recharge countdown. This column only renders for
-  classes where P2P is published — a GT3 panel simply omits it rather than showing a fake "N/A".
+- **OT (Overtake/P2P) column, WITH a real countdown — corrected 14/09/2026**: no telemetry
+  variable publishes the OTS's own duration/cooldown constants, but the SF23's Overtake System
+  rules ARE publicly documented (iRacing's own car page): 20 seconds of activation per use, at
+  least 100 seconds of cooldown ("ReTime") afterward, a 200-second total budget per race. This is
+  the same kind of car-specific domain knowledge the sibling `iracing-analytics` project already
+  hardcodes for setup engineering (ARB/differential/spring targets per car architecture) — a
+  documented rule, not a telemetry read, combined with the REAL live signal
+  (`CarIdxP2P_Status`'s true/false transitions) to compute an actual, accurate countdown: on a
+  false→true transition, count down from 20s ("ATIVO, Ns"); on the matching true→false transition,
+  count down a 100s cooldown ("RECARGA, Ns"); otherwise "PRONTO". `CarIdxP2P_Count` (uses
+  remaining, real) is shown alongside. Disclosed caveat: these 20s/100s constants are specific to
+  the SF23's own documented Overtake System as of this research and could drift if iRacing rebalances
+  it in a future season, or not apply to a different P2P-enabled car this app hasn't researched —
+  the column always shows the real `CarIdxP2P_Status`/`CarIdxP2P_Count` regardless, with the
+  countdown numbers specifically flagged (in a code comment, not a UI caption per the driver's own
+  "no explanatory legends" request) as SF23-sourced. This column only renders for classes where
+  P2P is published — a GT3 panel simply omits it rather than showing a fake "N/A".
+- **Manufacturer badge — corrected 14/09/2026**: the driver's own "team logo" ask is realistically
+  every competing overlay's car-MANUFACTURER badge (Ferrari, Porsche, BMW, etc. — sim racing rarely
+  has real teams outside league play, but every car has a real manufacturer), not a literal
+  third-party "team" concept. `CarScreenName`/`CarPath` (confirmed real, already available on
+  `DriverModel`) identify the car precisely enough to derive a manufacturer name via string
+  matching (e.g. "Ferrari 296 GT3" → "FERRARI"). Real DATA, but NOT a real logo IMAGE — iRacing's
+  SDK ships no manufacturer logo assets to third parties, and bundling actual trademarked
+  manufacturer logo graphics into this app carries real (if small, for a personal single-user
+  tool) trademark risk and would require sourcing/drawing dozens of logo assets, a materially
+  larger effort than a data-availability question. Substituted with a plain text manufacturer
+  badge (e.g. "FERRARI") in the car class's own color — real identity information, broadcast
+  graphics also commonly use text constructor badges alongside logos, without the asset/legal
+  overhead of real logo images.
 - **Dual-class Relative**: Kapps' own `settings.json` (already inspected, Phase 1) keys widget
   instances by UUID under `layerWindowConfigs`, meaning Kapps genuinely supports multiple
   instances of the same widget type (e.g. two independently-positioned Relative panels). This
