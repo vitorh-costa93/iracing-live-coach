@@ -34,6 +34,30 @@ public record TrackPositionDot(string DriverCode, double LapDistPct, bool IsPlay
 /// <summary>One (throttled, ~10Hz) weather/track-usage snapshot.</summary>
 public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, List<TrackPositionDot> CarPositions);
 
+/// <summary>One tire corner's tread-remaining zones (0.0-1.0 fraction, L/M/R across the tread
+/// face) -- see TireWearStatus's own doc comment for why these only change during a pit stop.</summary>
+public record TireCornerWear(double TreadL, double TreadM, double TreadR);
+
+/// <summary>A snapshot of all four tires' tread. LastChangedAtUtc is null until the FIRST real
+/// change is observed relative to the session's starting values -- iRacing only updates these
+/// while the car is in the pit stall (a platform-wide restriction, not specific to this app or to
+/// Kapps -- see the spec's own Context section), so a driver who hasn't pitted yet sees "sem
+/// parada ainda" rather than a timestamp implying a live reading that never happened.</summary>
+public record TireWearStatus(TireCornerWear LF, TireCornerWear RF, TireCornerWear LR, TireCornerWear RR, DateTime? LastChangedAtUtc);
+
+/// <summary>One far-field car's signed distance from the player along the lap (negative = behind,
+/// positive = ahead), converted from CarIdxLapDistPct using the track's own length. Deliberately
+/// carries NO lateral position -- the SDK does not expose one for cars outside the immediate
+/// blind-spot window (see CarLeftRight's own doc comment on RadarStatus).</summary>
+public record RadarBlip(double DistanceMeters, string DriverCode);
+
+/// <summary>One (throttled, ~10Hz) radar snapshot. BlindSpotLeft/Right come from CarLeftRight, a
+/// coarse, NON-per-car signal -- true means "something is right next to you on that side", not
+/// "car X is on that side". Blips are the separate far-field distance list (see RadarBlip); the
+/// two are rendered differently on purpose (see this plan's own Global Constraints) so a driver
+/// never mistakes a far blip's centered position for "directly in my lane".</summary>
+public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips);
+
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
 /// own LapDistPct is 0-1; the baseline endpoint's corner boundaries (and this app's
@@ -69,6 +93,19 @@ public class TelemetryReader : IDisposable
     // see this plan's own Global Constraints for why a full-MaxNumCars scan doesn't need 60Hz here.
     private const int WeatherTickInterval = 6;
     private int _weatherTickCounter;
+
+    private TireWearStatus? _lastTireWear;
+    private DateTime? _tireWearChangedAtUtc;
+
+    // 13/09/2026: set once per session (MainWindow calls this right after a baseline is fetched,
+    // reusing BaselineSync's own already-fetched TrackLengthMeters rather than re-parsing
+    // WeekendInfo.TrackLength here) -- null until then, so UpdateRadar's meter conversion simply
+    // skips far-field blips (not fabricate a wrong distance) until a real length is known.
+    private double? _trackLengthMeters;
+
+    private const int RadarTickInterval = 6;
+    private int _radarTickCounter;
+    private const double RadarMaxRangeMeters = 100.0;
 
     // Populated once alongside SessionDetected/_playerCarIdx -- driver identities don't change
     // mid-session, so this is read once from OnSessionInfo, not re-parsed every telemetry tick.
@@ -116,6 +153,17 @@ public class TelemetryReader : IDisposable
     /// current lap position.</summary>
     public event Action<WeatherStatus>? WeatherUpdated;
 
+    /// <summary>Fires every telemetry tick once the session is detected, with the player's own
+    /// current tire tread state. See TireWearStatus's own doc comment for the pit-stall-only
+    /// refresh this event is honest about.</summary>
+    public event Action<TireWearStatus>? TireWearUpdated;
+
+    /// <summary>Fires roughly every 10th of a second (throttled, same reasoning as
+    /// WeatherUpdated) once the session is detected, with the current blind-spot state and every
+    /// nearby car's far-field distance. See RadarStatus's own doc comment for why these two halves
+    /// are kept visually distinct.</summary>
+    public event Action<RadarStatus>? RadarUpdated;
+
     public TelemetryReader()
     {
         _sdk.OnSessionInfo += OnSessionInfo;
@@ -128,6 +176,11 @@ public class TelemetryReader : IDisposable
     /// telemetry ticks before this is called are simply ignored (OnTelemetryData no-ops on a
     /// null engine).</summary>
     public void AttachEngine(LiveCoachEngine engine) => _engine = engine;
+
+    /// <summary>Called once by MainWindow after BaselineSync resolves the detected car+track's
+    /// history (see OnSessionDetectedAsync) -- reuses that already-fetched track length instead of
+    /// this class re-parsing WeekendInfo.TrackLength itself.</summary>
+    public void SetTrackLength(double? meters) => _trackLengthMeters = meters;
 
     private void OnSessionInfo()
     {
@@ -166,12 +219,20 @@ public class TelemetryReader : IDisposable
             UpdateFullRelative();
             UpdateStandings();
             UpdateFuel();
+            UpdateTireWear();
 
             _weatherTickCounter++;
             if (_weatherTickCounter >= WeatherTickInterval)
             {
                 _weatherTickCounter = 0;
                 UpdateWeather();
+            }
+
+            _radarTickCounter++;
+            if (_radarTickCounter >= RadarTickInterval)
+            {
+                _radarTickCounter = 0;
+                UpdateRadar();
             }
         }
 
@@ -387,6 +448,81 @@ public class TelemetryReader : IDisposable
             }
 
             WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, positions));
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+
+    private void UpdateTireWear()
+    {
+        try
+        {
+            var lf = new TireCornerWear(_sdk.Data.GetFloat("LFwearL"), _sdk.Data.GetFloat("LFwearM"), _sdk.Data.GetFloat("LFwearR"));
+            var rf = new TireCornerWear(_sdk.Data.GetFloat("RFwearL"), _sdk.Data.GetFloat("RFwearM"), _sdk.Data.GetFloat("RFwearR"));
+            var lr = new TireCornerWear(_sdk.Data.GetFloat("LRwearL"), _sdk.Data.GetFloat("LRwearM"), _sdk.Data.GetFloat("LRwearR"));
+            var rr = new TireCornerWear(_sdk.Data.GetFloat("RRwearL"), _sdk.Data.GetFloat("RRwearM"), _sdk.Data.GetFloat("RRwearR"));
+
+            if (_lastTireWear is TireWearStatus previous && TireWearChanged(previous, lf, rf, lr, rr))
+                _tireWearChangedAtUtc = DateTime.UtcNow;
+
+            _lastTireWear = new TireWearStatus(lf, rf, lr, rr, _tireWearChangedAtUtc);
+            TireWearUpdated?.Invoke(_lastTireWear);
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+
+    // A small epsilon guards against float noise across ticks -- iRacing's own restriction means
+    // these values should be bit-identical outside a pit stall, but a defensive tolerance costs
+    // nothing and avoids a false "changed" from float representation jitter.
+    private static bool TireWearChanged(TireWearStatus previous, TireCornerWear lf, TireCornerWear rf, TireCornerWear lr, TireCornerWear rr)
+    {
+        const double Epsilon = 0.0005;
+        return CornerChanged(previous.LF, lf) || CornerChanged(previous.RF, rf) || CornerChanged(previous.LR, lr) || CornerChanged(previous.RR, rr);
+
+        static bool CornerChanged(TireCornerWear a, TireCornerWear b) =>
+            Math.Abs(a.TreadL - b.TreadL) > Epsilon || Math.Abs(a.TreadM - b.TreadM) > Epsilon || Math.Abs(a.TreadR - b.TreadR) > Epsilon;
+    }
+
+    private void UpdateRadar()
+    {
+        try
+        {
+            var leftRight = _sdk.Data.GetInt("CarLeftRight");
+            // irsdk_CarLeftRight: 0=Off, 1=Clear, 2=CarLeft, 3=CarRight, 4=CarLeftRight, 5=2CarsLeft, 6=2CarsRight.
+            var blindLeft = leftRight is 2 or 4 or 5;
+            var blindRight = leftRight is 3 or 4 or 6;
+
+            var blips = new List<RadarBlip>();
+            if (_trackLengthMeters is double trackLength && trackLength > 0)
+            {
+                var myDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
+                var maxCars = IRacingSdkConst.MaxNumCars;
+                for (var idx = 0; idx < maxCars; idx++)
+                {
+                    if (idx == _playerCarIdx) continue;
+                    var theirDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                    if (theirDistPct < 0) continue; // car not currently on track / not in this session
+
+                    // Shortest signed distance around the lap, wrapping at the start/finish line so
+                    // a car just ahead across the line doesn't register as almost a full lap behind.
+                    double delta = theirDistPct - myDistPct;
+                    if (delta > 0.5) delta -= 1.0;
+                    if (delta < -0.5) delta += 1.0;
+
+                    var distanceMeters = delta * trackLength;
+                    if (Math.Abs(distanceMeters) > RadarMaxRangeMeters) continue;
+
+                    var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+                    blips.Add(new RadarBlip(distanceMeters, code));
+                }
+            }
+
+            RadarUpdated?.Invoke(new RadarStatus(blindLeft, blindRight, blips));
         }
         catch
         {

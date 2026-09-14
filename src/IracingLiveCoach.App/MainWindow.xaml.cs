@@ -122,6 +122,7 @@ public partial class MainWindow : Window
         var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         var sync = new BaselineSync(httpClient, cacheDir, "https://iracing-analytics.vercel.app", importKey);
         var baseline = await sync.GetBaselineAsync(carId, trackId);
+        _telemetryReader?.SetTrackLength(baseline.TrackLengthMeters);
 
         var engine = new LiveCoachEngine(baseline.Corners, baseline.GearModel, baseline.TrackLengthMeters);
         engine.CornerCompleted += feedback => Dispatcher.Invoke(() => _viewModel.OnCornerCompleted(feedback));
