@@ -228,6 +228,106 @@ session's own Phase 3 spotter design below).
   fixed lateral lanes rather than a smooth continuous radar sweep; this is disclosed as the
   signal's real resolution, not oversold as a precise radar.
 
+## Visual redesign — broadcast UI overhaul (Phase 5, 14/09/2026)
+
+The driver supplied a reference mockup (`iRacing / Overlay Concept`: a Standings panel plus two
+side-by-side Relative panels, one per car class) asking for this exact visual language to replace
+the F1-theme look Phases 1-3 shipped, while keeping the Kapps-equivalent UX (independent
+draggable/resizable windows, Control Panel visibility list, shared lock).
+
+**Correction, 14/09/2026:** this section originally concluded flags/team-logos/brake-bias/rubber
+weren't available and needed honest substitutes, based on the community-maintained
+`sajax.github.io/irsdkdocs` wiki and Kapps' own cached app data. The driver pushed back, correctly:
+that wiki is stale. Direct reflection against the actual `IRSDKSharper.dll` this project already
+references (NuGet `irsdksharper` 1.3.0, a build dated 24/07/2026 — materially newer than the
+wiki's own last coverage) plus targeted fresh searches turned up real fields the wiki simply
+doesn't list yet, most from iRacing's 2025 Season 3 patch (which added driver "flair"/flag support
+and, per that patch's own release notes, "removed Clubs from the Simulation systems... and
+telemetry data" — replacing club-based driver identity with the newer flair system the wiki never
+picked up). Every item below marked "confirmed" was checked against this project's own actual
+compiled dependency, not just secondhand documentation — the same standard as every other
+telemetry claim in this document, just applied a second time after getting it wrong once.
+
+### Confirmed buildable from real telemetry/session data
+
+- **Palette**: dark navy background (`#0B1420`), a warm red-orange leading accent bar (`#E2483D`)
+  replacing F1Theme's pure red, a cyan highlight (`#39D8E0`) for the player's own row (replacing
+  the flat accent-tint fill Phases 1-3 used), off-white text (`#F2F4F7`, unchanged). This becomes
+  the suite's one palette — `F1Theme.xaml`'s existing brush *values* are updated in place (not a
+  second parallel theme), since every current widget keeps using the same resource *keys*.
+- **National flags**: `DriverModel.FlairID` (int) / `FlairName` (string) — confirmed present by
+  reflecting on the real `IRSDKSharper.dll` `DriverInfoModel.DriverModel` type this app already
+  uses (added alongside the 2025 S3 flair feature, replacing the old `ClubName`/`ClubID` fields
+  the wiki still documents as the "team & organization" data — both actually still exist
+  side-by-side on the current type, `ClubName` just isn't the identity signal it used to be).
+  `FlairName` is the country's display name (e.g. "Brazil") — rendered as a Unicode regional-
+  indicator flag emoji (e.g. 🇧🇷) via a small country-name→ISO-3166-alpha-2 lookup table covering
+  every country iRacing's own driver base realistically spans, with a plain globe glyph fallback
+  for any name the table doesn't recognize (bounded, disclosed coverage — not every possible
+  string `FlairName` could theoretically contain, but every country actually fielding drivers).
+  No bundled flag image assets are needed; Windows' own emoji font (Segoe UI Emoji, present on
+  every supported Windows version) renders these natively.
+- **LIC badge**: `LicColor` (string)/`LicString`/`LicLevel` — confirmed present (and confirmed as
+  `String`, not the packed-int this document originally assumed — corrected). Parsed defensively
+  (same try/catch posture as every telemetry read in this app) as a standard CSS-style hex color
+  string (`#RRGGBB` or `0xRRGGBB`, iRacing's own YAML convention for its color-string fields),
+  with a neutral gray fallback if parsing fails. Rendered as a small colored chip showing
+  `LicString` (e.g. "A 2.94").
+- **iR**: `IRating`, real, already read for driver identification.
+- **GAP / ÚLT. VOLTA / Δ VOLTA**: already real and shipped (`RelativeRow.GapSeconds`,
+  `StandingsRow.LastLapTime`); `Δ VOLTA` (this lap vs. the driver's own last lap) is a new,
+  cheaply-computable client-side delta, not a new telemetry read.
+- **BRAKE BIAS**: `dcBrakeBias` — confirmed real, a live-updating "driver car" (`dc*`) telemetry
+  channel reporting the current in-car brake-bias adjustment as a percentage (some cars report
+  `dcPeakBrakeBias` instead — read both, matching whichever the current car publishes, with the
+  same "channel not published this session" tolerance `RelativeUpdated`'s own P2P read already
+  has for non-P2P classes).
+- **EMBORRACHAMENTO (track rubber buildup)**: `SessionInfo.Sessions[current].SessionTrackRubberState`
+  — confirmed real, reflected directly off the current `SessionInfoModel.SessionModel` type. A
+  session-info string (read alongside `WeekendInfo.TrackID` at the same `OnSessionInfo` cadence
+  this app's existing `_playerCarIdx` detection already uses, not a per-tick telemetry channel),
+  shown as its own plain-text readout rather than parsed into a synthetic numeric scale iRacing
+  itself doesn't publish as a number.
+- **OT (Overtake/P2P) column**: `CarIdxP2P_Status` (active bool, already used) and
+  `CarIdxP2P_Count` (uses remaining, confirmed real) shown together as "ATIVO" / "PRONTO" + a real
+  remaining-uses count. The mockup's literal countdown-in-seconds with a RECARGA state remains
+  the one element NOT confirmed as a published constant after two independent, targeted searches
+  for an activation- or recharge-duration variable — none surfaced. This one piece stays an
+  approximation: a locally-measured stopwatch since `CarIdxP2P_Status` last flipped true, labeled
+  as elapsed active time, not a precise remaining/recharge countdown. This column only renders for
+  classes where P2P is published — a GT3 panel simply omits it rather than showing a fake "N/A".
+- **Dual-class Relative**: Kapps' own `settings.json` (already inspected, Phase 1) keys widget
+  instances by UUID under `layerWindowConfigs`, meaning Kapps genuinely supports multiple
+  instances of the same widget type (e.g. two independently-positioned Relative panels). This
+  spec adds exactly ONE second fixed instance (`relative2`) rather than building fully generic
+  N-instance widget management (out of scope, see below) — each of the two Relative widgets gets
+  its own car-class filter (a dropdown or Control-Panel-driven setting), defaulting to
+  `relative`=player's own class and `relative2`=off until the driver picks a class.
+
+### Still not available — honest substitution, not fabrication
+
+- **Team/constructor logos**: `TeamName`/`TeamID` exist as text (confirmed, unchanged from the
+  original finding) but carry no logo asset, and are empty for the vast majority of pickup/public
+  races (only populated in real team-league events). Shown as plain text only when non-empty,
+  never a fabricated or generic logo image — this is the one mockup element still without a real
+  data-backed equivalent after the correction above.
+- **ΔiR (projected iRating change)**: not published live by iRacing. Built as a disclosed
+  *estimate* using the standard SoF-based projection formula every public iRating calculator
+  already uses (session's own field-strength derived from the visible `IRating` spread) — shown
+  with a small `*` marker as the mockup itself already did.
+- **Explanatory legends** (e.g. "verde = mais rápido", "ΔiR projetado pela posição atual" as a
+  spelled-out caption): removed per the driver's explicit request ("só não quero essas
+  explicações do que cada coisa significa") — the visual convention itself (color, the `*` marker)
+  stays, just without a caption spelling it out.
+
+### Out of scope for this pass
+
+- Fully generic N-instance widget management (Kapps' own UUID-keyed multi-instance model in
+  general) — this pass adds exactly one extra fixed Relative instance (`relative2`), not an
+  "add widget" button. A driver wanting a third Relative pane is a natural next-pass request.
+  Named/saved layout profiles remain out of scope (unchanged from the original spec's own
+  "Out of scope" section below).
+
 ## Out of scope for this spec
 
 - Rewriting/regrading `.sto` setup files (unrelated, unchanged from the Engineer Chat work).
