@@ -30,8 +30,24 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
             ? laps.ToString("0.0", CultureInfo.InvariantCulture)
             : "--";
         TimeRemainingText = status.TimeRemainingSeconds is double seconds
-            ? System.TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss")
+            ? FormatTimeRemaining(seconds)
             : "--";
+    }
+
+    // "mm" alone is minutes-within-the-hour (00-59) with no hour component, so any estimate past
+    // 60 minutes silently wraps (e.g. 90 min -> "30:00", indistinguishable from 30 min remaining).
+    // Full-tank estimates for GT3/GTP/LMP-class cars routinely exceed an hour early in a session,
+    // so this needs an explicit hour component once the estimate crosses that threshold. Clamped
+    // against TimeSpan.FromSeconds' ~10^8-day ceiling in case a near-zero avgFuelPerLap sample ever
+    // produces an astronomically large estimate.
+    private static string FormatTimeRemaining(double seconds)
+    {
+        if (double.IsNaN(seconds) || seconds < 0) return "--";
+        var clamped = System.Math.Min(seconds, System.TimeSpan.MaxValue.TotalSeconds);
+        var span = System.TimeSpan.FromSeconds(clamped);
+        return span.TotalSeconds >= 3600
+            ? span.ToString(@"h\:mm\:ss")
+            : span.ToString(@"m\:ss");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
