@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private RelativeOverlayWindow? _relativeWindow;
     private RelativeWidget? _relativeWidget;
     private StandingsWidget? _standingsWidget;
+    private FuelWidget? _fuelWidget;
     private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
@@ -70,12 +71,16 @@ public partial class MainWindow : Window
         _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 320, 360), () => _layoutStore.Save());
         _standingsWidget.Show();
 
+        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 200, 220), () => _layoutStore.Save());
+        _fuelWidget.Show();
+
         _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
             ("coach", "Coach", this),
             ("p2p", "P2P", _relativeWindow),
             ("relative", "Relative (F1)", _relativeWidget),
             ("standings", "Standings (F1)", _standingsWidget),
+            ("fuel", "Fuel", _fuelWidget),
         });
         _controlPanel.Show();
 
@@ -87,6 +92,7 @@ public partial class MainWindow : Window
         _telemetryReader.RelativeUpdated += statuses => Dispatcher.Invoke(() => _relativeWindow?.UpdateRows(statuses));
         _telemetryReader.FullRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget?.UpdateRows(rows));
         _telemetryReader.StandingsUpdated += rows => Dispatcher.Invoke(() => _standingsWidget?.UpdateRows(rows));
+        _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.Start();
     }
 
@@ -226,6 +232,7 @@ public partial class MainWindow : Window
         _relativeWindow?.SetLocked(_locked);
         _relativeWidget?.SetLocked(_locked);
         _standingsWidget?.SetLocked(_locked);
+        _fuelWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
 
@@ -237,6 +244,7 @@ public partial class MainWindow : Window
         _relativeWindow?.Close();
         _relativeWidget?.Close();
         _standingsWidget?.Close();
+        _fuelWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
     }

@@ -1,0 +1,69 @@
+<!-- src/IracingLiveCoach.App/FuelWidget.xaml -->
+<Window x:Class="IracingLiveCoach.App.FuelWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fuel"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        MinWidth="180" MinHeight="150"
+        SizeToContent="Manual">
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
+            <StackPanel Margin="10">
+                <TextBlock Text="FUEL" FontFamily="{StaticResource F1HeaderFont}" FontSize="11"
+                           Foreground="{StaticResource F1AccentBrush}" Margin="0,0,0,8" />
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Nível" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding FuelLevelText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Consumo/h" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding FuelUsePerHourText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Média/volta" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding AveragePerLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" />
+                </Grid>
+
+                <Rectangle Height="1" Fill="{StaticResource F1MutedTextBrush}" Opacity="0.25" Margin="0,8" />
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Voltas restantes" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding LapsRemainingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource F1AccentBrush}" />
+                </Grid>
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Tempo restante" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding TimeRemainingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource F1AccentBrush}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Background="{StaticResource F1AccentBrush}" Opacity="0.5"
+               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+    </Grid>
+</Window>
