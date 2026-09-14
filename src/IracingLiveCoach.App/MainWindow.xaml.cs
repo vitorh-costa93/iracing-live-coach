@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private ToolStripMenuItem? _lockMenuItem;
     private RelativeOverlayWindow? _relativeWindow;
     private RelativeWidget? _relativeWidget;
+    private RelativeWidget? _relativeWidget2;
     private StandingsWidget? _standingsWidget;
     private FuelWidget? _fuelWidget;
     private WeatherWidget? _weatherWidget;
@@ -71,6 +72,9 @@ public partial class MainWindow : Window
         _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 260, 240), () => _layoutStore.Save());
         _relativeWidget.Show();
 
+        _relativeWidget2 = new RelativeWidget(_layoutStore.Get("relative2", 260, 240), () => _layoutStore.Save(), "RELATIVE — 2ª CLASSE");
+        _relativeWidget2.Show();
+
         _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 320, 360), () => _layoutStore.Save());
         _standingsWidget.Show();
 
@@ -91,6 +95,7 @@ public partial class MainWindow : Window
             ("coach", "Coach", this),
             ("p2p", "P2P", _relativeWindow),
             ("relative", "Relative (F1)", _relativeWidget),
+            ("relative2", "Relative 2ª Classe (F1)", _relativeWidget2),
             ("standings", "Standings (F1)", _standingsWidget),
             ("fuel", "Fuel", _fuelWidget),
             ("weather", "Weather", _weatherWidget),
@@ -106,6 +111,12 @@ public partial class MainWindow : Window
         _telemetryReader.SessionDetected += (carId, trackId) => _ = OnSessionDetectedAsync(carId, trackId);
         _telemetryReader.RelativeUpdated += statuses => Dispatcher.Invoke(() => _relativeWindow?.UpdateRows(statuses));
         _telemetryReader.FullRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget?.UpdateRows(rows));
+        _telemetryReader.PlayerCarStatusUpdated += status => Dispatcher.Invoke(() =>
+        {
+            _relativeWidget?.UpdatePlayerStatus(status);
+            _relativeWidget2?.UpdatePlayerStatus(status);
+        });
+        _telemetryReader.SecondaryRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget2?.UpdateRows(rows, showClassPositionAsAbsolute: true));
         _telemetryReader.StandingsUpdated += rows => Dispatcher.Invoke(() => _standingsWidget?.UpdateRows(rows));
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
@@ -250,6 +261,7 @@ public partial class MainWindow : Window
         // together, since they're meant to be positioned once and then both stay out of the way.
         _relativeWindow?.SetLocked(_locked);
         _relativeWidget?.SetLocked(_locked);
+        _relativeWidget2?.SetLocked(_locked);
         _standingsWidget?.SetLocked(_locked);
         _fuelWidget?.SetLocked(_locked);
         _weatherWidget?.SetLocked(_locked);
@@ -265,6 +277,7 @@ public partial class MainWindow : Window
         _telemetryReader?.Dispose();
         _relativeWindow?.Close();
         _relativeWidget?.Close();
+        _relativeWidget2?.Close();
         _standingsWidget?.Close();
         _fuelWidget?.Close();
         _weatherWidget?.Close();
