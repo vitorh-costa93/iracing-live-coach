@@ -5,7 +5,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using IracingLiveCoach.Core;
-using Brush = System.Windows.Media.Brush;
 
 namespace IracingLiveCoach.App;
 
@@ -42,9 +41,8 @@ public partial class RadarWidget : Window
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
-        OuterBorder.BorderBrush = locked
-            ? (Brush)FindResource("F1BorderIdleBrush")
-            : (Brush)FindResource("F1BorderActiveBrush");
+        // The radar intentionally has no panel/border to flash while driving; its transparent
+        // proximity markers are the only visual surface.
     }
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

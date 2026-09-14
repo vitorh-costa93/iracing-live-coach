@@ -13,6 +13,10 @@ public class FullRelativeRowViewModel
 {
     public string PositionText { get; }
     public string FlagAndCode { get; }
+    public Brush FlagBackground { get; }
+    public Brush FlagSymbolBrush { get; }
+    public string FlagSymbol { get; }
+    public string FlagImagePath { get; }
     public string ManufacturerText { get; }
     public string LicText { get; }
     public Brush LicBrush { get; }
@@ -34,16 +38,14 @@ public class FullRelativeRowViewModel
         // For the secondary (class-scoped) instance, PositionOffset is an absolute class position
         // (never the player's own row, since the player doesn't race in that class) -- only the
         // primary, player-relative instance can ever have a real "this is me" row.
-        IsPlayerRow = !showClassPositionAsAbsolute && row.PositionOffset == 0;
-        PositionText = showClassPositionAsAbsolute
-            ? row.PositionOffset.ToString(CultureInfo.InvariantCulture)
-            : (row.PositionOffset > 0 ? "+" : "") + row.PositionOffset.ToString(CultureInfo.InvariantCulture);
-        // Manufacturer badge folded inline (no separate column) to keep this widget's column count
-        // matching the mockup's own Relative layout -- Standings (Task 4) gives it its own column
-        // instead, since that mockup panel shows the badge more prominently.
-        FlagAndCode = string.IsNullOrEmpty(row.ManufacturerBadge)
-            ? $"{row.FlagEmoji} {row.DriverCode}"
-            : $"{row.FlagEmoji} {row.DriverCode} · {row.ManufacturerBadge}";
+        IsPlayerRow = row.IsPlayer;
+        PositionText = row.PositionOffset.ToString(CultureInfo.InvariantCulture);
+        // The pilot column is strictly the driver identity.  Some AI sessions publish a car model
+        // in AbbrevName; mixing the manufacturer into this same string made that defect look like
+        // the UI was intentionally showing cars instead of drivers.
+        FlagAndCode = row.DriverCode;
+        (FlagBackground, FlagSymbolBrush, FlagSymbol) = FlagStyle.For(row.FlagEmoji);
+        FlagImagePath = FlagStyle.ImageFor(row.FlagEmoji);
         ManufacturerText = row.ManufacturerBadge;
         LicText = row.LicString;
         LicBrush = ParseLicColor(row.LicColorHex);
@@ -113,19 +115,61 @@ public class FullRelativeRowViewModel
     }
 }
 
+internal static class FlagStyle
+{
+    private static readonly Brush BrazilGreen = Frozen("#FF168A45");
+    private static readonly Brush JapanWhite = Frozen("#FFF5F5F5");
+    private static readonly Brush UsaRed = Frozen("#FFB22234");
+    private static readonly Brush Generic = Frozen("#FF435363");
+    private static readonly Brush Yellow = Frozen("#FFFFD447");
+    private static readonly Brush Red = Frozen("#FFCF233A");
+    private static readonly Brush White = Frozen("#FFFFFFFF");
+    private static readonly Brush Dark = Frozen("#FF102030");
+    public static (Brush Background, Brush Symbol, string Mark) For(string emoji) => emoji switch
+    {
+        "🇧🇷" => (BrazilGreen, Yellow, "◆"),
+        "🇯🇵" => (JapanWhite, Red, "●"),
+        "🇺🇸" => (UsaRed, White, "★"),
+        _ => (Generic, White, "•")
+    };
+    public static string ImageFor(string emoji) => emoji switch
+    {
+        "🇧🇷" => "pack://application:,,,/Assets/Flags/br.png",
+        "🇯🇵" => "pack://application:,,,/Assets/Flags/jp.png",
+        "🇺🇸" => "pack://application:,,,/Assets/Flags/us.png",
+        _ => ""
+    };
+    private static Brush Frozen(string value)
+    {
+        var brush = new SolidColorBrush((Color)System.Windows.Media.ColorConverter.ConvertFromString(value)!);
+        brush.Freeze();
+        return brush;
+    }
+}
+
 public class RelativeWidgetViewModel : INotifyPropertyChanged
 {
     private string _brakeBiasText = "--";
     private string _trackRubberText = "--";
     private string _bestLapText = "--";
     private string _lastLapText = "--";
+    private string _trackTempText = "--";
+    private string _classSessionText = "--";
+    private string _rubberBlocksText = "□□□□□";
 
     public string BrakeBiasText { get => _brakeBiasText; private set => Set(ref _brakeBiasText, value); }
     public string TrackRubberText { get => _trackRubberText; private set => Set(ref _trackRubberText, value); }
     public string BestLapText { get => _bestLapText; private set => Set(ref _bestLapText, value); }
     public string LastLapText { get => _lastLapText; private set => Set(ref _lastLapText, value); }
+    public string TrackTempText { get => _trackTempText; private set => Set(ref _trackTempText, value); }
+    public string ClassSessionText { get => _classSessionText; private set => Set(ref _classSessionText, value); }
+    public string RubberBlocksText { get => _rubberBlocksText; private set => Set(ref _rubberBlocksText, value); }
 
     public ObservableCollection<FullRelativeRowViewModel> Rows { get; } = new();
+
+    // Class/session text is the only piece of SessionStatus this panel's header shows -- lap/flag
+    // belong to Standings, and this widget's own title (set at construction) already names the class.
+    public void ApplySessionStatus(SessionStatus status) => ClassSessionText = $"{status.CarClassShortName}  •  AO REDOR DE VOCÊ";
 
     // showClassPositionAsAbsolute=true for the secondary (class-scoped) instance, whose
     // PositionOffset carries an absolute class position, not an offset from the player.
@@ -141,6 +185,23 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
         TrackRubberText = status.TrackRubberState ?? "--";
         if (status.BestLapTimeSeconds is double best) BestLapText = IracingLiveCoach.Core.LapTimeFormatting.Format(best);
         LastLapText = status.LastLapTimeSeconds is double last ? IracingLiveCoach.Core.LapTimeFormatting.Format(last) : "--";
+        TrackTempText = status.TrackTempC is double temp ? temp.ToString("0", CultureInfo.InvariantCulture) + "°C" : "--";
+        RubberBlocksText = RubberBlocks(status.TrackRubberState);
+    }
+
+    // SessionTrackRubberState is real (confirmed via reflection) but its own text values aren't
+    // independently documented -- mapped defensively by keyword rather than exact match, so an
+    // unrecognized value degrades to "no data" (empty blocks) instead of a wrong reading.
+    private static string RubberBlocks(string? state)
+    {
+        if (string.IsNullOrWhiteSpace(state)) return "□□□□□";
+        var lowered = state.ToLowerInvariant();
+        int filled =
+            lowered.Contains("high") || lowered.Contains("heavy") || lowered.Contains("alto") ? 5 :
+            lowered.Contains("moderate") || lowered.Contains("medium") || lowered.Contains("moder") ? 3 :
+            lowered.Contains("light") || lowered.Contains("low") || lowered.Contains("leve") ? 1 :
+            lowered.Contains("none") || lowered.Contains("green") ? 0 : 2;
+        return new string('■', filled) + new string('□', 5 - filled);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -12,12 +12,22 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
     private string _averagePerLapText = "--";
     private string _lapsRemainingText = "--";
     private string _timeRemainingText = "--";
+    private bool _showLevel = true;
+    private bool _showUsePerHour = true;
+    private bool _showAveragePerLap = true;
+    private bool _showLapsRemaining = true;
+    private bool _showTimeRemaining = true;
 
     public string FuelLevelText { get => _fuelLevelText; private set => Set(ref _fuelLevelText, value); }
     public string FuelUsePerHourText { get => _fuelUsePerHourText; private set => Set(ref _fuelUsePerHourText, value); }
     public string AveragePerLapText { get => _averagePerLapText; private set => Set(ref _averagePerLapText, value); }
     public string LapsRemainingText { get => _lapsRemainingText; private set => Set(ref _lapsRemainingText, value); }
     public string TimeRemainingText { get => _timeRemainingText; private set => Set(ref _timeRemainingText, value); }
+    public bool ShowLevel { get => _showLevel; set => Set(ref _showLevel, value); }
+    public bool ShowUsePerHour { get => _showUsePerHour; set => Set(ref _showUsePerHour, value); }
+    public bool ShowAveragePerLap { get => _showAveragePerLap; set => Set(ref _showAveragePerLap, value); }
+    public bool ShowLapsRemaining { get => _showLapsRemaining; set => Set(ref _showLapsRemaining, value); }
+    public bool ShowTimeRemaining { get => _showTimeRemaining; set => Set(ref _showTimeRemaining, value); }
 
     public void Apply(FuelStatus status)
     {
@@ -53,6 +63,13 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void Set(ref string field, string value, [CallerMemberName] string? propertyName = null)
+    {
+        if (field == value) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void Set(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
         if (field == value) return;
         field = value;

@@ -42,17 +42,19 @@ public class RadarBlipViewModel
 
 public class RadarWidgetViewModel : INotifyPropertyChanged
 {
-    private const double CanvasHeight = 200.0;
-    private const double PlayerY = 170.0; // near the bottom, leaving headroom for "ahead" blips
+    private const double CanvasHeight = 180.0;
+    private const double PlayerY = 90.0;
     private const double MaxRangeMeters = 100.0;
 
     private bool _blindLeft;
     private bool _blindRight;
     private bool _showNoTrackLength;
+    private bool _hasProximity;
 
     public bool BlindLeft { get => _blindLeft; private set => Set(ref _blindLeft, value); }
     public bool BlindRight { get => _blindRight; private set => Set(ref _blindRight, value); }
     public bool ShowNoTrackLength { get => _showNoTrackLength; private set => Set(ref _showNoTrackLength, value); }
+    public bool HasProximity { get => _hasProximity; private set => Set(ref _hasProximity, value); }
     public ObservableCollection<RadarBlipViewModel> Blips { get; } = new();
 
     public void Apply(RadarStatus status)
@@ -60,6 +62,7 @@ public class RadarWidgetViewModel : INotifyPropertyChanged
         BlindLeft = status.BlindSpotLeft;
         BlindRight = status.BlindSpotRight;
         ShowNoTrackLength = !status.HasTrackLength;
+        HasProximity = status.BlindSpotLeft || status.BlindSpotRight || status.Blips.Count > 0;
 
         Blips.Clear();
         foreach (var blip in status.Blips)

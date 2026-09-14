@@ -23,16 +23,32 @@ public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 /// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
 /// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
 /// driver confirmed this is a real feature they use today.</summary>
-public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge);
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false);
 
-/// <summary>One row of the full classification/standings widget (Task 6).</summary>
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge);
+/// <summary>One row of the full classification/standings widget (Task 6).
+/// GapToLeaderSeconds is real (CarIdxF2Time, "race time behind leader or fastest lap otherwise" --
+/// confirmed via sajax.github.io/irsdkdocs), null for the leader (shown as "LEADER" by the view
+/// model) and outside a race session. EstimatedDeltaIRating is NOT a real SDK field -- iRacing
+/// exposes no such projection -- it is a rank-vs-iRating approximation using the SDK's own
+/// published Strength-of-Field formula (see UpdateStandings), always shown with an asterisk
+/// disclosure per the driver's own explicit choice (14/09/2026) to include an approximate value
+/// rather than omit the column. LapDeltaVsPlayerSeconds is real (this driver's own CarIdxLastLapTime
+/// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
+/// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds);
+
+/// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
+/// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
+/// formula (BR1 = 1600/ln(2), SoF = BR1 * ln(N / Σ e^(-iRating_i / BR1))) over the current field's
+/// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
+public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount);
 
 /// <summary>The player's own current car status for the Relative/Standings widgets' footer.
 /// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
 /// (see UpdatePlayerCarStatus's own try/catch per field). BestLapTimeSeconds is the minimum
-/// LapLastLapTime observed so far this session -- null until the player has completed one lap.</summary>
-public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds, double? LastLapTimeSeconds);
+/// LapLastLapTime observed so far this session -- null until the player has completed one lap.
+/// TrackTempC reuses the same real "TrackTemp" channel the Weather widget already reads.</summary>
+public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds, double? LastLapTimeSeconds, double? TrackTempC);
 
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
@@ -130,6 +146,15 @@ public class TelemetryReader : IDisposable
     private int _radarTickCounter;
     private const double RadarMaxRangeMeters = 100.0;
 
+    // Reading every SDK channel is inexpensive; rebuilding WPF item collections is not.  The
+    // simulator can publish at 60 Hz while a wet/new circuit is already CPU-bound, so the live
+    // widgets deliberately run on two small budgets: 10 Hz for proximity information and 2 Hz
+    // for the full-field cards.  The driving-coach engine below remains on every SDK tick.
+    private const int ProximityTickInterval = 6;
+    private const int FullFieldTickInterval = 30;
+    private int _proximityTickCounter;
+    private int _fullFieldTickCounter;
+
     // 14/09/2026: SF23's Overtake System rules, publicly documented on iRacing's own car page --
     // 20s of activation per use, at least 100s cooldown ("ReTime") afterward. This is car-specific
     // domain knowledge (the same kind the sibling iracing-analytics project already hardcodes for
@@ -165,10 +190,21 @@ public class TelemetryReader : IDisposable
         var map = new Dictionary<int, string>();
         foreach (var driver in sessionInfo?.DriverInfo?.Drivers ?? new List<IRacingSdkSessionInfo.DriverInfoModel.DriverModel>())
         {
-            var code = !string.IsNullOrWhiteSpace(driver.AbbrevName) ? driver.AbbrevName : driver.CarNumber ?? "?";
+            // AbbrevName is not stable across all iRacing session types: some AI/session data
+            // fills it with the car model ("08 - ACURA") rather than a person.  UserName is the
+            // driver identity.  Format it as the broadcast convention "V. COSTA".
+            var code = FormatDriverName(driver.UserName, driver.CarNumber);
             map[driver.CarIdx] = code;
         }
         return map;
+    }
+
+    private static string FormatDriverName(string? userName, string? fallback)
+    {
+        if (string.IsNullOrWhiteSpace(userName)) return fallback ?? "?";
+        var parts = userName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 1) return parts[0].ToUpperInvariant();
+        return $"{char.ToUpperInvariant(parts[0][0])}. {parts[^1].ToUpperInvariant()}";
     }
 
     private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge) GetIdentity(int carIdx)
@@ -222,6 +258,10 @@ public class TelemetryReader : IDisposable
     /// <summary>Fires every telemetry tick once the session is detected, with one row per
     /// currently-classified car (CarIdxPosition > 0), ordered by position.</summary>
     public event Action<List<StandingsRow>>? StandingsUpdated;
+
+    /// <summary>Fires alongside StandingsUpdated (same full-field tick budget) with the header
+    /// summary shared by the Standings and Relative panels -- see SessionStatus's own doc comment.</summary>
+    public event Action<SessionStatus>? SessionStatusUpdated;
 
     /// <summary>Fires every telemetry tick once the session is detected, with the player's own
     /// current fuel state and a rolling-average-based remaining-laps/time estimate.</summary>
@@ -317,15 +357,27 @@ public class TelemetryReader : IDisposable
         // half below needs that.
         if (_playerCarIdx >= 0)
         {
-            UpdateRelative();
-            UpdateFullRelative();
-            UpdateSecondaryRelative();
-            UpdateStandings();
-            UpdateFuel();
-            UpdateTireWear();
-            UpdatePlayerCarStatus();
             UpdateOnTrackState();
-            UpdateRaceStart();
+
+            _proximityTickCounter++;
+            if (_proximityTickCounter >= ProximityTickInterval)
+            {
+                _proximityTickCounter = 0;
+                UpdateRelative();
+                UpdateFullRelative();
+                UpdateSecondaryRelative();
+                UpdatePlayerCarStatus();
+                UpdateRaceStart();
+            }
+
+            _fullFieldTickCounter++;
+            if (_fullFieldTickCounter >= FullFieldTickInterval)
+            {
+                _fullFieldTickCounter = 0;
+                UpdateStandings();
+                UpdateFuel();
+                UpdateTireWear();
+            }
 
             _weatherTickCounter++;
             if (_weatherTickCounter >= WeatherTickInterval)
@@ -376,7 +428,6 @@ public class TelemetryReader : IDisposable
             var byOffset = new Dictionary<int, bool>();
             for (var idx = 0; idx < maxCars; idx++)
             {
-                if (idx == _playerCarIdx) continue;
                 var position = _sdk.Data.GetInt("CarIdxPosition", idx);
                 if (position <= myPosition) continue;
                 var offset = position - myPosition;
@@ -466,7 +517,7 @@ public class TelemetryReader : IDisposable
                 var identity = GetIdentity(idx);
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
+                rows.Add(new RelativeRow(position, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -545,12 +596,21 @@ public class TelemetryReader : IDisposable
         }
     }
 
+    // iRacing's own published Strength-of-Field constant (iracing.com/strength-in-numbers):
+    // BR1 = 1600 / ln(2). SoF = BR1 * ln(N / Sum(e^(-iRating_i / BR1))).
+    private const double SofBr1 = 1600.0 / 0.69314718055994530942;
+
     private void UpdateStandings()
     {
         try
         {
             var maxCars = IRacingSdkConst.MaxNumCars;
-            var rows = new List<StandingsRow>();
+            var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
+                string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, double? Gap)>();
+
+            var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
+            double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
+
             for (var idx = 0; idx < maxCars; idx++)
             {
                 var position = _sdk.Data.GetInt("CarIdxPosition", idx);
@@ -562,14 +622,118 @@ public class TelemetryReader : IDisposable
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
 
-                rows.Add(new StandingsRow(position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null, idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
+                double? gap = null;
+                try
+                {
+                    // CarIdxF2Time: "race time behind leader or fastest lap time otherwise, s"
+                    // (confirmed real -- sajax.github.io/irsdkdocs). The leader's own value is ~0
+                    // and shown as "LEADER" by the view model instead of "+0.0".
+                    var f2 = _sdk.Data.GetFloat("CarIdxF2Time", idx);
+                    if (f2 >= 0) gap = f2;
+                }
+                catch { /* not published this session type -- leave gap null */ }
+
+                raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
+                    idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
+                    identity.CarClassId, identity.ManufacturerBadge, gap));
             }
 
-            StandingsUpdated?.Invoke(rows.OrderBy(row => row.Position).ToList());
+            var ordered = raw.OrderBy(r => r.Position).ToList();
+
+            // ΔiR*: NOT a real SDK field -- iRacing exposes no such projection. This is a rank-vs-
+            // iRating approximation (real SoF formula above, applied to real per-driver iRatings),
+            // shown only behind its own asterisk disclosure -- the driver explicitly chose an
+            // approximate value over omitting the column entirely (14/09/2026).
+            var classified = ordered.Where(r => r.IRating > 0).ToList();
+            double? sof = null;
+            if (classified.Count > 0)
+            {
+                var sumExp = classified.Sum(r => Math.Exp(-r.IRating / SofBr1));
+                if (sumExp > 0) sof = SofBr1 * Math.Log(classified.Count / sumExp);
+            }
+            var expectedRankByPosition = classified
+                .OrderByDescending(r => r.IRating)
+                .Select((r, i) => (r.Position, Rank: i + 1))
+                .ToDictionary(x => x.Position, x => x.Rank);
+
+            var rows = new List<StandingsRow>();
+            foreach (var r in ordered)
+            {
+                double? deltaIR = null;
+                if (sof is double sofValue && expectedRankByPosition.TryGetValue(r.Position, out var expectedRank))
+                    deltaIR = Math.Round((expectedRank - r.Position) * sofValue / 500.0);
+
+                double? lapDelta = r.LastLap is double own && playerLastLap is double mine ? own - mine : null;
+
+                rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
+                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta));
+            }
+
+            StandingsUpdated?.Invoke(rows);
+            SessionStatusUpdated?.Invoke(BuildSessionStatus(ordered.Count, sof));
         }
         catch
         {
             // Skip this tick.
+        }
+    }
+
+    // Header block shared by Standings and Relative -- class/session type/lap count/flag are all
+    // real SDK fields; DriverCount/StrengthOfField come from the same full-field scan UpdateStandings
+    // just did (cheap reuse rather than a second pass).
+    private SessionStatus BuildSessionStatus(int driverCount, double? sof)
+    {
+        var carClassShortName = "";
+        var sessionTypeText = "";
+        int? currentLap = null;
+        int? totalLaps = null;
+        try
+        {
+            var sessionInfo = _sdk.Data.SessionInfo;
+            var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == _playerCarIdx);
+            carClassShortName = driver?.CarClassShortName?.ToUpperInvariant() ?? "";
+
+            var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+            var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
+            sessionTypeText = session?.SessionType?.ToUpperInvariant() ?? "";
+
+            var lap = _sdk.Data.GetInt("Lap");
+            if (lap > 0) currentLap = lap;
+            if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
+        }
+        catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
+
+        var (flagText, flagColorHex) = DecodeSessionFlag();
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount);
+    }
+
+    // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),
+    // bit values per iRacing's own public irsdk_defines.h. Checked most-severe-first since several
+    // bits can be set at once (e.g. yellowWaving + caution).
+    private const int FlagCheckered = 0x00000001;
+    private const int FlagRed = 0x00000010;
+    private const int FlagYellow = 0x00000008;
+    private const int FlagYellowWaving = 0x00000100;
+    private const int FlagCaution = 0x00004000;
+    private const int FlagCautionWaving = 0x00008000;
+    private const int FlagWhite = 0x00000002;
+    private const int FlagGreen = 0x00000004;
+
+    private (string Text, string ColorHex) DecodeSessionFlag()
+    {
+        try
+        {
+            var flags = _sdk.Data.GetInt("SessionFlags");
+            if ((flags & FlagRed) != 0) return ("VERMELHA", "#FFE2483D");
+            if ((flags & (FlagYellow | FlagYellowWaving | FlagCaution | FlagCautionWaving)) != 0) return ("AMARELA", "#FFE0A52C");
+            if ((flags & FlagCheckered) != 0) return ("QUADRICULADA", "#FFF2F4F7");
+            if ((flags & FlagWhite) != 0) return ("BRANCA", "#FFF2F4F7");
+            if ((flags & FlagGreen) != 0) return ("GREEN", "#FF20E884");
+            return ("--", "#FF9AA3AF");
+        }
+        catch
+        {
+            return ("--", "#FF9AA3AF");
         }
     }
 
@@ -590,12 +754,15 @@ public class TelemetryReader : IDisposable
             }
             catch { /* session info momentarily incomplete -- skip this tick's rubber read */ }
 
+            double? trackTemp = null;
+            try { var t = _sdk.Data.GetFloat("TrackTemp"); trackTemp = t; } catch { /* not published */ }
+
             var lastLap = _sdk.Data.GetFloat("LapLastLapTime");
             double? lastLapSeconds = lastLap > 0 ? lastLap : null;
             if (lastLap > 0 && (_bestLapTimeSeconds is not double best || lastLap < best))
                 _bestLapTimeSeconds = lastLap;
 
-            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds, lastLapSeconds));
+            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds, lastLapSeconds, trackTemp));
         }
         catch
         {

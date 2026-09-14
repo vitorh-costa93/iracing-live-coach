@@ -17,11 +17,30 @@
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding DisplayName}"
-                                      Foreground="{StaticResource F1TextBrush}" Margin="0,3" />
+                            <Expander Margin="0,2">
+                                <Expander.Header>
+                                    <CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding DisplayName}"
+                                              Foreground="{StaticResource F1TextBrush}" />
+                                </Expander.Header>
+                                <Grid Margin="20,4,0,5">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="OPACIDADE" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" VerticalAlignment="Center"/>
+                                    <Slider Grid.Column="1" Minimum="0.25" Maximum="1" Value="{Binding Opacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Opacity, StringFormat={}{0:P0}}" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1TextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Expander>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <Expander Header="FUEL · CAMPOS" Margin="0,7,0,0">
+                    <WrapPanel Margin="20,4,0,5">
+                        <CheckBox Content="Nível" IsChecked="{Binding FuelColumns.Level, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
+                        <CheckBox Content="Consumo/h" IsChecked="{Binding FuelColumns.UsePerHour, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
+                        <CheckBox Content="Média/volta" IsChecked="{Binding FuelColumns.AveragePerLap, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
+                        <CheckBox Content="Voltas" IsChecked="{Binding FuelColumns.LapsRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
+                        <CheckBox Content="Tempo" IsChecked="{Binding FuelColumns.TimeRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
+                    </WrapPanel>
+                </Expander>
             </StackPanel>
         </Border>
         <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"

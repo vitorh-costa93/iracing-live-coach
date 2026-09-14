@@ -15,6 +15,16 @@ public class WidgetLayout
     public double Width { get; set; }
     public double Height { get; set; }
     public bool Visible { get; set; } = true;
+    // Per-widget instead of a suite-wide opacity: a radar can stay subtle while a timing board
+    // remains readable.  Existing JSON omits this field and naturally deserializes to 1.0.
+    public double Opacity { get; set; } = 1.0;
+    // Fuel is deliberately field-based: drivers can keep the compact estimate-only view or
+    // expose the raw consumption inputs when they are managing strategy.
+    public bool FuelShowLevel { get; set; } = true;
+    public bool FuelShowUsePerHour { get; set; } = true;
+    public bool FuelShowAveragePerLap { get; set; } = true;
+    public bool FuelShowLapsRemaining { get; set; } = true;
+    public bool FuelShowTimeRemaining { get; set; } = true;
 }
 
 /// <summary>Keyed replacement for AppSettings's old flat Left/Top/Width/Height fields -- one entry

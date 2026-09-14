@@ -40,6 +40,8 @@ public partial class StandingsWidget : Window
 
     public void UpdateRows(List<StandingsRow> rows) => _viewModel.SetRows(rows);
 
+    public void UpdateSessionStatus(SessionStatus status) => _viewModel.ApplySessionStatus(status);
+
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);

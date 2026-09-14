@@ -25,9 +25,7 @@ public partial class MainWindow : Window
     private TelemetryReader? _telemetryReader;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _lockMenuItem;
-    private RelativeOverlayWindow? _relativeWindow;
     private RelativeWidget? _relativeWidget;
-    private RelativeWidget? _relativeWidget2;
     private StandingsWidget? _standingsWidget;
     private FuelWidget? _fuelWidget;
     private WeatherWidget? _weatherWidget;
@@ -39,6 +37,7 @@ public partial class MainWindow : Window
     // by default so the overlay never eats a click meant for iRacing itself; the driver unlocks it
     // (tray icon) only to drag/resize, then locks it again. See ClickThrough.cs.
     private bool _locked = true;
+    private readonly bool _previewMode = Environment.GetCommandLineArgs().Contains("--preview", StringComparer.OrdinalIgnoreCase);
 
     public MainWindow()
     {
@@ -63,22 +62,13 @@ public partial class MainWindow : Window
         _viewModel.Status = CoachStatus.Waiting;
         _viewModel.StatusText = "Aguardando sessão do iRacing...";
 
-        // 13/09/2026: "eu queria que isso estivesse junto da black box de relative do iRacing" --
-        // a second window, not a section of this one, so the driver can drag it to sit right next
-        // to their own native Relative box independently of where this coaching card ends up.
-        _relativeWindow = new RelativeOverlayWindow(_layoutStore.Get("p2p", 90, 130), () => _layoutStore.Save());
-        _relativeWindow.Show();
-
-        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 260, 240), () => _layoutStore.Save());
+        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 360, 470), () => _layoutStore.Save());
         _relativeWidget.Show();
 
-        _relativeWidget2 = new RelativeWidget(_layoutStore.Get("relative2", 260, 240), () => _layoutStore.Save(), "RELATIVE — 2ª CLASSE");
-        _relativeWidget2.Show();
-
-        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 320, 360), () => _layoutStore.Save());
+        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 540, 480), () => _layoutStore.Save());
         _standingsWidget.Show();
 
-        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 200, 220), () => _layoutStore.Save());
+        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 250, 170), () => _layoutStore.Save());
         _fuelWidget.Show();
 
         _weatherWidget = new WeatherWidget(_layoutStore.Get("weather", 280, 200), () => _layoutStore.Save());
@@ -87,15 +77,13 @@ public partial class MainWindow : Window
         _tireWidget = new TireWearWidget(_layoutStore.Get("tires", 240, 220), () => _layoutStore.Save());
         _tireWidget.Show();
 
-        _radarWidget = new RadarWidget(_layoutStore.Get("radar", 140, 240), () => _layoutStore.Save());
+        _radarWidget = new RadarWidget(_layoutStore.Get("radar", 220, 106), () => _layoutStore.Save());
         _radarWidget.Show();
 
         _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
             ("coach", "Coach", this),
-            ("p2p", "P2P", _relativeWindow),
-            ("relative", "Relative (F1)", _relativeWidget),
-            ("relative2", "Relative 2ª Classe (F1)", _relativeWidget2),
+            ("relative", "Relative", _relativeWidget),
             ("standings", "Standings (F1)", _standingsWidget),
             ("fuel", "Fuel", _fuelWidget),
             ("weather", "Weather", _weatherWidget),
@@ -107,23 +95,96 @@ public partial class MainWindow : Window
         SetupTrayIcon();
         ApplyClickThrough();
 
+        if (_previewMode)
+        {
+            ShowPreview();
+            return;
+        }
+
         _telemetryReader = new TelemetryReader();
         _telemetryReader.SessionDetected += (carId, trackId) => _ = OnSessionDetectedAsync(carId, trackId);
-        _telemetryReader.RelativeUpdated += statuses => Dispatcher.Invoke(() => _relativeWindow?.UpdateRows(statuses));
         _telemetryReader.FullRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget?.UpdateRows(rows));
         _telemetryReader.PlayerCarStatusUpdated += status => Dispatcher.Invoke(() =>
         {
             _relativeWidget?.UpdatePlayerStatus(status);
-            _relativeWidget2?.UpdatePlayerStatus(status);
         });
-        _telemetryReader.SecondaryRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget2?.UpdateRows(rows, showClassPositionAsAbsolute: true));
         _telemetryReader.StandingsUpdated += rows => Dispatcher.Invoke(() => _standingsWidget?.UpdateRows(rows));
+        _telemetryReader.SessionStatusUpdated += status => Dispatcher.Invoke(() =>
+        {
+            _standingsWidget?.UpdateSessionStatus(status);
+            _relativeWidget?.UpdateSessionStatus(status);
+        });
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
         _telemetryReader.TireWearUpdated += status => Dispatcher.Invoke(() => _tireWidget?.UpdateStatus(status));
         _telemetryReader.RadarUpdated += status => Dispatcher.Invoke(() => _radarWidget?.UpdateStatus(status));
         _telemetryReader.OnTrackStateChanged += isOnTrack => Dispatcher.Invoke(() => _controlPanel?.ApplyOnTrackGate(isOnTrack));
         _telemetryReader.Start();
+    }
+
+    // Development-only visual fixture.  It is opt-in through --preview, does not subscribe to the
+    // SDK and never persists its temporary positions, so it is safe for design review screenshots.
+    private void ShowPreview()
+    {
+        var gt3 = new List<RelativeRow>
+        {
+            new(3, "P. SANTOS", -3.910, null, null, null, null, false, "🇧🇷", "A 2.94", "#1976FF", 3620, 1, "MERCEDES"),
+            new(4, "G. LIMA", -1.422, null, null, null, null, false, "🇧🇷", "B 3.45", "#20C060", 3410, 1, "FERRARI"),
+            new(5, "V. COSTA", 0.0, null, null, null, null, false, "🇧🇷", "A 2.58", "#1976FF", 3574, 1, "MCLAREN", true),
+            new(6, "A. SOUZA", 0.887, null, null, null, null, false, "🇧🇷", "A 3.12", "#1976FF", 3280, 1, "LAMBORGHINI"),
+            new(7, "B. ROCHA", 3.321, null, null, null, null, false, "🇧🇷", "B 2.76", "#20C060", 3190, 1, "AUDI"),
+        };
+        var formula = new List<RelativeRow>
+        {
+            new(3, "K. TANAKA", -2.840, null, true, 4, 12, false, "🇯🇵", "A 3.91", "#1976FF", 5620, 2, "DALLARA"),
+            new(4, "R. SILVA", -0.916, null, false, 3, 82, true, "🇧🇷", "A 3.20", "#1976FF", 5410, 2, "DALLARA"),
+            new(5, "V. COSTA", 0.0, null, true, 3, 18, false, "🇧🇷", "A 3.49", "#1976FF", 5262, 2, "DALLARA"),
+            new(6, "J. MILLER", 0.642, null, false, 2, 56, true, "🇺🇸", "A 2.87", "#1976FF", 5180, 2, "DALLARA"),
+        };
+        var playerLastLap = 108.326;
+        double?[] gaps = { null, 1.842, 3.216, 5.704, 7.126 };
+        double?[] deltaIRs = { 62, 45, 32, 24, 18 };
+        var standings = gt3.Select((row, index) =>
+        {
+            var lastLap = 108.0 + index * .4;
+            return new StandingsRow(index + 1, row.DriverCode, 12, lastLap, null, row.IsPlayer, row.FlagEmoji,
+                row.LicString, row.LicColorHex, row.IRating, row.CarClassId, row.ManufacturerBadge,
+                gaps[index], deltaIRs[index], lastLap - playerLastLap);
+        }).ToList();
+
+        _standingsWidget?.UpdateRows(standings);
+        _relativeWidget?.UpdateRows(gt3);
+        var status = new PlayerCarStatus(54.2, "MODERADO", 107.912, playerLastLap, 32.0);
+        _relativeWidget?.UpdatePlayerStatus(status);
+        var sessionStatus = new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#FF20E884", 3420, 20);
+        _standingsWidget?.UpdateSessionStatus(sessionStatus);
+        _relativeWidget?.UpdateSessionStatus(sessionStatus);
+        _radarWidget?.UpdateStatus(new RadarStatus(true, false, new List<RadarBlip> { new(28, "P. SANTOS"), new(-18, "A. SOUZA") }, true));
+        _fuelWidget?.UpdateStatus(new FuelStatus(43.9, 3.4, 2.05, 21.4, 2315));
+        _weatherWidget?.UpdateStatus(new WeatherStatus(24.0, 32.0, 0.0, 1, false, new List<TrackPositionDot>()));
+        _tireWidget?.UpdateStatus(new TireWearStatus(
+            new TireCornerWear(0.62, 0.6, 0.58), new TireCornerWear(0.6, 0.58, 0.6),
+            new TireCornerWear(0.55, 0.52, 0.5), new TireCornerWear(0.5, 0.52, 0.55), null));
+
+        // Spread every widget across a wide, non-overlapping grid -- this fixture is captured for
+        // design review (screenshots at each widget's own MinWidth/MinHeight), and an overlap would
+        // corrupt those captures the same way a stale layout from a previous run would.
+        _standingsWidget!.Left = 20; _standingsWidget.Top = 60;
+        _relativeWidget!.Left = 620; _relativeWidget.Top = 60;
+        _fuelWidget!.Left = 1060; _fuelWidget.Top = 60;
+        _weatherWidget!.Left = 1060; _weatherWidget.Top = 260;
+        _tireWidget!.Left = 1060; _tireWidget.Top = 460;
+        _radarWidget!.Left = 1350; _radarWidget.Top = 60;
+        _locked = false;
+        ApplyClickThrough();
+
+        // Do not let a user's normal "hidden outside the track" preference conceal a review
+        // capture.  This branch is only reachable with --preview and never calls PersistLayout.
+        foreach (var widget in new Window[] { _standingsWidget, _relativeWidget, _radarWidget, _fuelWidget, _weatherWidget, _tireWidget })
+        {
+            widget.WindowStartupLocation = WindowStartupLocation.Manual;
+            widget.Visibility = Visibility.Visible;
+        }
     }
 
     /// <summary>Runs once per app session, the first time TelemetryReader reports a detected
@@ -260,9 +321,7 @@ public partial class MainWindow : Window
         // Locking is shared, not independent per window (see RelativeOverlayWindow's own comment)
         // -- one tray toggle moves both the coaching card and the P2P strip in and out of edit mode
         // together, since they're meant to be positioned once and then both stay out of the way.
-        _relativeWindow?.SetLocked(_locked);
         _relativeWidget?.SetLocked(_locked);
-        _relativeWidget2?.SetLocked(_locked);
         _standingsWidget?.SetLocked(_locked);
         _fuelWidget?.SetLocked(_locked);
         _weatherWidget?.SetLocked(_locked);
@@ -276,9 +335,7 @@ public partial class MainWindow : Window
         PersistLayout();
         if (_trayIcon is not null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
         _telemetryReader?.Dispose();
-        _relativeWindow?.Close();
         _relativeWidget?.Close();
-        _relativeWidget2?.Close();
         _standingsWidget?.Close();
         _fuelWidget?.Close();
         _weatherWidget?.Close();

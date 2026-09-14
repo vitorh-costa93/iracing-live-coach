@@ -26,6 +26,7 @@ public partial class FuelWidget : Window
         _layout = layout;
         _onChanged = onChanged;
         DataContext = _viewModel;
+        ApplyColumnsFromLayout();
 
         Width = _layout.Width;
         Height = _layout.Height;
@@ -38,6 +39,26 @@ public partial class FuelWidget : Window
     }
 
     public void UpdateStatus(FuelStatus status) => _viewModel.Apply(status);
+
+    public void SetColumns(bool level, bool usePerHour, bool averagePerLap, bool lapsRemaining, bool timeRemaining)
+    {
+        _layout.FuelShowLevel = level;
+        _layout.FuelShowUsePerHour = usePerHour;
+        _layout.FuelShowAveragePerLap = averagePerLap;
+        _layout.FuelShowLapsRemaining = lapsRemaining;
+        _layout.FuelShowTimeRemaining = timeRemaining;
+        ApplyColumnsFromLayout();
+        _onChanged();
+    }
+
+    private void ApplyColumnsFromLayout()
+    {
+        _viewModel.ShowLevel = _layout.FuelShowLevel;
+        _viewModel.ShowUsePerHour = _layout.FuelShowUsePerHour;
+        _viewModel.ShowAveragePerLap = _layout.FuelShowAveragePerLap;
+        _viewModel.ShowLapsRemaining = _layout.FuelShowLapsRemaining;
+        _viewModel.ShowTimeRemaining = _layout.FuelShowTimeRemaining;
+    }
 
     public void SetLocked(bool locked)
     {

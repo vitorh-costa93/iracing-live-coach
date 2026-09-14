@@ -56,15 +56,33 @@ public partial class ControlPanelWindow : Window
             _widgetsByKey[key] = window;
             var widgetLayout = _store.Get(key, window.Width, window.Height);
             _layoutsByKey[key] = widgetLayout;
-            var row = new ControlPanelRowViewModel(key, displayName, widgetLayout.Visible);
+            window.Opacity = Math.Clamp(widgetLayout.Opacity, 0.25, 1.0);
+            var row = new ControlPanelRowViewModel(key, displayName, widgetLayout.Visible, window.Opacity);
             row.VisibilityChanged += visible =>
             {
                 widgetLayout.Visible = visible;
                 _store.Save();
                 ApplyCombinedVisibility(key);
             };
+            row.OpacityChanged += opacity =>
+            {
+                widgetLayout.Opacity = opacity;
+                window.Opacity = opacity;
+                _store.Save();
+            };
             _viewModel.Rows.Add(row);
             ApplyCombinedVisibility(key);
+        }
+
+        if (_widgetsByKey.TryGetValue("fuel", out var fuelWindow) && fuelWindow is FuelWidget fuel && _layoutsByKey.TryGetValue("fuel", out var fuelLayout))
+        {
+            _viewModel.FuelColumns.Load(fuelLayout);
+            _viewModel.FuelColumns.Changed += () => fuel.SetColumns(
+                _viewModel.FuelColumns.Level,
+                _viewModel.FuelColumns.UsePerHour,
+                _viewModel.FuelColumns.AveragePerLap,
+                _viewModel.FuelColumns.LapsRemaining,
+                _viewModel.FuelColumns.TimeRemaining);
         }
     }
 
