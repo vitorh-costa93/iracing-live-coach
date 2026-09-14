@@ -29,6 +29,9 @@ public class FullRelativeRowViewModel
     public Brush P2PBrush { get; }
     public bool IsPlayerRow { get; }
     public Brush RowForegroundBrush { get; }
+    public string ClassBadgeText { get; }
+    public bool HasClassBadge { get; }
+    public Brush ClassAccentBrush { get; }
 
     private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
     private static readonly Brush P2PCooldownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA5, 0x2C));
@@ -58,6 +61,14 @@ public class FullRelativeRowViewModel
         LicBrush = ParseLicColor(row.LicColorHex);
         IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
         GapText = row.GapSeconds is double gap ? $"{(gap >= 0 ? "+" : "")}{gap.ToString("0.0", CultureInfo.InvariantCulture)}" : "--";
+
+        // Position by class -- "igual funciona no Kapps hoje" (14/09/2026). See StandingsRowViewModel's
+        // own comment: CarClassPosition/CarClassColor are both real DriverModel fields.
+        HasClassBadge = !string.IsNullOrEmpty(row.ClassShortName);
+        ClassBadgeText = HasClassBadge ? $"P{row.ClassPosition} {row.ClassShortName}" : "";
+        ClassAccentBrush = row.ClassColorHex is not null
+            ? ParseLicColor(row.ClassColorHex)
+            : (Brush)System.Windows.Application.Current.Resources["F1AccentBrush"];
 
         // P2PSecondsRemaining/P2PInCooldown are derived from the SF23's own documented Overtake
         // System rules (20s active/100s cooldown) applied to the real CarIdxP2P_Status transition

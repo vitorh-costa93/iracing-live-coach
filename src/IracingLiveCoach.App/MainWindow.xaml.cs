@@ -143,7 +143,7 @@ public partial class MainWindow : Window
             var lastLap = 108.0 + index * .4;
             return new StandingsRow(index + 1, row.DriverCode, 12, lastLap, null, row.IsPlayer, row.FlagEmoji,
                 row.LicString, row.LicColorHex, row.IRating, row.CarClassId, row.ManufacturerBadge,
-                gaps[index], deltaIRs[index], lastLap - playerLastLap);
+                gaps[index], deltaIRs[index], lastLap - playerLastLap, "GT3", "#FF1976FF", index + 1);
         }).ToList();
 
         _standingsWidget?.UpdateRows(standings);

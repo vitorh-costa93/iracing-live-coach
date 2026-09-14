@@ -33,6 +33,9 @@ public class StandingsRowViewModel
     public bool IsPlayer { get; }
     public Brush RowForegroundBrush { get; }
     public Brush PositionBrush { get; }
+    public string ClassBadgeText { get; }
+    public bool HasClassBadge { get; }
+    public Brush ClassAccentBrush { get; }
 
     private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
     private static readonly System.Collections.Generic.Dictionary<string, Brush> LicBrushCache = new();
@@ -55,6 +58,17 @@ public class StandingsRowViewModel
         LicBrush = ParseLicColor(row.LicColorHex);
         IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
         LastLapText = row.LastLapTime is double t ? IracingLiveCoach.Core.LapTimeFormatting.Format(t) : "--";
+
+        // Position by class -- "igual funciona no Kapps hoje" (14/09/2026): a multiclass field's
+        // overall position alone hides where a car stands within its own class. CarClassPosition
+        // and CarClassColor are both real DriverModel fields (see GetIdentity's own doc comment) --
+        // CarClassColor is iRacing's OWN per-class color assignment, so the accent bar matches
+        // whatever color the sim itself already uses for that class, not an invented palette.
+        HasClassBadge = !string.IsNullOrEmpty(row.ClassShortName);
+        ClassBadgeText = HasClassBadge ? $"P{row.ClassPosition} {row.ClassShortName}" : "";
+        ClassAccentBrush = row.ClassColorHex is not null
+            ? ParseLicColor(row.ClassColorHex)
+            : (Brush)System.Windows.Application.Current.Resources["F1AccentBrush"];
 
         // The player's own row gets a dark foreground since its Border background is the bright
         // F1HighlightBrush cyan -- F1TextBrush's near-white would be nearly illegible against it.
