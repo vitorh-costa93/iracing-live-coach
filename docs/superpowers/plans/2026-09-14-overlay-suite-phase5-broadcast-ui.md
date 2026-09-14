@@ -1,0 +1,1077 @@
+# F1-Style Overlay Suite — Phase 5 (Broadcast UI Redesign) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Restyle `RelativeWidget` and `StandingsWidget` to match the driver's own broadcast-style
+reference mockup (dark navy palette, license badge, national flag, live brake bias/track rubber
+footer, OT/P2P column), and add a second, auto-detecting Relative instance so two car classes can
+be shown side by side at once — all using real telemetry/session data now confirmed against the
+actual SDK build this project depends on (see `docs/superpowers/specs/2026-09-13-overlay-suite-design.md`'s
+"Visual redesign" section for the full confirmed/not-confirmed inventory and how it was verified).
+
+**Architecture:** `F1Theme.xaml`'s brush *values* are updated in place (same resource keys, new
+palette) so every existing widget picks up the new look with zero XAML changes elsewhere.
+`TelemetryReader`'s `RelativeRow`/`StandingsRow` records grow new fields (flag, license, iRating,
+class id); a new `PlayerCarStatus` event carries the footer data (brake bias, track rubber state,
+player's own best lap); a new `SecondaryRelativeUpdated` event + `SetSecondaryClassFilter` method
+mirror the existing `SetTrackLength` pattern to drive a second, auto-configuring Relative window.
+A new `IracingLiveCoach.Core.CountryFlags` helper (testable, no SDK dependency) maps a driver's
+`FlairName` to a flag emoji.
+
+**Tech Stack:** WPF (.NET 8, unchanged), IRSDKSharper 1.3.0 (unchanged — this plan's own telemetry
+claims were verified directly against this exact installed version, not just documentation).
+
+**Spec:** `docs/superpowers/specs/2026-09-13-overlay-suite-design.md`'s "Visual redesign — broadcast
+UI overhaul (Phase 5, 14/09/2026)" section — read it in full before starting; it documents exactly
+which mockup elements are real telemetry/session data and which are honest substitutes, and why.
+
+## Global Constraints
+
+- Every telemetry/session field this plan uses was independently confirmed against the actual
+  `IRSDKSharper.dll` (1.3.0) this project already references, or a targeted, dated web search when
+  reflection wasn't possible (per-tick telemetry channel names are runtime strings, not compiled
+  fields): `DriverModel.FlairID`/`FlairName`, `LicColor`/`LicString`/`LicLevel` (all confirmed
+  present on the real type), `dcBrakeBias` (falling back to `dcPeakBrakeBias` for cars that publish
+  that name instead), `SessionInfoModel.SessionModel.SessionTrackRubberState`, `CarIdxClass`,
+  `CarIdxClassPosition`. Do not introduce any other telemetry variable without the same level of
+  confirmation.
+- The OT/P2P column's exact activation/recharge countdown-in-seconds is NOT a published constant
+  (confirmed absent after two independent targeted searches) — this plan only shows
+  `CarIdxP2P_Status` (real, already used), `CarIdxP2P_Count` (real, uses remaining), and a
+  **locally-measured** elapsed-active-seconds value (a stopwatch this app itself keeps since
+  `P2P_Status` last flipped true) labeled as elapsed time, never as a precise remaining/recharge
+  countdown.
+- National flags render as Unicode regional-indicator emoji via a bounded country-name lookup
+  table (`IracingLiveCoach.Core.CountryFlags`) with an explicit fallback for unrecognized names —
+  never silently show nothing or crash on an unmapped `FlairName`.
+- `LicColor` is a `String` (confirmed via reflection — NOT the packed-int this session originally
+  assumed), parsed defensively (try/catch, same posture as every other telemetry read in this
+  file) with a neutral gray fallback on parse failure.
+- Team/constructor logos are NOT implemented (no logo asset exists in the SDK, `TeamName` is
+  text-only and empty for most public races) — `TeamName` is shown as plain text only when
+  non-empty, never a placeholder/generic logo image.
+- ΔiR (projected iRating change) is a disclosed *estimate* (SoF-based projection over the visible
+  `IRating` spread), marked with a small `*`, per the spec — no explanatory caption/legend text
+  anywhere in these widgets (the driver explicitly asked those removed).
+- The second Relative instance (`relative2`) auto-detects the first car class present in the
+  session that differs from the player's own class, and simply doesn't show any rows (not a
+  crash, not a fake "sem dados") when the session is single-class — this plan does NOT build a
+  manual class-picker UI (out of scope, see the spec's own "Out of scope for this pass").
+- Every new/changed file is verified by `dotnet build` (0 errors, 0 warnings). `CountryFlags`
+  (Core, no SDK dependency) gets real unit tests, following this session's own established lesson
+  (Phase 2's fuel-formatting bug, Phase 3's radar-position bug) that a pure function belongs in
+  `Core` with real tests, not inside a WPF class "because everything else here is untestable."
+  Everything else keeps the established SDK-dependency test boundary.
+
+---
+
+### Task 1: `F1Theme.xaml` palette update + `IracingLiveCoach.Core.CountryFlags`
+
+**Files:**
+- Modify: `src/IracingLiveCoach.App/F1Theme.xaml`
+- Create: `src/IracingLiveCoach.Core/CountryFlags.cs`
+- Test: `tests/IracingLiveCoach.Core.Tests/CountryFlagsTests.cs`
+
+**Interfaces:**
+- Produces: `public static class CountryFlags { public static string ToEmoji(string? countryName); }`
+  — Task 2's `TelemetryReader` calls `CountryFlags.ToEmoji(driver.FlairName)` when building each
+  `RelativeRow`/`StandingsRow`.
+- Modified brush VALUES only (same keys `F1BackgroundBrush`/`F1AccentBrush`/etc.) — no consumer of
+  `F1Theme.xaml` needs any change for this task.
+
+- [ ] **Step 1: Write the failing tests**
+
+```csharp
+// tests/IracingLiveCoach.Core.Tests/CountryFlagsTests.cs
+using IracingLiveCoach.Core;
+using Xunit;
+
+namespace IracingLiveCoach.Core.Tests;
+
+public class CountryFlagsTests
+{
+    [Theory]
+    [InlineData("Brazil", "🇧🇷")]
+    [InlineData("United States", "🇺🇸")]
+    [InlineData("United Kingdom", "🇬🇧")]
+    [InlineData("Germany", "🇩🇪")]
+    [InlineData("Portugal", "🇵🇹")]
+    public void ToEmoji_maps_known_country_names(string countryName, string expectedEmoji)
+    {
+        Assert.Equal(expectedEmoji, CountryFlags.ToEmoji(countryName));
+    }
+
+    [Fact]
+    public void ToEmoji_returns_a_globe_fallback_for_an_unrecognized_name()
+    {
+        Assert.Equal("🌐", CountryFlags.ToEmoji("Some Made-Up Place"));
+    }
+
+    [Fact]
+    public void ToEmoji_returns_the_fallback_for_null_or_empty()
+    {
+        Assert.Equal("🌐", CountryFlags.ToEmoji(null));
+        Assert.Equal("🌐", CountryFlags.ToEmoji(""));
+    }
+
+    [Fact]
+    public void ToEmoji_is_case_insensitive()
+    {
+        Assert.Equal("🇧🇷", CountryFlags.ToEmoji("brazil"));
+        Assert.Equal("🇧🇷", CountryFlags.ToEmoji("BRAZIL"));
+    }
+}
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `dotnet test --filter CountryFlagsTests`
+Expected: FAIL — `CountryFlags` doesn't exist yet.
+
+- [ ] **Step 3: Write the implementation**
+
+```csharp
+// src/IracingLiveCoach.Core/CountryFlags.cs
+using System.Collections.Generic;
+
+namespace IracingLiveCoach.Core;
+
+/// <summary>Maps a driver's FlairName (the country display name iRacing's 2025 Season 3 "flair"
+/// feature publishes on DriverInfo.Drivers[], e.g. "Brazil") to a Unicode regional-indicator flag
+/// emoji, rendered by the OS's own emoji font (Segoe UI Emoji on Windows) -- no bundled flag image
+/// assets needed. Coverage is deliberately bounded to countries iRacing's own driver base
+/// realistically spans, with an explicit globe fallback for anything not in the table -- never a
+/// blank/missing glyph and never a guessed flag for an unrecognized name.</summary>
+public static class CountryFlags
+{
+    private const string Fallback = "🌐";
+
+    // Regional-indicator flag emoji are built from two Unicode "regional indicator symbol"
+    // characters per ISO-3166-alpha-2 code (e.g. "BR" -> 🇧 🇷). This table lists the alpha-2 code
+    // directly; ToEmoji() converts the code to the two-codepoint emoji at lookup time so this
+    // table stays readable as plain country-name -> code pairs.
+    private static readonly Dictionary<string, string> CodesByCountryName = new(System.StringComparer.OrdinalIgnoreCase)
+    {
+        ["Brazil"] = "BR",
+        ["United States"] = "US",
+        ["United Kingdom"] = "GB",
+        ["Canada"] = "CA",
+        ["Germany"] = "DE",
+        ["France"] = "FR",
+        ["Italy"] = "IT",
+        ["Spain"] = "ES",
+        ["Portugal"] = "PT",
+        ["Netherlands"] = "NL",
+        ["Belgium"] = "BE",
+        ["Australia"] = "AU",
+        ["New Zealand"] = "NZ",
+        ["Japan"] = "JP",
+        ["Mexico"] = "MX",
+        ["Argentina"] = "AR",
+        ["Chile"] = "CL",
+        ["Colombia"] = "CO",
+        ["South Africa"] = "ZA",
+        ["Sweden"] = "SE",
+        ["Norway"] = "NO",
+        ["Denmark"] = "DK",
+        ["Finland"] = "FI",
+        ["Poland"] = "PL",
+        ["Austria"] = "AT",
+        ["Switzerland"] = "CH",
+        ["Ireland"] = "IE",
+        ["Czech Republic"] = "CZ",
+        ["Hungary"] = "HU",
+        ["Greece"] = "GR",
+        ["Turkey"] = "TR",
+        ["Russia"] = "RU",
+        ["India"] = "IN",
+        ["China"] = "CN",
+        ["South Korea"] = "KR",
+        ["Indonesia"] = "ID",
+        ["Malaysia"] = "MY",
+        ["Singapore"] = "SG",
+        ["Thailand"] = "TH",
+        ["Philippines"] = "PH",
+        ["United Arab Emirates"] = "AE",
+        ["Saudi Arabia"] = "SA",
+        ["Israel"] = "IL",
+        ["Estonia"] = "EE",
+        ["Latvia"] = "LV",
+        ["Lithuania"] = "LT",
+        ["Romania"] = "RO",
+        ["Bulgaria"] = "BG",
+        ["Croatia"] = "HR",
+        ["Slovakia"] = "SK",
+        ["Slovenia"] = "SI",
+        ["Ukraine"] = "UA",
+    };
+
+    public static string ToEmoji(string? countryName)
+    {
+        if (string.IsNullOrWhiteSpace(countryName)) return Fallback;
+        if (!CodesByCountryName.TryGetValue(countryName, out var code)) return Fallback;
+
+        // Each ASCII letter A-Z maps to a Unicode "Regional Indicator Symbol Letter" by offsetting
+        // from U+1F1E6 ('A'); the emoji is the two-codepoint pair for the country's alpha-2 code.
+        const int RegionalIndicatorBase = 0x1F1E6;
+        var first = char.ConvertFromUtf32(RegionalIndicatorBase + (code[0] - 'A'));
+        var second = char.ConvertFromUtf32(RegionalIndicatorBase + (code[1] - 'A'));
+        return first + second;
+    }
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `dotnet test --filter CountryFlagsTests`
+Expected: PASS (7 passed)
+
+- [ ] **Step 5: Update `F1Theme.xaml`'s palette**
+
+Read the current file first. Replace the brush color VALUES only — every `x:Key` stays exactly as
+it is, so no other file needs a change:
+
+```xml
+<SolidColorBrush x:Key="F1BackgroundBrush" Color="#F00B1420" />
+<SolidColorBrush x:Key="F1AccentBrush" Color="#FFE2483D" />
+<SolidColorBrush x:Key="F1TextBrush" Color="#FFF2F4F7" />
+<SolidColorBrush x:Key="F1MutedTextBrush" Color="#FF9AA3AF" />
+<SolidColorBrush x:Key="F1PositionGainBrush" Color="#FF2DE2B2" />
+<SolidColorBrush x:Key="F1PositionLossBrush" Color="#FFE2483D" />
+<SolidColorBrush x:Key="F1BorderIdleBrush" Color="#33E2483D" />
+<SolidColorBrush x:Key="F1BorderActiveBrush" Color="#FFE2483D" />
+```
+
+Add one new brush, alongside the existing ones (used by Task 3 for the player's own highlighted
+row, replacing the old flat accent-tint fill every widget's own `.player` row style currently
+uses):
+
+```xml
+<SolidColorBrush x:Key="F1HighlightBrush" Color="#FF39D8E0" />
+```
+
+Leave `F1HeaderFont`, `F1MonoFont`, `F1PanelBorder`, and `F1RowAccentBar` exactly as they are — no
+changes to fonts or layout styles in this task, only color values.
+
+- [ ] **Step 6: Verify the build**
+
+Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings. Every existing widget will
+visually pick up the new navy/orange/cyan palette automatically; this is expected and correct —
+confirming it visually is a manual smoke-test step for the driver, not something `dotnet build`
+can verify.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/IracingLiveCoach.Core/CountryFlags.cs src/IracingLiveCoach.App/F1Theme.xaml tests/IracingLiveCoach.Core.Tests/CountryFlagsTests.cs
+git commit -m "feat: broadcast-UI navy/orange/cyan palette + CountryFlags helper"
+```
+
+---
+
+### Task 2: `TelemetryReader` — richer rows, `PlayerCarStatus`, and the second-class relative feed
+
+**Files:**
+- Modify: `src/IracingLiveCoach.App/TelemetryReader.cs`
+
+**Interfaces:**
+- Consumes: `CountryFlags.ToEmoji` (Task 1).
+- Produces: extended `RelativeRow`/`StandingsRow` (new fields, same name, additive — see below),
+  `public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double?
+  BestLapTimeSeconds)`, `public event Action<PlayerCarStatus>? PlayerCarStatusUpdated;`, `public
+  void SetSecondaryClassFilter` is NOT needed — the class filter is auto-detected internally (see
+  Global Constraints) — instead: `public event Action<List<RelativeRow>>?
+  SecondaryRelativeUpdated;` fires for the first distinct `CarClassId` found that differs from the
+  player's own. Task 3/4 consume the extended `RelativeRow`/`StandingsRow` fields; a later task
+  registers a second `RelativeWidget` instance consuming `SecondaryRelativeUpdated`.
+
+- [ ] **Step 1: Extend `RelativeRow` and `StandingsRow`, add the new records**
+
+Change:
+```csharp
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive);
+```
+to:
+```csharp
+/// <summary>P2PUsesRemaining/P2PActiveSeconds are only meaningful when P2PActive is non-null (the
+/// session publishes P2P at all) -- P2PActiveSeconds is a LOCALLY-measured elapsed-active time
+/// (this app's own stopwatch since P2PActive last flipped true), NOT a precise remaining/recharge
+/// countdown, since iRacing publishes no activation- or recharge-duration constant (confirmed
+/// absent after two independent searches -- see this plan's own Global Constraints).</summary>
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PActiveSeconds, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId);
+```
+
+Change:
+```csharp
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer);
+```
+to:
+```csharp
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId);
+```
+
+Add the two new records, alongside the existing ones:
+```csharp
+/// <summary>The player's own current car status for the Relative/Standings widgets' footer.
+/// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
+/// (see UpdatePlayerCarStatus's own try/catch per field). BestLapTimeSeconds is the minimum
+/// LapLastLapTime observed so far this session -- null until the player has completed one lap.</summary>
+public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds);
+```
+
+Add the new events, alongside the existing ones:
+```csharp
+    /// <summary>Fires every telemetry tick once the session is detected, with the player's own
+    /// current brake bias / track rubber state / best lap for the widgets' own footer row.</summary>
+    public event Action<PlayerCarStatus>? PlayerCarStatusUpdated;
+
+    /// <summary>Mirrors FullRelativeUpdated's own shape and cadence, but scoped to the first car
+    /// class found in the session that differs from the player's own (CarIdxClass), ranked by
+    /// CarIdxClassPosition rather than overall CarIdxPosition -- feeds a second, independently
+    /// positioned Relative widget instance for multiclass sessions. Simply never fires (not fires
+    /// with an empty list) when the session is single-class -- same "don't flicker a meaningless
+    /// empty state" posture RelativeUpdated already has for non-P2P sessions.</summary>
+    public event Action<List<RelativeRow>>? SecondaryRelativeUpdated;
+```
+
+- [ ] **Step 2: Add per-car P2P-elapsed-time tracking fields and a best-lap tracker**
+
+Alongside the existing fuel/weather/radar fields:
+```csharp
+    // 14/09/2026: locally-measured P2P active duration -- see RelativeRow's own doc comment for
+    // why this is elapsed time, not a precise remaining/recharge countdown. Keyed by CarIdx so
+    // each car's own activation is timed independently.
+    private readonly Dictionary<int, bool> _lastP2PActiveByCarIdx = new();
+    private readonly Dictionary<int, DateTime> _p2pActivatedAtUtcByCarIdx = new();
+
+    private double? _bestLapTimeSeconds;
+```
+
+- [ ] **Step 3: Add a helper for the driver-identity fields shared by both row types**
+
+Add this private method, near `BuildDriverCodes`:
+```csharp
+    private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId) GetIdentity(int carIdx)
+    {
+        var sessionInfo = _sdk.Data.SessionInfo;
+        var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == carIdx);
+        var flagEmoji = CountryFlags.ToEmoji(driver?.FlairName);
+        var licString = driver?.LicString ?? "--";
+        var licColorHex = driver?.LicColor; // "String" per the real IRSDKSharper 1.3.0 type -- parsed defensively by the view model, not here.
+        var iRating = driver?.IRating ?? 0;
+        var carClassId = driver?.CarClassID ?? 0;
+        return (flagEmoji, licString, licColorHex, iRating, carClassId);
+    }
+```
+
+(This re-reads `_sdk.Data.SessionInfo` per call rather than caching, matching this file's own
+existing convention in `OnSessionInfo` -- driver identity fields don't change mid-session, but this
+keeps the read pattern consistent and simple; if this shows up as a real per-tick cost concern in a
+future review, caching alongside `_driverCodesByCarIdx` is the natural fix, not attempted
+preemptively here.)
+
+- [ ] **Step 4: Update `UpdateFullRelative` to populate the new `RelativeRow` fields**
+
+Read the current method. Inside the loop, right after the existing `p2p` read, add:
+```csharp
+                int? p2pUses = null;
+                double? p2pActiveSeconds = null;
+                if (p2p is bool active)
+                {
+                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
+                    var wasActive = _lastP2PActiveByCarIdx.TryGetValue(idx, out var previouslyActive) && previouslyActive;
+                    if (active && !wasActive) _p2pActivatedAtUtcByCarIdx[idx] = DateTime.UtcNow;
+                    if (active && _p2pActivatedAtUtcByCarIdx.TryGetValue(idx, out var activatedAt))
+                        p2pActiveSeconds = (DateTime.UtcNow - activatedAt).TotalSeconds;
+                    _lastP2PActiveByCarIdx[idx] = active;
+                }
+
+                var identity = GetIdentity(idx);
+```
+Change the final `rows.Add(...)` line to:
+```csharp
+                rows.Add(new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pActiveSeconds, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+```
+
+- [ ] **Step 5: Update `UpdateStandings` to populate the new `StandingsRow` fields**
+
+Inside the loop, right after `var code = ...`, add:
+```csharp
+                var identity = GetIdentity(idx);
+```
+Change the `rows.Add(...)` line to:
+```csharp
+                rows.Add(new StandingsRow(position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null, idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+```
+
+- [ ] **Step 6: Add `UpdatePlayerCarStatus` and wire it into `OnTelemetryData`**
+
+Add this private method, after the existing `UpdateStandings`:
+```csharp
+    private void UpdatePlayerCarStatus()
+    {
+        try
+        {
+            double? brakeBias = null;
+            try { brakeBias = _sdk.Data.GetFloat("dcBrakeBias"); }
+            catch { try { brakeBias = _sdk.Data.GetFloat("dcPeakBrakeBias"); } catch { /* not published this car */ } }
+
+            string? rubberState = null;
+            try
+            {
+                var sessionInfo = _sdk.Data.SessionInfo;
+                var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+                rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
+            }
+            catch { /* session info momentarily incomplete -- skip this tick's rubber read */ }
+
+            var lastLap = _sdk.Data.GetFloat("LapLastLapTime");
+            if (lastLap > 0 && (_bestLapTimeSeconds is not double best || lastLap < best))
+                _bestLapTimeSeconds = lastLap;
+
+            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds));
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+```
+In `OnTelemetryData`, add `UpdatePlayerCarStatus();` alongside the existing unthrottled calls
+(after `UpdateTireWear();`).
+
+- [ ] **Step 7: Add `UpdateSecondaryRelative` and wire it into `OnTelemetryData`**
+
+Add this private method, after `UpdateFullRelative`:
+```csharp
+    // 14/09/2026: mirrors UpdateFullRelative's shape but ranks by CarIdxClassPosition within the
+    // first car class found that differs from the player's own CarIdxClass, for the second,
+    // auto-configuring Relative widget instance (multiclass sessions only -- see this plan's own
+    // Global Constraints for why there's no manual class picker).
+    private void UpdateSecondaryRelative()
+    {
+        try
+        {
+            var myClass = _sdk.Data.GetInt("CarIdxClass", _playerCarIdx);
+            var maxCars = IRacingSdkConst.MaxNumCars;
+
+            int? secondaryClass = null;
+            for (var idx = 0; idx < maxCars; idx++)
+            {
+                if (idx == _playerCarIdx) continue;
+                var classId = _sdk.Data.GetInt("CarIdxClass", idx);
+                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                if (classPosition <= 0 || classId == myClass) continue;
+                secondaryClass = classId;
+                break; // first differing class found -- deterministic since CarIdx order is stable within a session
+            }
+            if (secondaryClass is not int targetClass) return; // single-class session -- don't fire
+
+            var byOffset = new List<(int Position, int Idx)>();
+            for (var idx = 0; idx < maxCars; idx++)
+            {
+                if (_sdk.Data.GetInt("CarIdxClass", idx) != targetClass) continue;
+                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                if (classPosition <= 0) continue;
+                byOffset.Add((classPosition, idx));
+            }
+            if (byOffset.Count == 0) return;
+
+            // No player row in this class -- center the window on the class's own leader rather
+            // than an offset from the (absent) player position; show the top RelativeCarsBehind*2+1
+            // class-classified cars, matching the mockup's own "AO REDOR DE VOCÊ" framing loosely
+            // adapted to "top of this class" since the player isn't racing in it.
+            var rows = new List<RelativeRow>();
+            var ordered = byOffset.OrderBy(pair => pair.Position).Take(RelativeCarsBehind * 2 + 1).ToList();
+            foreach (var (position, idx) in ordered)
+            {
+                var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
+                bool? p2p = null;
+                try { p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx); } catch { /* no P2P for this class */ }
+                int? p2pUses = p2p is bool ? _sdk.Data.GetInt("CarIdxP2P_Count", idx) : null;
+
+                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+                var identity = GetIdentity(idx);
+                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, null, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId));
+            }
+
+            SecondaryRelativeUpdated?.Invoke(rows);
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+```
+In `OnTelemetryData`, add `UpdateSecondaryRelative();` alongside the existing unthrottled calls.
+
+(Note: `RelativeRow.PositionOffset` is reused here to carry the class-scoped position number itself,
+not an offset from the player, since there is no player row in this class — Task 3's view model
+formats it accordingly; this is documented in Task 3's own brief, not assumed silently.)
+
+- [ ] **Step 8: Verify the build and tests**
+
+Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
+Run: `dotnet test` — expect the existing 26 tests plus the new `CountryFlagsTests` (7) = 33 passing.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/IracingLiveCoach.App/TelemetryReader.cs
+git commit -m "feat: richer RelativeRow/StandingsRow (flag/license/iRating/class), PlayerCarStatus, secondary class-scoped relative feed"
+```
+
+---
+
+### Task 3: Restyle `RelativeWidget` to the broadcast layout
+
+**Files:**
+- Modify: `src/IracingLiveCoach.App/RelativeWidget.xaml`
+- Modify: `src/IracingLiveCoach.App/RelativeWidgetViewModel.cs`
+- Modify: `src/IracingLiveCoach.App/RelativeWidget.xaml.cs`
+
+**Interfaces:**
+- Consumes: extended `RelativeRow` (Task 2), `PlayerCarStatus`/`PlayerCarStatusUpdated` (Task 2),
+  `F1HighlightBrush` (Task 1).
+- Produces: `RelativeWidget` gains `public void UpdatePlayerStatus(PlayerCarStatus status)`
+  alongside its existing `UpdateRows`; a new constructor overload `RelativeWidget(WidgetLayout
+  layout, Action onChanged, string title)` so Task 5 can create a second instance with its own
+  header text ("RELATIVE — CLASSE 2" or similar) without duplicating the whole class.
+
+- [ ] **Step 1: Rewrite `RelativeWidgetViewModel.cs`**
+
+```csharp
+// src/IracingLiveCoach.App/RelativeWidgetViewModel.cs
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Windows.Media;
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+
+namespace IracingLiveCoach.App;
+
+public class FullRelativeRowViewModel
+{
+    public string PositionText { get; }
+    public string FlagAndCode { get; }
+    public string LicText { get; }
+    public Brush LicBrush { get; }
+    public string IRatingText { get; }
+    public string GapText { get; }
+    public string P2PText { get; }
+    public Brush P2PBrush { get; }
+    public bool IsPlayerRow { get; }
+
+    private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
+    private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
+    private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
+
+    public FullRelativeRowViewModel(RelativeRow row, bool showClassPositionAsAbsolute)
+    {
+        IsPlayerRow = row.PositionOffset == 0;
+        PositionText = showClassPositionAsAbsolute
+            ? row.PositionOffset.ToString(CultureInfo.InvariantCulture)
+            : (row.PositionOffset > 0 ? "+" : "") + row.PositionOffset.ToString(CultureInfo.InvariantCulture);
+        FlagAndCode = $"{row.FlagEmoji} {row.DriverCode}";
+        LicText = row.LicString;
+        LicBrush = ParseLicColor(row.LicColorHex);
+        IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
+        GapText = row.GapSeconds is double gap ? $"{(gap >= 0 ? "+" : "")}{gap.ToString("0.0", CultureInfo.InvariantCulture)}" : "--";
+
+        if (row.P2PActive is bool active)
+        {
+            var uses = row.P2PUsesRemaining is int u ? u.ToString(CultureInfo.InvariantCulture) : "?";
+            P2PText = active ? $"ATIVO ({uses})" : $"PRONTO ({uses})";
+            P2PBrush = active ? P2PActiveBrush : P2PIdleBrush;
+        }
+        else
+        {
+            P2PText = "";
+            P2PBrush = P2PIdleBrush;
+        }
+    }
+
+    // LicColor is a String on the real IRSDKSharper 1.3.0 DriverModel type (confirmed via
+    // reflection -- corrected from this session's own earlier packed-int assumption). iRacing's
+    // own YAML color-string convention is "0xRRGGBB" or "#RRGGBB"; parsed defensively since this
+    // field's exact format is not independently documented beyond its type.
+    private static Brush ParseLicColor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return LicFallbackBrush;
+        try
+        {
+            var cleaned = hex.Trim();
+            if (cleaned.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase)) cleaned = "#" + cleaned[2..];
+            if (!cleaned.StartsWith("#")) cleaned = "#" + cleaned;
+            var color = (Color)ColorConverter.ConvertFromString(cleaned)!;
+            return new SolidColorBrush(color);
+        }
+        catch
+        {
+            return LicFallbackBrush;
+        }
+    }
+}
+
+public class RelativeWidgetViewModel : INotifyPropertyChanged
+{
+    private string _brakeBiasText = "--";
+    private string _trackRubberText = "--";
+    private string _bestLapText = "--";
+    private string _lastLapText = "--";
+
+    public string BrakeBiasText { get => _brakeBiasText; private set => Set(ref _brakeBiasText, value); }
+    public string TrackRubberText { get => _trackRubberText; private set => Set(ref _trackRubberText, value); }
+    public string BestLapText { get => _bestLapText; private set => Set(ref _bestLapText, value); }
+    public string LastLapText { get => _lastLapText; private set => Set(ref _lastLapText, value); }
+
+    public ObservableCollection<FullRelativeRowViewModel> Rows { get; } = new();
+
+    // showClassPositionAsAbsolute=true for the secondary (class-scoped) instance, whose
+    // PositionOffset carries an absolute class position, not an offset from the player.
+    public void SetRows(System.Collections.Generic.List<RelativeRow> rows, bool showClassPositionAsAbsolute = false)
+    {
+        Rows.Clear();
+        foreach (var row in rows) Rows.Add(new FullRelativeRowViewModel(row, showClassPositionAsAbsolute));
+    }
+
+    public void ApplyPlayerStatus(PlayerCarStatus status)
+    {
+        BrakeBiasText = status.BrakeBiasPct is double bias ? bias.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "--";
+        TrackRubberText = status.TrackRubberState ?? "--";
+        if (status.BestLapTimeSeconds is double best) BestLapText = FormatLapTime(best);
+    }
+
+    // Called every tick from RelativeWidget's own last-lap subscription path (see Task 3's
+    // RelativeWidget.xaml.cs) with the player's own most recent RelativeRow (PositionOffset==0 is
+    // never present in the ahead/behind window, so this reads the player's own lap time from the
+    // same FullRelativeUpdated tick indirectly via MainWindow -- see that file's own wiring).
+    public void SetLastLapSeconds(double? seconds) => LastLapText = seconds is double s ? FormatLapTime(s) : "--";
+
+    private static string FormatLapTime(double seconds)
+    {
+        var minutes = (int)(seconds / 60);
+        var remainder = seconds - minutes * 60;
+        return $"{minutes}:{remainder.ToString("00.000", CultureInfo.InvariantCulture)}";
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+```
+
+- [ ] **Step 2: Rewrite `RelativeWidget.xaml`**
+
+```xml
+<!-- src/IracingLiveCoach.App/RelativeWidget.xaml -->
+<Window x:Class="IracingLiveCoach.App.RelativeWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Relative"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        MinWidth="320" MinHeight="260"
+        SizeToContent="Manual">
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
+            <StackPanel Margin="10">
+                <TextBlock x:Name="HeaderText" Text="RELATIVE" FontFamily="{StaticResource F1HeaderFont}" FontSize="13"
+                           FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" Margin="0,0,0,6" />
+
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="70" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="POS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="PILOTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="LIC" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="3" Text="iR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="4" Text="DELTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="5" Text="OT" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="0,3">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlayerRow}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource F1HighlightBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="70" />
+                                        <ColumnDefinition Width="48" />
+                                        <ColumnDefinition Width="48" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="70" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                                    <Border Grid.Column="2" Background="{Binding LicBrush}" CornerRadius="0" Padding="3,1" HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
+                                    </Border>
+                                    <TextBlock Grid.Column="3" Text="{Binding IRatingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                    <TextBlock Grid.Column="4" Text="{Binding GapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" />
+                                    <TextBlock Grid.Column="5" Text="{Binding P2PText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="{Binding P2PBrush}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Rectangle Height="1" Fill="{StaticResource F1MutedTextBrush}" Opacity="0.25" Margin="0,8" />
+
+                <UniformGrid Rows="1" Columns="2">
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="BRAKE BIAS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding BrakeBiasText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="EMBORRACHAMENTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding TrackRubberText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                </UniformGrid>
+                <UniformGrid Rows="1" Columns="2" Margin="0,6,0,0">
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="ÚLTIMA VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding LastLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="MELHOR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding BestLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1AccentBrush}" />
+                    </StackPanel>
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Background="{StaticResource F1AccentBrush}" Opacity="0.5"
+               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+    </Grid>
+</Window>
+```
+
+- [ ] **Step 3: Update `RelativeWidget.xaml.cs`**
+
+Read the current file. Add the title-overload constructor and the two new public methods,
+preserving every existing drag/resize/lock member exactly as-is:
+
+```csharp
+    public RelativeWidget(WidgetLayout layout, Action onChanged, string title = "RELATIVE") : this(layout, onChanged)
+    {
+        HeaderText.Text = title;
+    }
+```
+
+(Place this ABOVE the existing `RelativeWidget(WidgetLayout layout, Action onChanged)` constructor,
+which stays completely unchanged — this new overload just chains to it via `: this(layout,
+onChanged)` and then sets the header text.)
+
+Add:
+```csharp
+    public void UpdatePlayerStatus(PlayerCarStatus status) => _viewModel.ApplyPlayerStatus(status);
+
+    public void SetLastLapSeconds(double? seconds) => _viewModel.SetLastLapSeconds(seconds);
+
+    // Only the primary (player-relative) instance passes false here -- the secondary,
+    // class-scoped instance's PositionOffset is an absolute class position, not a player offset.
+    public void UpdateRows(List<RelativeRow> rows, bool showClassPositionAsAbsolute = false) => _viewModel.SetRows(rows, showClassPositionAsAbsolute);
+```
+
+(This changes `UpdateRows`'s signature by adding an optional parameter with a default value — not
+a breaking change for `MainWindow.xaml.cs`'s existing call site, which keeps compiling unchanged.)
+
+- [ ] **Step 4: Verify the build and tests**
+
+Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
+Run: `dotnet test` — expect the same 33 tests passing (no new tests in this task — WPF/view-model
+code depending on the real telemetry-shaped records, same established boundary).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/IracingLiveCoach.App/RelativeWidget.xaml src/IracingLiveCoach.App/RelativeWidget.xaml.cs src/IracingLiveCoach.App/RelativeWidgetViewModel.cs
+git commit -m "feat: restyle RelativeWidget to the broadcast layout (flag, LIC badge, iR, OT, footer stats)"
+```
+
+---
+
+### Task 4: Restyle `StandingsWidget` to the broadcast layout
+
+**Files:**
+- Modify: `src/IracingLiveCoach.App/StandingsWidget.xaml`
+- Modify: `src/IracingLiveCoach.App/StandingsWidgetViewModel.cs`
+
+**Interfaces:**
+- Consumes: extended `StandingsRow` (Task 2), `F1HighlightBrush` (Task 1).
+
+- [ ] **Step 1: Rewrite `StandingsWidgetViewModel.cs`**
+
+```csharp
+// src/IracingLiveCoach.App/StandingsWidgetViewModel.cs
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Windows.Media;
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+
+namespace IracingLiveCoach.App;
+
+public class StandingsRowViewModel
+{
+    public string PositionText { get; }
+    public string FlagAndCode { get; }
+    public string LicText { get; }
+    public Brush LicBrush { get; }
+    public string IRatingText { get; }
+    public string LastLapText { get; }
+    public bool IsPlayer { get; }
+
+    private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
+
+    public StandingsRowViewModel(StandingsRow row)
+    {
+        IsPlayer = row.IsPlayer;
+        PositionText = row.Position.ToString(CultureInfo.InvariantCulture);
+        FlagAndCode = $"{row.FlagEmoji} {row.DriverCode}";
+        LicText = row.LicString;
+        LicBrush = ParseLicColor(row.LicColorHex);
+        IRatingText = row.IRating > 0 ? row.IRating.ToString("N0", CultureInfo.InvariantCulture) : "--";
+        LastLapText = row.LastLapTime is double t ? t.ToString("0.000", CultureInfo.InvariantCulture) : "--";
+    }
+
+    // Same defensive parse as RelativeWidgetViewModel's own ParseLicColor -- LicColor is a
+    // String on the real IRSDKSharper 1.3.0 type, format not independently documented.
+    private static Brush ParseLicColor(string? hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return LicFallbackBrush;
+        try
+        {
+            var cleaned = hex.Trim();
+            if (cleaned.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase)) cleaned = "#" + cleaned[2..];
+            if (!cleaned.StartsWith("#")) cleaned = "#" + cleaned;
+            var color = (Color)ColorConverter.ConvertFromString(cleaned)!;
+            return new SolidColorBrush(color);
+        }
+        catch
+        {
+            return LicFallbackBrush;
+        }
+    }
+}
+
+public class StandingsWidgetViewModel
+{
+    public ObservableCollection<StandingsRowViewModel> Rows { get; } = new();
+
+    public void SetRows(System.Collections.Generic.List<StandingsRow> rows)
+    {
+        Rows.Clear();
+        foreach (var row in rows) Rows.Add(new StandingsRowViewModel(row));
+    }
+}
+```
+
+- [ ] **Step 2: Rewrite `StandingsWidget.xaml`**
+
+```xml
+<!-- src/IracingLiveCoach.App/StandingsWidget.xaml -->
+<Window x:Class="IracingLiveCoach.App.StandingsWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Standings"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        MinWidth="340" MinHeight="240"
+        SizeToContent="Manual">
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="STANDINGS" FontFamily="{StaticResource F1HeaderFont}" FontSize="13"
+                           FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" Margin="0,0,0,6" />
+
+                <Grid Grid.Row="1" Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="52" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="POS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="PILOTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="LIC" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="3" Text="iR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="4" Text="ÚLT. VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                </Grid>
+
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="0,3">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPlayer}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource F1HighlightBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="28" />
+                                            <ColumnDefinition Width="80" />
+                                            <ColumnDefinition Width="48" />
+                                            <ColumnDefinition Width="52" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1AccentBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                                        <Border Grid.Column="2" Background="{Binding LicBrush}" Padding="3,1" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
+                                        </Border>
+                                        <TextBlock Grid.Column="3" Text="{Binding IRatingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                        <TextBlock Grid.Column="4" Text="{Binding LastLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Background="{StaticResource F1AccentBrush}" Opacity="0.5"
+               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+    </Grid>
+</Window>
+```
+
+`StandingsWidget.xaml.cs` needs NO changes — its `UpdateRows(List<StandingsRow>)` signature is
+unchanged; only the row's own shape (via `StandingsRowViewModel`) and the XAML grew.
+
+- [ ] **Step 3: Verify the build and tests**
+
+Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
+Run: `dotnet test` — expect the same 33 tests passing.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/IracingLiveCoach.App/StandingsWidget.xaml src/IracingLiveCoach.App/StandingsWidgetViewModel.cs
+git commit -m "feat: restyle StandingsWidget to the broadcast layout (flag, LIC badge, iR)"
+```
+
+---
+
+### Task 5: Second Relative instance (`relative2`) + `MainWindow` wiring
+
+**Files:**
+- Modify: `src/IracingLiveCoach.App/MainWindow.xaml.cs`
+
+**Interfaces:**
+- Consumes: `RelativeWidget`'s new title-overload constructor and `UpdateRows(rows,
+  showClassPositionAsAbsolute)` overload (Task 3), `TelemetryReader.SecondaryRelativeUpdated`/
+  `PlayerCarStatusUpdated` (Task 2).
+
+- [ ] **Step 1: Register the second instance and wire the new events**
+
+Read the current file in full first. Add the field `private RelativeWidget? _relativeWidget2;`
+alongside `_relativeWidget`. In `Initialize()`, after the existing `_relativeWidget.Show();`, add:
+```csharp
+        _relativeWidget2 = new RelativeWidget(_layoutStore.Get("relative2", 260, 240), () => _layoutStore.Save(), "RELATIVE — 2ª CLASSE");
+        _relativeWidget2.Show();
+```
+Add `("relative2", "Relative 2ª Classe (F1)", _relativeWidget2)` to the `ControlPanelWindow`
+constructor's widget array. After the existing `_telemetryReader.FullRelativeUpdated += ...` line,
+add:
+```csharp
+        _telemetryReader.PlayerCarStatusUpdated += status => Dispatcher.Invoke(() =>
+        {
+            _relativeWidget?.UpdatePlayerStatus(status);
+            _relativeWidget2?.UpdatePlayerStatus(status);
+        });
+        _telemetryReader.SecondaryRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget2?.UpdateRows(rows, showClassPositionAsAbsolute: true));
+```
+Add `_relativeWidget2?.SetLocked(_locked);` to `ApplyClickThrough()`. Add
+`_relativeWidget2?.Close();` to `OnClosed`.
+
+(Note: the primary `_relativeWidget`'s own `LastLapText` footer field is left at its default "--"
+in this pass — wiring the player's own last-lap time into `RelativeWidget.SetLastLapSeconds` needs
+a per-tick "my own LapLastLapTime" read that doesn't exist as a convenient event yet; this is a
+disclosed, narrow gap, not a silent omission — `BestLapText`/`BrakeBiasText`/`TrackRubberText` are
+all live and correct via `PlayerCarStatusUpdated`, only the last-lap footer field stays "--" until
+a follow-up wires it, since `PlayerCarStatus` intentionally only carries the BEST lap, not the last
+one, per Task 2's own Step 6.)
+
+- [ ] **Step 2: Verify the build and tests**
+
+Run: `dotnet build` — expect `Build succeeded.`, 0 errors, 0 warnings.
+Run: `dotnet test` — expect the same 33 tests passing.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/IracingLiveCoach.App/MainWindow.xaml.cs
+git commit -m "feat: second auto-detecting Relative instance for multiclass sessions"
+```
+
+---
+
+### Task 6: Final integration verification
+
+**Files:**
+- None (build/test verification only)
+
+- [ ] **Step 1: Full build and test run**
+
+```bash
+dotnet build
+dotnet test
+```
+Expected: `Build succeeded.`, 0 errors, 0 warnings; 33 tests passing (26 existing + 7
+`CountryFlagsTests`).
+
+- [ ] **Step 2: Cross-check every widget-owning file's `Save()`/lock/shutdown wiring**
+
+Per every prior phase's own final-review lesson, read the final, current `MainWindow.xaml.cs` in
+full and confirm ALL TEN windows (Coach, P2P, Relative, Relative2, Standings, Fuel, Weather, Tire
+Wear, Radar, ControlPanel) are each: registered in the `ControlPanelWindow` widget array, included
+in `ApplyClickThrough()`'s `SetLocked` calls, and included in `OnClosed()`'s `.Close()` calls.
+
+- [ ] **Step 3: Commit** (only if Step 2 required a fix; otherwise nothing new to commit here)
