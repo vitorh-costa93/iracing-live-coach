@@ -17,8 +17,25 @@ public class RadarBlipViewModel
     {
         var clamped = System.Math.Clamp(blip.DistanceMeters, -maxRangeMeters, maxRangeMeters);
         // Ahead (positive meters) draws ABOVE the player marker; behind draws below -- matching
-        // the spec's own "player fixed at center-bottom, ahead is up" radar convention.
-        Top = playerY - (clamped / maxRangeMeters) * playerY;
+        // the spec's own "player fixed at center-bottom, ahead is up" radar convention. The two
+        // directions have different amounts of canvas space available (playerY sits near the
+        // bottom on purpose) so each direction is scaled against its own actual span, not a
+        // shared one -- reusing playerY for the "behind" scale would push blips past the bottom
+        // edge of the canvas.
+        double top;
+        if (clamped >= 0)
+        {
+            // Ahead: maps [0, maxRangeMeters] onto [playerY, 0] -- the headroom above the player marker.
+            top = playerY - (clamped / maxRangeMeters) * playerY;
+        }
+        else
+        {
+            // Behind: maps [0, maxRangeMeters] onto [playerY, canvasHeight] -- the space below the
+            // player marker, which is NOT the same size as the headroom above it.
+            var behindSpan = canvasHeight - playerY;
+            top = playerY + (-clamped / maxRangeMeters) * behindSpan;
+        }
+        Top = top;
         ToolTip = blip.DriverCode;
     }
 }
