@@ -8,7 +8,7 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        MinWidth="320" MinHeight="260"
+        MinWidth="380" MinHeight="260"
         SizeToContent="Manual">
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
         <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
@@ -19,7 +19,7 @@
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
-                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="150" />
                         <ColumnDefinition Width="48" />
                         <ColumnDefinition Width="48" />
                         <ColumnDefinition Width="*" />
@@ -49,14 +49,14 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="28" />
-                                        <ColumnDefinition Width="70" />
+                                        <ColumnDefinition Width="150" />
                                         <ColumnDefinition Width="48" />
                                         <ColumnDefinition Width="48" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="70" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{Binding RowForegroundBrush}" TextTrimming="CharacterEllipsis" />
                                     <Border Grid.Column="2" Background="{Binding LicBrush}" CornerRadius="0" Padding="3,1" HorizontalAlignment="Left">
                                         <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
                                     </Border>

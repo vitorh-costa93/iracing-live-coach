@@ -21,11 +21,13 @@ public class FullRelativeRowViewModel
     public string P2PText { get; }
     public Brush P2PBrush { get; }
     public bool IsPlayerRow { get; }
+    public Brush RowForegroundBrush { get; }
 
     private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
     private static readonly Brush P2PCooldownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA5, 0x2C));
     private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
     private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
+    private static readonly System.Collections.Generic.Dictionary<string, Brush> LicBrushCache = new();
 
     public FullRelativeRowViewModel(RelativeRow row, bool showClassPositionAsAbsolute)
     {
@@ -66,8 +68,10 @@ public class FullRelativeRowViewModel
             }
             else
             {
-                P2PText = $"PRONTO ({uses})";
-                P2PBrush = P2PIdleBrush;
+                // Qualitative state always wins over a missing countdown number -- showing PRONTO
+                // while the car's P2P is genuinely active would be worse than a number-less ATIVO.
+                P2PText = active ? $"ATIVO ({uses})" : $"PRONTO ({uses})";
+                P2PBrush = active ? P2PActiveBrush : P2PIdleBrush;
             }
         }
         else
@@ -75,6 +79,12 @@ public class FullRelativeRowViewModel
             P2PText = "";
             P2PBrush = P2PIdleBrush;
         }
+
+        // The player's own row gets a dark foreground since its Border background is the bright
+        // F1HighlightBrush cyan -- F1TextBrush's near-white would be nearly illegible against it.
+        RowForegroundBrush = IsPlayerRow
+            ? new SolidColorBrush(Color.FromRgb(0x0B, 0x14, 0x20))
+            : (Brush)System.Windows.Application.Current.Resources["F1TextBrush"];
     }
 
     // LicColor is a String on the real IRSDKSharper 1.3.0 DriverModel type (confirmed via
@@ -84,13 +94,17 @@ public class FullRelativeRowViewModel
     private static Brush ParseLicColor(string? hex)
     {
         if (string.IsNullOrWhiteSpace(hex)) return LicFallbackBrush;
+        if (LicBrushCache.TryGetValue(hex, out var cached)) return cached;
         try
         {
             var cleaned = hex.Trim();
             if (cleaned.StartsWith("0x", System.StringComparison.OrdinalIgnoreCase)) cleaned = "#" + cleaned[2..];
             if (!cleaned.StartsWith("#")) cleaned = "#" + cleaned;
             var color = (Color)System.Windows.Media.ColorConverter.ConvertFromString(cleaned)!;
-            return new SolidColorBrush(color);
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            LicBrushCache[hex] = brush;
+            return brush;
         }
         catch
         {
@@ -125,20 +139,8 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
     {
         BrakeBiasText = status.BrakeBiasPct is double bias ? bias.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "--";
         TrackRubberText = status.TrackRubberState ?? "--";
-        if (status.BestLapTimeSeconds is double best) BestLapText = FormatLapTime(best);
-    }
-
-    // Called every tick from RelativeWidget's own last-lap subscription path (see Task 3's
-    // RelativeWidget.xaml.cs) with the player's own most recent RelativeRow (PositionOffset==0 is
-    // never present in the ahead/behind window, so this reads the player's own lap time from the
-    // same FullRelativeUpdated tick indirectly via MainWindow -- see that file's own wiring).
-    public void SetLastLapSeconds(double? seconds) => LastLapText = seconds is double s ? FormatLapTime(s) : "--";
-
-    private static string FormatLapTime(double seconds)
-    {
-        var minutes = (int)(seconds / 60);
-        var remainder = seconds - minutes * 60;
-        return $"{minutes}:{remainder.ToString("00.000", CultureInfo.InvariantCulture)}";
+        if (status.BestLapTimeSeconds is double best) BestLapText = IracingLiveCoach.Core.LapTimeFormatting.Format(best);
+        LastLapText = status.LastLapTimeSeconds is double last ? IracingLiveCoach.Core.LapTimeFormatting.Format(last) : "--";
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

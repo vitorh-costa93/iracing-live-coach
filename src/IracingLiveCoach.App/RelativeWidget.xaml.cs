@@ -46,8 +46,6 @@ public partial class RelativeWidget : Window
 
     public void UpdatePlayerStatus(PlayerCarStatus status) => _viewModel.ApplyPlayerStatus(status);
 
-    public void SetLastLapSeconds(double? seconds) => _viewModel.SetLastLapSeconds(seconds);
-
     // Only the primary (player-relative) instance passes false here -- the secondary,
     // class-scoped instance's PositionOffset is an absolute class position, not a player offset.
     public void UpdateRows(List<RelativeRow> rows, bool showClassPositionAsAbsolute = false) => _viewModel.SetRows(rows, showClassPositionAsAbsolute);

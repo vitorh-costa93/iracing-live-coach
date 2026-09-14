@@ -8,7 +8,7 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        MinWidth="340" MinHeight="240"
+        MinWidth="360" MinHeight="240"
         SizeToContent="Manual">
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
         <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
@@ -26,7 +26,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="72" />
                         <ColumnDefinition Width="48" />
                         <ColumnDefinition Width="52" />
                         <ColumnDefinition Width="*" />
@@ -57,14 +57,14 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="28" />
                                             <ColumnDefinition Width="80" />
-                                            <ColumnDefinition Width="56" />
+                                            <ColumnDefinition Width="72" />
                                             <ColumnDefinition Width="48" />
                                             <ColumnDefinition Width="52" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1AccentBrush}" />
-                                        <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
-                                        <TextBlock Grid.Column="2" Text="{Binding ManufacturerText}" FontFamily="{StaticResource F1MonoFont}" FontSize="9" FontWeight="Bold" Foreground="{StaticResource F1MutedTextBrush}" />
+                                        <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{Binding PositionBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{Binding RowForegroundBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Text="{Binding ManufacturerText}" FontFamily="{StaticResource F1MonoFont}" FontSize="9" FontWeight="Bold" Foreground="{StaticResource F1MutedTextBrush}" TextTrimming="CharacterEllipsis" />
                                         <Border Grid.Column="3" Background="{Binding LicBrush}" Padding="3,1" HorizontalAlignment="Left">
                                             <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
                                         </Border>
