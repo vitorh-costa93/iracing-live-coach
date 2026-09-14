@@ -21,6 +21,7 @@
             <SolidColorBrush x:Key="HudTextBrush" Color="#FFEAF0F6" />
             <SolidColorBrush x:Key="HudMutedTextBrush" Color="#FFAEB8C4" />
             <FontFamily x:Key="HudMonoFont">Consolas</FontFamily>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

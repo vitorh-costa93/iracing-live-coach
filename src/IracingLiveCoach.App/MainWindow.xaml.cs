@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private RelativeWidget? _relativeWidget;
     private StandingsWidget? _standingsWidget;
     private FuelWidget? _fuelWidget;
+    private WeatherWidget? _weatherWidget;
     private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
@@ -74,6 +75,9 @@ public partial class MainWindow : Window
         _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 200, 220), () => _layoutStore.Save());
         _fuelWidget.Show();
 
+        _weatherWidget = new WeatherWidget(_layoutStore.Get("weather", 280, 200), () => _layoutStore.Save());
+        _weatherWidget.Show();
+
         _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
             ("coach", "Coach", this),
@@ -81,6 +85,7 @@ public partial class MainWindow : Window
             ("relative", "Relative (F1)", _relativeWidget),
             ("standings", "Standings (F1)", _standingsWidget),
             ("fuel", "Fuel", _fuelWidget),
+            ("weather", "Weather", _weatherWidget),
         });
         _controlPanel.Show();
 
@@ -93,6 +98,7 @@ public partial class MainWindow : Window
         _telemetryReader.FullRelativeUpdated += rows => Dispatcher.Invoke(() => _relativeWidget?.UpdateRows(rows));
         _telemetryReader.StandingsUpdated += rows => Dispatcher.Invoke(() => _standingsWidget?.UpdateRows(rows));
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
+        _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
         _telemetryReader.Start();
     }
 
@@ -233,6 +239,7 @@ public partial class MainWindow : Window
         _relativeWidget?.SetLocked(_locked);
         _standingsWidget?.SetLocked(_locked);
         _fuelWidget?.SetLocked(_locked);
+        _weatherWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
 
@@ -245,6 +252,7 @@ public partial class MainWindow : Window
         _relativeWidget?.Close();
         _standingsWidget?.Close();
         _fuelWidget?.Close();
+        _weatherWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
     }
