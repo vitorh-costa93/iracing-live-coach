@@ -31,6 +31,12 @@ public partial class ControlPanelWindow : Window
     // ApplyOnTrackGate, called from MainWindow's own TelemetryReader.OnTrackStateChanged subscription).
     private bool _isOnTrack;
 
+    // 14/09/2026: "quando eu clico para destravar... eu devo conseguir ver todos os widgets para
+    // poder posicioná-los" -- the on-track gate above must NOT apply while the driver is actively
+    // repositioning widgets (unlocked). Starts true (locked) to match MainWindow's own default.
+    // See ApplyCombinedVisibility: a widget shows when the checkbox is on AND (on track OR unlocked).
+    private bool _isLocked = true;
+
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
     public ControlPanelWindow(WidgetLayoutStore store, Action onChanged, IEnumerable<(string Key, string DisplayName, Window Window)> widgets)
@@ -62,14 +68,15 @@ public partial class ControlPanelWindow : Window
         }
     }
 
-    // A widget is only ever actually shown when the driver's own checkbox is on AND the player is
-    // genuinely on track -- either signal alone hides it. Called on every checkbox toggle (for
-    // just that one widget) and from ApplyOnTrackGate (for all of them, when the track state itself
-    // changes).
+    // A widget is shown when the driver's own checkbox is on AND (the player is on track OR the
+    // suite is currently unlocked for editing) -- unlocking always reveals every checked widget so
+    // it can be dragged/resized, regardless of where the player actually is; the on-track gate only
+    // kicks back in once locked. Called on every checkbox toggle (for just that one widget) and
+    // from ApplyOnTrackGate/SetLocked (for all of them, when either signal changes).
     private void ApplyCombinedVisibility(string key)
     {
         if (!_widgetsByKey.TryGetValue(key, out var window) || !_layoutsByKey.TryGetValue(key, out var layout)) return;
-        window.Visibility = layout.Visible && _isOnTrack ? Visibility.Visible : Visibility.Collapsed;
+        window.Visibility = layout.Visible && (_isOnTrack || !_isLocked) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Called by MainWindow whenever TelemetryReader.OnTrackStateChanged fires -- re-applies
@@ -84,7 +91,13 @@ public partial class ControlPanelWindow : Window
 
     // Locking hides this window's own content entirely (Visibility), not just click-through --
     // per this class's own doc comment, it should never be visible while actually driving.
-    public void SetLocked(bool locked) => Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
+    // Also drives the other widgets' own on-track gate override -- see ApplyCombinedVisibility.
+    public void SetLocked(bool locked)
+    {
+        Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
+        _isLocked = locked;
+        foreach (var key in _widgetsByKey.Keys) ApplyCombinedVisibility(key);
+    }
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {

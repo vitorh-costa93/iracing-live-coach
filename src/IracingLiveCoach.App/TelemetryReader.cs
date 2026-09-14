@@ -71,6 +71,16 @@ public record RadarBlip(double DistanceMeters, string DriverCode);
 /// never mistakes a far blip's centered position for "directly in my lane".</summary>
 public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips, bool HasTrackLength);
 
+/// <summary>Race-start clutch/throttle bars -- confirmed real via Clutch/Throttle/Speed telemetry.
+/// ShouldShow is true only while the current session is a Race AND the car is essentially
+/// stationary (Speed below a small threshold) -- the same "car is staying still" trigger Kapps'
+/// own Race Start Helper widget uses per the driver's own description (14/09/2026, "uso bastante
+/// ele pra largar no SF23" -- SF23 uses a clutch-based standing start, the exact case this helps
+/// with). No extra latch/state beyond the live Speed check -- if the driver stops again later in
+/// the race (a spin, a full-course caution), the bars simply reappear, matching the plain
+/// "when car is staying still" behavior Kapps itself describes.</summary>
+public record RaceStartStatus(double ClutchPct, double ThrottlePct, bool ShouldShow);
+
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
 /// own LapDistPct is 0-1; the baseline endpoint's corner boundaries (and this app's
@@ -251,6 +261,11 @@ public class TelemetryReader : IDisposable
     /// whole widget suite is shown at all (see MainWindow's own subscription).</summary>
     public event Action<bool>? OnTrackStateChanged;
 
+    /// <summary>Fires every telemetry tick once the session is detected, with the player's own
+    /// clutch/throttle pedal position and whether the Race Start Helper should currently be shown
+    /// (Race session + car essentially stationary). See RaceStartStatus's own doc comment.</summary>
+    public event Action<RaceStartStatus>? RaceStartUpdated;
+
     public TelemetryReader()
     {
         _sdk.OnSessionInfo += OnSessionInfo;
@@ -310,6 +325,7 @@ public class TelemetryReader : IDisposable
             UpdateTireWear();
             UpdatePlayerCarStatus();
             UpdateOnTrackState();
+            UpdateRaceStart();
 
             _weatherTickCounter++;
             if (_weatherTickCounter >= WeatherTickInterval)
@@ -604,12 +620,49 @@ public class TelemetryReader : IDisposable
         }
     }
 
+    // 14/09/2026: "aquele que auxilia o race start... uso bastante ele pra largar no SF23" --
+    // Clutch/Throttle/Speed all confirmed real telemetry. StationarySpeedThreshold (0.5 m/s, ~1.8
+    // km/h) tolerates GPS/physics jitter while the car is genuinely held stopped on the grid,
+    // without waiting for an exact 0.0.
+    private const double StationarySpeedThreshold = 0.5;
+
+    private void UpdateRaceStart()
+    {
+        try
+        {
+            var sessionInfo = _sdk.Data.SessionInfo;
+            var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+            var sessionType = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionType;
+            var isRace = string.Equals(sessionType, "Race", StringComparison.OrdinalIgnoreCase);
+
+            var speed = _sdk.Data.GetFloat("Speed");
+            var clutch = _sdk.Data.GetFloat("Clutch");
+            var throttle = _sdk.Data.GetFloat("Throttle");
+
+            var shouldShow = isRace && Math.Abs(speed) < StationarySpeedThreshold;
+            RaceStartUpdated?.Invoke(new RaceStartStatus(clutch * 100.0, throttle * 100.0, shouldShow));
+        }
+        catch
+        {
+            // Skip this tick.
+        }
+    }
+
     // 13/09/2026: a rolling average over the last FuelWindowSize completed laps, not the SDK's own
     // instantaneous FuelUsePerHour -- an instantaneous rate swings with throttle/braking on any
     // single sample, while the rolling average is what every established fuel calculator actually
     // uses for a stable "laps remaining" estimate. LapCompleted (not Lap) is the correct edge to
     // watch: it increments exactly once per finished lap, where Lap reports the currently-STARTED
     // lap and would double-count the boundary tick (see LapCompleted's own confirmed SDK doc).
+    //
+    // 14/09/2026 fix: "1.37/volta" vs the car's real ~2.7 L/lap (McLaren, Road Atlanta) -- the bug
+    // was using the fuel level captured at APP ATTACH time as if it were a lap-start sample. If the
+    // app attaches mid-lap (the normal case -- the driver is already out when they open the app),
+    // that first "previousFuel" is really "fuel at some random mid-lap point", so the first delta
+    // measures only a fraction of a lap's burn, not a full lap's. _lastFuelLevel is now only ever
+    // set at a CONFIRMED LapCompleted edge (a real start/finish crossing), and the very first such
+    // edge only establishes that baseline -- no "used" sample is recorded until the SECOND crossing,
+    // once both ends of the delta are real S/F-line boundaries.
     private void UpdateFuel()
     {
         try
@@ -620,38 +673,47 @@ public class TelemetryReader : IDisposable
 
             if (_lastLapCompleted < 0)
             {
+                // First tick ever seen -- we don't know whether "now" lands on a lap boundary, so
+                // no fuel baseline is established here (see fix note above). Only LapCompleted is
+                // tracked, so the next real crossing can be detected.
                 _lastLapCompleted = lapCompleted;
-                _lastFuelLevel = fuelLevel;
             }
             else if (lapCompleted < _lastLapCompleted)
             {
                 // Session segment changed (practice -> qualy -> race), or the session was reset --
                 // LapCompleted restarts at 0, so the prior segment's samples no longer describe
                 // this stint. Clear the rolling windows so the estimate starts fresh rather than
-                // silently freezing on stale samples from a different session segment.
+                // silently freezing on stale samples from a different session segment. The fuel
+                // baseline is also invalidated -- the next crossing in the new segment establishes
+                // a fresh one, same as at app attach.
                 _fuelPerLapWindow.Clear();
                 _lapTimeWindow.Clear();
                 _lastLapCompleted = lapCompleted;
-                _lastFuelLevel = fuelLevel;
+                _lastFuelLevel = null;
             }
-            else if (lapCompleted > _lastLapCompleted && _lastFuelLevel is double previousFuel)
+            else if (lapCompleted > _lastLapCompleted)
             {
-                var used = previousFuel - fuelLevel;
-                // Only a positive, plausible consumption sample is trusted -- a pit stop refuel
-                // between ticks would otherwise register as a large negative "used" value and
-                // corrupt the rolling average with a nonsense sample.
-                if (used > 0)
+                if (_lastFuelLevel is double previousFuel)
                 {
-                    _fuelPerLapWindow.Enqueue(used);
-                    if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
-
-                    var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
-                    if (lapTime > 0)
+                    var used = previousFuel - fuelLevel;
+                    // Only a positive, plausible consumption sample is trusted -- a pit stop refuel
+                    // between ticks would otherwise register as a large negative "used" value and
+                    // corrupt the rolling average with a nonsense sample.
+                    if (used > 0)
                     {
-                        _lapTimeWindow.Enqueue(lapTime);
-                        if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
+                        _fuelPerLapWindow.Enqueue(used);
+                        if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
+
+                        var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
+                        if (lapTime > 0)
+                        {
+                            _lapTimeWindow.Enqueue(lapTime);
+                            if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
+                        }
                     }
                 }
+                // This crossing is a real start/finish-line boundary regardless of whether a
+                // baseline existed before it -- always safe to use as the baseline for the NEXT lap.
                 _lastLapCompleted = lapCompleted;
                 _lastFuelLevel = fuelLevel;
             }
