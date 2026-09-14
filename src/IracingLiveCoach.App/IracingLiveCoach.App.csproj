@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\Flags\*.png" />
+    <Resource Include="Assets\Fonts\*.ttf" />
   </ItemGroup>
 
   <PropertyGroup>

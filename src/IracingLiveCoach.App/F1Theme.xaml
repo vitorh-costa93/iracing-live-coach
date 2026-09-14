@@ -14,8 +14,14 @@
     <SolidColorBrush x:Key="F1BorderIdleBrush" Color="#33E2483D" />
     <SolidColorBrush x:Key="F1BorderActiveBrush" Color="#FFE2483D" />
     <SolidColorBrush x:Key="F1HighlightBrush" Color="#FF39D8E0" />
-    <FontFamily x:Key="F1HeaderFont">Bahnschrift</FontFamily>
-    <FontFamily x:Key="F1MonoFont">Bahnschrift</FontFamily>
+    <!-- 14/09/2026: "gosto da tipografia que usamos hoje no iRacing Analytics", same three fonts
+         as that sibling project's own app/layout.tsx (Big Shoulders / Inter / JetBrains Mono via
+         next/font/google), embedded here as WPF resources (Assets\Fonts\*.ttf) instead of relying
+         on Bahnschrift, a Windows-only system font with a much heavier, blockier look than what the
+         driver actually asked to match. Loaded via pack URI so no separate font install is needed. -->
+    <FontFamily x:Key="F1HeaderFont">pack://application:,,,/Assets/Fonts/#Big Shoulders</FontFamily>
+    <FontFamily x:Key="F1MonoFont">pack://application:,,,/Assets/Fonts/#Inter</FontFamily>
+    <FontFamily x:Key="F1DataFont">pack://application:,,,/Assets/Fonts/#JetBrains Mono</FontFamily>
     <Style x:Key="HeaderCell" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource F1MonoFont}" />
         <Setter Property="FontSize" Value="12" />
@@ -28,10 +34,9 @@
         <Setter Property="Foreground" Value="{StaticResource F1TextBrush}" />
     </Style>
     <Style x:Key="FooterValue" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Bahnschrift" />
-        <Setter Property="FontStretch" Value="Condensed" />
-        <Setter Property="FontSize" Value="29" />
-        <Setter Property="FontWeight" Value="Black" />
+        <Setter Property="FontFamily" Value="{StaticResource F1HeaderFont}" />
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource F1TextBrush}" />
     </Style>
     <Style x:Key="BestFooterValue" TargetType="TextBlock" BasedOn="{StaticResource FooterValue}">

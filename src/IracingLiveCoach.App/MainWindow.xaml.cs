@@ -29,7 +29,6 @@ public partial class MainWindow : Window
     private StandingsWidget? _standingsWidget;
     private FuelWidget? _fuelWidget;
     private WeatherWidget? _weatherWidget;
-    private TireWearWidget? _tireWidget;
     private RadarWidget? _radarWidget;
     private ControlPanelWindow? _controlPanel;
 
@@ -74,9 +73,6 @@ public partial class MainWindow : Window
         _weatherWidget = new WeatherWidget(_layoutStore.Get("weather", 280, 200), () => _layoutStore.Save());
         _weatherWidget.Show();
 
-        _tireWidget = new TireWearWidget(_layoutStore.Get("tires", 240, 220), () => _layoutStore.Save());
-        _tireWidget.Show();
-
         _radarWidget = new RadarWidget(_layoutStore.Get("radar", 220, 106), () => _layoutStore.Save());
         _radarWidget.Show();
 
@@ -87,7 +83,6 @@ public partial class MainWindow : Window
             ("standings", "Standings (F1)", _standingsWidget),
             ("fuel", "Fuel", _fuelWidget),
             ("weather", "Weather", _weatherWidget),
-            ("tires", "Tire Wear", _tireWidget),
             ("radar", "Radar", _radarWidget),
         });
         _controlPanel.Show();
@@ -116,7 +111,6 @@ public partial class MainWindow : Window
         });
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
-        _telemetryReader.TireWearUpdated += status => Dispatcher.Invoke(() => _tireWidget?.UpdateStatus(status));
         _telemetryReader.RadarUpdated += status => Dispatcher.Invoke(() => _radarWidget?.UpdateStatus(status));
         _telemetryReader.OnTrackStateChanged += isOnTrack => Dispatcher.Invoke(() => _controlPanel?.ApplyOnTrackGate(isOnTrack));
         _telemetryReader.Start();
@@ -161,10 +155,8 @@ public partial class MainWindow : Window
         _relativeWidget?.UpdateSessionStatus(sessionStatus);
         _radarWidget?.UpdateStatus(new RadarStatus(true, false, new List<RadarBlip> { new(28, "P. SANTOS"), new(-18, "A. SOUZA") }, true));
         _fuelWidget?.UpdateStatus(new FuelStatus(43.9, 3.4, 2.05, 21.4, 2315));
+
         _weatherWidget?.UpdateStatus(new WeatherStatus(24.0, 32.0, 0.0, 1, false, new List<TrackPositionDot>()));
-        _tireWidget?.UpdateStatus(new TireWearStatus(
-            new TireCornerWear(0.62, 0.6, 0.58), new TireCornerWear(0.6, 0.58, 0.6),
-            new TireCornerWear(0.55, 0.52, 0.5), new TireCornerWear(0.5, 0.52, 0.55), null));
 
         // Spread every widget across a wide, non-overlapping grid -- this fixture is captured for
         // design review (screenshots at each widget's own MinWidth/MinHeight), and an overlap would
@@ -173,14 +165,13 @@ public partial class MainWindow : Window
         _relativeWidget!.Left = 620; _relativeWidget.Top = 60;
         _fuelWidget!.Left = 1060; _fuelWidget.Top = 60;
         _weatherWidget!.Left = 1060; _weatherWidget.Top = 260;
-        _tireWidget!.Left = 1060; _tireWidget.Top = 460;
         _radarWidget!.Left = 1350; _radarWidget.Top = 60;
         _locked = false;
         ApplyClickThrough();
 
         // Do not let a user's normal "hidden outside the track" preference conceal a review
         // capture.  This branch is only reachable with --preview and never calls PersistLayout.
-        foreach (var widget in new Window[] { _standingsWidget, _relativeWidget, _radarWidget, _fuelWidget, _weatherWidget, _tireWidget })
+        foreach (var widget in new Window[] { _standingsWidget, _relativeWidget, _radarWidget, _fuelWidget, _weatherWidget })
         {
             widget.WindowStartupLocation = WindowStartupLocation.Manual;
             widget.Visibility = Visibility.Visible;
@@ -325,7 +316,6 @@ public partial class MainWindow : Window
         _standingsWidget?.SetLocked(_locked);
         _fuelWidget?.SetLocked(_locked);
         _weatherWidget?.SetLocked(_locked);
-        _tireWidget?.SetLocked(_locked);
         _radarWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
@@ -339,7 +329,6 @@ public partial class MainWindow : Window
         _standingsWidget?.Close();
         _fuelWidget?.Close();
         _weatherWidget?.Close();
-        _tireWidget?.Close();
         _radarWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
