@@ -139,6 +139,15 @@ public class TelemetryReader : IDisposable
 
     private double? _bestLapTimeSeconds;
 
+    // 14/09/2026: "deixar oculto até eu ir pra pista" -- PlayerTrackSurface (confirmed real via
+    // reflection against the actual IRSDKSharper.dll this app uses: IRacingSdkEnum.TrkLoc, with
+    // OnTrack=3) drives whether the widget suite should be visible at all. Starts false (hidden)
+    // so a driver who just launched the app, or who's sitting in a menu/the pits, doesn't get a
+    // screen full of overlays before they've actually gone out -- matching the reference behavior
+    // the driver described in Kapps. Only fires OnTrackStateChanged when the bool actually flips,
+    // not every tick, so MainWindow isn't re-applying visibility to nine windows 60 times a second.
+    private bool _isOnTrack;
+
     // Populated once alongside SessionDetected/_playerCarIdx -- driver identities don't change
     // mid-session, so this is read once from OnSessionInfo, not re-parsed every telemetry tick.
     private static Dictionary<int, string> BuildDriverCodes(IRacingSdkSessionInfo? sessionInfo)
@@ -236,6 +245,12 @@ public class TelemetryReader : IDisposable
     /// empty state" posture RelativeUpdated already has for non-P2P sessions.</summary>
     public event Action<List<RelativeRow>>? SecondaryRelativeUpdated;
 
+    /// <summary>Fires only when the player's own on-track state actually changes (not every tick),
+    /// once the session is detected -- true only while PlayerTrackSurface reports OnTrack (not in
+    /// the pits, not approaching the pits, not off-track/in-world-but-parked). Drives whether the
+    /// whole widget suite is shown at all (see MainWindow's own subscription).</summary>
+    public event Action<bool>? OnTrackStateChanged;
+
     public TelemetryReader()
     {
         _sdk.OnSessionInfo += OnSessionInfo;
@@ -294,6 +309,7 @@ public class TelemetryReader : IDisposable
             UpdateFuel();
             UpdateTireWear();
             UpdatePlayerCarStatus();
+            UpdateOnTrackState();
 
             _weatherTickCounter++;
             if (_weatherTickCounter >= WeatherTickInterval)
@@ -568,6 +584,23 @@ public class TelemetryReader : IDisposable
         catch
         {
             // Skip this tick.
+        }
+    }
+
+    private void UpdateOnTrackState()
+    {
+        try
+        {
+            var surface = _sdk.Data.GetInt("PlayerTrackSurface");
+            var isOnTrack = surface == (int)IRacingSdkEnum.TrkLoc.OnTrack;
+            if (isOnTrack == _isOnTrack) return; // only fire on a real transition, not every tick
+
+            _isOnTrack = isOnTrack;
+            OnTrackStateChanged?.Invoke(_isOnTrack);
+        }
+        catch
+        {
+            // Skip this tick -- keep the last known on-track state rather than guessing.
         }
     }
 

@@ -122,6 +122,7 @@ public partial class MainWindow : Window
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
         _telemetryReader.TireWearUpdated += status => Dispatcher.Invoke(() => _tireWidget?.UpdateStatus(status));
         _telemetryReader.RadarUpdated += status => Dispatcher.Invoke(() => _radarWidget?.UpdateStatus(status));
+        _telemetryReader.OnTrackStateChanged += isOnTrack => Dispatcher.Invoke(() => _controlPanel?.ApplyOnTrackGate(isOnTrack));
         _telemetryReader.Start();
     }
 

@@ -22,6 +22,14 @@ public partial class ControlPanelWindow : Window
     private readonly WidgetLayout _layout;
     private readonly ControlPanelViewModel _viewModel = new();
     private readonly Dictionary<string, Window> _widgetsByKey = new();
+    private readonly Dictionary<string, WidgetLayout> _layoutsByKey = new();
+
+    // 14/09/2026: "deixar oculto até eu ir pra pista" -- starts false (hidden) so the overlay
+    // suite doesn't clutter the screen the moment the app launches, before the driver has actually
+    // gone out. Combined with each widget's own on/off checkbox below: a widget only actually shows
+    // when BOTH the driver wants it visible AND the player is genuinely on track (see
+    // ApplyOnTrackGate, called from MainWindow's own TelemetryReader.OnTrackStateChanged subscription).
+    private bool _isOnTrack;
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
@@ -41,16 +49,37 @@ public partial class ControlPanelWindow : Window
         {
             _widgetsByKey[key] = window;
             var widgetLayout = _store.Get(key, window.Width, window.Height);
+            _layoutsByKey[key] = widgetLayout;
             var row = new ControlPanelRowViewModel(key, displayName, widgetLayout.Visible);
             row.VisibilityChanged += visible =>
             {
                 widgetLayout.Visible = visible;
-                window.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
                 _store.Save();
+                ApplyCombinedVisibility(key);
             };
             _viewModel.Rows.Add(row);
-            window.Visibility = widgetLayout.Visible ? Visibility.Visible : Visibility.Collapsed;
+            ApplyCombinedVisibility(key);
         }
+    }
+
+    // A widget is only ever actually shown when the driver's own checkbox is on AND the player is
+    // genuinely on track -- either signal alone hides it. Called on every checkbox toggle (for
+    // just that one widget) and from ApplyOnTrackGate (for all of them, when the track state itself
+    // changes).
+    private void ApplyCombinedVisibility(string key)
+    {
+        if (!_widgetsByKey.TryGetValue(key, out var window) || !_layoutsByKey.TryGetValue(key, out var layout)) return;
+        window.Visibility = layout.Visible && _isOnTrack ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Called by MainWindow whenever TelemetryReader.OnTrackStateChanged fires -- re-applies
+    /// combined visibility to every registered widget at once. This window itself (the Control
+    /// Panel) is NOT gated by track state -- the driver can still open it and toggle widgets on
+    /// while sitting in a menu or the pits, per its own existing lock-based visibility.</summary>
+    public void ApplyOnTrackGate(bool isOnTrack)
+    {
+        _isOnTrack = isOnTrack;
+        foreach (var key in _widgetsByKey.Keys) ApplyCombinedVisibility(key);
     }
 
     // Locking hides this window's own content entirely (Visibility), not just click-through --
