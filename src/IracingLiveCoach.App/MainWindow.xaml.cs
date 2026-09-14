@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private FuelWidget? _fuelWidget;
     private WeatherWidget? _weatherWidget;
     private TireWearWidget? _tireWidget;
+    private RadarWidget? _radarWidget;
     private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
@@ -82,6 +83,9 @@ public partial class MainWindow : Window
         _tireWidget = new TireWearWidget(_layoutStore.Get("tires", 240, 220), () => _layoutStore.Save());
         _tireWidget.Show();
 
+        _radarWidget = new RadarWidget(_layoutStore.Get("radar", 140, 240), () => _layoutStore.Save());
+        _radarWidget.Show();
+
         _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
             ("coach", "Coach", this),
@@ -91,6 +95,7 @@ public partial class MainWindow : Window
             ("fuel", "Fuel", _fuelWidget),
             ("weather", "Weather", _weatherWidget),
             ("tires", "Tire Wear", _tireWidget),
+            ("radar", "Radar", _radarWidget),
         });
         _controlPanel.Show();
 
@@ -105,6 +110,7 @@ public partial class MainWindow : Window
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
         _telemetryReader.TireWearUpdated += status => Dispatcher.Invoke(() => _tireWidget?.UpdateStatus(status));
+        _telemetryReader.RadarUpdated += status => Dispatcher.Invoke(() => _radarWidget?.UpdateStatus(status));
         _telemetryReader.Start();
     }
 
@@ -248,6 +254,7 @@ public partial class MainWindow : Window
         _fuelWidget?.SetLocked(_locked);
         _weatherWidget?.SetLocked(_locked);
         _tireWidget?.SetLocked(_locked);
+        _radarWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
 
@@ -262,6 +269,7 @@ public partial class MainWindow : Window
         _fuelWidget?.Close();
         _weatherWidget?.Close();
         _tireWidget?.Close();
+        _radarWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
     }
