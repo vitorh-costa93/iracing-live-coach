@@ -8,33 +8,89 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        MinWidth="200" MinHeight="150"
+        MinWidth="320" MinHeight="260"
         SizeToContent="Manual">
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
         <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}">
-            <StackPanel Margin="8">
-                <TextBlock Text="RELATIVE" FontFamily="{StaticResource F1HeaderFont}" FontSize="11"
-                           Foreground="{StaticResource F1AccentBrush}" Margin="0,0,0,6" />
+            <StackPanel Margin="10">
+                <TextBlock x:Name="HeaderText" Text="RELATIVE" FontFamily="{StaticResource F1HeaderFont}" FontSize="13"
+                           FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" Margin="0,0,0,6" />
+
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="70" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="POS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="PILOTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="2" Text="LIC" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="3" Text="iR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="4" Text="DELTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="5" Text="OT" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                </Grid>
+
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding DriverCode}" FontFamily="{StaticResource F1MonoFont}"
-                                           FontSize="12" Foreground="{StaticResource F1TextBrush}"
-                                           FontWeight="Bold" />
-                                <TextBlock Grid.Column="1" Text="{Binding GapText}" FontFamily="{StaticResource F1MonoFont}"
-                                           FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" Margin="8,0" />
-                                <TextBlock Grid.Column="2" Text="{Binding P2PText}" FontFamily="{StaticResource F1MonoFont}"
-                                           FontSize="11" FontWeight="Bold" Foreground="{Binding P2PBrush}" Width="28" />
-                            </Grid>
+                            <Border Padding="0,3">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPlayerRow}" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource F1HighlightBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="70" />
+                                        <ColumnDefinition Width="48" />
+                                        <ColumnDefinition Width="48" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="70" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding PositionText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource F1TextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding FlagAndCode}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                                    <Border Grid.Column="2" Background="{Binding LicBrush}" CornerRadius="0" Padding="3,1" HorizontalAlignment="Left">
+                                        <TextBlock Text="{Binding LicText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="#FF0B1420" />
+                                    </Border>
+                                    <TextBlock Grid.Column="3" Text="{Binding IRatingText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                                    <TextBlock Grid.Column="4" Text="{Binding GapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1MutedTextBrush}" />
+                                    <TextBlock Grid.Column="5" Text="{Binding P2PText}" FontFamily="{StaticResource F1MonoFont}" FontSize="10" FontWeight="Bold" Foreground="{Binding P2PBrush}" />
+                                </Grid>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <Rectangle Height="1" Fill="{StaticResource F1MutedTextBrush}" Opacity="0.25" Margin="0,8" />
+
+                <UniformGrid Rows="1" Columns="2">
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="BRAKE BIAS" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding BrakeBiasText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="EMBORRACHAMENTO" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding TrackRubberText}" FontFamily="{StaticResource F1MonoFont}" FontSize="12" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                </UniformGrid>
+                <UniformGrid Rows="1" Columns="2" Margin="0,6,0,0">
+                    <StackPanel Margin="0,0,8,0">
+                        <TextBlock Text="ÚLTIMA VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding LastLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1TextBrush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="MELHOR" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" />
+                        <TextBlock Text="{Binding BestLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="{StaticResource F1AccentBrush}" />
+                    </StackPanel>
+                </UniformGrid>
             </StackPanel>
         </Border>
         <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"

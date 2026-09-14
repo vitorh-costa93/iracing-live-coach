@@ -22,6 +22,11 @@ public partial class RelativeWidget : Window
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
+    public RelativeWidget(WidgetLayout layout, Action onChanged, string title = "RELATIVE") : this(layout, onChanged)
+    {
+        HeaderText.Text = title;
+    }
+
     public RelativeWidget(WidgetLayout layout, Action onChanged)
     {
         InitializeComponent();
@@ -39,7 +44,13 @@ public partial class RelativeWidget : Window
         }
     }
 
-    public void UpdateRows(List<RelativeRow> rows) => _viewModel.SetRows(rows);
+    public void UpdatePlayerStatus(PlayerCarStatus status) => _viewModel.ApplyPlayerStatus(status);
+
+    public void SetLastLapSeconds(double? seconds) => _viewModel.SetLastLapSeconds(seconds);
+
+    // Only the primary (player-relative) instance passes false here -- the secondary,
+    // class-scoped instance's PositionOffset is an absolute class position, not a player offset.
+    public void UpdateRows(List<RelativeRow> rows, bool showClassPositionAsAbsolute = false) => _viewModel.SetRows(rows, showClassPositionAsAbsolute);
 
     public void SetLocked(bool locked)
     {
