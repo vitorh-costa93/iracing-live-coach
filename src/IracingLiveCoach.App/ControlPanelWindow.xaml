@@ -41,6 +41,14 @@
                         <CheckBox Content="Tempo" IsChecked="{Binding FuelColumns.TimeRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/>
                     </WrapPanel>
                 </Expander>
+                <Expander Header="STANDINGS • CLASSES" Margin="0,7,0,0">
+                    <StackPanel Margin="20,4,0,5">
+                        <TextBlock Text="Linhas da minha classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
+                        <TextBox Text="{Binding StandingsClassRows.MyClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="50" HorizontalAlignment="Left" Margin="0,0,0,6"/>
+                        <TextBlock Text="Linhas por outra classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
+                        <TextBox Text="{Binding StandingsClassRows.OtherClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="50" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
         </Border>
         <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"

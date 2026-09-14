@@ -25,6 +25,10 @@ public class WidgetLayout
     public bool FuelShowAveragePerLap { get; set; } = true;
     public bool FuelShowLapsRemaining { get; set; } = true;
     public bool FuelShowTimeRemaining { get; set; } = true;
+    // 14/09/2026: "Em Standings as classes não se misturam, igual no Kapps e eu posso escolher
+    // quantos eu quero mostrar da minha classe e das outras" -- 0 means "show all" for either field.
+    public int StandingsMyClassRows { get; set; } = 0;
+    public int StandingsOtherClassRows { get; set; } = 3;
 }
 
 /// <summary>Keyed replacement for AppSettings's old flat Left/Top/Width/Height fields -- one entry

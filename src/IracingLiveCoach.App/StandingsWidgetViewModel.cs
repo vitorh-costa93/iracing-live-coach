@@ -160,10 +160,69 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
 
     public ObservableCollection<StandingsRowViewModel> Rows { get; } = new();
 
+    private System.Collections.Generic.List<StandingsRow> _lastRows = new();
+    private int _myClassLimit;
+    private int _otherClassLimit = 3;
+
     public void SetRows(System.Collections.Generic.List<StandingsRow> rows)
     {
+        _lastRows = rows;
+        ApplyGroupedRows();
+    }
+
+    // "Em Standings as classes não se misturam, igual no Kapps" (14/09/2026): the player's own
+    // class is shown first as its own contiguous block (never interleaved with other classes by
+    // overall position), followed by each other class as its own block -- ordered by whichever
+    // class is currently running highest overall, matching how Kapps itself orders class groups.
+    // A limit of 0 means "show every row of that group".
+    public void SetClassRowLimits(int myClassLimit, int otherClassLimit)
+    {
+        _myClassLimit = myClassLimit;
+        _otherClassLimit = otherClassLimit;
+        ApplyGroupedRows();
+    }
+
+    private void ApplyGroupedRows()
+    {
+        var rows = _lastRows;
+        var player = rows.Find(r => r.IsPlayer);
+        System.Collections.Generic.List<StandingsRow> grouped;
+        if (player is null)
+        {
+            // No player row classified yet (e.g. in the pits before joining) -- show the field
+            // exactly as received rather than guess at a grouping.
+            grouped = rows;
+        }
+        else
+        {
+            var myClass = rows.FindAll(r => r.CarClassId == player.CarClassId);
+            myClass.Sort((a, b) => a.Position.CompareTo(b.Position));
+            if (_myClassLimit > 0 && myClass.Count > _myClassLimit) myClass = myClass.GetRange(0, _myClassLimit);
+
+            var otherClassIds = new System.Collections.Generic.List<int>();
+            foreach (var r in rows)
+                if (r.CarClassId != player.CarClassId && !otherClassIds.Contains(r.CarClassId))
+                    otherClassIds.Add(r.CarClassId);
+            // Classes ordered by whichever is currently running highest overall (its own best position).
+            otherClassIds.Sort((a, b) =>
+            {
+                var bestA = rows.FindAll(r => r.CarClassId == a).ConvertAll(r => r.Position).Min();
+                var bestB = rows.FindAll(r => r.CarClassId == b).ConvertAll(r => r.Position).Min();
+                return bestA.CompareTo(bestB);
+            });
+
+            grouped = new System.Collections.Generic.List<StandingsRow>(myClass);
+            foreach (var classId in otherClassIds)
+            {
+                var classRows = rows.FindAll(r => r.CarClassId == classId);
+                classRows.Sort((a, b) => a.Position.CompareTo(b.Position));
+                if (_otherClassLimit > 0 && classRows.Count > _otherClassLimit) classRows = classRows.GetRange(0, _otherClassLimit);
+                grouped.AddRange(classRows);
+            }
+        }
+
         Rows.Clear();
-        foreach (var row in rows) Rows.Add(new StandingsRowViewModel(row));
+        foreach (var row in grouped) Rows.Add(new StandingsRowViewModel(row));
     }
 
     // All real SDK fields except StrengthOfField (see SessionStatus's own doc comment for its formula).

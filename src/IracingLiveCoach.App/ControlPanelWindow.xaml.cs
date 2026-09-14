@@ -84,6 +84,19 @@ public partial class ControlPanelWindow : Window
                 _viewModel.FuelColumns.LapsRemaining,
                 _viewModel.FuelColumns.TimeRemaining);
         }
+
+        if (_widgetsByKey.TryGetValue("standings", out var standingsWindow) && standingsWindow is StandingsWidget standings && _layoutsByKey.TryGetValue("standings", out var standingsLayout))
+        {
+            _viewModel.StandingsClassRows.Load(standingsLayout);
+            standings.SetClassRowLimits(_viewModel.StandingsClassRows.MyClassRows, _viewModel.StandingsClassRows.OtherClassRows);
+            _viewModel.StandingsClassRows.Changed += () =>
+            {
+                standingsLayout.StandingsMyClassRows = _viewModel.StandingsClassRows.MyClassRows;
+                standingsLayout.StandingsOtherClassRows = _viewModel.StandingsClassRows.OtherClassRows;
+                _store.Save();
+                standings.SetClassRowLimits(_viewModel.StandingsClassRows.MyClassRows, _viewModel.StandingsClassRows.OtherClassRows);
+            };
+        }
     }
 
     // A widget is shown when the driver's own checkbox is on AND (the player is on track OR the

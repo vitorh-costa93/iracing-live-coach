@@ -53,6 +53,32 @@ public class ControlPanelViewModel
 {
     public ObservableCollection<ControlPanelRowViewModel> Rows { get; } = new();
     public FuelColumnsViewModel FuelColumns { get; } = new();
+    public StandingsClassRowsViewModel StandingsClassRows { get; } = new();
+}
+
+// "Em Standings as classes não se misturam, igual no Kapps e eu posso escolher quantos eu quero
+// mostrar da minha classe e das outras" (14/09/2026) -- 0 in either field means "show all".
+public class StandingsClassRowsViewModel : INotifyPropertyChanged
+{
+    private int _myClassRows;
+    private int _otherClassRows = 3;
+    public int MyClassRows { get => _myClassRows; set => Set(ref _myClassRows, value); }
+    public int OtherClassRows { get => _otherClassRows; set => Set(ref _otherClassRows, value); }
+    public event System.Action? Changed;
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public void Load(WidgetLayout layout)
+    {
+        _myClassRows = layout.StandingsMyClassRows;
+        _otherClassRows = layout.StandingsOtherClassRows;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(string.Empty));
+    }
+    private void Set(ref int field, int value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        if (field == value) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        Changed?.Invoke();
+    }
 }
 
 public class FuelColumnsViewModel : INotifyPropertyChanged

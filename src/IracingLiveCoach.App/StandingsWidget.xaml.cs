@@ -42,6 +42,8 @@ public partial class StandingsWidget : Window
 
     public void UpdateSessionStatus(SessionStatus status) => _viewModel.ApplySessionStatus(status);
 
+    public void SetClassRowLimits(int myClassLimit, int otherClassLimit) => _viewModel.SetClassRowLimits(myClassLimit, otherClassLimit);
+
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
