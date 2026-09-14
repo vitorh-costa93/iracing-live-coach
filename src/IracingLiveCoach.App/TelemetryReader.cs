@@ -32,7 +32,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
 /// (see UpdatePlayerCarStatus's own try/catch per field). BestLapTimeSeconds is the minimum
 /// LapLastLapTime observed so far this session -- null until the player has completed one lap.</summary>
-public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds);
+public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds, double? LastLapTimeSeconds);
 
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
@@ -559,10 +559,11 @@ public class TelemetryReader : IDisposable
             catch { /* session info momentarily incomplete -- skip this tick's rubber read */ }
 
             var lastLap = _sdk.Data.GetFloat("LapLastLapTime");
+            double? lastLapSeconds = lastLap > 0 ? lastLap : null;
             if (lastLap > 0 && (_bestLapTimeSeconds is not double best || lastLap < best))
                 _bestLapTimeSeconds = lastLap;
 
-            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds));
+            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds, lastLapSeconds));
         }
         catch
         {
