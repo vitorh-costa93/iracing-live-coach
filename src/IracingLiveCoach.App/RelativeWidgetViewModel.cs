@@ -29,7 +29,10 @@ public class FullRelativeRowViewModel
 
     public FullRelativeRowViewModel(RelativeRow row, bool showClassPositionAsAbsolute)
     {
-        IsPlayerRow = row.PositionOffset == 0;
+        // For the secondary (class-scoped) instance, PositionOffset is an absolute class position
+        // (never the player's own row, since the player doesn't race in that class) -- only the
+        // primary, player-relative instance can ever have a real "this is me" row.
+        IsPlayerRow = !showClassPositionAsAbsolute && row.PositionOffset == 0;
         PositionText = showClassPositionAsAbsolute
             ? row.PositionOffset.ToString(CultureInfo.InvariantCulture)
             : (row.PositionOffset > 0 ? "+" : "") + row.PositionOffset.ToString(CultureInfo.InvariantCulture);
