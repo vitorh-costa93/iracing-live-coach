@@ -43,14 +43,14 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Umidade da pista" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
-                    <TextBlock Grid.Column="1" Text="{Binding WetnessText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1TextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding WetnessText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{Binding WetnessBrush}" />
                 </Grid>
                 <Grid Margin="0,2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Precipitação" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" />
+                    <TextBlock Grid.Column="0" Text="Precipitação (S/F)" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" ToolTip="Medido próximo à linha de largada/chegada -- pode não refletir a pista inteira" />
                     <TextBlock Grid.Column="1" Text="{Binding PrecipitationText}" FontFamily="{StaticResource F1MonoFont}" FontSize="11" Foreground="{StaticResource F1TextBrush}" />
                 </Grid>
 

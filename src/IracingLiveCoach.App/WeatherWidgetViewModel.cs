@@ -40,16 +40,30 @@ public class WeatherWidgetViewModel : INotifyPropertyChanged
         "Levemente úmida", "Moderadamente úmida", "Muito úmida", "Extremamente úmida",
     };
 
+    private static readonly Brush[] WetnessBrushes =
+    {
+        new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF)), // Unknown -- same muted gray as "Dry"
+        new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF)), // Dry
+        new SolidColorBrush(Color.FromRgb(0x8F, 0xA8, 0xB8)), // MostlyDry
+        new SolidColorBrush(Color.FromRgb(0x6E, 0xA8, 0xC7)), // VeryLightlyWet
+        new SolidColorBrush(Color.FromRgb(0x4D, 0xA3, 0xD6)), // LightlyWet
+        new SolidColorBrush(Color.FromRgb(0x2C, 0x8F, 0xD6)), // ModeratelyWet
+        new SolidColorBrush(Color.FromRgb(0x1A, 0x6F, 0xC2)), // VeryWet
+        new SolidColorBrush(Color.FromRgb(0x0A, 0x4A, 0xA8)), // ExtremelyWet -- accent-saturated blue
+    };
+
     private string _airTempText = "--";
     private string _trackTempText = "--";
     private string _precipitationText = "--";
     private string _wetnessText = "--";
+    private Brush _wetnessBrush = WetnessBrushes[0];
     private bool _declaredWetVisible;
 
     public string AirTempText { get => _airTempText; private set => Set(ref _airTempText, value); }
     public string TrackTempText { get => _trackTempText; private set => Set(ref _trackTempText, value); }
     public string PrecipitationText { get => _precipitationText; private set => Set(ref _precipitationText, value); }
     public string WetnessText { get => _wetnessText; private set => Set(ref _wetnessText, value); }
+    public Brush WetnessBrush { get => _wetnessBrush; private set => Set(ref _wetnessBrush, value); }
     public bool DeclaredWetVisible { get => _declaredWetVisible; private set => Set(ref _declaredWetVisible, value); }
 
     public ObservableCollection<TrackUsageDotViewModel> TrackDots { get; } = new();
@@ -62,6 +76,9 @@ public class WeatherWidgetViewModel : INotifyPropertyChanged
         WetnessText = status.TrackWetness >= 0 && status.TrackWetness < WetnessLabels.Length
             ? WetnessLabels[status.TrackWetness]
             : "--";
+        WetnessBrush = status.TrackWetness >= 0 && status.TrackWetness < WetnessBrushes.Length
+            ? WetnessBrushes[status.TrackWetness]
+            : (Brush)WetnessBrushes[0];
         DeclaredWetVisible = status.WeatherDeclaredWet;
 
         TrackDots.Clear();

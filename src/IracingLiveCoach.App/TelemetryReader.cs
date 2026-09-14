@@ -320,6 +320,17 @@ public class TelemetryReader : IDisposable
                 _lastLapCompleted = lapCompleted;
                 _lastFuelLevel = fuelLevel;
             }
+            else if (lapCompleted < _lastLapCompleted)
+            {
+                // Session segment changed (practice -> qualy -> race), or the session was reset --
+                // LapCompleted restarts at 0, so the prior segment's samples no longer describe
+                // this stint. Clear the rolling windows so the estimate starts fresh rather than
+                // silently freezing on stale samples from a different session segment.
+                _fuelPerLapWindow.Clear();
+                _lapTimeWindow.Clear();
+                _lastLapCompleted = lapCompleted;
+                _lastFuelLevel = fuelLevel;
+            }
             else if (lapCompleted > _lastLapCompleted && _lastFuelLevel is double previousFuel)
             {
                 var used = previousFuel - fuelLevel;
