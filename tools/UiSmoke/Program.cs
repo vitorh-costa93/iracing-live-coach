@@ -27,7 +27,7 @@ internal static class Program
         standings.UpdateSessionStatus(new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#22E889", 3420, 20));
         Capture(standings, "standings", output);
         var relative = new RelativeWidget(new WidgetLayout { Width = 650, Height = 440 }, () => { });
-        var rows = Enumerable.Range(0, 5).Select(i => new RelativeRow(i + 3, names[i], (i - 2) * .887, null, null, null, null, false, "🇧🇷", "A 3.49", "#1764D9", 3574, 1, brands[i], i == 2, i + 3, "GT3", "#FF9C24")).ToList();
+        var rows = Enumerable.Range(0, 5).Select(i => new RelativeRow(i + 3, names[i + 2], (i - 2) * .887, null, null, null, null, false, "🇧🇷", "A 3.49", "#1764D9", 3574, 1, brands[i], i == 2, i + 3, "GT3", "#FF9C24")).ToList();
         relative.UpdateRows(rows);
         relative.UpdatePlayerStatus(new PlayerCarStatus(54.2, "Moderate", 107.912, 108.326, 32));
         if (((RelativeWidgetViewModel)relative.DataContext).HasOvertake) throw new Exception("GT3 must hide overtake.");
@@ -52,6 +52,8 @@ internal static class Program
         control.SetLocked(false);
         control.Height = 980;
         Capture(control, "control-panel", output);
+        Descendants(control).OfType<ScrollViewer>().First().ScrollToEnd();
+        Capture(control, "control-panel-settings", output);
         foreach (var window in new Window[] { standings, relative, fuel, control })
         {
             window.Width = window.MinWidth; window.Height = window.MinHeight;

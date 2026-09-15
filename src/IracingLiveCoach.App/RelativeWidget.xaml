@@ -71,9 +71,9 @@
                                             <Border Width="18" Height="12" BorderBrush="#B0FFFFFF" BorderThickness="1" Margin="0,0,5,0">
                                                 <Image Source="{Binding FlagImagePath}" Stretch="Fill"/>
                                             </Border>
-                                            <Border Grid.Column="1" Width="28" Height="28" CornerRadius="0" Background="Transparent" Margin="0,0,8,0" Visibility="{Binding HasBrandIcon, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <Border Grid.Column="1" Width="28" Height="28" CornerRadius="3" Background="#FFE3EAF0" Margin="0,0,8,0" Visibility="{Binding HasBrandIcon, Converter={StaticResource BoolToVisibilityConverter}}">
                                                 <Grid>
-                                                    <Image Source="{Binding BrandImagePath}" Width="26" Height="26" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding HasBrandImage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                    <Image Source="{Binding BrandImage}" Width="26" Height="26" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding HasBrandImage, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                     <Viewbox Width="11" Height="11" Visibility="{Binding HasBrandPath, Converter={StaticResource BoolToVisibilityConverter}}">
                                                         <Canvas Width="24" Height="24">
                                                             <Path Data="{Binding BrandPathData}" Fill="{Binding BrandColorBrush}"/>

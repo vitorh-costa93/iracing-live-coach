@@ -22,6 +22,7 @@ public class StandingsRowViewModel
     public Brush BrandColorBrush { get; }
     public bool HasBrandIcon { get; }
     public string BrandImagePath { get; }
+    public ImageSource? BrandImage => BrandImageLoader.Load(BrandImagePath);
     public bool HasBrandImage { get; }
     public bool HasBrandPath { get; }
     public string LicText { get; }
