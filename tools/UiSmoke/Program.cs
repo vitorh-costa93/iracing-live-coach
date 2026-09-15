@@ -21,7 +21,7 @@ internal static class Program
         app.Resources.Add("BoolToVisibilityConverter", new BooleanToVisibilityConverter());
         var standings = new StandingsWidget(new WidgetLayout { Width = 800, Height = 460 }, () => { });
         var names = new[] { "L. MARTINS", "R. ALMEIDA", "P. SANTOS", "G. LIMA", "V. COSTA", "A. SOUZA", "B. ROCHA" };
-        var brands = new[] { "Ferrari", "BMW", "Mercedes", "Porsche", "McLaren", "Lamborghini", "Audi" };
+        var brands = new[] { "FERRARI", "BMW", "MERCEDES", "PORSCHE", "MCLAREN", "LAMBORGHINI", "AUDI" };
         standings.UpdateRows(Enumerable.Range(0, 7).Select(i => new StandingsRow(i + 1, names[i], 12, 108.326 + (i - 4) * .15, null, i == 4, "🇧🇷", "A 3.49", "#1764D9", 3574 + i * 30, 1, brands[i], i * 1.78, 40 - i * 9, (i - 4) * .15, "GT3", "#FF9C24", i + 1, 1.78)).ToList());
         standings.UpdateSessionStatus(new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#22E889", 3420, 20));
         Capture(standings, "standings", output);
@@ -41,8 +41,15 @@ internal static class Program
         Capture(fuel, "fuel-configured", output);
         var hiddenMetric = Descendants(fuel).OfType<TextBlock>().First(e => e.Text == "NO TANQUE");
         if (hiddenMetric.IsVisible) throw new Exception("Hidden fuel field still rendered.");
-        var control = new ControlPanelWindow(new WidgetLayoutStore(), () => { }, new[] { ("standings", "Standings", (Window)standings), ("relative", "Relative", (Window)relative), ("fuel", "Combustível", (Window)fuel) });
+        var weather = new WeatherWidget(new WidgetLayout { Width = 300, Height = 230 }, () => { });
+        weather.UpdateStatus(new WeatherStatus(24, 32, 0, 0, false, new()));
+        Capture(weather, "weather", output);
+        var radar = new RadarWidget(new WidgetLayout { Width = 220, Height = 220 }, () => { });
+        radar.UpdateStatus(new RadarStatus(true, false, new() { new RadarBlip(8, "ALM"), new RadarBlip(-6, "SOU") }, true));
+        Capture(radar, "radar", output);
+        var control = new ControlPanelWindow(new WidgetLayoutStore(), () => { }, new[] { ("standings", "Standings", (Window)standings), ("relative", "Relative", (Window)relative), ("fuel", "Combustível", (Window)fuel), ("weather", "Condições da pista", (Window)weather), ("radar", "Radar", (Window)radar) });
         control.SetLocked(false);
+        control.Height = 980;
         Capture(control, "control-panel", output);
         foreach (var window in new Window[] { standings, relative, fuel, control })
         {
