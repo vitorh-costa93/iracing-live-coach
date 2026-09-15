@@ -61,13 +61,13 @@ public partial class MainWindow : Window
         _viewModel.Status = CoachStatus.Waiting;
         _viewModel.StatusText = "Aguardando sessão do iRacing...";
 
-        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 360, 470), () => _layoutStore.Save());
+        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 650, 500), () => _layoutStore.Save());
         _relativeWidget.Show();
 
-        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 540, 480), () => _layoutStore.Save());
+        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 780, 530), () => _layoutStore.Save());
         _standingsWidget.Show();
 
-        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 250, 170), () => _layoutStore.Save());
+        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 290, 440), () => _layoutStore.Save());
         _fuelWidget.Show();
 
         _weatherWidget = new WeatherWidget(_layoutStore.Get("weather", 280, 200), () => _layoutStore.Save());
@@ -220,7 +220,7 @@ public partial class MainWindow : Window
     // ever reachable while unlocked -- click-through swallows the mouse event entirely while locked.
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ButtonState != MouseButtonState.Pressed || BroadcastChrome.IsInteractive(e.OriginalSource as DependencyObject)) return;
         DragMove();
         PersistLayout();
     }
