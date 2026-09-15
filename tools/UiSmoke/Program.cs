@@ -15,7 +15,8 @@ internal static class Program
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/screenshots");
         Directory.CreateDirectory(output);
         Environment.SetEnvironmentVariable("APPDATA", Path.Combine(Path.GetTempPath(), "live-coach-ui-" + Guid.NewGuid()));
-        Application.ResourceAssembly = typeof(StandingsWidget).Assembly;
+        foreach (var key in BrandIcons.RealImageByManufacturer.Keys.ToArray())
+            BrandIcons.RealImageByManufacturer[key] = BrandIcons.RealImageByManufacturer[key].Replace("pack://application:,,,/Assets/", "pack://application:,,,/IracingLiveCoach.App;component/Assets/");
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/IracingLiveCoach.App;component/F1Theme.xaml") });
         app.Resources.Add("BoolToVisibilityConverter", new BooleanToVisibilityConverter());
