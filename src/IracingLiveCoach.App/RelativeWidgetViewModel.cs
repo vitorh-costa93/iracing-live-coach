@@ -29,6 +29,9 @@ public class FullRelativeRowViewModel
     public string IRatingText { get; }
     public string GapText { get; }
     public string P2PText { get; }
+    public bool HasP2P { get; }
+    public string P2PStateText { get; }
+    public string P2PDetailText { get; }
     public Brush P2PBrush { get; }
     public bool IsPlayerRow { get; }
     public Brush RowForegroundBrush { get; }
@@ -36,7 +39,7 @@ public class FullRelativeRowViewModel
     public bool HasClassBadge { get; }
     public Brush ClassAccentBrush { get; }
 
-    private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
+    private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0x22, 0xE8, 0x89));
     private static readonly Brush P2PCooldownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA5, 0x2C));
     private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
     private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
@@ -106,6 +109,13 @@ public class FullRelativeRowViewModel
             P2PBrush = P2PIdleBrush;
         }
 
+        HasP2P = row.P2PActive.HasValue;
+        P2PStateText = row.P2PActive == true ? "ϟ ATIVO" : row.P2PInCooldown ? "◷ RECARGA" : HasP2P ? "✓ PRONTO" : "";
+        P2PDetailText = row.P2PSecondsRemaining is double seconds && (row.P2PActive == true || row.P2PInCooldown)
+            ? (row.P2PInCooldown ? "LIBERA ~" : "~") + seconds.ToString("0", CultureInfo.InvariantCulture) + " s"
+            : HasP2P ? "DISPONÍVEL" : "";
+        if (HasP2P && row.P2PActive == false && !row.P2PInCooldown) P2PBrush = P2PActiveBrush;
+
         // The player's own row gets a dark foreground since its Border background is the bright
         // F1HighlightBrush cyan -- F1TextBrush's near-white would be nearly illegible against it.
         RowForegroundBrush = IsPlayerRow
@@ -158,9 +168,9 @@ internal static class FlagStyle
     };
     public static string ImageFor(string emoji) => emoji switch
     {
-        "🇧🇷" => "pack://application:,,,/Assets/Flags/br.png",
-        "🇯🇵" => "pack://application:,,,/Assets/Flags/jp.png",
-        "🇺🇸" => "pack://application:,,,/Assets/Flags/us.png",
+        "🇧🇷" => "pack://application:,,,/IracingLiveCoach.App;component/Assets/Flags/br.png",
+        "🇯🇵" => "pack://application:,,,/IracingLiveCoach.App;component/Assets/Flags/jp.png",
+        "🇺🇸" => "pack://application:,,,/IracingLiveCoach.App;component/Assets/Flags/us.png",
         _ => ""
     };
     private static Brush Frozen(string value)
@@ -186,10 +196,12 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
     // "queria que tivesse a possibilidade de dimensionar as colunas de forma personalizável, como
     // uma tabela do Excel" (14/09/2026) -- see StandingsWidgetViewModel's own copy of this comment.
     private System.Windows.GridLength _posColumnWidth = new(38);
-    private System.Windows.GridLength _licColumnWidth = new(56);
-    private System.Windows.GridLength _iRatingColumnWidth = new(48);
-    private System.Windows.GridLength _deltaColumnWidth = new(55);
-    private System.Windows.GridLength _otColumnWidth = new(54);
+    private System.Windows.GridLength _licColumnWidth = new(64);
+    private System.Windows.GridLength _iRatingColumnWidth = new(60);
+    private System.Windows.GridLength _deltaColumnWidth = new(72);
+    private System.Windows.GridLength _otColumnWidth = new(106);
+    private bool _hasOvertake;
+    public bool HasOvertake { get => _hasOvertake; private set => Set(ref _hasOvertake, value); }
     public System.Windows.GridLength PosColumnWidth { get => _posColumnWidth; set => Set(ref _posColumnWidth, value); }
     public System.Windows.GridLength LicColumnWidth { get => _licColumnWidth; set => Set(ref _licColumnWidth, value); }
     public System.Windows.GridLength IRatingColumnWidth { get => _iRatingColumnWidth; set => Set(ref _iRatingColumnWidth, value); }
@@ -208,6 +220,9 @@ public class RelativeWidgetViewModel : INotifyPropertyChanged
     // PositionOffset carries an absolute class position, not an offset from the player.
     public void SetRows(System.Collections.Generic.List<RelativeRow> rows, bool showClassPositionAsAbsolute = false)
     {
+        HasOvertake = rows.Exists(row => row.P2PActive.HasValue);
+        if (!HasOvertake) OtColumnWidth = new(0);
+        else if (OtColumnWidth.Value == 0) OtColumnWidth = new(106);
         Rows.Clear();
         foreach (var row in rows) Rows.Add(new FullRelativeRowViewModel(row, showClassPositionAsAbsolute));
     }

@@ -41,13 +41,14 @@ public partial class RadarWidget : Window
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         // The radar intentionally has no panel/border to flash while driving; its transparent
         // proximity markers are the only visual surface.
     }
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ButtonState != MouseButtonState.Pressed || BroadcastChrome.IsInteractive(e.OriginalSource as DependencyObject)) return;
         DragMove();
         PersistLayout();
     }

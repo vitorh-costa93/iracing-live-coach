@@ -1,49 +1,29 @@
-<Window x:Class="IracingLiveCoach.App.RelativeOverlayWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="P2P"
-        WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
-        Topmost="True"
-        ShowInTaskbar="False"
-        MinWidth="70" MinHeight="70"
-        SizeToContent="Manual">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:IracingLiveCoach.App" x:Class="IracingLiveCoach.App.RelativeOverlayWindow" Title="P2P" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="70" MinHeight="70" SizeToContent="Manual" UseLayoutRounding="True" FontFamily="{StaticResource F1MonoFont}">
     <!-- 13/09/2026: "eu queria que isso estivesse junto da black box de relative do iRacing, o que
          já é nativo": iRacing has no plugin API to draw INSIDE its own native Relative box, so
          this is the closest real equivalent, a second, separately positioned/resized overlay
          (same drag/resize/lock mechanics as MainWindow; see that file's own comment) meant to sit
          right up against the driver's own native Relative box once dragged into place. -->
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
-        <Border x:Name="OuterBorder" CornerRadius="8" Background="{StaticResource HudBackgroundBrush}"
-                BorderBrush="{StaticResource HudBorderBrush}" BorderThickness="1.5">
+        <Border x:Name="OuterBorder" local:BroadcastChrome.Enabled="True" CornerRadius="0" Background="{StaticResource F1BackgroundBrush}" BorderBrush="{StaticResource F1BorderIdleBrush}" BorderThickness="1,4,1,1">
             <StackPanel Margin="6">
-                <TextBlock Text="P2P" FontSize="9" FontWeight="Bold"
-                           Foreground="{StaticResource HudMutedTextBrush}" Margin="0,0,0,4" />
-                <TextBlock Text="{Binding StatusText}" FontSize="10"
-                           Foreground="{StaticResource HudMutedTextBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{StaticResource HudMutedTextBrush}" TextWrapping="Wrap"/>
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="0,2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Label}" FontFamily="{StaticResource HudMonoFont}"
-                                           FontSize="11" Foreground="{StaticResource HudMutedTextBrush}" />
-                                <TextBlock Grid.Column="1" Text="{Binding P2PText}" FontFamily="{StaticResource HudMonoFont}"
-                                           FontSize="11" FontWeight="Bold" Foreground="{Binding P2PBrush}" />
+                                <TextBlock Grid.Column="0" Text="{Binding Label}" FontFamily="{StaticResource HudMonoFont}" FontSize="11" Foreground="{StaticResource HudMutedTextBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding P2PText}" FontFamily="{StaticResource HudMonoFont}" FontSize="11" FontWeight="Bold" Foreground="{Binding P2PBrush}"/>
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
         </Border>
-
-        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE"
-               HorizontalAlignment="Right" VerticalAlignment="Bottom"
-               Background="{StaticResource HudAccentBrush}" Opacity="0.5"
-               DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource HudAccentBrush}" Opacity="0.5" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/>
     </Grid>
 </Window>

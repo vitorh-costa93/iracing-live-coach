@@ -1,30 +1,26 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- 13/09/2026: shared F1-broadcast-inspired look for the new widgets (Relative, Standings,
-         and later Fuel/Weather/Tire/Radar widgets) - sharp rectangles and a leading colored
-         accent bar per row, distinct on purpose from the existing Coach/P2P widgets' rounded HUD
-         look (that pair keeps its own established style unchanged). One file so a later re-theme
-         touches this file only, not every widget's own XAML. -->
-    <SolidColorBrush x:Key="F1BackgroundBrush" Color="#F00B1420" />
-    <SolidColorBrush x:Key="F1AccentBrush" Color="#FFE2483D" />
+    <!-- Shared broadcast palette and native WPF controls. -->
+    <SolidColorBrush x:Key="F1BackgroundBrush" Color="#F2081017" />
+    <SolidColorBrush x:Key="F1AccentBrush" Color="#FFFF3038" />
     <SolidColorBrush x:Key="F1TextBrush" Color="#FFF2F4F7" />
     <SolidColorBrush x:Key="F1MutedTextBrush" Color="#FF9AA3AF" />
-    <SolidColorBrush x:Key="F1PositionGainBrush" Color="#FF2DE2B2" />
-    <SolidColorBrush x:Key="F1PositionLossBrush" Color="#FFE2483D" />
-    <SolidColorBrush x:Key="F1BorderIdleBrush" Color="#33E2483D" />
-    <SolidColorBrush x:Key="F1BorderActiveBrush" Color="#FFE2483D" />
-    <SolidColorBrush x:Key="F1HighlightBrush" Color="#FF39D8E0" />
+    <SolidColorBrush x:Key="F1PositionGainBrush" Color="#FF22E889" />
+    <SolidColorBrush x:Key="F1PositionLossBrush" Color="#FFFF3038" />
+    <SolidColorBrush x:Key="F1BorderIdleBrush" Color="#FF46525D" />
+    <SolidColorBrush x:Key="F1BorderActiveBrush" Color="#FFFF3038" />
+    <SolidColorBrush x:Key="F1HighlightBrush" Color="#FF35D5ED" />
     <!-- 14/09/2026: "gosto da tipografia que usamos hoje no iRacing Analytics", same three fonts
          as that sibling project's own app/layout.tsx (Big Shoulders / Inter / JetBrains Mono via
          next/font/google), embedded here as WPF resources (Assets\Fonts\*.ttf) instead of relying
          on Bahnschrift, a Windows-only system font with a much heavier, blockier look than what the
          driver actually asked to match. Loaded via pack URI so no separate font install is needed. -->
-    <FontFamily x:Key="F1HeaderFont">pack://application:,,,/Assets/Fonts/#Big Shoulders</FontFamily>
-    <FontFamily x:Key="F1MonoFont">pack://application:,,,/Assets/Fonts/#Inter</FontFamily>
-    <FontFamily x:Key="F1DataFont">pack://application:,,,/Assets/Fonts/#JetBrains Mono</FontFamily>
+    <FontFamily x:Key="F1HeaderFont">pack://application:,,,/IracingLiveCoach.App;component/Assets/Fonts/#Big Shoulders</FontFamily>
+    <FontFamily x:Key="F1MonoFont">pack://application:,,,/IracingLiveCoach.App;component/Assets/Fonts/#Inter</FontFamily>
+    <FontFamily x:Key="F1DataFont">pack://application:,,,/IracingLiveCoach.App;component/Assets/Fonts/#JetBrains Mono</FontFamily>
     <Style x:Key="HeaderCell" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource F1MonoFont}" />
-        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontSize" Value="11" />
         <Setter Property="Foreground" Value="{StaticResource F1TextBrush}" />
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -56,5 +52,48 @@
     <Style x:Key="F1RowAccentBar" TargetType="Border">
         <Setter Property="Width" Value="3" />
         <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <SolidColorBrush x:Key="F1SeparatorBrush" Color="#FF293640"/>
+    <Style x:Key="ControlToggle" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource F1TextBrush}"/>
+        <Setter Property="FontFamily" Value="{StaticResource F1MonoFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Grid Background="Transparent" MinHeight="30">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="48"/></Grid.ColumnDefinitions>
+                        <ContentPresenter VerticalAlignment="Center" Margin="0,0,12,0" RecognizesAccessKey="True"/>
+                        <Border x:Name="Track" Grid.Column="1" Width="38" Height="20" CornerRadius="10" Background="#FF26343F" BorderBrush="#FF52616D" BorderThickness="1">
+                            <Ellipse x:Name="Knob" Width="12" Height="12" Fill="#FF9CAAB6" HorizontalAlignment="Left" Margin="3,0"/>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="#FF123D49"/><Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource F1HighlightBrush}"/><Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/><Setter TargetName="Knob" Property="Fill" Value="{StaticResource F1HighlightBrush}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="White"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="ControlInput" TargetType="TextBox">
+        <Setter Property="Background" Value="#FF101C26"/><Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="#FF3D5160"/><Setter Property="CaretBrush" Value="{StaticResource F1HighlightBrush}"/>
+        <Setter Property="SelectionBrush" Value="#FF17657A"/><Setter Property="Padding" Value="10,7"/>
+        <Setter Property="FontFamily" Value="{StaticResource F1DataFont}"/><Setter Property="FontSize" Value="14"/>
+    </Style>
+    <Style x:Key="ControlSlider" TargetType="Slider">
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
+            <Grid Height="24" Background="Transparent">
+                <Border Height="3" Background="#FF324450" VerticalAlignment="Center" CornerRadius="1"/>
+                <Track x:Name="PART_Track" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}" Value="{TemplateBinding Value}">
+                    <Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="3" Background="{StaticResource F1HighlightBrush}" VerticalAlignment="Center"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                    <Track.Thumb><Thumb Width="14" Height="14"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse Fill="White" Stroke="{StaticResource F1HighlightBrush}" StrokeThickness="2"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                    <Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                </Track>
+            </Grid>
+        </ControlTemplate></Setter.Value></Setter>
     </Style>
 </ResourceDictionary>

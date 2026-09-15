@@ -46,7 +46,7 @@ public partial class ControlPanelWindow : Window
         _onChanged = onChanged;
         DataContext = _viewModel;
 
-        _layout = _store.Get("controlPanel", 220, 160);
+        _layout = _store.Get("controlPanel", 440, 720);
         Width = _layout.Width;
         Height = _layout.Height;
         if (_layout.Left is double left && _layout.Top is double top) { WindowStartupLocation = WindowStartupLocation.Manual; Left = left; Top = top; }
@@ -135,7 +135,7 @@ public partial class ControlPanelWindow : Window
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ButtonState != MouseButtonState.Pressed || BroadcastChrome.IsInteractive(e.OriginalSource as DependencyObject)) return;
         DragMove();
         PersistLayout();
     }

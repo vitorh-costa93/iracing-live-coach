@@ -1,3 +1,42 @@
-<Window x:Class="IracingLiveCoach.App.FuelWidget" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Fuel" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="210" MinHeight="148" SizeToContent="Manual">
- <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown"><Border x:Name="OuterBorder" Background="#EE08131E" BorderBrush="#FF647482" BorderThickness="1,0,1,1"><Viewbox Stretch="Uniform"><Grid Width="230" Height="156" Margin="10"><Grid.RowDefinitions><RowDefinition Height="5"/><RowDefinition Height="32"/><RowDefinition Height="*"/><RowDefinition Height="42"/></Grid.RowDefinitions><Border Background="{StaticResource F1AccentBrush}"/><Grid Grid.Row="1"><TextBlock Text="FUEL" FontFamily="{StaticResource F1HeaderFont}" FontSize="19" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/><TextBlock Text="ESTRATÉGIA" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid><Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="NÍVEL" Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding FuelLevelText}" Style="{StaticResource FooterValue}"/><TextBlock Text="CONSUMO/H" Style="{StaticResource FooterLabel}" Margin="0,8,0,0"/><TextBlock Text="{Binding FuelUsePerHourText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="White"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="MÉDIA/VOLTA" Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding AveragePerLapText}" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="White"/><TextBlock Text="MARGEM" Style="{StaticResource FooterLabel}" Margin="0,8,0,0"/><TextBlock Text="+1.0 VOLTA" FontFamily="{StaticResource F1MonoFont}" FontSize="14" Foreground="#FF20E884"/></StackPanel></Grid><Border Grid.Row="3" BorderBrush="#FF52606B" BorderThickness="0,1,0,0"><Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="VOLTAS RESTANTES" Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding LapsRemainingText}" Style="{StaticResource FooterValue}" Foreground="{StaticResource F1AccentBrush}"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="TEMPO RESTANTE" Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding TimeRemainingText}" Style="{StaticResource FooterValue}" Foreground="{StaticResource F1AccentBrush}"/></StackPanel></Grid></Border></Grid></Viewbox></Border><Thumb x:Name="ResizeGrip" Width="12" Height="12" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource F1AccentBrush}" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/></Grid>
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:IracingLiveCoach.App" x:Class="IracingLiveCoach.App.FuelWidget" Title="Fuel" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="270" MinHeight="240" SizeToContent="Manual" UseLayoutRounding="True">
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border x:Name="OuterBorder" local:BroadcastChrome.Enabled="True" Background="{StaticResource F1BackgroundBrush}" BorderBrush="{StaticResource F1BorderIdleBrush}" BorderThickness="1">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <Border Height="4" Background="{StaticResource F1AccentBrush}"/>
+                    <Border Padding="16,10" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,0,0,1" Visibility="{Binding ShowLevel, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="NO TANQUE" Style="{StaticResource FooterLabel}"/>
+                            <TextBlock Text="{Binding FuelLevelText}" Style="{StaticResource FooterValue}" FontSize="42" Foreground="White" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="16,10" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,0,0,1" Visibility="{Binding ShowAveragePerLap, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="CONSUMO MÉDIO / VOLTA" Style="{StaticResource FooterLabel}"/>
+                            <TextBlock Text="{Binding AveragePerLapText}" Style="{StaticResource FooterValue}" FontSize="25" Foreground="White" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="16,10" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,0,0,1" Visibility="{Binding ShowUsePerHour, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="CONSUMO POR HORA" Style="{StaticResource FooterLabel}"/>
+                            <TextBlock Text="{Binding FuelUsePerHourText}" Style="{StaticResource FooterValue}" FontSize="25" Foreground="White" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="16,10" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,0,0,1" Visibility="{Binding ShowLapsRemaining, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="AUTONOMIA / VOLTAS" Style="{StaticResource FooterLabel}"/>
+                            <TextBlock Text="{Binding LapsRemainingText}" Style="{StaticResource FooterValue}" FontSize="32" Foreground="{StaticResource F1PositionGainBrush}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Padding="16,10" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,0,0,1" Visibility="{Binding ShowTimeRemaining, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="AUTONOMIA / TEMPO" Style="{StaticResource FooterLabel}"/>
+                            <TextBlock Text="{Binding TimeRemainingText}" Style="{StaticResource FooterValue}" FontSize="32" Foreground="{StaticResource F1PositionGainBrush}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="12" Height="12" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource F1AccentBrush}" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/>
+    </Grid>
 </Window>

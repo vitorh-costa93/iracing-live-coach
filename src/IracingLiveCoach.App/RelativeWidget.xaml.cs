@@ -50,6 +50,7 @@ public partial class RelativeWidget : Window
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         OuterBorder.BorderBrush = locked
             ? (Brush)FindResource("F1BorderIdleBrush")
             : (Brush)FindResource("F1BorderActiveBrush");
@@ -57,7 +58,7 @@ public partial class RelativeWidget : Window
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ButtonState != MouseButtonState.Pressed || BroadcastChrome.IsInteractive(e.OriginalSource as DependencyObject)) return;
         DragMove();
         PersistLayout();
     }
