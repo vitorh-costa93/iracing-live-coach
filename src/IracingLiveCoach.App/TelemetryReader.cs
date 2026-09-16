@@ -503,22 +503,22 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // CarIdxP2P_Count and CarIdxP2P_Status are arrays indexed by CarIdx, not player-only values.
-    // Kapps subscribes to this same pair for its Relative widget. The driver confirmed the SF23's
-    // Overtake bank is exclusively 0..200 s, so anything outside that range is discarded as an
-    // uninitialised/garbage SDK value rather than shown as a nonsensical number.
-    private static int? ReadP2PCount(int raw) => raw is >= 0 and <= P2PMaxSeconds ? raw : null;
+    // 16/09/2026: root cause found from real session data logged by LogP2PAnomaly below. Every
+    // opponent logged the EXACT SAME raw int, 1101004800, at every tick -- not noise (garbage from
+    // an out-of-bounds/misaligned read varies per car and per tick), a fixed, well-formed value.
+    // Its bits (0x41A00000) decode as the IEEE-754 float 20.0 -- and sajax's own irsdkdocs entry
+    // for the per-player shortcut "P2P_Count" documents its type as float, not int (an array and
+    // its single-value "shortcut" always share the same underlying type in this SDK). So
+    // CarIdxP2P_Count is a float[] being misread through GetInt, which reinterprets the raw bytes
+    // instead of converting -- reading it through GetFloat is what actually fixes this, not any
+    // index/stride change (both the original code and the reverted "CarIdx * 4" attempt used
+    // GetInt and were equally wrong for this reason).
+    private static int? ReadP2PCount(float raw) => raw is >= 0 and <= P2PMaxSeconds ? (int)Math.Round(raw) : null;
 
-    // 16/09/2026: a previous attempt to fix "P2P errado para os outros carros" multiplied CarIdx by
-    // 4 before calling GetInt, based on an unverified assumption about the wrapper's index
-    // parameter. Checked against IRSDKSharper's own source (GetInt does `index * 4` internally, so
-    // a plain element index was always correct) and reverted. If opponents still show wrong/absent
-    // P2P after that revert, guessing again would repeat the same mistake -- so every rejected raw
-    // value (outside 0..200) is now logged with a real timestamp+CarIdx to
-    // %AppData%\iracing-live-coach\p2p-debug.log, throttled per car to avoid flooding, so the next
-    // live session gives real ground truth instead of another unverified theory.
+    // Kept for live evidence if a future value still falls outside the confirmed 0..200 s Super
+    // Formula bank -- now logs the float itself, throttled per car to avoid flooding.
     private readonly Dictionary<int, DateTime> _lastP2PAnomalyLogByCarIdx = new();
-    private void LogP2PAnomaly(int carIdx, int raw)
+    private void LogP2PAnomaly(int carIdx, float raw)
     {
         try
         {
@@ -527,7 +527,7 @@ public class TelemetryReader : IDisposable
             _lastP2PAnomalyLogByCarIdx[carIdx] = now;
             var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-debug.log");
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-            System.IO.File.AppendAllText(path, $"{now:O} CarIdx={carIdx} RawCarIdxP2P_Count={raw} (outside 0..{P2PMaxSeconds})\n");
+            System.IO.File.AppendAllText(path, $"{now:O} CarIdx={carIdx} RawCarIdxP2P_Count(float)={raw} (outside 0..{P2PMaxSeconds})\n");
         }
         catch { /* diagnostics must never break the real read path */ }
     }
@@ -543,7 +543,7 @@ public class TelemetryReader : IDisposable
         catch { /* OTS status is not published for this car/session. */ }
         try
         {
-            var raw = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
+            var raw = _sdk.Data.GetFloat("CarIdxP2P_Count", carIdx);
             seconds = ReadP2PCount(raw);
             if (seconds is null) LogP2PAnomaly(carIdx, raw);
         }
