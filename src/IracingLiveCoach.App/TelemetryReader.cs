@@ -168,10 +168,9 @@ public class TelemetryReader : IDisposable
     // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
     // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
     // last valid bank per car and mark a short recharge window only when the real bank rises.
-    // SF23 starts at 200 s, but other SDK-supported systems can expose a larger valid bank.  The
-    // upper bound filters uninitialised memory values (millions) without suppressing real data.
-    private const int P2PMaxSeconds = 1000;
-    private const int P2PFullBankSeconds = 200;
+    // Super Formula's Overtake bank is exactly 0..200 seconds.  Anything outside this range is an
+    // uninitialised SDK value, never a larger legitimate bank for this overlay.
+    private const int P2PMaxSeconds = 200;
     private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
     private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
 
@@ -524,7 +523,7 @@ public class TelemetryReader : IDisposable
         // the SF23 full bank is replenishing and must be yellow; a full inactive bank is available
         // and remains gray.  The short rising-edge window also covers a telemetry frame where the
         // bank crosses the full value.
-        var charging = active == false && (seconds is int remaining && remaining < P2PFullBankSeconds ||
+        var charging = active == false && (seconds is int remaining && remaining < P2PMaxSeconds ||
             _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
         return (active, seconds, charging);
     }
