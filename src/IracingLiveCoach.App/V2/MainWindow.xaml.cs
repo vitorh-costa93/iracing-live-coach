@@ -248,14 +248,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OnRenderFrame(object? sender, EventArgs e)
     {
+        // Dynamic driving cues must never wait behind a full Relative/Standings collection pass.
+        // Their own fixed render budgets below keep this first portion extremely small.
+        ApplyLatestRaceStart();
+        ApplyLatestRadar();
         if (System.Threading.Interlocked.Exchange(ref _pendingStandings, null) is { } standings) ApplyStandings(standings);
         if (System.Threading.Interlocked.Exchange(ref _pendingRelative, null) is { } relative) ApplyFullRelative(relative);
         if (System.Threading.Interlocked.Exchange(ref _pendingSessionStatus, null) is { } sessionStatus) ApplySessionStatus(sessionStatus);
         if (System.Threading.Interlocked.Exchange(ref _pendingFuel, null) is { } fuel) ApplyFuel(fuel);
         if (System.Threading.Interlocked.Exchange(ref _pendingWeather, null) is { } weather) ApplyWeather(weather);
         if (System.Threading.Interlocked.Exchange(ref _pendingPlayerStatus, null) is { } playerStatus) ApplyPlayerCarStatus(playerStatus);
-        ApplyLatestRadar();
-        ApplyLatestRaceStart();
     }
 
     private static bool IsRenderDue(ref long lastTimestamp, int hertz)

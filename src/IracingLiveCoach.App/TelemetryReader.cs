@@ -146,7 +146,9 @@ public class TelemetryReader : IDisposable
     // what "instant" overtake reporting on a chaotic opening lap actually requires. The
     // driving-coach engine below remains on every SDK tick regardless.
     private const int ProximityTickInterval = 1;
-    private const int FullFieldTickInterval = 3;
+    // Standings carries live gap/interval information.  Thirty refreshes per second matches the
+    // visual cadence used by established overlays while avoiding a 60 Hz full-grid relayout.
+    private const int FullFieldTickInterval = 2;
     private int _proximityTickCounter;
     private int _fullFieldTickCounter;
 
@@ -166,7 +168,10 @@ public class TelemetryReader : IDisposable
     // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
     // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
     // last valid bank per car and mark a short recharge window only when the real bank rises.
-    private const int P2PMaxSeconds = 200;
+    // SF23 starts at 200 s, but other SDK-supported systems can expose a larger valid bank.  The
+    // upper bound filters uninitialised memory values (millions) without suppressing real data.
+    private const int P2PMaxSeconds = 1000;
+    private const int P2PFullBankSeconds = 200;
     private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
     private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
 
@@ -515,7 +520,12 @@ public class TelemetryReader : IDisposable
                 _p2pChargingUntilByCarIdx[carIdx] = now.AddSeconds(1.5);
             _lastP2PCountByCarIdx[carIdx] = current;
         }
-        var charging = active == false && _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now;
+        // The remaining bank itself is the useful state for this system.  A non-active car below
+        // the SF23 full bank is replenishing and must be yellow; a full inactive bank is available
+        // and remains gray.  The short rising-edge window also covers a telemetry frame where the
+        // bank crosses the full value.
+        var charging = active == false && (seconds is int remaining && remaining < P2PFullBankSeconds ||
+            _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
         return (active, seconds, charging);
     }
 
