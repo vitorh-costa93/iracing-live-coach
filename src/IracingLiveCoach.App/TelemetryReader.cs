@@ -318,9 +318,25 @@ public class TelemetryReader : IDisposable
     {
         _sdk.OnSessionInfo += OnSessionInfo;
         _sdk.OnTelemetryData += OnTelemetryData;
+        // Telemetry stops immediately when the simulator closes, so frames alone cannot observe
+        // that transition. IRSDKSharper exposes it explicitly through OnDisconnected.
+        _sdk.OnDisconnected += OnDisconnected;
     }
 
     public void Start() => _sdk.Start();
+
+    private void OnDisconnected()
+    {
+        _isOnTrack = false;
+        _playerCarIdx = -1;
+        _sessionDetected = false;
+        _driverCodesByCarIdx.Clear();
+        _pitRoadEnteredUtcByCarIdx.Clear();
+        _lastPitStatusByCarIdx.Clear();
+        // Always notify: closing can happen between telemetry frames, while the last known
+        // in-car state is still true. The V2 window then hides every locked widget immediately.
+        OnTrackStateChanged?.Invoke(false);
+    }
 
     /// <summary>Called once BaselineSync has resolved the detected car+track's history --
     /// telemetry ticks before this is called are simply ignored (OnTelemetryData no-ops on a
@@ -1085,6 +1101,7 @@ public class TelemetryReader : IDisposable
     {
         _sdk.OnSessionInfo -= OnSessionInfo;
         _sdk.OnTelemetryData -= OnTelemetryData;
+        _sdk.OnDisconnected -= OnDisconnected;
         _sdk.Stop();
     }
 }

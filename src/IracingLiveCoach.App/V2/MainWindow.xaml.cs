@@ -28,6 +28,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly WidgetProfile _radarWidget;
     private readonly WidgetProfile _startHelperWidget;
     private bool _pitActivityDetected;
+    // Latest live snapshots let Studio controls redraw the active widgets immediately, without
+    // waiting for a subsequent telemetry update.
+    private List<StandingsRow>? _latestStandings;
+    private List<RelativeRow>? _latestRelative;
     // The source remains intact while the visible Relative rows are rebuilt from its settings.
     private readonly List<DriverRow> _relativePreviewSource = new();
     private string _fuelLevelText = "43.9 L", _fuelAverageText = "2.05 L/LAP", _fuelRefuelText = "+26.1 L", _fuelLapsText = "21.4 laps";
@@ -137,7 +141,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             foreach (var column in widget.TimingColumns) column.PropertyChanged += (_, _) => RebuildTimingLayout(widget);
             widget.PropertyChanged += (_, args) =>
             {
-                if (args.PropertyName == nameof(WidgetProfile.DriverNameStyle) || args.PropertyName is nameof(WidgetProfile.PlayerClassRows) or nameof(WidgetProfile.OtherClassRows) or nameof(WidgetProfile.ShowMulticlass)) { RebuildPreviewMulticlass(); return; }
+                if (args.PropertyName == nameof(WidgetProfile.DriverNameStyle) || args.PropertyName is nameof(WidgetProfile.PlayerClassRows) or nameof(WidgetProfile.OtherClassRows) or nameof(WidgetProfile.TopNFixed) or nameof(WidgetProfile.ShowMulticlass)) { RefreshTimingRows(widget); return; }
                 if (args.PropertyName is nameof(WidgetProfile.AutoFitToColumns) or nameof(WidgetProfile.FontScale) || args.PropertyName?.EndsWith("ColumnWidth", StringComparison.Ordinal) == true || args.PropertyName == nameof(WidgetProfile.ShowHeader)) RebuildTimingLayout(widget);
             };
         }
@@ -146,9 +150,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _relativePreviewSource.AddRange(ExpandPreviewRows(PreviewDrivers));
         RefreshDriverNames(Widgets.First(w => w.IsStandings)); RefreshDriverNames(Widgets.First(w => w.IsRelative));
         RebuildPreviewMulticlass();
-        // V2 opens in layout mode initially. This makes first-use positioning explicit;
-        // the Studio's lock button restores click-through behaviour for driving.
-        _profile.Locked = false;
         DataContext = this;
         _studio = new StudioWindow(_profile, PreviewDrivers, Save, SetEditing);
         Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
@@ -232,6 +233,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyStandings(List<StandingsRow> rows)
     {
+        _latestStandings = rows;
         // Sticky: once any car has actually pitted this session, the PIT column earns its place
         // permanently -- there's no reason to hide it again once it has real data to show.
         if (!_pitActivityDetected && rows.Any(r => r.PitStatus != "--")) _pitActivityDetected = true;
@@ -274,6 +276,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyFullRelative(List<RelativeRow> rows)
     {
+        _latestRelative = rows;
         var mine = rows.FirstOrDefault(row => row.IsPlayer);
         var ahead = rows.Where(row => row.PositionOffset < 0).OrderByDescending(row => row.PositionOffset).FirstOrDefault();
         if (mine is not null) RelativePlayerText = $"{mine.PositionOffset}  •  {mine.DriverCode}";
@@ -403,6 +406,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         const int GwlExStyle = -20, WsExTransparent = 0x20;
         var style = GetWindowLong(handle, GwlExStyle);
         SetWindowLong(handle, GwlExStyle, editing ? style & ~WsExTransparent : style | WsExTransparent);
+    }
+
+    private void RefreshTimingRows(WidgetProfile widget)
+    {
+        // Prefer a live snapshot. Before the sim supplies one, keep the Studio demonstrable by
+        // rebuilding its populated preview field instead.
+        if (widget.IsStandings && _latestStandings is not null)
+        {
+            ApplyStandings(_latestStandings);
+            return;
+        }
+        if (widget.IsRelative && _latestRelative is not null)
+        {
+            ApplyFullRelative(_latestRelative);
+            return;
+        }
+        RebuildPreviewMulticlass();
     }
 
     private static string? FlagAsset(string? country) => country?.ToUpperInvariant() switch

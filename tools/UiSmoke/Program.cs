@@ -13,7 +13,7 @@ internal static class Program
     {
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/screenshots");
         Directory.CreateDirectory(output);
-        Environment.SetEnvironmentVariable("APPDATA", Path.Combine(Path.GetTempPath(), "live-coach-ui-" + Guid.NewGuid()));
+        Environment.SetEnvironmentVariable("IRACING_LIVE_COACH_PROFILE_PATH", Path.Combine(Path.GetTempPath(), "live-coach-ui-" + Guid.NewGuid(), "v2-profile.json"));
 
         var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         Application.LoadComponent(app, new Uri("/IracingLiveCoach.App;component/V2/App.xaml", UriKind.Relative));
