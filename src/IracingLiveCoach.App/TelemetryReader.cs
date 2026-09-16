@@ -54,7 +54,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -110,6 +110,7 @@ public class TelemetryReader : IDisposable
     private readonly IRacingSdk _sdk = new() { UpdateInterval = 1 };
     private LiveCoachEngine? _engine;
     private bool _sessionDetected;
+    private bool _isRaceSession;
     private int _playerCarIdx = -1;
     private Dictionary<int, string> _driverCodesByCarIdx = new();
 
@@ -335,6 +336,7 @@ public class TelemetryReader : IDisposable
         _isOnTrack = false;
         _playerCarIdx = -1;
         _sessionDetected = false;
+        _isRaceSession = false;
         _driverCodesByCarIdx.Clear();
         _pitRoadEnteredUtcByCarIdx.Clear();
         _lastPitStatusByCarIdx.Clear();
@@ -355,7 +357,13 @@ public class TelemetryReader : IDisposable
 
     private void OnSessionInfo()
     {
-        if (_sessionDetected) return;
+        // SessionInfo arrives on session transitions as well as initial attachment.  Refresh the
+        // cached race flag here, never in the 60-Hz pedal path.
+        if (_sessionDetected)
+        {
+            RefreshRaceSessionFlag();
+            return;
+        }
 
         // Session info can be incomplete on early updates (e.g. before the driver has picked a
         // car) or the YAML parse can momentarily throw -- wait for a later, more complete update
@@ -370,6 +378,7 @@ public class TelemetryReader : IDisposable
 
             _playerCarIdx = driverCarIdx;
             _driverCodesByCarIdx = BuildDriverCodes(sessionInfo);
+            RefreshRaceSessionFlag();
             // V2 has no baseline-sync step (that's V1's corner-coaching flow, which never runs in
             // this build) to call SetTrackLength -- reading WeekendInfo.TrackLength directly here
             // means the radar's real distance blips work standalone, without that dependency.
@@ -484,6 +493,18 @@ public class TelemetryReader : IDisposable
         try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx)); }
         catch { /* The count can be omitted independently of status. */ }
         return (active, seconds);
+    }
+
+    private void RefreshRaceSessionFlag()
+    {
+        try
+        {
+            var sessionInfo = _sdk.Data.SessionInfo;
+            var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+            var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
+            _isRaceSession = string.Equals(session?.SessionType, "Race", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { _isRaceSession = false; }
     }
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
@@ -904,16 +925,14 @@ public class TelemetryReader : IDisposable
     {
         try
         {
-            var sessionInfo = _sdk.Data.SessionInfo;
-            var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
-            var sessionType = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionType;
-            var isRace = string.Equals(sessionType, "Race", StringComparison.OrdinalIgnoreCase);
-
             var speed = _sdk.Data.GetFloat("Speed");
             var clutch = _sdk.Data.GetFloat("Clutch");
             var throttle = _sdk.Data.GetFloat("Throttle");
 
-            var shouldShow = isRace && Math.Abs(speed) < StationarySpeedThreshold;
+            // SessionInfo is a large parsed object.  Looking it up and LINQ-scanning it on every
+            // pedal frame was enough to make the Start Helper feel like 20 FPS.  Its race flag is
+            // cached once at session detection; only the three real-time scalar channels remain.
+            var shouldShow = _isRaceSession && Math.Abs(speed) < StationarySpeedThreshold;
             RaceStartUpdated?.Invoke(new RaceStartStatus(clutch * 100.0, throttle * 100.0, shouldShow));
         }
         catch
@@ -998,6 +1017,8 @@ public class TelemetryReader : IDisposable
             double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
 
             double? refuelToFull = null;
+            double? plannedPitFuel = null;
+            double? fuelNeededForFinish = null;
             try
             {
                 var fuelPct = _sdk.Data.GetFloat("FuelLevelPct");
@@ -1005,7 +1026,26 @@ public class TelemetryReader : IDisposable
                     refuelToFull = Math.Max(0, fuelLevel / fuelPct - fuelLevel);
             }
             catch { /* optional channel; calculators remain useful without tank capacity */ }
-            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull));
+            try
+            {
+                // PitSvFuel is the live amount currently selected in iRacing's Black Box, in L.
+                // Kapps subscribes to this exact channel for its fuel calculator.
+                var blackBoxFuel = _sdk.Data.GetFloat("PitSvFuel");
+                if (blackBoxFuel >= 0) plannedPitFuel = blackBoxFuel;
+            }
+            catch { /* no pit service field in this session */ }
+            try
+            {
+                var sessionInfo = _sdk.Data.SessionInfo;
+                var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+                var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
+                var lap = _sdk.Data.GetInt("LapCompleted");
+                if (avgFuelPerLap is double lapFuel && lapFuel > 0 && int.TryParse(session?.SessionLaps, out var totalLaps) && totalLaps > 0)
+                    fuelNeededForFinish = Math.Max(0, (totalLaps - Math.Max(0, lap)) * lapFuel - fuelLevel);
+            }
+            catch { /* time-limited sessions do not have a fixed lap target */ }
+            double? fuelAfterPit = plannedPitFuel is double planned ? fuelLevel + planned : null;
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit));
         }
         catch
         {

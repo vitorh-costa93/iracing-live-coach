@@ -28,6 +28,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly WidgetProfile _radarWidget;
     private readonly WidgetProfile _startHelperWidget;
     private bool _pitActivityDetected;
+    private int _lastStandingsRenderedRows = -1;
     // Latest live snapshots let Studio controls redraw the active widgets immediately, without
     // waiting for a subsequent telemetry update.
     private List<StandingsRow>? _latestStandings;
@@ -255,11 +256,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // permanently -- there's no reason to hide it again once it has real data to show.
         if (!_pitActivityDetected && rows.Any(r => r.PitStatus != "--")) _pitActivityDetected = true;
         var widget = Widgets.First(w => w.Kind == WidgetKind.Standings);
+        var isMulticlass = rows.Select(row => row.CarClassId).Where(id => id > 0).Distinct().Skip(1).Any();
+        foreach (var profile in Widgets) profile.IsSingleClassSession = !isMulticlass;
         var renderedClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var built = new List<DriverRow>();
         foreach (var row in SelectStandingsRows(rows, widget))
         {
-            if (renderedClasses.Add(row.ClassShortName))
+            if (isMulticlass && renderedClasses.Add(row.ClassShortName))
             {
                 built.Add(new DriverRow
                 {
@@ -289,6 +292,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             built.Add(driver);
         }
         ApplyRows(PreviewDrivers, built);
+        // The timing card follows its active content, just like its column-driven width.  A
+        // solo practice therefore occupies one row; a race grows only to the selected rows.
+        if (_lastStandingsRenderedRows != built.Count)
+        {
+            _lastStandingsRenderedRows = built.Count;
+            RebuildTimingLayout(widget);
+        }
     }
 
     private void ApplyFullRelative(List<RelativeRow> rows)
@@ -341,12 +351,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         FuelLevelText = $"{fuel.FuelLevelLiters:0.0} L";
         FuelAverageText = fuel.AverageFuelPerLapLiters is double avg ? $"{avg:0.00} L/LAP" : "CALIBRATING";
-        FuelRefuelText = fuel.RefuelToFullLiters is double refill ? $"+{refill:0.0} L" : "--";
+        FuelRefuelText = fuel.FuelNeededForFinishLiters is double refill && refill > .05 ? $"+{refill:0.0} L" : "—";
         FuelLapsText = fuel.LapsRemaining is double laps ? $"{laps:0.0} laps" : "no estimate";
         FuelPitByLapText = fuel.LapsRemaining is double remaining && _currentSessionLap is int currentLap
             ? $"PIT BY LAP {Math.Max(currentLap, currentLap + (int)Math.Floor(remaining))}"
             : "PIT WINDOW --";
-        FuelPitAddText = fuel.RefuelToFullLiters is double pitFuel ? $"+{pitFuel:0.0} L" : "--";
+        FuelPitAddText = fuel.FuelAfterPitLiters is double afterPit ? $"AFTER PIT {afterPit:0.0} L" : "AFTER PIT --";
         FuelPitStopsText = fuel.LapsRemaining is double tankLaps && _currentSessionLap is int lap && _sessionTotalLaps is int total && tankLaps > 0
             ? $"{Math.Max(0, (int)Math.Ceiling(Math.Max(0, total - lap) / tankLaps) - 1)} STOPS"
             : "-- STOPS";
@@ -362,7 +372,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         WeatherClimateText = weather.WeatherDeclaredWet ? "Chuvoso" : "Limpo";
         WeatherTemperatureText = $"{weather.TrackTempC:0}°C";
-        WeatherRainText = $"{weather.PrecipitationPct:0}%";
+        WeatherRainText = $"{TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet).ToUpperInvariant()} ({weather.TrackWetness})";
         WeatherGripText = weather.TrackRubberState ?? TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet);
     }
 
@@ -486,7 +496,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // the real bank (TelemetryReader passes CarIdxP2P_Count through as both the "uses"/"seconds"
     // slots below for compatibility), and only the color (see P2PBrush) reflects active vs idle.
     private static string FormatP2P(bool? active, int? uses, double? seconds, bool cooldown)
-        => active is null || uses is null ? "--" : $"{uses:0}s";
+        => uses is int remaining ? $"{remaining}s" : active == true ? "ON" : "--";
 
     private static string FormatP2PSummary(RelativeRow? mine)
     {
@@ -748,9 +758,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
     private static string P2PDisplay(DriverRow row)
     {
-        if (row.P2PState == "Unavailable") return "--";
         var digits = new string(row.P2P.Where(char.IsDigit).ToArray());
-        return string.IsNullOrWhiteSpace(digits) ? "--" : $"{digits}s";
+        return string.IsNullOrWhiteSpace(digits) ? row.P2P == "ON" ? "ON" : "--" : $"{digits}s";
     }
     private void RebuildVisibleFields()
     {

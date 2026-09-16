@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using System.Windows;
+using System.Text.Json.Serialization;
 using Brush = System.Windows.Media.Brush;
 using MahApps.Metro.IconPacks;
 
@@ -16,7 +17,7 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     private bool _showFuelLastLap = true, _showFuelFiveLap = true, _showFuelMax = true, _showFuelLaps = true;
     private double _left, _top, _width, _height, _fontScale = 1, _opacity = .96;
     private double _positionColumnWidth = 32, _carNumberColumnWidth = 42, _driverColumnWidth = 170, _licenseColumnWidth = 52, _iRatingColumnWidth = 82;
-    private bool _sessionVisible = true;
+    private bool _sessionVisible = true, _isSingleClassSession;
     private int _rows = 5, _refreshFps = 60, _radarRange = 55, _playerClassRows = 5, _otherClassRows = 2;
     private string _driverNameStyle = "Abbreviated";
     private bool _showMulticlass = true;
@@ -35,7 +36,9 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     public double Top { get => _top; set => Set(ref _top, value); }
     // A timing card is content-driven by default: no selected field is silently squeezed.
     public double Width { get => _width; set => Set(ref _width, Math.Clamp(value, 180, 1600)); }
-    public double Height { get => _height; set => Set(ref _height, Math.Clamp(value, 75, 1600)); }
+    public double Height { get => _height; set => Set(ref _height, Math.Clamp(value, 48, 1600)); }
+    [JsonIgnore]
+    public bool IsSingleClassSession { get => _isSingleClassSession; set => Set(ref _isSingleClassSession, value); }
     public bool Enabled { get => _enabled; set => Set(ref _enabled, value); }
     public bool SessionVisible { get => _sessionVisible; set { if (_sessionVisible == value) return; _sessionVisible = value; PropertyChanged?.Invoke(this, new(nameof(SessionVisible))); PropertyChanged?.Invoke(this, new(nameof(WidgetVisible))); } }
     private bool _dynamicGateOpen = true;
