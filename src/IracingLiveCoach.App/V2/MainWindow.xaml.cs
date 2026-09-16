@@ -354,11 +354,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var n when n.Contains("BMW") => "bmw",
             var n when n.Contains("AUDI") => "audi",
             var n when n.Contains("ACURA") => "acura",
+            var n when n.Contains("DALLARA") => "dallara",
             var n when n.Contains("HONDA") => "honda",
             var n when n.Contains("TOYOTA") => "toyota",
             _ => null
         };
-        return file is null ? null : $"pack://application:,,,/IracingLiveCoach.App;component/Assets/Brands/Vector/{file}.svg";
+        return file is null ? null : $"pack://application:,,,/IracingLiveCoach.App;component/Assets/Brands/Generated/{file}.png";
     }
 
     private static string FormatP2P(bool? active, int? uses, double? seconds, bool cooldown)

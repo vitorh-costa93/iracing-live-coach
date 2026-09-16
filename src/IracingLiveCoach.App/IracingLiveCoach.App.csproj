@@ -34,6 +34,7 @@
     <Resource Include="V2\Assets\Fonts\Satoshi-Black.ttf" />
     <Resource Include="Assets\Flags\*.png" />
     <Resource Include="Assets\Brands\*.png" />
+    <Resource Include="Assets\Brands\Generated\*.png" />
     <Resource Include="Assets\Brands\Vector\*.svg" />
     <Compile Include="V2\**\*.cs" />
     <Compile Include="TelemetryReader.cs" />
