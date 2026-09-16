@@ -146,9 +146,10 @@ public class TelemetryReader : IDisposable
     // what "instant" overtake reporting on a chaotic opening lap actually requires. The
     // driving-coach engine below remains on every SDK tick regardless.
     private const int ProximityTickInterval = 1;
-    // Standings carries live gap/interval information.  Thirty refreshes per second matches the
-    // visual cadence used by established overlays while avoiding a 60 Hz full-grid relayout.
-    private const int FullFieldTickInterval = 2;
+    // Standings and Relative must derive from the same live position snapshot.  Keeping a slower
+    // full-field cadence made Standings appear to freeze until a timing line even while Relative
+    // moved.  UI coalescing keeps only the newest snapshot for each composed frame.
+    private const int FullFieldTickInterval = 1;
     private int _proximityTickCounter;
     private int _fullFieldTickCounter;
 
