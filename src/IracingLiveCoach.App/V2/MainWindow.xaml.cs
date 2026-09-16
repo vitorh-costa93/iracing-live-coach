@@ -323,7 +323,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Manufacturer = row.ManufacturerBadge,
                 FlagImage = FlagAsset(row.FlagEmoji), BrandImage = BrandAsset(row.ManufacturerBadge),
                 P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
-                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown, row.IsPlayer), IsPlayer = row.IsPlayer,
+                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown), IsPlayer = row.IsPlayer,
                 Pit = row.PitStatus, PitBrush = PitBrush(row.PitStatus),
                 GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? FormatSignedNumber(leaderGap, widget.GapDecimals) : "--",
                 Interval = row.IntervalSeconds is double interval ? FormatSignedNumber(interval, widget.IntervalDecimals) : "--",
@@ -364,7 +364,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = "", IRatingGain = true,
                 Gap = row.GapSeconds is double gap ? FormatSignedNumber(gap, widget.GapDecimals) : "--",
                 P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
-                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown, row.IsPlayer),
+                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown),
                 Manufacturer = row.ManufacturerBadge,
                 BrandImage = BrandAsset(row.ManufacturerBadge),
                 IsPlayer = row.IsPlayer,
@@ -856,11 +856,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // 16/09/2026: matches TelemetryReader.P2PMaxSeconds (20s, confirmed from a real trace capture --
     // see that constant's own comment). The previous 200 here was never right for the SF23 and is
     // exactly why a full, ready car's level bar/color never resolved as "full".
-    // The driver's own row uses a different confirmed-real max than opponents (see
-    // TelemetryReader.PlayerP2PMaxSeconds's own doc comment) -- the level bar must normalize
-    // against whichever one actually produced this row's Seconds value.
-    private static double P2PLevel(bool? active, double? seconds, bool cooldown, bool isPlayer) =>
-        active is null ? 0 : Math.Clamp((seconds ?? 0) / (isPlayer ? TelemetryReader.PlayerP2PMaxSeconds : TelemetryReader.P2PMaxSeconds) * 100d, 0, 100);
+    // 200s is the real, confirmed SF23 Overtake bank (TelemetryReader.P2PMaxSeconds) -- shared by
+    // both the driver's own Int32 reading and the opponents' scaled-float reading.
+    private static double P2PLevel(bool? active, double? seconds, bool cooldown) =>
+        active is null ? 0 : Math.Clamp((seconds ?? 0) / TelemetryReader.P2PMaxSeconds * 100d, 0, 100);
     private static System.Windows.Media.Brush LicenseBrush(string license) => license.StartsWith("A", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 88, 255)) : license.StartsWith("B", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 151, 87)) : license.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 174, 0)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 52, 230));
     private static System.Windows.Media.Brush IRatingDeltaBrush(double? delta) => (delta ?? 0) >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102));
     // Lap delta is another driver's completed lap minus the player's.  Positive means the player

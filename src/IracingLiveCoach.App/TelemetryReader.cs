@@ -169,23 +169,16 @@ public class TelemetryReader : IDisposable
     // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
     // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
     // last valid bank per car and mark a short recharge window only when the real bank rises.
-    // 16/09/2026: confirmed from a real p2p-trace.log capture -- every idle AI opponent held
-    // steady at exactly 20.0, and an active opponent counted DOWN through the 19.x range over
-    // several seconds of continuous use (19.985 -> 19.683 -> 19.371 -> 19.07 across ~9s). A 200 s
-    // bank would still read ~190+ after "a few seconds" of use; reaching 19 that fast only fits a
-    // ~20 s window. This also explains the "starts yellow/charging" bug: with the old 200 s
-    // threshold, a real reading of 20 always counted as "below max", so a full, ready car never
-    // showed gray. The Super Formula's Overtake activation window is exactly 0..20 seconds.
-    // Public so MainWindow's own P2P level-bar normalization always agrees with the real max this
-    // class validates against -- a separately hardcoded number is exactly how the "always yellow"
-    // bug happened the first time.
-    public const int P2PMaxSeconds = 20;
-    // 16/09/2026: the driver's own row read correctly BEFORE the float fix (a smooth Int32
-    // countdown, 200 -> 196 -> 193 -> ...) while every opponent's raw bytes decoded as float.
-    // Rather than force one interpretation on both, ReadP2P below reads the driver's own CarIdx as
-    // Int32 (its real, working representation) and every other CarIdx as float -- keeping what
-    // already worked for the driver instead of breaking it to fix opponents.
-    public const int PlayerP2PMaxSeconds = 200;
+    // 16/09/2026: the driver confirmed the real bank is 200 s (matching their own car's Int32
+    // reading, a clean 200 -> 196 -> 193 -> ... countdown). Opponents decode through GetFloat as
+    // 0..20 with the SAME real decay rate per second (19.985 -> 19.683 -> 19.371 -> 19.07 across
+    // ~9s is ~0.1/s in the raw float, i.e. ~1/s once scaled by 10 -- identical to the player's own
+    // ~1/s Int32 decay). The float is therefore the real value in TENS of seconds, not seconds --
+    // RawP2PMaxSeconds is its own ceiling (the sanity check happens before scaling); P2PMaxSeconds
+    // is the real, final 0..200 scale shared by both the player's Int32 path and the opponents'
+    // scaled-float path.
+    private const float RawP2PMaxSeconds = 20f;
+    public const int P2PMaxSeconds = 200;
     // 16/09/2026 correction: this was previously "fixed" by multiplying CarIdx by 4 under the
     // theory that GetInt's index parameter is a byte offset. Verified against IRSDKSharper's own
     // source (IRacingSdkData.GetInt): the method already does `Offset + datum.Offset + index * 4`
@@ -544,7 +537,7 @@ public class TelemetryReader : IDisposable
     // instead of converting -- reading it through GetFloat is what actually fixes this, not any
     // index/stride change (both the original code and the reverted "CarIdx * 4" attempt used
     // GetInt and were equally wrong for this reason).
-    private static int? ReadP2PCount(float raw) => raw is >= 0 and <= P2PMaxSeconds ? (int)Math.Round(raw) : null;
+    private static int? ReadP2PCount(float raw) => raw is >= 0 and <= RawP2PMaxSeconds ? (int)Math.Round(raw * 10) : null;
 
     // Kept for live evidence if a future value still falls outside the confirmed 0..200 s Super
     // Formula bank -- now logs the float itself, throttled per car to avoid flooding.
@@ -592,19 +585,16 @@ public class TelemetryReader : IDisposable
         bool? active = null;
         int? seconds = null;
         var isPlayer = carIdx == _playerCarIdx;
-        var maxForThisCar = isPlayer ? PlayerP2PMaxSeconds : P2PMaxSeconds;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
         catch { /* OTS status is not published for this car/session. */ }
         try
         {
             if (isPlayer)
             {
-                // The driver's own row read correctly as a genuine Int32 BEFORE the float fix (a
-                // smooth 200 -> 196 -> 193 -> ... countdown) -- see PlayerP2PMaxSeconds's own doc
-                // comment. Keep that working representation for the player instead of forcing the
-                // opponents' float interpretation onto it too.
+                // The driver's own row reads correctly as a genuine Int32, already on the real
+                // 0..200 scale (a smooth 200 -> 196 -> 193 -> ... countdown) -- no scaling needed.
                 var rawInt = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
-                seconds = rawInt is >= 0 && rawInt <= maxForThisCar ? rawInt : null;
+                seconds = rawInt is >= 0 && rawInt <= P2PMaxSeconds ? rawInt : null;
             }
             else
             {
@@ -623,10 +613,10 @@ public class TelemetryReader : IDisposable
             _lastP2PCountByCarIdx[carIdx] = current;
         }
         // The remaining bank itself is the useful state for this system.  A non-active car below
-        // its own full bank is replenishing and must be yellow; a full inactive bank is available
+        // the full 200 s bank is replenishing and must be yellow; a full inactive bank is available
         // and remains gray.  The short rising-edge window also covers a telemetry frame where the
         // bank crosses the full value.
-        var charging = active == false && (seconds is int remaining && remaining < maxForThisCar ||
+        var charging = active == false && (seconds is int remaining && remaining < P2PMaxSeconds ||
             _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
         return (active, seconds, charging);
     }
