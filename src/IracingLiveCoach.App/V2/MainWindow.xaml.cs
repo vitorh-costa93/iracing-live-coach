@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Runtime.InteropServices;
 using System.Globalization;
+using System.Diagnostics;
 using IracingLiveCoach.App;
 using MahApps.Metro.IconPacks;
 using Point = System.Windows.Point;
@@ -198,6 +199,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private PlayerCarStatus? _pendingPlayerStatus;
     private RadarStatus? _pendingRadar;
     private RaceStartStatus? _pendingRaceStart;
+    // The Kapps widgets the driver compared against render their pit helper at 30 Hz and car-side
+    // indicator at 15 Hz.  Their telemetry can arrive more often, but rendering each arrival just
+    // creates layout contention.  Keep only the latest snapshot and present it at these stable,
+    // perceptually smooth cadences.
+    private long _lastRadarRenderTimestamp;
+    private long _lastStartHelperRenderTimestamp;
+    private const int RadarRenderHz = 15;
+    private const int StartHelperRenderHz = 30;
 
     // Replaces an ObservableCollection's contents in place (Replace per changed index) instead of
     // Clear()+Add (Reset) -- Reset forces the bound ItemsControl to drop and regenerate every
@@ -245,8 +254,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (System.Threading.Interlocked.Exchange(ref _pendingFuel, null) is { } fuel) ApplyFuel(fuel);
         if (System.Threading.Interlocked.Exchange(ref _pendingWeather, null) is { } weather) ApplyWeather(weather);
         if (System.Threading.Interlocked.Exchange(ref _pendingPlayerStatus, null) is { } playerStatus) ApplyPlayerCarStatus(playerStatus);
-        if (System.Threading.Interlocked.Exchange(ref _pendingRadar, null) is { } radar) ApplyRadar(radar);
-        if (System.Threading.Interlocked.Exchange(ref _pendingRaceStart, null) is { } raceStart) ApplyRaceStart(raceStart);
+        ApplyLatestRadar();
+        ApplyLatestRaceStart();
+    }
+
+    private static bool IsRenderDue(ref long lastTimestamp, int hertz)
+    {
+        var now = Stopwatch.GetTimestamp();
+        var minimumTicks = Stopwatch.Frequency / hertz;
+        if (now - lastTimestamp < minimumTicks) return false;
+        lastTimestamp = now;
+        return true;
+    }
+
+    private void ApplyLatestRadar()
+    {
+        var radar = System.Threading.Volatile.Read(ref _pendingRadar);
+        if (radar is null || !IsRenderDue(ref _lastRadarRenderTimestamp, RadarRenderHz)) return;
+        // Clear only if the snapshot we inspected is still current.  A newer SDK tick stays queued
+        // for the next scheduled render rather than being dropped behind an older frame.
+        if (ReferenceEquals(System.Threading.Interlocked.CompareExchange(ref _pendingRadar, null, radar), radar)) ApplyRadar(radar);
+    }
+
+    private void ApplyLatestRaceStart()
+    {
+        var start = System.Threading.Volatile.Read(ref _pendingRaceStart);
+        if (start is null || !IsRenderDue(ref _lastStartHelperRenderTimestamp, StartHelperRenderHz)) return;
+        if (ReferenceEquals(System.Threading.Interlocked.CompareExchange(ref _pendingRaceStart, null, start), start)) ApplyRaceStart(start);
     }
 
     private void ApplyStandings(List<StandingsRow> rows)
