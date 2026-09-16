@@ -169,9 +169,17 @@ public class TelemetryReader : IDisposable
     // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
     // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
     // last valid bank per car and mark a short recharge window only when the real bank rises.
-    // Super Formula's Overtake bank is exactly 0..200 seconds.  Anything outside this range is an
-    // uninitialised SDK value, never a larger legitimate bank for this overlay.
-    private const int P2PMaxSeconds = 200;
+    // 16/09/2026: confirmed from a real p2p-trace.log capture -- every idle AI opponent held
+    // steady at exactly 20.0, and an active opponent counted DOWN through the 19.x range over
+    // several seconds of continuous use (19.985 -> 19.683 -> 19.371 -> 19.07 across ~9s). A 200 s
+    // bank would still read ~190+ after "a few seconds" of use; reaching 19 that fast only fits a
+    // ~20 s window. This also explains the "starts yellow/charging" bug: with the old 200 s
+    // threshold, a real reading of 20 always counted as "below max", so a full, ready car never
+    // showed gray. The Super Formula's Overtake activation window is exactly 0..20 seconds.
+    // Public so MainWindow's own P2P level-bar normalization always agrees with the real max this
+    // class validates against -- a separately hardcoded number is exactly how the "always yellow"
+    // bug happened the first time.
+    public const int P2PMaxSeconds = 20;
     // 16/09/2026 correction: this was previously "fixed" by multiplying CarIdx by 4 under the
     // theory that GetInt's index parameter is a byte offset. Verified against IRSDKSharper's own
     // source (IRacingSdkData.GetInt): the method already does `Offset + datum.Offset + index * 4`

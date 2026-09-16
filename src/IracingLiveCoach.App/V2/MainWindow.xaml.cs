@@ -853,7 +853,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static PackIconMaterialKind P2PIcon(bool? active, bool cooldown) => active is null ? PackIconMaterialKind.BatteryOutline : active == true ? PackIconMaterialKind.BatteryCharging80 : PackIconMaterialKind.Battery90;
     // 200s is the SF23 Overtake System's full bank (confirmed real; see FormatP2P) -- the level
     // bar always reflects the real remaining bank, never a fabricated phase countdown.
-    private static double P2PLevel(bool? active, double? seconds, bool cooldown) => active is null ? 0 : Math.Clamp((seconds ?? 0) / 200d * 100d, 0, 100);
+    // 16/09/2026: matches TelemetryReader.P2PMaxSeconds (20s, confirmed from a real trace capture --
+    // see that constant's own comment). The previous 200 here was never right for the SF23 and is
+    // exactly why a full, ready car's level bar/color never resolved as "full".
+    private static double P2PLevel(bool? active, double? seconds, bool cooldown) => active is null ? 0 : Math.Clamp((seconds ?? 0) / TelemetryReader.P2PMaxSeconds * 100d, 0, 100);
     private static System.Windows.Media.Brush LicenseBrush(string license) => license.StartsWith("A", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 88, 255)) : license.StartsWith("B", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 151, 87)) : license.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 174, 0)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 52, 230));
     private static System.Windows.Media.Brush IRatingDeltaBrush(double? delta) => (delta ?? 0) >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102));
     // Lap delta is another driver's completed lap minus the player's.  Positive means the player
