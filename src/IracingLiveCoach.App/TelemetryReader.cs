@@ -180,6 +180,12 @@ public class TelemetryReader : IDisposable
     // class validates against -- a separately hardcoded number is exactly how the "always yellow"
     // bug happened the first time.
     public const int P2PMaxSeconds = 20;
+    // 16/09/2026: the driver's own row read correctly BEFORE the float fix (a smooth Int32
+    // countdown, 200 -> 196 -> 193 -> ...) while every opponent's raw bytes decoded as float.
+    // Rather than force one interpretation on both, ReadP2P below reads the driver's own CarIdx as
+    // Int32 (its real, working representation) and every other CarIdx as float -- keeping what
+    // already worked for the driver instead of breaking it to fix opponents.
+    public const int PlayerP2PMaxSeconds = 200;
     // 16/09/2026 correction: this was previously "fixed" by multiplying CarIdx by 4 under the
     // theory that GetInt's index parameter is a byte offset. Verified against IRSDKSharper's own
     // source (IRacingSdkData.GetInt): the method already does `Offset + datum.Offset + index * 4`
@@ -409,6 +415,7 @@ public class TelemetryReader : IDisposable
             if (trackId <= 0 || carId <= 0) return;
 
             _playerCarIdx = driverCarIdx;
+            LogPlayerCarIdx(driverCarIdx);
             _driverCodesByCarIdx = BuildDriverCodes(sessionInfo);
             RefreshRaceSessionFlag();
             // V2 has no baseline-sync step (that's V1's corner-coaching flow, which never runs in
@@ -422,6 +429,22 @@ public class TelemetryReader : IDisposable
         {
             // Wait for the next OnSessionInfo update.
         }
+    }
+
+    // 16/09/2026: the driver's own CarIdxP2P_Count decoded cleanly as a genuine Int32 countdown
+    // (200 -> 196 -> 193 -> ...) while every opponent decoded as a float -- but that was inferred
+    // from CarIdx=0 without confirming CarIdx=0 IS the driver's own car this session. Logging the
+    // real DriverCarIdx once per session removes that remaining guess before any "read the
+    // player's index differently" rule gets built on it.
+    private static void LogPlayerCarIdx(int carIdx)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-trace.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+            System.IO.File.AppendAllText(path, $"{DateTime.UtcNow:O} SESSION DriverCarIdx={carIdx}\n");
+        }
+        catch { /* diagnostics must never break the real read path */ }
     }
 
     // WeekendInfo.TrackLength is a real field but formatted as free text (e.g. "3.06 km") rather
@@ -568,14 +591,28 @@ public class TelemetryReader : IDisposable
     {
         bool? active = null;
         int? seconds = null;
+        var isPlayer = carIdx == _playerCarIdx;
+        var maxForThisCar = isPlayer ? PlayerP2PMaxSeconds : P2PMaxSeconds;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
         catch { /* OTS status is not published for this car/session. */ }
         try
         {
-            var raw = _sdk.Data.GetFloat("CarIdxP2P_Count", carIdx);
-            LogP2PTrace(carIdx, active, raw);
-            seconds = ReadP2PCount(raw);
-            if (seconds is null) LogP2PAnomaly(carIdx, raw);
+            if (isPlayer)
+            {
+                // The driver's own row read correctly as a genuine Int32 BEFORE the float fix (a
+                // smooth 200 -> 196 -> 193 -> ... countdown) -- see PlayerP2PMaxSeconds's own doc
+                // comment. Keep that working representation for the player instead of forcing the
+                // opponents' float interpretation onto it too.
+                var rawInt = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
+                seconds = rawInt is >= 0 && rawInt <= maxForThisCar ? rawInt : null;
+            }
+            else
+            {
+                var raw = _sdk.Data.GetFloat("CarIdxP2P_Count", carIdx);
+                LogP2PTrace(carIdx, active, raw);
+                seconds = ReadP2PCount(raw);
+                if (seconds is null) LogP2PAnomaly(carIdx, raw);
+            }
         }
         catch { /* The count can be omitted independently of status. */ }
         var now = DateTime.UtcNow;
@@ -586,10 +623,10 @@ public class TelemetryReader : IDisposable
             _lastP2PCountByCarIdx[carIdx] = current;
         }
         // The remaining bank itself is the useful state for this system.  A non-active car below
-        // the SF23 full bank is replenishing and must be yellow; a full inactive bank is available
+        // its own full bank is replenishing and must be yellow; a full inactive bank is available
         // and remains gray.  The short rising-edge window also covers a telemetry frame where the
         // bank crosses the full value.
-        var charging = active == false && (seconds is int remaining && remaining < P2PMaxSeconds ||
+        var charging = active == false && (seconds is int remaining && remaining < maxForThisCar ||
             _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
         return (active, seconds, charging);
     }

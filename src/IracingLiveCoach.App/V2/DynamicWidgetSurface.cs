@@ -107,9 +107,16 @@ public sealed class DynamicWidgetSurface : FrameworkElement
         DrawText(dc, $"{clamped:0}%", new Point(ActualWidth, top - 1), 10, Brushes.White, TextAlignment.Right, true);
     }
 
+    // "Satoshi" is bundled as a packed app resource (see App.xaml's OverlayFont resource), not
+    // installed system-wide -- a bare FontFamily("Satoshi") looks it up in the system font table,
+    // finds nothing, and silently falls back to the OS default. This is why Radar/Start Helper
+    // (the two widgets drawn here instead of through XAML's own OverlayFont-styled TextBlocks)
+    // lost their typography as soon as they moved to this direct-draw surface.
+    private static readonly FontFamily SatoshiFont = new("pack://application:,,,/IracingLiveCoach.App;component/V2/Assets/Fonts/#Satoshi");
+
     private void DrawText(DrawingContext dc, string value, Point origin, double size, Brush brush, TextAlignment alignment, bool bold = false)
     {
-        var face = new Typeface(new FontFamily("Satoshi"), FontStyles.Normal, bold ? FontWeights.Bold : FontWeights.Medium, FontStretches.Normal);
+        var face = new Typeface(SatoshiFont, FontStyles.Normal, bold ? FontWeights.Bold : FontWeights.Medium, FontStretches.Normal);
         var formatted = new FormattedText(value, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
             TextAlignment = alignment
