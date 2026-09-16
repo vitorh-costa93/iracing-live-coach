@@ -532,6 +532,27 @@ public class TelemetryReader : IDisposable
         catch { /* diagnostics must never break the real read path */ }
     }
 
+    // 16/09/2026: the driver correctly flagged that a CONSTANT 20.0 for every idle opponent doesn't
+    // match "starts at 200s and drains" -- that constant is far more consistent with the SF23's own
+    // publicly documented Overtake rule of a 20-SECOND ACTIVATION WINDOW per use, i.e. this field
+    // may report the fixed per-activation duration for an idle car, not a personal remaining bank.
+    // Logging every read (not just anomalies), throttled, to see whether/how it actually changes
+    // when a car is active vs idle -- real behavior over time, not another single-snapshot guess.
+    private readonly Dictionary<int, DateTime> _lastP2PTraceLogByCarIdx = new();
+    private void LogP2PTrace(int carIdx, bool? active, float raw)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            if (_lastP2PTraceLogByCarIdx.TryGetValue(carIdx, out var last) && (now - last).TotalSeconds < 3) return;
+            _lastP2PTraceLogByCarIdx[carIdx] = now;
+            var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-trace.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+            System.IO.File.AppendAllText(path, $"{now:O} CarIdx={carIdx} Status={active} RawCount(float)={raw}\n");
+        }
+        catch { /* diagnostics must never break the real read path */ }
+    }
+
     // The two per-car P2P arrays are independently optional in iRacing.  Reading them in one
     // try block made a missing Count on an opponent hide an otherwise valid Status (and vice
     // versa).  Keep every usable part of the telemetry for every CarIdx, as Kapps does.
@@ -544,6 +565,7 @@ public class TelemetryReader : IDisposable
         try
         {
             var raw = _sdk.Data.GetFloat("CarIdxP2P_Count", carIdx);
+            LogP2PTrace(carIdx, active, raw);
             seconds = ReadP2PCount(raw);
             if (seconds is null) LogP2PAnomaly(carIdx, raw);
         }
