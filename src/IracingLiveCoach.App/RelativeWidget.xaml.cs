@@ -19,6 +19,9 @@ public partial class RelativeWidget : Window
     private readonly WidgetLayout _layout;
     private readonly Action _onChanged;
     private readonly RelativeWidgetViewModel _viewModel = new();
+    private List<RelativeRow> _lastRows = new();
+    private int _rowLimit = 5;
+    private bool _condensed = true;
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
@@ -45,11 +48,31 @@ public partial class RelativeWidget : Window
 
     // Only the primary (player-relative) instance passes false here -- the secondary,
     // class-scoped instance's PositionOffset is an absolute class position, not a player offset.
-    public void UpdateRows(List<RelativeRow> rows, bool showClassPositionAsAbsolute = false) => _viewModel.SetRows(rows, showClassPositionAsAbsolute);
+    public void UpdateRows(List<RelativeRow> rows, bool showClassPositionAsAbsolute = false)
+    {
+        _lastRows = rows;
+        ApplyRows(showClassPositionAsAbsolute);
+    }
+
+    public void SetPresentation(int rows, bool condensed)
+    {
+        _rowLimit = Math.Clamp(rows, 2, 12);
+        _condensed = condensed;
+        ApplyRows(false);
+    }
+
+    private void ApplyRows(bool showClassPositionAsAbsolute)
+    {
+        var visible = _lastRows.Count <= _rowLimit ? _lastRows : _lastRows.Take(_rowLimit).ToList();
+        _viewModel.SetRows(visible, showClassPositionAsAbsolute);
+        var rowHeight = _condensed ? 27 : 34;
+        Height = Math.Clamp(116 + _viewModel.Rows.Count * rowHeight, MinHeight, 420);
+    }
 
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         OuterBorder.BorderBrush = locked
             ? (Brush)FindResource("F1BorderIdleBrush")
             : (Brush)FindResource("F1BorderActiveBrush");

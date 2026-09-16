@@ -8,7 +8,9 @@ namespace IracingLiveCoach.App;
 public class RadarBlipViewModel
 {
     public double Top { get; }
+    public double Left { get; }
     public string ToolTip { get; }
+    public string DistanceText { get; }
 
     // Matches RadarWidget.xaml's own canvas height and player-marker position -- kept in sync
     // manually since this view model has no direct reference to the XAML element (see Phase 2's
@@ -36,7 +38,12 @@ public class RadarBlipViewModel
             top = playerY + (-clamped / maxRangeMeters) * behindSpan;
         }
         Top = top;
+        // iRacing supplies exact longitudinal separation for every car. It only supplies lateral
+        // occupation as an aggregate blind-spot signal, so far-field cars stay on the centre line
+        // instead of inventing a lane that the SDK did not report.
+        Left = 72;
         ToolTip = blip.DriverCode;
+        DistanceText = $"{(blip.DistanceMeters >= 0 ? "+" : "")}{blip.DistanceMeters:0}m";
     }
 }
 
@@ -44,7 +51,9 @@ public class RadarWidgetViewModel : INotifyPropertyChanged
 {
     private const double CanvasHeight = 180.0;
     private const double PlayerY = 90.0;
-    private const double MaxRangeMeters = 100.0;
+    private double _maxRangeMeters = 55.0;
+    private bool _showDistanceLabels = true;
+    private RadarStatus? _lastStatus;
 
     private bool _blindLeft;
     private bool _blindRight;
@@ -55,10 +64,12 @@ public class RadarWidgetViewModel : INotifyPropertyChanged
     public bool BlindRight { get => _blindRight; private set => Set(ref _blindRight, value); }
     public bool ShowNoTrackLength { get => _showNoTrackLength; private set => Set(ref _showNoTrackLength, value); }
     public bool HasProximity { get => _hasProximity; private set => Set(ref _hasProximity, value); }
+    public bool ShowDistanceLabels { get => _showDistanceLabels; private set => Set(ref _showDistanceLabels, value); }
     public ObservableCollection<RadarBlipViewModel> Blips { get; } = new();
 
     public void Apply(RadarStatus status)
     {
+        _lastStatus = status;
         BlindLeft = status.BlindSpotLeft;
         BlindRight = status.BlindSpotRight;
         ShowNoTrackLength = !status.HasTrackLength;
@@ -66,7 +77,14 @@ public class RadarWidgetViewModel : INotifyPropertyChanged
 
         Blips.Clear();
         foreach (var blip in status.Blips)
-            Blips.Add(new RadarBlipViewModel(blip, CanvasHeight, PlayerY, MaxRangeMeters));
+            Blips.Add(new RadarBlipViewModel(blip, CanvasHeight, PlayerY, _maxRangeMeters));
+    }
+
+    public void SetPresentation(int rangeMeters, bool showDistanceLabels)
+    {
+        _maxRangeMeters = System.Math.Clamp(rangeMeters, 15, 150);
+        ShowDistanceLabels = showDistanceLabels;
+        if (_lastStatus is not null) Apply(_lastStatus);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

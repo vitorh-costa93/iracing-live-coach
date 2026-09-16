@@ -58,6 +58,7 @@ public class WeatherWidgetViewModel : INotifyPropertyChanged
     private string _wetnessText = "--";
     private Brush _wetnessBrush = WetnessBrushes[0];
     private bool _declaredWetVisible;
+    private string _trackRubberText = "--";
 
     public string AirTempText { get => _airTempText; private set => Set(ref _airTempText, value); }
     public string TrackTempText { get => _trackTempText; private set => Set(ref _trackTempText, value); }
@@ -65,6 +66,7 @@ public class WeatherWidgetViewModel : INotifyPropertyChanged
     public string WetnessText { get => _wetnessText; private set => Set(ref _wetnessText, value); }
     public Brush WetnessBrush { get => _wetnessBrush; private set => Set(ref _wetnessBrush, value); }
     public bool DeclaredWetVisible { get => _declaredWetVisible; private set => Set(ref _declaredWetVisible, value); }
+    public string TrackRubberText { get => _trackRubberText; private set => Set(ref _trackRubberText, value); }
 
     public ObservableCollection<TrackUsageDotViewModel> TrackDots { get; } = new();
 
@@ -80,6 +82,7 @@ public class WeatherWidgetViewModel : INotifyPropertyChanged
             ? WetnessBrushes[status.TrackWetness]
             : (Brush)WetnessBrushes[0];
         DeclaredWetVisible = status.WeatherDeclaredWet;
+        TrackRubberText = string.IsNullOrWhiteSpace(status.TrackRubberState) ? "--" : status.TrackRubberState!;
 
         TrackDots.Clear();
         foreach (var dot in status.CarPositions)

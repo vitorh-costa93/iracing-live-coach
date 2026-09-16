@@ -38,9 +38,12 @@ public partial class RadarWidget : Window
 
     public void UpdateStatus(RadarStatus status) => _viewModel.Apply(status);
 
+    public void SetPresentation(int rangeMeters, bool showDistanceLabels) => _viewModel.SetPresentation(rangeMeters, showDistanceLabels);
+
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         // The radar intentionally has no panel/border to flash while driving; its transparent
         // proximity markers are the only visual surface.
     }

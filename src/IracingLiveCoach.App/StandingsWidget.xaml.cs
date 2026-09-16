@@ -18,6 +18,8 @@ public partial class StandingsWidget : Window
     private readonly WidgetLayout _layout;
     private readonly Action _onChanged;
     private readonly StandingsWidgetViewModel _viewModel = new();
+    private int _rowLimit = 8;
+    private bool _condensed = true;
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
@@ -38,7 +40,13 @@ public partial class StandingsWidget : Window
         }
     }
 
-    public void UpdateRows(List<StandingsRow> rows) => _viewModel.SetRows(rows);
+    public void UpdateRows(List<StandingsRow> rows)
+    {
+        _viewModel.SetRows(rows);
+        // Compact automatically to the useful number of rows. This prevents a solo test drive
+        // reserving an empty half-screen while still allowing a larger multiclass field.
+        Height = Math.Clamp(110 + Math.Min(_viewModel.Rows.Count, _rowLimit) * (_condensed ? 27 : 34), MinHeight, 520);
+    }
 
     public void UpdateSessionStatus(SessionStatus status) => _viewModel.ApplySessionStatus(status);
 
@@ -46,9 +54,17 @@ public partial class StandingsWidget : Window
 
     public void SetGapDisplayMode(bool showInterval) => _viewModel.SetGapDisplayMode(showInterval);
 
+    public void SetPresentation(int rows, bool condensed)
+    {
+        _rowLimit = Math.Clamp(rows, 1, 30);
+        _condensed = condensed;
+        _viewModel.SetDisplayRowLimit(_rowLimit);
+    }
+
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         OuterBorder.BorderBrush = locked
             ? (Brush)FindResource("F1BorderIdleBrush")
             : (Brush)FindResource("F1BorderActiveBrush");

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
 using IRSDKSharper;
 using IracingLiveCoach.Core;
 
@@ -35,7 +36,7 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// rather than omit the column. LapDeltaVsPlayerSeconds is real (this driver's own CarIdxLastLapTime
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds);
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus);
 
 /// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
@@ -53,7 +54,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -61,7 +62,7 @@ public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, do
 public record TrackPositionDot(string DriverCode, double LapDistPct, bool IsPlayer);
 
 /// <summary>One (throttled, ~10Hz) weather/track-usage snapshot.</summary>
-public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, List<TrackPositionDot> CarPositions);
+public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, string? TrackRubberState, List<TrackPositionDot> CarPositions);
 
 /// <summary>One far-field car's signed distance from the player along the lap (negative = behind,
 /// positive = ahead), converted from CarIdxLapDistPct using the track's own length. Deliberately
@@ -158,6 +159,12 @@ public class TelemetryReader : IDisposable
     private readonly Dictionary<int, bool> _lastP2PActiveByCarIdx = new();
     private readonly Dictionary<int, DateTime> _p2pPhaseEndUtcByCarIdx = new();
 
+    // CarIdxOnPitRoad is published per car.  The SDK does not expose a formatted pit timer, so
+    // retain the real transition locally and present its elapsed duration.  Once a car exits, the
+    // last completed pit (lap + duration) remains available as useful race context.
+    private readonly Dictionary<int, DateTime> _pitRoadEnteredUtcByCarIdx = new();
+    private readonly Dictionary<int, string> _lastPitStatusByCarIdx = new();
+
     private double? _bestLapTimeSeconds;
 
     // 14/09/2026: "deixar oculto até eu ir pra pista" -- PlayerTrackSurface (confirmed real via
@@ -179,7 +186,7 @@ public class TelemetryReader : IDisposable
             // AbbrevName is not stable across all iRacing session types: some AI/session data
             // fills it with the car model ("08 - ACURA") rather than a person.  UserName is the
             // driver identity.  Format it as the broadcast convention "V. COSTA".
-            var code = FormatDriverName(driver.UserName, driver.CarNumber);
+            var code = FormatFullDriverName(driver.UserName, driver.CarNumber);
             map[driver.CarIdx] = code;
         }
         return map;
@@ -189,8 +196,14 @@ public class TelemetryReader : IDisposable
     {
         if (string.IsNullOrWhiteSpace(userName)) return fallback ?? "?";
         var parts = userName.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 1) return parts[0].ToUpperInvariant();
-        return $"{char.ToUpperInvariant(parts[0][0])}. {parts[^1].ToUpperInvariant()}";
+        if (parts.Length == 1) return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(parts[0].ToLowerInvariant());
+        return $"{char.ToUpperInvariant(parts[0][0])}. {CultureInfo.InvariantCulture.TextInfo.ToTitleCase(parts[^1].ToLowerInvariant())}";
+    }
+
+    private static string FormatFullDriverName(string? userName, string? fallback)
+    {
+        if (string.IsNullOrWhiteSpace(userName)) return fallback ?? "?";
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(userName.Trim().ToLowerInvariant());
     }
 
     private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, string ClassShortName, string? ClassColorHex) GetIdentity(int carIdx)
@@ -283,9 +296,9 @@ public class TelemetryReader : IDisposable
     public event Action<List<RelativeRow>>? SecondaryRelativeUpdated;
 
     /// <summary>Fires only when the player's own on-track state actually changes (not every tick),
-    /// once the session is detected -- true only while PlayerTrackSurface reports OnTrack (not in
-    /// the pits, not approaching the pits, not off-track/in-world-but-parked). Drives whether the
-    /// whole widget suite is shown at all (see MainWindow's own subscription).</summary>
+    /// once the session is detected -- true while the player has assumed the car: on track,
+    /// stopped on the grid, in the pit stall or off-track. It becomes false only at NotInWorld,
+    /// i.e. after leaving the car/session. Drives the locked-overlay visibility.</summary>
     public event Action<bool>? OnTrackStateChanged;
 
     /// <summary>Fires every telemetry tick once the session is detected, with the player's own
@@ -476,7 +489,6 @@ public class TelemetryReader : IDisposable
             var rows = new List<RelativeRow>();
             for (var idx = 0; idx < maxCars; idx++)
             {
-                if (idx == _playerCarIdx) continue;
                 var position = _sdk.Data.GetInt("CarIdxPosition", idx);
                 if (position <= 0) continue;
                 var offset = position - myPosition;
@@ -594,7 +606,7 @@ public class TelemetryReader : IDisposable
             var maxCars = IRacingSdkConst.MaxNumCars;
             var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
                 string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, double? Gap,
-                string ClassShortName, string? ClassColorHex, int ClassPosition)>();
+                string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus)>();
 
             var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
             double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
@@ -622,10 +634,27 @@ public class TelemetryReader : IDisposable
                 catch { /* not published this session type -- leave gap null */ }
 
                 var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                var onPitRoad = false;
+                try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
+                catch { /* channel absent outside an active driving session */ }
+                var pitStatus = UpdatePitStatus(idx, onPitRoad, lapsCompleted);
+                bool? p2pActive = null;
+                int? p2pUses = null;
+                double? p2pSecondsRemaining = null;
+                var p2pInCooldown = false;
+                try
+                {
+                    var active = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
+                    p2pActive = active;
+                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
+                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
+                }
+                catch { /* P2P is absent for this car/session. */ }
 
                 raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
-                    identity.CarClassId, identity.ManufacturerBadge, gap, identity.ClassShortName, identity.ClassColorHex, classPosition));
+                    identity.CarClassId, identity.ManufacturerBadge, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
+                    p2pActive, p2pUses, p2pSecondsRemaining, p2pInCooldown, pitStatus));
             }
 
             var ordered = raw.OrderBy(r => r.Position).ToList();
@@ -665,7 +694,8 @@ public class TelemetryReader : IDisposable
                     : null;
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
-                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval));
+                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
+                    r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus));
             }
 
             StandingsUpdated?.Invoke(rows);
@@ -675,6 +705,27 @@ public class TelemetryReader : IDisposable
         {
             // Skip this tick.
         }
+    }
+
+    private string UpdatePitStatus(int carIdx, bool onPitRoad, int lap)
+    {
+        var now = DateTime.UtcNow;
+        if (onPitRoad)
+        {
+            if (!_pitRoadEnteredUtcByCarIdx.TryGetValue(carIdx, out var entered))
+            {
+                entered = now;
+                _pitRoadEnteredUtcByCarIdx[carIdx] = entered;
+            }
+            return $"PIT {(now - entered).TotalSeconds:0}s";
+        }
+
+        if (_pitRoadEnteredUtcByCarIdx.Remove(carIdx, out var pitEntry))
+        {
+            var duration = Math.Max(0, (now - pitEntry).TotalSeconds);
+            _lastPitStatusByCarIdx[carIdx] = $"L{Math.Max(0, lap)} {duration:0}s";
+        }
+        return _lastPitStatusByCarIdx.TryGetValue(carIdx, out var last) ? last : "--";
     }
 
     // Header block shared by Standings and Relative -- class/session type/lap count/flag are all
@@ -774,7 +825,9 @@ public class TelemetryReader : IDisposable
         try
         {
             var surface = _sdk.Data.GetInt("PlayerTrackSurface");
-            var isOnTrack = surface == (int)IRacingSdkEnum.TrkLoc.OnTrack;
+            // TrkLoc is -1 only when the player is not in a car.  Pits, grid and off-track are
+            // all valid in-car states and must keep the overlay visible for setup/start work.
+            var isOnTrack = surface != -1;
             if (isOnTrack == _isOnTrack) return; // only fire on a real transition, not every tick
 
             _isOnTrack = isOnTrack;
@@ -889,7 +942,15 @@ public class TelemetryReader : IDisposable
             double? lapsRemaining = avgFuelPerLap is double perLap && perLap > 0 ? fuelLevel / perLap : null;
             double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
 
-            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining));
+            double? refuelToFull = null;
+            try
+            {
+                var fuelPct = _sdk.Data.GetFloat("FuelLevelPct");
+                if (fuelPct is > 0.001f and <= 1.0f)
+                    refuelToFull = Math.Max(0, fuelLevel / fuelPct - fuelLevel);
+            }
+            catch { /* optional channel; calculators remain useful without tank capacity */ }
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull));
         }
         catch
         {
@@ -917,7 +978,15 @@ public class TelemetryReader : IDisposable
                 positions.Add(new TrackPositionDot(code, lapDistPct, idx == _playerCarIdx));
             }
 
-            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, positions));
+            string? rubberState = null;
+            try
+            {
+                var sessionInfo = _sdk.Data.SessionInfo;
+                var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
+                rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
+            }
+            catch { /* optional session metadata */ }
+            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions));
         }
         catch
         {

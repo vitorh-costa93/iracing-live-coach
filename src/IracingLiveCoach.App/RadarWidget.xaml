@@ -1,1 +1,31 @@
-<Window x:Class="IracingLiveCoach.App.RadarWidget" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Radar" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="150" MinHeight="150" SizeToContent="Manual"><Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown"><Viewbox Stretch="Uniform"><Canvas Width="180" Height="180" Visibility="{Binding HasProximity, Converter={StaticResource BoolToVisibilityConverter}}"><Ellipse Canvas.Left="5" Canvas.Top="5" Width="170" Height="170" Fill="#1608131E" Stroke="#80536A78" StrokeThickness="1"/><Ellipse Canvas.Left="45" Canvas.Top="45" Width="90" Height="90" Fill="Transparent" Stroke="#45536A78" StrokeThickness="1" StrokeDashArray="3,3"/><Line X1="90" Y1="12" X2="90" Y2="168" Stroke="#55536A78" StrokeDashArray="3,3"/><Line X1="12" Y1="90" X2="168" Y2="90" Stroke="#55536A78" StrokeDashArray="3,3"/><ItemsControl ItemsSource="{Binding Blips}" Canvas.Left="0" Canvas.Top="0"><ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas Width="180" Height="180"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate><Ellipse Width="14" Height="14" Fill="#FFFFB000" Stroke="White" StrokeThickness="1" ToolTip="{Binding ToolTip}"><Ellipse.RenderTransform><TranslateTransform X="83" Y="{Binding Top}"/></Ellipse.RenderTransform></Ellipse></DataTemplate></ItemsControl.ItemTemplate></ItemsControl><Rectangle Canvas.Left="78" Canvas.Top="78" Width="24" Height="24" RadiusX="4" RadiusY="4" Fill="#FF19D6E2" Stroke="White" StrokeThickness="1"/><TextBlock Text="YOU" Canvas.Left="82" Canvas.Top="84" FontFamily="{StaticResource F1MonoFont}" FontSize="7" Foreground="#08131D"/><Ellipse Canvas.Left="35" Canvas.Top="83" Width="18" Height="18" Fill="#FFFF3548" Visibility="{Binding BlindLeft, Converter={StaticResource BoolToVisibilityConverter}}"/><Ellipse Canvas.Left="127" Canvas.Top="83" Width="18" Height="18" Fill="#FFFF3548" Visibility="{Binding BlindRight, Converter={StaticResource BoolToVisibilityConverter}}"/></Canvas></Viewbox><Thumb x:Name="ResizeGrip" Width="12" Height="12" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="#80E2483D" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/></Grid></Window>
+<Window x:Class="IracingLiveCoach.App.RadarWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Radar" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        Topmost="True" ShowInTaskbar="False" MinWidth="140" MinHeight="180">
+    <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+        <Border x:Name="OuterBorder" Background="#5008131E" BorderBrush="#606D8490" BorderThickness="1" CornerRadius="55"
+                Visibility="{Binding HasProximity, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Canvas Width="150" Height="200">
+                <Line X1="75" X2="75" Y1="12" Y2="188" Stroke="#807B9AAA" StrokeThickness="1" StrokeDashArray="3,3"/>
+                <TextBlock Text="ALCANCE" Canvas.Left="4" Canvas.Top="4" FontFamily="{StaticResource F1MonoFont}" FontSize="8" Foreground="#B0FFFFFF"/>
+                <TextBlock Text="0m" Canvas.Left="4" Canvas.Top="99" FontFamily="{StaticResource F1MonoFont}" FontSize="8" Foreground="#B0FFFFFF"/>
+                <ItemsControl ItemsSource="{Binding Blips}" Canvas.Left="0" Canvas.Top="0">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas Width="150" Height="200"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate>
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel.RenderTransform><TranslateTransform X="{Binding Left}" Y="{Binding Top}"/></StackPanel.RenderTransform>
+                            <Ellipse Width="14" Height="14" Fill="#FFFFB000" Stroke="White" StrokeThickness="1"/>
+                            <TextBlock Text="{Binding DistanceText}" Margin="4,0,0,0" FontFamily="{StaticResource F1MonoFont}" FontSize="9" FontWeight="Bold" Foreground="White"
+                                       Visibility="{Binding DataContext.ShowDistanceLabels, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Border Canvas.Left="55" Canvas.Top="92" Width="40" Height="20" Background="#FF19D6E2" CornerRadius="4"><TextBlock Text="VOCÊ" FontFamily="{StaticResource F1MonoFont}" FontSize="8" Foreground="#08131D" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                <Border Canvas.Left="3" Canvas.Top="91" Background="#C0FF3548" Padding="5,2" CornerRadius="5" Visibility="{Binding BlindLeft, Converter={StaticResource BoolToVisibilityConverter}}"><TextBlock Text="ESQ." FontFamily="{StaticResource F1MonoFont}" FontSize="8" Foreground="White"/></Border>
+                <Border Canvas.Left="106" Canvas.Top="91" Background="#C0FF3548" Padding="5,2" CornerRadius="5" Visibility="{Binding BlindRight, Converter={StaticResource BoolToVisibilityConverter}}"><TextBlock Text="DIR." FontFamily="{StaticResource F1MonoFont}" FontSize="8" Foreground="White"/></Border>
+            </Canvas>
+        </Border>
+        <Thumb x:Name="ResizeGrip" Width="12" Height="12" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="#80E2483D" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/>
+    </Grid>
+</Window>

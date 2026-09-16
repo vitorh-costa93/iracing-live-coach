@@ -12,6 +12,7 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
     private string _averagePerLapText = "--";
     private string _lapsRemainingText = "--";
     private string _timeRemainingText = "--";
+    private string _refuelText = "--";
     private bool _showLevel = true;
     private bool _showUsePerHour = true;
     private bool _showAveragePerLap = true;
@@ -23,6 +24,7 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
     public string AveragePerLapText { get => _averagePerLapText; private set => Set(ref _averagePerLapText, value); }
     public string LapsRemainingText { get => _lapsRemainingText; private set => Set(ref _lapsRemainingText, value); }
     public string TimeRemainingText { get => _timeRemainingText; private set => Set(ref _timeRemainingText, value); }
+    public string RefuelText { get => _refuelText; private set => Set(ref _refuelText, value); }
     public bool ShowLevel { get => _showLevel; set => Set(ref _showLevel, value); }
     public bool ShowUsePerHour { get => _showUsePerHour; set => Set(ref _showUsePerHour, value); }
     public bool ShowAveragePerLap { get => _showAveragePerLap; set => Set(ref _showAveragePerLap, value); }
@@ -41,6 +43,9 @@ public class FuelWidgetViewModel : INotifyPropertyChanged
             : "--";
         TimeRemainingText = status.TimeRemainingSeconds is double seconds
             ? FormatTimeRemaining(seconds)
+            : "--";
+        RefuelText = status.RefuelToFullLiters is double liters
+            ? "+" + liters.ToString("0.0", CultureInfo.InvariantCulture) + " L"
             : "--";
     }
 

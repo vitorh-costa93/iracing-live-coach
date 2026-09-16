@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private FuelWidget? _fuelWidget;
     private WeatherWidget? _weatherWidget;
     private RadarWidget? _radarWidget;
+    private StartHelperWidget? _startHelperWidget;
     private ControlPanelWindow? _controlPanel;
 
     // 12/09/2026: "quero que o lugar que ele ocupa na tela e tamanho seja personalizável" -- locked
@@ -61,13 +62,13 @@ public partial class MainWindow : Window
         _viewModel.Status = CoachStatus.Waiting;
         _viewModel.StatusText = "Aguardando sessão do iRacing...";
 
-        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 360, 470), () => _layoutStore.Save());
+        _relativeWidget = new RelativeWidget(_layoutStore.Get("relative", 420, 220), () => _layoutStore.Save());
         _relativeWidget.Show();
 
-        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 540, 480), () => _layoutStore.Save());
+        _standingsWidget = new StandingsWidget(_layoutStore.Get("standings", 662, 288), () => _layoutStore.Save());
         _standingsWidget.Show();
 
-        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 250, 170), () => _layoutStore.Save());
+        _fuelWidget = new FuelWidget(_layoutStore.Get("fuel", 280, 120), () => _layoutStore.Save());
         _fuelWidget.Show();
 
         _weatherWidget = new WeatherWidget(_layoutStore.Get("weather", 280, 200), () => _layoutStore.Save());
@@ -75,6 +76,8 @@ public partial class MainWindow : Window
 
         _radarWidget = new RadarWidget(_layoutStore.Get("radar", 220, 106), () => _layoutStore.Save());
         _radarWidget.Show();
+        _startHelperWidget = new StartHelperWidget(_layoutStore.Get("startHelper", 210, 80), () => _layoutStore.Save());
+        _startHelperWidget.Show();
 
         _controlPanel = new ControlPanelWindow(_layoutStore, () => _layoutStore.Save(), new (string, string, Window)[]
         {
@@ -84,6 +87,7 @@ public partial class MainWindow : Window
             ("fuel", "Fuel", _fuelWidget),
             ("weather", "Weather", _weatherWidget),
             ("radar", "Radar", _radarWidget),
+            ("startHelper", "Assistente de largada", _startHelperWidget),
         });
         _controlPanel.Show();
 
@@ -112,6 +116,7 @@ public partial class MainWindow : Window
         _telemetryReader.FuelUpdated += status => Dispatcher.Invoke(() => _fuelWidget?.UpdateStatus(status));
         _telemetryReader.WeatherUpdated += status => Dispatcher.Invoke(() => _weatherWidget?.UpdateStatus(status));
         _telemetryReader.RadarUpdated += status => Dispatcher.Invoke(() => _radarWidget?.UpdateStatus(status));
+        _telemetryReader.RaceStartUpdated += status => Dispatcher.Invoke(() => _startHelperWidget?.Update(status));
         _telemetryReader.OnTrackStateChanged += isOnTrack => Dispatcher.Invoke(() => _controlPanel?.ApplyOnTrackGate(isOnTrack));
         _telemetryReader.Start();
     }
@@ -155,9 +160,9 @@ public partial class MainWindow : Window
         _standingsWidget?.UpdateSessionStatus(sessionStatus);
         _relativeWidget?.UpdateSessionStatus(sessionStatus);
         _radarWidget?.UpdateStatus(new RadarStatus(true, false, new List<RadarBlip> { new(28, "P. SANTOS"), new(-18, "A. SOUZA") }, true));
-        _fuelWidget?.UpdateStatus(new FuelStatus(43.9, 3.4, 2.05, 21.4, 2315));
+        _fuelWidget?.UpdateStatus(new FuelStatus(43.9, 3.4, 2.05, 21.4, 2315, 26.1));
 
-        _weatherWidget?.UpdateStatus(new WeatherStatus(24.0, 32.0, 0.0, 1, false, new List<TrackPositionDot>()));
+        _weatherWidget?.UpdateStatus(new WeatherStatus(24.0, 32.0, 0.0, 1, false, "MODERADO", new List<TrackPositionDot>()));
 
         // Spread every widget across a wide, non-overlapping grid -- this fixture is captured for
         // design review (screenshots at each widget's own MinWidth/MinHeight), and an overlap would
@@ -177,6 +182,33 @@ public partial class MainWindow : Window
             widget.WindowStartupLocation = WindowStartupLocation.Manual;
             widget.Visibility = Visibility.Visible;
         }
+    }
+
+    // GoFast/Kapps-style edit preview: unlocking must show representative, legible cards even
+    // while the simulator is still in a menu.  This never writes layouts or fabricates telemetry
+    // outside edit mode; the next live SDK frame replaces these values as soon as driving resumes.
+    private void ShowEditPreview()
+    {
+        var rows = new List<RelativeRow>
+        {
+            new(11, "L. MARTINS", -3.910, null, null, null, null, false, "🇧🇷", "A 4.52", "#1976FF", 4120, 1, "FERRARI"),
+            new(12, "P. SANTOS", -1.422, null, null, null, null, false, "🇧🇷", "A 2.94", "#1976FF", 3620, 1, "MERCEDES"),
+            new(13, "V. COSTA", 0, null, true, 3, 18, false, "🇧🇷", "A 2.58", "#1976FF", 3574, 1, "MCLAREN", true),
+            new(14, "A. SOUZA", .887, null, false, 2, 56, true, "🇧🇷", "A 3.12", "#1976FF", 3280, 1, "LAMBORGHINI"),
+            new(15, "B. ROCHA", 3.321, null, null, null, null, false, "🇺🇸", "B 2.76", "#20C060", 3190, 1, "AUDI"),
+        };
+        var standings = rows.Select((row, index) => new StandingsRow(index + 11, row.DriverCode, 12, 108.2 + index * .35,
+            null, row.IsPlayer, row.FlagEmoji, row.LicString, row.LicColorHex, row.IRating, row.CarClassId, row.ManufacturerBadge,
+            index == 0 ? null : 1.1 + index * .72, index % 2 == 0 ? 12 : -4, index * .18, "GT3", "#FF1976FF", index + 1, index == 0 ? null : .72)).ToList();
+        _relativeWidget?.UpdateRows(rows);
+        _relativeWidget?.UpdatePlayerStatus(new PlayerCarStatus(54.2, "MODERADO", 107.912, 108.326, 32));
+        _relativeWidget?.UpdateSessionStatus(new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#FF20E884", 3420, 20));
+        _standingsWidget?.UpdateRows(standings);
+        _standingsWidget?.UpdateSessionStatus(new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#FF20E884", 3420, 20));
+        _fuelWidget?.UpdateStatus(new FuelStatus(43.9, 3.4, 2.05, 21.4, 2315, 26.1));
+        _weatherWidget?.UpdateStatus(new WeatherStatus(24, 32, 0, 1, false, "MODERADO", new List<TrackPositionDot>()));
+        _radarWidget?.UpdateStatus(new RadarStatus(true, false, new List<RadarBlip> { new(18, "P. SANTOS"), new(-12, "A. SOUZA") }, true));
+        _startHelperWidget?.Update(new RaceStartStatus(62, 48, true));
     }
 
     /// <summary>Runs once per app session, the first time TelemetryReader reports a detected
@@ -298,6 +330,7 @@ public partial class MainWindow : Window
     {
         _locked = !_locked;
         ApplyClickThrough();
+        if (!_locked) ShowEditPreview();
         if (_lockMenuItem is not null) _lockMenuItem.Text = LockMenuText();
     }
 
@@ -310,6 +343,7 @@ public partial class MainWindow : Window
         OuterBorder.BorderBrush = _locked
             ? (Brush)FindResource("HudBorderBrush")
             : (Brush)FindResource("HudBorderActiveBrush");
+        ResizeGrip.Visibility = _locked ? Visibility.Collapsed : Visibility.Visible;
         // Locking is shared, not independent per window (see RelativeOverlayWindow's own comment)
         // -- one tray toggle moves both the coaching card and the P2P strip in and out of edit mode
         // together, since they're meant to be positioned once and then both stay out of the way.
@@ -318,6 +352,7 @@ public partial class MainWindow : Window
         _fuelWidget?.SetLocked(_locked);
         _weatherWidget?.SetLocked(_locked);
         _radarWidget?.SetLocked(_locked);
+        _startHelperWidget?.SetLocked(_locked);
         _controlPanel?.SetLocked(_locked);
     }
 
@@ -331,6 +366,7 @@ public partial class MainWindow : Window
         _fuelWidget?.Close();
         _weatherWidget?.Close();
         _radarWidget?.Close();
+        _startHelperWidget?.Close();
         _controlPanel?.Close();
         base.OnClosed(e);
     }

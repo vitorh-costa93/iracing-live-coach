@@ -18,6 +18,38 @@ public class WidgetLayout
     // Per-widget instead of a suite-wide opacity: a radar can stay subtle while a timing board
     // remains readable.  Existing JSON omits this field and naturally deserializes to 1.0.
     public double Opacity { get; set; } = 1.0;
+    // Visual scale is deliberately per widget: a compact Relative can use 80% typography while
+    // a Fuel calculation remains larger and readable.
+    public double FontScale { get; set; } = 1.0;
+    // Shared appearance controls.  They deliberately live with each individual widget rather
+    // than in a global theme so a compact timing tower can remain understated while a fuel card
+    // stays highly legible.  Defaults match the broadcast preset.
+    public string Theme { get; set; } = "Broadcast";
+    public double BackgroundBrightness { get; set; } = 1.0;
+    public double BackgroundSaturation { get; set; } = 1.0;
+    public double CornerRadius { get; set; } = 0.0;
+    public bool TextShadow { get; set; }
+    public bool ShowHeader { get; set; } = true;
+    public bool HideInReplay { get; set; }
+    public int RenderFps { get; set; } = 30;
+    // Relative / standings presentation controls modelled after the corresponding Kapps
+    // settings groups.  A zero row limit means automatic (only as many entries as useful).
+    public int RelativeRows { get; set; } = 5;
+    public int StandingsRows { get; set; } = 8;
+    public bool CondensedRows { get; set; } = true;
+    public bool ShowFlags { get; set; } = true;
+    public bool ShowManufacturerLogos { get; set; } = true;
+    public bool ShowIRatingGain { get; set; } = true;
+    public bool HighlightCarsAlongside { get; set; } = true;
+    public string RowStyle { get; set; } = "Solid";
+    public string DriverNameStyle { get; set; } = "Short";
+    public bool ShowSessionInfo { get; set; } = true;
+    public bool ShowTrackInfo { get; set; } = true;
+    public bool ShowCarInfo { get; set; } = true;
+    // Radar / start-helper controls are persisted alongside the same set of widget settings.
+    public int RadarRangeMeters { get; set; } = 55;
+    public bool RadarShowDistanceLabels { get; set; } = true;
+    public bool StartHelperEnabled { get; set; } = true;
     // Fuel is deliberately field-based: drivers can keep the compact estimate-only view or
     // expose the raw consumption inputs when they are managing strategy.
     public bool FuelShowLevel { get; set; } = true;

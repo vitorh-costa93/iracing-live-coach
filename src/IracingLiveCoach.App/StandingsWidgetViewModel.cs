@@ -17,6 +17,8 @@ public class StandingsRowViewModel
     public Brush FlagSymbolBrush { get; }
     public string FlagSymbol { get; }
     public string FlagImagePath { get; }
+    public bool HasFlagImage { get; }
+    public bool HasNoFlagImage => !HasFlagImage;
     public string ManufacturerText { get; }
     public string BrandPathData { get; }
     public Brush BrandColorBrush { get; }
@@ -52,6 +54,7 @@ public class StandingsRowViewModel
         FlagAndCode = row.DriverCode;
         (FlagBackground, FlagSymbolBrush, FlagSymbol) = FlagStyle.For(row.FlagEmoji);
         FlagImagePath = FlagStyle.ImageFor(row.FlagEmoji);
+        HasFlagImage = FlagImagePath.Length > 0;
         ManufacturerText = row.ManufacturerBadge;
         var brandIcon = BrandIcons.TryGet(row.ManufacturerBadge);
         BrandImagePath = BrandIcons.TryGetImage(row.ManufacturerBadge) ?? "";
@@ -190,6 +193,13 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
     private int _myClassLimit;
     private int _otherClassLimit = 3;
     private bool _showInterval;
+    private int _displayRowLimit = 8;
+
+    public void SetDisplayRowLimit(int value)
+    {
+        _displayRowLimit = System.Math.Clamp(value, 1, 30);
+        ApplyGroupedRows();
+    }
 
     public void SetRows(System.Collections.Generic.List<StandingsRow> rows)
     {
@@ -257,7 +267,7 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
         }
 
         Rows.Clear();
-        foreach (var row in grouped) Rows.Add(new StandingsRowViewModel(row, _showInterval));
+        foreach (var row in grouped.Take(_displayRowLimit)) Rows.Add(new StandingsRowViewModel(row, _showInterval));
     }
 
     // All real SDK fields except StrengthOfField (see SessionStatus's own doc comment for its formula).

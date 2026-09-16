@@ -17,6 +17,8 @@ public class FullRelativeRowViewModel
     public Brush FlagSymbolBrush { get; }
     public string FlagSymbol { get; }
     public string FlagImagePath { get; }
+    public bool HasFlagImage { get; }
+    public bool HasNoFlagImage => !HasFlagImage;
     public string ManufacturerText { get; }
     public string BrandPathData { get; }
     public Brush BrandColorBrush { get; }
@@ -30,15 +32,16 @@ public class FullRelativeRowViewModel
     public string GapText { get; }
     public string P2PText { get; }
     public Brush P2PBrush { get; }
+    public Brush P2PBackground { get; }
     public bool IsPlayerRow { get; }
     public Brush RowForegroundBrush { get; }
     public string ClassBadgeText { get; }
     public bool HasClassBadge { get; }
     public Brush ClassAccentBrush { get; }
 
-    private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0xE2, 0x48, 0x3D));
+    private static readonly Brush P2PActiveBrush = new SolidColorBrush(Color.FromRgb(0x2D, 0xE2, 0x84));
     private static readonly Brush P2PCooldownBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xA5, 0x2C));
-    private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
+    private static readonly Brush P2PIdleBrush = new SolidColorBrush(Color.FromRgb(0x2D, 0xE2, 0x84));
     private static readonly Brush LicFallbackBrush = new SolidColorBrush(Color.FromRgb(0x9A, 0xA3, 0xAF));
     private static readonly System.Collections.Generic.Dictionary<string, Brush> LicBrushCache = new();
 
@@ -55,6 +58,7 @@ public class FullRelativeRowViewModel
         FlagAndCode = row.DriverCode;
         (FlagBackground, FlagSymbolBrush, FlagSymbol) = FlagStyle.For(row.FlagEmoji);
         FlagImagePath = FlagStyle.ImageFor(row.FlagEmoji);
+        HasFlagImage = FlagImagePath.Length > 0;
         ManufacturerText = row.ManufacturerBadge;
         var brandIcon = BrandIcons.TryGet(row.ManufacturerBadge);
         BrandImagePath = BrandIcons.TryGetImage(row.ManufacturerBadge) ?? "";
@@ -86,24 +90,28 @@ public class FullRelativeRowViewModel
             {
                 P2PText = $"ATIVO {activeRemaining.ToString("0", CultureInfo.InvariantCulture)}s ({uses})";
                 P2PBrush = P2PActiveBrush;
+                P2PBackground = new SolidColorBrush(Color.FromArgb(0x55, 0x2D, 0xE2, 0x84));
             }
             else if (row.P2PInCooldown && row.P2PSecondsRemaining is double cooldownRemaining)
             {
                 P2PText = $"RECARGA {cooldownRemaining.ToString("0", CultureInfo.InvariantCulture)}s ({uses})";
                 P2PBrush = P2PCooldownBrush;
+                P2PBackground = new SolidColorBrush(Color.FromArgb(0x45, 0xE0, 0xA5, 0x2C));
             }
             else
             {
                 // Qualitative state always wins over a missing countdown number -- showing PRONTO
                 // while the car's P2P is genuinely active would be worse than a number-less ATIVO.
-                P2PText = active ? $"ATIVO ({uses})" : $"PRONTO ({uses})";
+                P2PText = active ? $"ATIVO ({uses})" : $"DISPONÍVEL ({uses})";
                 P2PBrush = active ? P2PActiveBrush : P2PIdleBrush;
+                P2PBackground = active ? new SolidColorBrush(Color.FromArgb(0x55, 0x2D, 0xE2, 0x84)) : new SolidColorBrush(Color.FromArgb(0x40, 0x2D, 0xE2, 0x84));
             }
         }
         else
         {
             P2PText = "";
             P2PBrush = P2PIdleBrush;
+            P2PBackground = System.Windows.Media.Brushes.Transparent;
         }
 
         // The player's own row gets a dark foreground since its Border background is the bright

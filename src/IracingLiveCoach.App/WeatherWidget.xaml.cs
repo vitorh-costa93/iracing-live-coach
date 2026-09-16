@@ -42,6 +42,7 @@ public partial class WeatherWidget : Window
     public void SetLocked(bool locked)
     {
         ClickThrough.Set(Handle, locked);
+        ResizeGrip.Visibility = locked ? Visibility.Collapsed : Visibility.Visible;
         OuterBorder.BorderBrush = locked
             ? (Brush)FindResource("F1BorderIdleBrush")
             : (Brush)FindResource("F1BorderActiveBrush");

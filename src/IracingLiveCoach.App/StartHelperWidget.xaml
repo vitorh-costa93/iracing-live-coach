@@ -1,0 +1,12 @@
+<Window x:Class="IracingLiveCoach.App.StartHelperWidget" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Start Helper" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="180" MinHeight="66">
+  <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
+    <Border x:Name="OuterBorder" Style="{StaticResource F1PanelBorder}" Padding="8"><StackPanel>
+      <TextBlock Text="RACE START" FontFamily="{StaticResource F1HeaderFont}" FontSize="11" Foreground="{StaticResource F1AccentBrush}"/>
+      <Grid Margin="0,5,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <StackPanel Margin="0,0,8,0"><StackPanel Orientation="Horizontal"><TextBlock Text="EMBREAGEM " Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding Clutch, Mode=OneWay, StringFormat={}{0:0}%}" Style="{StaticResource FooterLabel}"/></StackPanel><ProgressBar Height="10" Maximum="100" Value="{Binding Clutch, Mode=OneWay}" Foreground="#FF19D6E2" Background="#303F5362"/></StackPanel>
+        <StackPanel Grid.Column="1"><StackPanel Orientation="Horizontal"><TextBlock Text="ACELERADOR " Style="{StaticResource FooterLabel}"/><TextBlock Text="{Binding Throttle, Mode=OneWay, StringFormat={}{0:0}%}" Style="{StaticResource FooterLabel}"/></StackPanel><ProgressBar Height="10" Maximum="100" Value="{Binding Throttle, Mode=OneWay}" Foreground="#FF20E884" Background="#303F5362"/></StackPanel>
+      </Grid>
+    </StackPanel></Border>
+    <Thumb x:Name="ResizeGrip" Width="12" Height="12" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource F1AccentBrush}" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/>
+  </Grid>
+</Window>
