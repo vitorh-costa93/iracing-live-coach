@@ -1,66 +1,70 @@
-<Window x:Class="IracingLiveCoach.App.ControlPanelWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Painel de Controle" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        Topmost="True" ShowInTaskbar="False" MinWidth="300" MinHeight="240" SizeToContent="Manual">
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="IracingLiveCoach.App.ControlPanelWindow" Title="Painel de Controle" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="False" MinWidth="420" MinHeight="420" SizeToContent="Manual" UseLayoutRounding="True" FontFamily="{StaticResource F1MonoFont}">
     <Grid Background="Transparent" MouseLeftButtonDown="OnBackgroundMouseLeftButtonDown">
-        <Border Style="{StaticResource F1PanelBorder}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="12">
-                    <TextBlock Text="PAINEL DE CONTROLE" FontFamily="{StaticResource F1HeaderFont}" FontSize="16" Foreground="{StaticResource F1AccentBrush}"/>
-                    <TextBlock Text="Personalização ao vivo · cada widget mantém seu próprio perfil" FontFamily="{StaticResource F1MonoFont}" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,1,0,8"/>
-                    <ItemsControl ItemsSource="{Binding Rows}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Expander Margin="0,3" IsExpanded="False">
-                                    <Expander.Header>
-                                        <DockPanel Width="260"><CheckBox IsChecked="{Binding Visible, Mode=TwoWay}" Content="{Binding DisplayName}" Foreground="{StaticResource F1TextBrush}"/><TextBlock DockPanel.Dock="Right" Text="CONFIGURAR" FontSize="8" Foreground="{StaticResource F1MutedTextBrush}" VerticalAlignment="Center"/></DockPanel>
-                                    </Expander.Header>
-                                    <StackPanel Margin="12,6,0,8">
-                                        <TextBlock Text="APARÊNCIA" FontFamily="{StaticResource F1HeaderFont}" FontSize="11" Foreground="{StaticResource F1AccentBrush}"/>
-                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Opacidade" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><Slider Grid.Column="1" Minimum="0.25" Maximum="1" Value="{Binding Opacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><TextBlock Grid.Column="2" Text="{Binding Opacity, StringFormat={}{0:P0}}" HorizontalAlignment="Right" FontSize="9" Foreground="{StaticResource F1TextBrush}"/>
-                                        </Grid>
-                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Tamanho fonte" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><Slider Grid.Column="1" Minimum="0.70" Maximum="1.40" Value="{Binding FontScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><TextBlock Grid.Column="2" Text="{Binding FontScale, StringFormat={}{0:P0}}" HorizontalAlignment="Right" FontSize="9" Foreground="{StaticResource F1TextBrush}"/>
-                                        </Grid>
-                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Cantos" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><Slider Grid.Column="1" Minimum="0" Maximum="18" Value="{Binding Options.CornerRadius, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><TextBlock Grid.Column="2" Text="{Binding Options.CornerRadius, StringFormat={}{0:0}px}" HorizontalAlignment="Right" FontSize="9" Foreground="{StaticResource F1TextBrush}"/>
-                                        </Grid>
-                                        <WrapPanel Margin="0,3"><CheckBox Content="Sombra no texto" IsChecked="{Binding Options.TextShadow, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Ocultar no replay" IsChecked="{Binding Options.HideInReplay, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Cabeçalho" IsChecked="{Binding Options.ShowHeader, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}"/></WrapPanel>
-                                        <Separator Margin="0,5" Background="#50647482"/>
-                                        <StackPanel Visibility="{Binding IsTimingTable, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <TextBlock Text="LINHAS E DADOS" FontFamily="{StaticResource F1HeaderFont}" FontSize="11" Foreground="{StaticResource F1AccentBrush}"/>
-                                        <Grid Margin="0,3" Visibility="{Binding IsRelative, Converter={StaticResource BoolToVisibilityConverter}}"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="62"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Relative" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><TextBox Grid.Column="1" Text="{Binding Options.RelativeRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><CheckBox Grid.Column="2" Content="Modo compacto" IsChecked="{Binding Options.CondensedRows, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="10,0,0,0"/>
-                                        </Grid>
-                                        <Grid Margin="0,3" Visibility="{Binding IsStandings, Converter={StaticResource BoolToVisibilityConverter}}"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="62"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Standings" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><TextBox Grid.Column="1" Text="{Binding Options.StandingsRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><TextBlock Grid.Column="2" Text="linhas máximas" VerticalAlignment="Center" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" Margin="10,0,0,0"/>
-                                        </Grid>
-                                        <WrapPanel Margin="0,3"><CheckBox Content="Bandeiras" IsChecked="{Binding Options.ShowFlags, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Logos de marca" IsChecked="{Binding Options.ShowManufacturerLogos, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Variação iRating" IsChecked="{Binding Options.ShowIRatingGain, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}"/></WrapPanel>
-                                        <WrapPanel><CheckBox Content="Info de sessão" IsChecked="{Binding Options.ShowSessionInfo, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Info de pista" IsChecked="{Binding Options.ShowTrackInfo, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,12,3"/><CheckBox Content="Info do carro" IsChecked="{Binding Options.ShowCarInfo, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}"/></WrapPanel>
-                                        </StackPanel>
-                                        <Separator Margin="0,5" Background="#50647482"/>
-                                        <TextBlock Text="ATUALIZAÇÃO E ASSISTENTES" FontFamily="{StaticResource F1HeaderFont}" FontSize="11" Foreground="{StaticResource F1AccentBrush}"/>
-                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="62"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Atualização" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><TextBox Grid.Column="1" Text="{Binding Options.RenderFps, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><TextBlock Grid.Column="2" Text="FPS (10–60)" VerticalAlignment="Center" FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" Margin="10,0,0,0"/></Grid>
-                                        <Grid Margin="0,3" Visibility="{Binding IsRadar, Converter={StaticResource BoolToVisibilityConverter}}"><Grid.ColumnDefinitions><ColumnDefinition Width="88"/><ColumnDefinition Width="62"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Radar alcance" VerticalAlignment="Center" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><TextBox Grid.Column="1" Text="{Binding Options.RadarRangeMeters, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/><CheckBox Grid.Column="2" Content="Distâncias" IsChecked="{Binding Options.RadarShowDistanceLabels, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="10,0,0,0"/></Grid>
-                                        <CheckBox Visibility="{Binding IsStartHelper, Converter={StaticResource BoolToVisibilityConverter}}" Content="Assistente de largada (embreagem e acelerador)" IsChecked="{Binding Options.StartHelperEnabled, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,3"/>
-                                    </StackPanel>
-                                </Expander>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Expander Margin="0,7,0,0"><Expander.Header><TextBlock Text="FUEL · CAMPOS E CÁLCULO" Foreground="{StaticResource F1TextBrush}" FontFamily="{StaticResource F1HeaderFont}"/></Expander.Header>
-                        <StackPanel Margin="12,5,0,7"><TextBlock Text="Escolha exatamente quais dados aparecem no cartão de estratégia." FontSize="9" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,4"/><WrapPanel>
-                            <CheckBox Content="Nível" IsChecked="{Binding FuelColumns.Level, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/><CheckBox Content="Consumo/h" IsChecked="{Binding FuelColumns.UsePerHour, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/><CheckBox Content="Média/volta" IsChecked="{Binding FuelColumns.AveragePerLap, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/><CheckBox Content="Voltas" IsChecked="{Binding FuelColumns.LapsRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,0,10,4"/><CheckBox Content="Tempo" IsChecked="{Binding FuelColumns.TimeRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}"/>
-                        </WrapPanel></StackPanel>
-                    </Expander>
-                    <Expander Margin="0,4"><Expander.Header><TextBlock Text="STANDINGS · MULTICLASSE" Foreground="{StaticResource F1TextBrush}" FontFamily="{StaticResource F1HeaderFont}"/></Expander.Header>
-                        <StackPanel Margin="12,5,0,7"><TextBlock Text="Linhas da minha classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}"/><TextBox Text="{Binding StandingsClassRows.MyClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="52" HorizontalAlignment="Left"/><TextBlock Text="Linhas por outra classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,4,0,0"/><TextBox Text="{Binding StandingsClassRows.OtherClassRows, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Width="52" HorizontalAlignment="Left"/><CheckBox Content="Intervalo para o carro à frente, em vez de gap ao líder" IsChecked="{Binding StandingsClassRows.ShowInterval, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" FontSize="10" Margin="0,5,0,0"/></StackPanel>
-                    </Expander>
+        <Border BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="1" Background="{StaticResource F1BackgroundBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="4"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Border Background="{StaticResource F1AccentBrush}"/>
+                <StackPanel Grid.Row="1" Margin="22,20,22,18">
+                    <TextBlock Text="LIVE COACH  /  CONFIGURAÇÕES" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource F1HighlightBrush}"/>
+                    <TextBlock Text="Seu cockpit. Seu controle." FontFamily="{StaticResource F1HeaderFont}" FontSize="30" FontWeight="Bold" Foreground="White" Margin="0,4,0,5"/>
+                    <TextBlock Text="Ative os overlays e ajuste a leitura durante a corrida." FontSize="11" Foreground="{StaticResource F1MutedTextBrush}" TextWrapping="Wrap"/>
                 </StackPanel>
-            </ScrollViewer>
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="22,0,22,16">
+                        <TextBlock Text="OVERLAYS" Style="{StaticResource HeaderCell}" Margin="0,0,0,10"/>
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#FF101B24" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="1" Padding="14,9" Margin="0,0,0,7" CornerRadius="3">
+                                        <StackPanel>
+                                            <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding Visible, Mode=TwoWay}" Style="{StaticResource ControlToggle}" Margin="0,2"/>
+                                            <Grid Margin="0,7,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="44"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="OPACIDADE" Style="{StaticResource FooterLabel}" VerticalAlignment="Center"/>
+                                                <Slider Grid.Column="1" Minimum="0.25" Maximum="1" Value="{Binding Opacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ControlSlider}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding Opacity, StringFormat={}{0:P0}}" Style="{StaticResource FooterLabel}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Margin="0,18,0,0">
+                            <TextBlock Text="FUEL · CAMPOS" Style="{StaticResource HeaderCell}" Margin="0,0,0,8"/>
+                            <StackPanel Margin="0">
+                                <CheckBox Content="Nível" IsChecked="{Binding FuelColumns.Level, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,2" Style="{StaticResource ControlToggle}"/>
+                                <CheckBox Content="Consumo/h" IsChecked="{Binding FuelColumns.UsePerHour, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,2" Style="{StaticResource ControlToggle}"/>
+                                <CheckBox Content="Média/volta" IsChecked="{Binding FuelColumns.AveragePerLap, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,2" Style="{StaticResource ControlToggle}"/>
+                                <CheckBox Content="Voltas" IsChecked="{Binding FuelColumns.LapsRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,2" Style="{StaticResource ControlToggle}"/>
+                                <CheckBox Content="Tempo" IsChecked="{Binding FuelColumns.TimeRemaining, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" Margin="0,2" Style="{StaticResource ControlToggle}"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel Margin="0,18,0,0">
+                            <TextBlock Text="STANDINGS • CLASSES" Style="{StaticResource HeaderCell}" Margin="0,0,0,8"/>
+                            <StackPanel Margin="0">
+                                <TextBlock Text="Linhas da minha classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding StandingsClassRows.MyClassRows, Mode=TwoWay, UpdateSourceTrigger=LostFocus, ValidatesOnExceptions=True}" Width="86" HorizontalAlignment="Left" Margin="0,0,0,6" Style="{StaticResource ControlInput}"/>
+                                <TextBlock Text="Linhas por outra classe (0 = todas)" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" Margin="0,0,0,2"/>
+                                <TextBox Text="{Binding StandingsClassRows.OtherClassRows, Mode=TwoWay, UpdateSourceTrigger=LostFocus, ValidatesOnExceptions=True}" Width="86" HorizontalAlignment="Left" Margin="0,0,0,6" Style="{StaticResource ControlInput}"/>
+                                <CheckBox Content="Intervalo para o carro à frente" IsChecked="{Binding StandingsClassRows.ShowInterval, Mode=TwoWay}" Foreground="{StaticResource F1TextBrush}" FontSize="10" Style="{StaticResource ControlToggle}" Margin="0,2"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+                <Border Grid.Row="3" Padding="22,12" BorderBrush="{StaticResource F1SeparatorBrush}" BorderThickness="0,1,0,0">
+                    <TextBlock Text="Arraste para posicionar • Trave pelo ícone na bandeja" FontSize="10" Foreground="{StaticResource F1MutedTextBrush}" TextWrapping="Wrap"/>
+                </Border>
+            </Grid>
         </Border>
-        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource F1AccentBrush}" Opacity="0.5" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted" />
+        <Thumb x:Name="ResizeGrip" Width="14" Height="14" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="{StaticResource F1AccentBrush}" Opacity="0.5" DragDelta="OnResizeGripDragDelta" DragCompleted="OnResizeGripDragCompleted"/>
     </Grid>
 </Window>

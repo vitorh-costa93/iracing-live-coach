@@ -24,6 +24,7 @@ public class StandingsRowViewModel
     public Brush BrandColorBrush { get; }
     public bool HasBrandIcon { get; }
     public string BrandImagePath { get; }
+    public ImageSource? BrandImage => BrandImageLoader.Load(BrandImagePath);
     public bool HasBrandImage { get; }
     public bool HasBrandPath { get; }
     public string LicText { get; }
@@ -87,9 +88,7 @@ public class StandingsRowViewModel
         // The position number normally uses F1AccentBrush's red-orange, which -- like F1TextBrush's
         // near-white -- fails contrast against the highlighted row's cyan background; reuse the same
         // dark ink for the player's own row instead of the accent color.
-        PositionBrush = IsPlayer
-            ? RowForegroundBrush
-            : (Brush)System.Windows.Application.Current.Resources["F1AccentBrush"];
+        PositionBrush = RowForegroundBrush;
 
         // "quero em standings ter a opção de interval, não só gap" (14/09/2026) -- INTERVAL (gap to
         // the car directly ahead) or GAP (gap to the leader), both derived from the same real
@@ -173,11 +172,11 @@ public class StandingsWidgetViewModel : INotifyPropertyChanged
     // whatever's left) and is not user-resizable on its own -- shrinking any fixed column simply
     // gives PILOTO more room, same as the width/height resize behavior already shipped.
     private System.Windows.GridLength _posColumnWidth = new(38);
-    private System.Windows.GridLength _licColumnWidth = new(58);
-    private System.Windows.GridLength _iRatingColumnWidth = new(72);
-    private System.Windows.GridLength _gapColumnWidth = new(62);
-    private System.Windows.GridLength _lastLapColumnWidth = new(84);
-    private System.Windows.GridLength _deltaColumnWidth = new(62);
+    private System.Windows.GridLength _licColumnWidth = new(66);
+    private System.Windows.GridLength _iRatingColumnWidth = new(106);
+    private System.Windows.GridLength _gapColumnWidth = new(82);
+    private System.Windows.GridLength _lastLapColumnWidth = new(96);
+    private System.Windows.GridLength _deltaColumnWidth = new(80);
     public System.Windows.GridLength PosColumnWidth { get => _posColumnWidth; set => Set(ref _posColumnWidth, value); }
     public System.Windows.GridLength LicColumnWidth { get => _licColumnWidth; set => Set(ref _licColumnWidth, value); }
     public System.Windows.GridLength IRatingColumnWidth { get => _iRatingColumnWidth; set => Set(ref _iRatingColumnWidth, value); }

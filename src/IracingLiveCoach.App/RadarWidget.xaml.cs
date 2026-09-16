@@ -50,7 +50,7 @@ public partial class RadarWidget : Window
 
     private void OnBackgroundMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState != MouseButtonState.Pressed) return;
+        if (e.ButtonState != MouseButtonState.Pressed || BroadcastChrome.IsInteractive(e.OriginalSource as DependencyObject)) return;
         DragMove();
         PersistLayout();
     }
