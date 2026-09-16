@@ -180,11 +180,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _studio.Activate();
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         Closed += (_, _) => { _connectionWatchdog?.Stop(); CompositionTarget.Rendering -= OnRenderFrame; _telemetry.Dispose(); _studio.Close(); };
-        SourceInitialized += (_, _) =>
-        {
-            EnableHardwareComposedTransparency(new WindowInteropHelper(this).Handle);
-            SetEditing(!_profile.Locked);
-        };
+        SourceInitialized += (_, _) => SetEditing(!_profile.Locked);
         ConfigureTelemetry();
         _telemetry.Start();
     }
@@ -463,24 +459,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         host.Content = surface;
     }
 
-    // 16/09/2026: root cause of the fluidity gap vs Kapps/GoFast that survived every telemetry-side
-    // fix. AllowsTransparency="True" makes WPF create the window as a Win32 "layered window"
-    // (WS_EX_LAYERED) and composite its own pixels in software via UpdateLayeredWindow on every
-    // paint -- a well-documented WPF cost that bypasses the desktop compositor entirely. Kapps
-    // (Electron/Chromium) and GoFast (WebView2) both get real per-pixel transparency composited by
-    // DWM in hardware. DwmExtendFrameIntoClientArea with a full "sheet of glass" margin gets WPF
-    // the same hardware-composited transparency, without touching a single widget's rendering
-    // logic -- this is why AllowsTransparency was removed from MainWindow.xaml.
-    private static void EnableHardwareComposedTransparency(IntPtr handle)
-    {
-        var margins = new Margins(-1, -1, -1, -1);
-        DwmExtendFrameIntoClientArea(handle, ref margins);
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Margins { public int Left, Right, Top, Bottom; public Margins(int left, int right, int top, int bottom) { Left = left; Right = right; Top = top; Bottom = bottom; } }
-    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr handle, ref Margins margins);
-
+    // 16/09/2026: tried DwmExtendFrameIntoClientArea ("sheet of glass") as a hardware-composited
+    // replacement for AllowsTransparency="True", reasoning that it would avoid WPF's software
+    // layered-window compositing (a real, documented cost). Reverted: that API is a Windows Vista/7
+    // Aero Glass feature -- Windows 8+ removed Aero Glass, so on Windows 10/11 it no longer produces
+    // real per-pixel transparency; it painted the window solid black instead, breaking the overlay
+    // outright. AllowsTransparency="True" (WS_EX_LAYERED, software-composited) remains the only
+    // WPF-native way to get real per-pixel alpha on modern Windows; the only true hardware-composited
+    // alternative is a custom DirectComposition surface, which was deliberately not pursued (see the
+    // reverted GPU-migration commit) because of the cost of rebuilding every widget's rendering.
     private void SetEditing(bool editing)
     {
         IsEditing = editing;

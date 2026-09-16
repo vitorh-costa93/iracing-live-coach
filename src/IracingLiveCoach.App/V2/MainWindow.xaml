@@ -1,4 +1,4 @@
-﻿<Window x:Class="IracingLiveCoach.V2.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks" xmlns:svg="clr-namespace:SharpVectors.Converters;assembly=SharpVectors.Converters.Wpf" Title="Live Coach V2 · Overlay" WindowStyle="None" Background="Transparent" Topmost="True" ShowInTaskbar="True" WindowState="Maximized">
+﻿<Window x:Class="IracingLiveCoach.V2.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks" xmlns:svg="clr-namespace:SharpVectors.Converters;assembly=SharpVectors.Converters.Wpf" Title="Live Coach V2 · Overlay" WindowStyle="None" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="True" WindowState="Maximized">
   <Window.Resources>
     <LinearGradientBrush x:Key="HotLine" StartPoint="0,0" EndPoint="1,0">
       <GradientStop Color="#FF4DE95F" Offset="0" />
