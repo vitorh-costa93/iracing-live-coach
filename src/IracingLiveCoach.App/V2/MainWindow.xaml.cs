@@ -88,6 +88,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string WeatherGripText { get => _weatherGripText; private set => Set(ref _weatherGripText, value); }
     public string SessionHeaderText { get => _sessionHeaderText; private set => Set(ref _sessionHeaderText, value); }
     public string RadarSideText { get => _radarSideText; private set => Set(ref _radarSideText, value); }
+    private bool _radarBlindLeft, _radarBlindRight;
+    // Drives the simple always-reliable Left/Right spotter bar (Kapps' own "Bar Left Right")
+    // directly from CarLeftRight -- independent of the distance-based dots, which depend on the
+    // track length being known and can legitimately stay empty on some tracks/timing.
+    public bool RadarBlindLeft { get => _radarBlindLeft; private set => Set(ref _radarBlindLeft, value); }
+    public bool RadarBlindRight { get => _radarBlindRight; private set => Set(ref _radarBlindRight, value); }
     public string RadarDistanceText { get => _radarDistanceText; private set => Set(ref _radarDistanceText, value); }
     public double ClutchPct { get => _clutchPct; private set => Set(ref _clutchPct, value); }
     public double ThrottlePct { get => _throttlePct; private set => Set(ref _throttlePct, value); }
@@ -355,13 +361,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ApplyRadar(RadarStatus radar)
     {
         RadarSideText = radar.BlindSpotLeft && radar.BlindSpotRight ? "DOS DOIS LADOS" : radar.BlindSpotLeft ? "ESQUERDA" : radar.BlindSpotRight ? "DIREITA" : "LIVRE";
+        RadarBlindLeft = radar.BlindSpotLeft;
+        RadarBlindRight = radar.BlindSpotRight;
         var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
         RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
         var range = _radarWidget.RadarRange;
         var nearby = radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= range).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList();
-        // The radar only earns its screen space while there's actually a car close enough to
-        // matter (or something in the immediate blind spot) -- otherwise it disappears entirely.
-        _radarWidget.DynamicGateOpen = nearby.Count > 0 || radar.BlindSpotLeft || radar.BlindSpotRight;
+        // 16/09/2026: the widget only ever earns its screen space from CarLeftRight (the real,
+        // always-reliable blind-spot signal -- iRacing's own "Bar Left Right" style spotter). The
+        // far-field distance dots piggyback on this same visibility instead of gating it, since
+        // they depend on the track length being resolved and a car being within RadarRange.
+        _radarWidget.DynamicGateOpen = radar.BlindSpotLeft || radar.BlindSpotRight;
         var built = new List<RadarDot>();
         foreach (var blip in nearby)
         {
@@ -437,27 +447,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return file is null ? null : $"pack://application:,,,/IracingLiveCoach.App;component/Assets/Brands/Generated/{file}.png";
     }
 
-    // 16/09/2026 UX fix: the countdown text must never go blank and must never show a number
-    // disconnected from the real SF23 Overtake System constants -- previously this returned an
-    // empty string during cooldown (making the number "disappear") and a hardcoded "200s" while
-    // ready that matched neither OtsActiveSeconds nor OtsCooldownSeconds. Now every state always
-    // shows a real number: counting down while active/cooling down, or the full available window
-    // while ready -- only the color (see P2PBrush) should be what changes at a glance.
+    // 16/09/2026 correction: the driver confirmed CarIdxP2P_Count IS the real remaining-seconds
+    // bank the SF23 Overtake System exposes directly ("começa com 200s e vai diminuindo conforme
+    // usa") -- the previous fabricated 20s-active/100s-cooldown countdown was simply wrong, which
+    // is why it always showed a stuck "20s". There is no separate SDK field for a post-use
+    // cooldown, so that state was dropped rather than guessed at again: the number shown is always
+    // the real bank (TelemetryReader passes CarIdxP2P_Count through as both the "uses"/"seconds"
+    // slots below for compatibility), and only the color (see P2PBrush) reflects active vs idle.
     private static string FormatP2P(bool? active, int? uses, double? seconds, bool cooldown)
-    {
-        if (active is null) return "--";
-        if (active == true && seconds is double remaining) return $"{Math.Ceiling(remaining):0}s";
-        if (cooldown && seconds is double recharge) return $"{Math.Ceiling(recharge):0}s";
-        return $"{TelemetryReader.OtsActiveSeconds:0}s";
-    }
+        => active is null ? "--" : $"{uses ?? 0:0}s";
 
     private static string FormatP2PSummary(RelativeRow? mine)
     {
         if (mine is null || mine.P2PActive is null) return "NOT AVAILABLE FOR THIS CAR";
-        var count = mine.P2PUsesRemaining is int uses ? $" · {uses} RESTANTES" : string.Empty;
-        if (mine.P2PActive == true) return $"USANDO · {mine.P2PSecondsRemaining:0}s{count}";
-        if (mine.P2PInCooldown) return $"RECARREGANDO · {mine.P2PSecondsRemaining:0}s{count}";
-        return $"DISPONÍVEL · {TelemetryReader.OtsActiveSeconds:0}s{count}";
+        var seconds = mine.P2PUsesRemaining ?? 0;
+        return mine.P2PActive == true ? $"USANDO · {seconds}s" : $"DISPONÍVEL · {seconds}s";
     }
     private static string FormatLap(double? seconds) => seconds is double value && value > 0 ? TimeSpan.FromSeconds(value).ToString(@"m\:ss\.fff") : "--";
     private static string FormatWidgetDriver(string value, string style)
@@ -583,6 +587,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         return result;
     }
+    // 16/09/2026: previously took the first PlayerClassRows of the player's class -- always P1..PN
+    // regardless of where the player actually is, which is why a player running P8 saw "the top
+    // 13" instead of the field around them. Now the player's own class shows a fixed top-N
+    // leaderboard (TopNFixed) plus a window of PlayerClassRows rows centered on the player -- e.g.
+    // top 2 fixed + 5 around, player at P8, shows P1, P2, then P6-P10 (the driver's own worked
+    // example). Other classes keep the simple "first N" behavior (there's no "player position" to
+    // center on in a class the player isn't racing).
     private static IEnumerable<StandingsRow> SelectStandingsRows(IReadOnlyList<StandingsRow> source, WidgetProfile widget)
     {
         var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassShortName;
@@ -591,17 +602,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             foreach (var row in source) yield return row;
             yield break;
         }
-        var visibleByClass = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in source.OrderBy(row => row.Position))
+        foreach (var classGroup in source.GroupBy(row => row.ClassShortName ?? string.Empty))
         {
-            var inPlayerClass = string.Equals(row.ClassShortName, playerClass, StringComparison.OrdinalIgnoreCase);
+            var inPlayerClass = string.Equals(classGroup.Key, playerClass, StringComparison.OrdinalIgnoreCase);
             if (!inPlayerClass && !widget.ShowMulticlass) continue;
-            var limit = inPlayerClass ? widget.PlayerClassRows : widget.OtherClassRows;
-            var key = row.ClassShortName ?? string.Empty;
-            visibleByClass.TryGetValue(key, out var count);
-            if (count >= limit) continue;
-            visibleByClass[key] = count + 1;
-            yield return row;
+            var ordered = classGroup.OrderBy(row => row.Position).ToList();
+            if (!inPlayerClass)
+            {
+                foreach (var row in ordered.Take(widget.OtherClassRows)) yield return row;
+                continue;
+            }
+            var selectedIndexes = new SortedSet<int>(Enumerable.Range(0, Math.Min(widget.TopNFixed, ordered.Count)));
+            var playerIndex = ordered.FindIndex(row => row.IsPlayer);
+            if (playerIndex < 0) playerIndex = 0;
+            var windowSize = Math.Min(widget.PlayerClassRows, ordered.Count);
+            if (windowSize > 0)
+            {
+                var half = windowSize / 2;
+                var start = Math.Clamp(playerIndex - half, 0, Math.Max(0, ordered.Count - windowSize));
+                for (var i = start; i < start + windowSize; i++) selectedIndexes.Add(i);
+            }
+            foreach (var index in selectedIndexes) yield return ordered[index];
         }
     }
     private static IEnumerable<RelativeRow> SelectRelativeRows(IReadOnlyList<RelativeRow> source, WidgetProfile widget)
@@ -666,10 +687,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // LayoutTransform scales the layout itself (not just its pixels), so the physical card
         // tracks the selected font scale and cannot leave an artificial strip at the right.
         widget.Width = logicalWidth * widget.FontScale + 10d;
-        var tableHeader = widget.IsStandings ? 21d : 20d;
+        // 16/09/2026: the per-column title row (POS/#/PILOTO/.../GAP/INTERVAL/...) was removed --
+        // the driver already knows what each column is -- so it no longer reserves any height.
         var classHeaderHeight = widget.IsStandings ? PreviewDrivers.Count(row => row.IsClassHeader) * 37d : 0d;
         var driverHeight = widget.IsStandings ? PreviewDrivers.Count(row => !row.IsClassHeader) * 30d : RelativeDrivers.Count * 27d;
-        var logicalHeight = (widget.ShowWidgetHeader ? 29d : 0d) + tableHeader + classHeaderHeight + driverHeight;
+        var logicalHeight = (widget.ShowWidgetHeader ? 29d : 0d) + classHeaderHeight + driverHeight;
         widget.Height = logicalHeight * widget.FontScale + 10d;
     }
     private void SetHeaderValue(string key, string value)
@@ -697,14 +719,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(44, 224, 209))
         : status == "--" ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(151, 160, 170))
         : new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95));
-    private static PackIconMaterialKind P2PIcon(bool? active, bool cooldown) => active is null ? PackIconMaterialKind.BatteryOutline : active == true ? PackIconMaterialKind.BatteryCharging80 : cooldown ? PackIconMaterialKind.Battery30 : PackIconMaterialKind.Battery90;
-    private static double P2PLevel(bool? active, double? seconds, bool cooldown)
-    {
-        if (active is null) return 0;
-        if (active == true && seconds is double remaining) return Math.Clamp(remaining / TelemetryReader.OtsActiveSeconds * 100d, 0, 100);
-        if (cooldown && seconds is double recharge) return Math.Clamp((TelemetryReader.OtsCooldownSeconds - recharge) / TelemetryReader.OtsCooldownSeconds * 100d, 0, 100);
-        return 100;
-    }
+    private static PackIconMaterialKind P2PIcon(bool? active, bool cooldown) => active is null ? PackIconMaterialKind.BatteryOutline : active == true ? PackIconMaterialKind.BatteryCharging80 : PackIconMaterialKind.Battery90;
+    // 200s is the SF23 Overtake System's full bank (confirmed real; see FormatP2P) -- the level
+    // bar always reflects the real remaining bank, never a fabricated phase countdown.
+    private static double P2PLevel(bool? active, double? seconds, bool cooldown) => active is null ? 0 : Math.Clamp((seconds ?? 0) / 200d * 100d, 0, 100);
     private static System.Windows.Media.Brush LicenseBrush(string license) => license.StartsWith("A", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 88, 255)) : license.StartsWith("B", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 151, 87)) : license.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 174, 0)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 52, 230));
     private static System.Windows.Media.Brush IRatingDeltaBrush(double? delta) => (delta ?? 0) >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102));
     private static PackIconMaterialKind IRatingArrow(double? delta) => (delta ?? 0) >= 0 ? PackIconMaterialKind.MenuUp : PackIconMaterialKind.MenuDown;
@@ -781,4 +799,5 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Set(ref string field, string value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (field == value) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
     private void Set(ref double field, double value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (Math.Abs(field - value) < .01) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
+    private void Set(ref bool field, bool value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (field == value) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
 }

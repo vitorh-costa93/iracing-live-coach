@@ -146,25 +146,13 @@ public class TelemetryReader : IDisposable
     private int _proximityTickCounter;
     private int _fullFieldTickCounter;
 
-    // 14/09/2026: SF23's Overtake System rules, publicly documented on iRacing's own car page --
-    // 20s of activation per use, at least 100s cooldown ("ReTime") afterward. This is car-specific
-    // domain knowledge (the same kind the sibling iracing-analytics project already hardcodes for
-    // ARB/differential/spring targets per car architecture), not a telemetry read -- combined with
-    // the REAL CarIdxP2P_Status transition below to compute an actual countdown. Disclosed caveat:
-    // these constants are SF23-specific and could be wrong for a different P2P-enabled car this
-    // app hasn't researched, or if iRacing rebalances SF23's own system in a future season -- the
-    // underlying CarIdxP2P_Status/CarIdxP2P_Count are always real regardless of whether the
-    // countdown numbers happen to be exactly right for the car actually being driven.
-    // Public so MainWindow's own P2P display formatting (countdown text, level bar) is derived
-    // from the SAME real constants this class uses to compute the countdown, instead of a
-    // separately hardcoded number that can silently drift out of sync (see the 16/09/2026 P2P UX fix).
-    public const double OtsActiveSeconds = 20.0;
-    public const double OtsCooldownSeconds = 100.0;
-
-    // Keyed by CarIdx so each car's own activation/cooldown phase is timed independently.
-    // _p2pPhaseEndUtcByCarIdx holds the UTC instant the CURRENT phase (active or cooldown) ends.
-    private readonly Dictionary<int, bool> _lastP2PActiveByCarIdx = new();
-    private readonly Dictionary<int, DateTime> _p2pPhaseEndUtcByCarIdx = new();
+    // 16/09/2026 correction: the previous SF23-specific 20s-active/100s-cooldown model was WRONG
+    // -- the driver confirmed CarIdxP2P_Count IS the real remaining-seconds bank the SF23 Overtake
+    // System exposes directly ("começa com 200s e vai diminuindo conforme usa"), not a discrete
+    // activation counter needing a fabricated countdown. There is no separate cooldown field, so
+    // that invented phase-timer machinery (UpdateP2PPhase and its two dictionaries) was removed
+    // rather than guessed at again -- CarIdxP2P_Status/CarIdxP2P_Count are read and passed through
+    // as-is everywhere P2P is reported.
 
     // CarIdxOnPitRoad is published per car.  The SDK does not expose a formatted pit timer, so
     // retain the real transition locally and present its elapsed duration.  Once a car exits, the
@@ -240,11 +228,24 @@ public class TelemetryReader : IDisposable
     // manufacturer in the overwhelming majority of cases -- a plain text badge (e.g. "FERRARI"),
     // not an image logo (bundling real trademarked logo graphics is a materially larger, separate
     // effort with its own legal/asset-sourcing considerations -- see this plan's own spec section).
+    // 16/09/2026: the first-token heuristic misses cars whose CarScreenName carries the
+    // manufacturer as a suffix instead of a prefix -- the SF23 is named e.g. "Super Formula SF23 -
+    // Honda"/"... - Toyota" (the engine supplier), so "SUPER" was being extracted instead of the
+    // real badge. Scanning the whole name for a known manufacturer first (falling back to the
+    // first-token guess only when none matches) is what makes SF23's Honda/Toyota badge resolve.
+    private static readonly string[] KnownManufacturers =
+    {
+        "ASTON MARTIN", "MERCEDES", "MCLAREN", "LAMBORGHINI", "CHEVROLET", "CORVETTE", "CADILLAC",
+        "PORSCHE", "FERRARI", "FORD", "BMW", "AUDI", "ACURA", "DALLARA", "HONDA", "TOYOTA"
+    };
+
     private static string ExtractManufacturer(string? carScreenName)
     {
         if (string.IsNullOrWhiteSpace(carScreenName)) return "";
-        var firstToken = carScreenName.Split(' ', 2)[0];
-        return firstToken.ToUpperInvariant();
+        var upper = carScreenName.ToUpperInvariant();
+        foreach (var known in KnownManufacturers)
+            if (upper.Contains(known)) return known;
+        return carScreenName.Split(' ', 2)[0].ToUpperInvariant();
     }
 
     /// <summary>Fires once per app run, the first time the SDK reports a session with both a
@@ -348,6 +349,10 @@ public class TelemetryReader : IDisposable
 
             _playerCarIdx = driverCarIdx;
             _driverCodesByCarIdx = BuildDriverCodes(sessionInfo);
+            // V2 has no baseline-sync step (that's V1's corner-coaching flow, which never runs in
+            // this build) to call SetTrackLength -- reading WeekendInfo.TrackLength directly here
+            // means the radar's real distance blips work standalone, without that dependency.
+            _trackLengthMeters ??= ParseTrackLengthMeters(sessionInfo?.WeekendInfo?.TrackLength);
             _sessionDetected = true;
             SessionDetected?.Invoke(carId, trackId);
         }
@@ -355,6 +360,20 @@ public class TelemetryReader : IDisposable
         {
             // Wait for the next OnSessionInfo update.
         }
+    }
+
+    // WeekendInfo.TrackLength is a real field but formatted as free text (e.g. "3.06 km") rather
+    // than a raw number -- parsed defensively since a future track/unit format could otherwise
+    // silently throw and mask every other field this same try/catch protects.
+    private static double? ParseTrackLengthMeters(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var trimmed = text.Trim();
+        var unit = trimmed.EndsWith("km", StringComparison.OrdinalIgnoreCase) ? 1000.0
+            : trimmed.EndsWith("mi", StringComparison.OrdinalIgnoreCase) ? 1609.344
+            : 1.0;
+        var numberPart = trimmed.TrimEnd('k', 'm', 'i', 'K', 'M', 'I', ' ');
+        return double.TryParse(numberPart, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value > 0 ? value * unit : null;
     }
 
     private void OnTelemetryData()
@@ -370,9 +389,10 @@ public class TelemetryReader : IDisposable
             if (_proximityTickCounter >= ProximityTickInterval)
             {
                 _proximityTickCounter = 0;
-                UpdateRelative();
-                UpdateFullRelative();
-                UpdateSecondaryRelative();
+                var positions = ComputeLivePositions();
+                UpdateRelative(positions);
+                UpdateFullRelative(positions);
+                UpdateSecondaryRelative(positions);
                 UpdatePlayerCarStatus();
                 UpdateRaceStart();
             }
@@ -381,7 +401,7 @@ public class TelemetryReader : IDisposable
             if (_fullFieldTickCounter >= FullFieldTickInterval)
             {
                 _fullFieldTickCounter = 0;
-                UpdateStandings();
+                UpdateStandings(ComputeLivePositions());
                 UpdateFuel();
             }
 
@@ -423,19 +443,71 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    private void UpdateRelative()
-    {
-        try
-        {
-            var myPosition = _sdk.Data.GetInt("CarIdxPosition", _playerCarIdx);
-            if (myPosition <= 0) return; // not yet classified (formation, out-lap before scoring starts, etc.)
+    private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
 
-            var maxCars = IRacingSdkConst.MaxNumCars;
-            var byOffset = new Dictionary<int, bool>();
+    // 16/09/2026: iRacing's own CarIdxPosition/CarIdxClassPosition are documented to lag behind
+    // the real order on track, especially right after an overtake -- this is exactly why
+    // Standings/Relative appeared to freeze mid-lap despite the SDK firing at 60Hz (confirmed via
+    // the iRacing community's own investigation, e.g. niklam/iracedeck#233). Real-time overlays
+    // instead derive position from the physical CarIdxLapCompleted+CarIdxLapDistPct -- more laps
+    // completed ranks higher, ties broken by how far around the current lap. Computed once per
+    // tick group and shared by every consumer below so they can never disagree with each other.
+    private LivePositions ComputeLivePositions()
+    {
+        var maxCars = IRacingSdkConst.MaxNumCars;
+        var entries = new List<(int Idx, int Laps, float DistPct, int ClassId)>();
+        for (var idx = 0; idx < maxCars; idx++)
+        {
+            var distPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+            if (distPct < 0) continue; // car not currently on track / not in this session
+            var laps = _sdk.Data.GetInt("CarIdxLapCompleted", idx);
+            var classId = _sdk.Data.GetInt("CarIdxClass", idx);
+            entries.Add((idx, laps, distPct, classId));
+        }
+
+        if (entries.Count == 0)
+        {
+            // Nobody has a valid on-track distance yet (e.g. still sitting in the pit stall before
+            // the session goes live) -- fall back to iRacing's own CarIdxPosition/CarIdxClassPosition
+            // (the grid order) so Standings/Relative show the real field the instant the car is
+            // assumed, instead of staying empty until the first car actually rolls.
+            var overallFallback = new Dictionary<int, int>();
+            var classFallback = new Dictionary<int, int>();
             for (var idx = 0; idx < maxCars; idx++)
             {
                 var position = _sdk.Data.GetInt("CarIdxPosition", idx);
-                if (position <= myPosition) continue;
+                if (position > 0) overallFallback[idx] = position;
+                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                if (classPosition > 0) classFallback[idx] = classPosition;
+            }
+            return new LivePositions(overallFallback, classFallback);
+        }
+
+        var overall = entries
+            .OrderByDescending(e => e.Laps).ThenByDescending(e => e.DistPct)
+            .Select((e, i) => (e.Idx, Position: i + 1))
+            .ToDictionary(x => x.Idx, x => x.Position);
+
+        var byClass = entries
+            .GroupBy(e => e.ClassId)
+            .SelectMany(group => group
+                .OrderByDescending(e => e.Laps).ThenByDescending(e => e.DistPct)
+                .Select((e, i) => (e.Idx, Position: i + 1)))
+            .ToDictionary(x => x.Idx, x => x.Position);
+
+        return new LivePositions(overall, byClass);
+    }
+
+    private void UpdateRelative(LivePositions positions)
+    {
+        try
+        {
+            if (!positions.Overall.TryGetValue(_playerCarIdx, out var myPosition)) return;
+
+            var byOffset = new Dictionary<int, bool>();
+            foreach (var (idx, position) in positions.Overall)
+            {
+                if (idx == _playerCarIdx || position <= myPosition) continue;
                 var offset = position - myPosition;
                 if (offset > RelativeCarsBehind) continue;
                 // CarIdxP2P_Status throws for the whole session (not just this one index) when the
@@ -456,48 +528,19 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // Returns (SecondsRemaining, InCooldown) for the given car's P2P phase, given its current
-    // active/inactive telemetry state -- see OtsActiveSeconds/OtsCooldownSeconds's own doc comment
-    // for the SF23-sourced constants this is built from.
-    private (double? SecondsRemaining, bool InCooldown) UpdateP2PPhase(int idx, bool active)
-    {
-        var wasActive = _lastP2PActiveByCarIdx.TryGetValue(idx, out var previouslyActive) && previouslyActive;
-        if (active && !wasActive)
-        {
-            // Activation just started -- the active window ends OtsActiveSeconds from now.
-            _p2pPhaseEndUtcByCarIdx[idx] = DateTime.UtcNow.AddSeconds(OtsActiveSeconds);
-        }
-        else if (!active && wasActive)
-        {
-            // Deactivation just happened (driver released it early, or it auto-expired) -- the
-            // cooldown window starts now and ends OtsCooldownSeconds later.
-            _p2pPhaseEndUtcByCarIdx[idx] = DateTime.UtcNow.AddSeconds(OtsCooldownSeconds);
-        }
-        _lastP2PActiveByCarIdx[idx] = active;
-
-        if (!_p2pPhaseEndUtcByCarIdx.TryGetValue(idx, out var phaseEnd)) return (null, false);
-        var remaining = (phaseEnd - DateTime.UtcNow).TotalSeconds;
-        if (remaining <= 0) return (null, false); // phase already elapsed -- PRONTO, no countdown to show
-        return (remaining, !active); // still counting down: if not currently active, this is the cooldown countdown
-    }
-
     // 13/09/2026: full running-order relative (F1-style widget), extending 3-ahead/3-behind --
-    // reads the SAME CarIdxPosition scan as UpdateRelative but is a SEPARATE pass (not merged into
-    // it) so a change here can never affect the already-shipped P2P strip's own behavior.
-    private void UpdateFullRelative()
+    // reads the SAME live position ranking as UpdateRelative but is a SEPARATE pass (not merged
+    // into it) so a change here can never affect the already-shipped P2P strip's own behavior.
+    private void UpdateFullRelative(LivePositions positions)
     {
         try
         {
-            var myPosition = _sdk.Data.GetInt("CarIdxPosition", _playerCarIdx);
-            if (myPosition <= 0) return;
+            if (!positions.Overall.TryGetValue(_playerCarIdx, out var myPosition)) return;
             var myEstTime = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
 
-            var maxCars = IRacingSdkConst.MaxNumCars;
             var rows = new List<RelativeRow>();
-            for (var idx = 0; idx < maxCars; idx++)
+            foreach (var (idx, position) in positions.Overall)
             {
-                var position = _sdk.Data.GetInt("CarIdxPosition", idx);
-                if (position <= 0) continue;
                 var offset = position - myPosition;
                 if (Math.Abs(offset) > RelativeCarsBehind) continue;
 
@@ -508,22 +551,21 @@ public class TelemetryReader : IDisposable
                 double gap = theirEstTime - myEstTime;
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
                 bool? p2p = null;
-                try { p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx); } catch { /* no P2P this session */ }
-
-                int? p2pUses = null;
-                double? p2pSecondsRemaining = null;
-                var p2pInCooldown = false;
-                if (p2p is bool active)
+                int? p2pSeconds = null;
+                try
                 {
-                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
-                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
+                    p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
+                    // CarIdxP2P_Count IS the real remaining-seconds bank for cars with an Overtake
+                    // System (confirmed by the driver for the SF23) -- not a discrete use counter.
+                    p2pSeconds = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
                 }
+                catch { /* no P2P/OTS this session */ }
 
                 var identity = GetIdentity(idx);
-                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(position, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
+                rows.Add(new RelativeRow(position, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -534,11 +576,11 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // 14/09/2026: mirrors UpdateFullRelative's shape but ranks by CarIdxClassPosition within the
-    // first car class found that differs from the player's own CarIdxClass, for the second,
+    // 14/09/2026: mirrors UpdateFullRelative's shape but ranks by the live class position within
+    // the first car class found that differs from the player's own CarIdxClass, for the second,
     // auto-configuring Relative widget instance (multiclass sessions only -- see this plan's own
     // Global Constraints for why there's no manual class picker).
-    private void UpdateSecondaryRelative()
+    private void UpdateSecondaryRelative(LivePositions positions)
     {
         try
         {
@@ -548,10 +590,9 @@ public class TelemetryReader : IDisposable
             int? secondaryClass = null;
             for (var idx = 0; idx < maxCars; idx++)
             {
-                if (idx == _playerCarIdx) continue;
+                if (idx == _playerCarIdx || !positions.ByClass.ContainsKey(idx)) continue;
                 var classId = _sdk.Data.GetInt("CarIdxClass", idx);
-                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
-                if (classPosition <= 0 || classId == myClass) continue;
+                if (classId == myClass) continue;
                 secondaryClass = classId;
                 break; // first differing class found -- deterministic since CarIdx order is stable within a session
             }
@@ -561,8 +602,7 @@ public class TelemetryReader : IDisposable
             for (var idx = 0; idx < maxCars; idx++)
             {
                 if (_sdk.Data.GetInt("CarIdxClass", idx) != targetClass) continue;
-                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
-                if (classPosition <= 0) continue;
+                if (!positions.ByClass.TryGetValue(idx, out var classPosition)) continue;
                 byOffset.Add((classPosition, idx));
             }
             if (byOffset.Count == 0) return;
@@ -577,21 +617,17 @@ public class TelemetryReader : IDisposable
             {
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
                 bool? p2p = null;
-                int? p2pUses = null;
-                double? p2pSecondsRemaining = null;
-                var p2pInCooldown = false;
+                int? p2pSeconds = null;
                 try
                 {
-                    var active = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2p = active;
-                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
-                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
+                    p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
+                    p2pSeconds = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
                 }
-                catch { /* no P2P for this class */ }
+                catch { /* no P2P/OTS for this class */ }
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
-                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pUses, p2pSecondsRemaining, p2pInCooldown, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
+                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
             }
 
             SecondaryRelativeUpdated?.Invoke(rows);
@@ -606,11 +642,10 @@ public class TelemetryReader : IDisposable
     // BR1 = 1600 / ln(2). SoF = BR1 * ln(N / Sum(e^(-iRating_i / BR1))).
     private const double SofBr1 = 1600.0 / 0.69314718055994530942;
 
-    private void UpdateStandings()
+    private void UpdateStandings(LivePositions positions)
     {
         try
         {
-            var maxCars = IRacingSdkConst.MaxNumCars;
             var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
                 string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, double? Gap,
                 string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus)>();
@@ -618,11 +653,8 @@ public class TelemetryReader : IDisposable
             var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
             double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
 
-            for (var idx = 0; idx < maxCars; idx++)
+            foreach (var (idx, position) in positions.Overall)
             {
-                var position = _sdk.Data.GetInt("CarIdxPosition", idx);
-                if (position <= 0) continue; // not currently classified
-
                 var lapsCompleted = _sdk.Data.GetInt("CarIdxLap", idx);
                 var lastLap = _sdk.Data.GetFloat("CarIdxLastLapTime", idx);
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
@@ -640,28 +672,24 @@ public class TelemetryReader : IDisposable
                 }
                 catch { /* not published this session type -- leave gap null */ }
 
-                var classPosition = _sdk.Data.GetInt("CarIdxClassPosition", idx);
+                var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
                 var onPitRoad = false;
                 try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
                 catch { /* channel absent outside an active driving session */ }
                 var pitStatus = UpdatePitStatus(idx, onPitRoad, lapsCompleted);
                 bool? p2pActive = null;
-                int? p2pUses = null;
-                double? p2pSecondsRemaining = null;
-                var p2pInCooldown = false;
+                int? p2pSeconds = null;
                 try
                 {
-                    var active = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2pActive = active;
-                    p2pUses = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
-                    (p2pSecondsRemaining, p2pInCooldown) = UpdateP2PPhase(idx, active);
+                    p2pActive = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
+                    p2pSeconds = _sdk.Data.GetInt("CarIdxP2P_Count", idx);
                 }
-                catch { /* P2P is absent for this car/session. */ }
+                catch { /* P2P/OTS is absent for this car/session. */ }
 
                 raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
                     identity.CarClassId, identity.ManufacturerBadge, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
-                    p2pActive, p2pUses, p2pSecondsRemaining, p2pInCooldown, pitStatus));
+                    p2pActive, p2pSeconds, p2pSeconds, false, pitStatus));
             }
 
             var ordered = raw.OrderBy(r => r.Position).ToList();

@@ -23,6 +23,8 @@ public partial class StudioWindow : Window, INotifyPropertyChanged
     public ICommand DecreasePlayerRowsCommand { get; }
     public ICommand IncreaseOtherRowsCommand { get; }
     public ICommand DecreaseOtherRowsCommand { get; }
+    public ICommand IncreaseTopNCommand { get; }
+    public ICommand DecreaseTopNCommand { get; }
     public StudioWindow(OverlayProfile profile, ObservableCollection<DriverRow> previewDrivers, Action save, Action<bool> setEditing)
     {
         _profile = profile; _save = save; _setEditing = setEditing;
@@ -38,6 +40,8 @@ public partial class StudioWindow : Window, INotifyPropertyChanged
         DecreasePlayerRowsCommand = new ParameterRelayCommand(widget => AdjustRows((WidgetProfile)widget!, true, -1));
         IncreaseOtherRowsCommand = new ParameterRelayCommand(widget => AdjustRows((WidgetProfile)widget!, false, 1));
         DecreaseOtherRowsCommand = new ParameterRelayCommand(widget => AdjustRows((WidgetProfile)widget!, false, -1));
+        IncreaseTopNCommand = new ParameterRelayCommand(widget => AdjustTopN((WidgetProfile)widget!, 1));
+        DecreaseTopNCommand = new ParameterRelayCommand(widget => AdjustTopN((WidgetProfile)widget!, -1));
         foreach (var widget in Widgets)
         {
             widget.PropertyChanged += (_, _) => ScheduleSave();
@@ -73,6 +77,11 @@ public partial class StudioWindow : Window, INotifyPropertyChanged
     {
         if (playerClass) widget.PlayerClassRows += amount;
         else widget.OtherClassRows += amount;
+        _save();
+    }
+    private void AdjustTopN(WidgetProfile widget, int amount)
+    {
+        widget.TopNFixed += amount;
         _save();
     }
     private void ScheduleSave()

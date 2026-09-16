@@ -48,33 +48,6 @@
                 </Grid>
                 <Grid Grid.Row="1">
                   <StackPanel Visibility="{Binding IsStandings, Converter={StaticResource BoolToVisibility}}">
-                    <Grid Height="19" Margin="0,0,0,2">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding PositionColumnWidth}" />
-                        <ColumnDefinition Width="{Binding CarNumberColumnWidth}" />
-                        <ColumnDefinition Width="{Binding DriverColumnWidth}" />
-                        <ColumnDefinition Width="{Binding LicenseColumnWidth}" />
-                        <ColumnDefinition Width="{Binding IRatingColumnWidth}" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Text="POS" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="1" Text="#" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="2" Text="PILOTO" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="3" Text="LIC." Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="4" Text="iR / Δ" Style="{StaticResource Label}" />
-                      <ItemsControl Grid.Column="5" ItemsSource="{Binding TimingColumns}">
-                        <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                          </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate>
-                            <TextBlock Width="{Binding Width}" Text="{Binding Label}" Style="{StaticResource Label}" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}" />
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </Grid>
                     <ItemsControl ItemsSource="{Binding DataContext.PreviewDrivers, RelativeSource={RelativeSource AncestorType=Window}}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -157,33 +130,6 @@
                     </ItemsControl>
                   </StackPanel>
                   <StackPanel Visibility="{Binding IsRelative, Converter={StaticResource BoolToVisibility}}">
-                    <Grid Height="18" Margin="0,0,0,2">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding PositionColumnWidth}" />
-                        <ColumnDefinition Width="{Binding CarNumberColumnWidth}" />
-                        <ColumnDefinition Width="{Binding DriverColumnWidth}" />
-                        <ColumnDefinition Width="{Binding LicenseColumnWidth}" />
-                        <ColumnDefinition Width="{Binding IRatingColumnWidth}" />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Text="POS" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="1" Text="#" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="2" Text="PILOTO" Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="3" Text="LIC." Style="{StaticResource Label}" />
-                      <TextBlock Grid.Column="4" Text="iR" Style="{StaticResource Label}" />
-                      <ItemsControl Grid.Column="5" ItemsSource="{Binding TimingColumns}">
-                        <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" />
-                          </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate>
-                            <TextBlock Width="{Binding Width}" Text="{Binding Label}" Style="{StaticResource Label}" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}" />
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </Grid>
                     <ItemsControl ItemsSource="{Binding DataContext.RelativeDrivers, RelativeSource={RelativeSource AncestorType=Window}}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -292,6 +238,33 @@
                     </Grid>
                   </StackPanel>
                   <Grid Visibility="{Binding IsRadar, Converter={StaticResource BoolToVisibility}}" HorizontalAlignment="Center">
+                    <!-- Simple, always-reliable spotter bar (Kapps' own "Bar Left Right"): lights up
+                         the instant CarLeftRight reports a car alongside, independent of the
+                         distance-based dots below, which rely on a resolved track length. -->
+                    <Border Width="7" Height="80" CornerRadius="3" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-5,0,0,0">
+                      <Border.Style>
+                        <Style TargetType="Border">
+                          <Setter Property="Background" Value="#332C3644" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.RadarBlindLeft, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                              <Setter Property="Background" Value="#FFFF5B47" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                    </Border>
+                    <Border Width="7" Height="80" CornerRadius="3" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-5,0">
+                      <Border.Style>
+                        <Style TargetType="Border">
+                          <Setter Property="Background" Value="#332C3644" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.RadarBlindRight, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                              <Setter Property="Background" Value="#FFFF5B47" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Border.Style>
+                    </Border>
                     <Ellipse Width="148" Height="148" Stroke="#706AD6EF" StrokeThickness="1" />
                     <Ellipse Width="96" Height="96" Stroke="#306AD6EF" StrokeThickness="1" />
                     <Line X1="74" Y1="4" X2="74" Y2="144" Stroke="#305A718C" />

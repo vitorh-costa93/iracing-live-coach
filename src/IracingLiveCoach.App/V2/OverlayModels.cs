@@ -73,6 +73,12 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     public bool ShowMulticlass { get => _showMulticlass; set => Set(ref _showMulticlass, value); }
     public int PlayerClassRows { get => _playerClassRows; set => Set(ref _playerClassRows, Math.Clamp(value, 1, 20)); }
     public int OtherClassRows { get => _otherClassRows; set => Set(ref _otherClassRows, Math.Clamp(value, 0, 20)); }
+    private int _topNFixed;
+    // Standings-only: a fixed leaderboard (P1..N) always shown ahead of the player-centered window
+    // sized by PlayerClassRows -- e.g. TopNFixed=2 + PlayerClassRows=5 with the player at P8 shows
+    // P1, P2, then P6-P10 (2 ahead of the player, the player, 2 behind), per the driver's own
+    // worked example (16/09/2026). 0 disables the fixed leaderboard entirely.
+    public int TopNFixed { get => _topNFixed; set => Set(ref _topNFixed, Math.Clamp(value, 0, 10)); }
     public double PositionColumnWidth { get => _positionColumnWidth; set => Set(ref _positionColumnWidth, Math.Clamp(value, 26, 90)); }
     public double CarNumberColumnWidth { get => _carNumberColumnWidth; set => Set(ref _carNumberColumnWidth, Math.Clamp(value, 34, 120)); }
     public double DriverColumnWidth { get => _driverColumnWidth; set => Set(ref _driverColumnWidth, Math.Clamp(value, 90, 360)); }
@@ -134,7 +140,7 @@ public sealed class OverlayProfile
     {
         Widgets = new()
         {
-            new() { Kind=WidgetKind.Standings, Title="STANDINGS", Left=18, Top=50, Width=800, Height=310, Rows=8, ShowP2PColumn=true, TimingColumns=TimingColumn.CreateDefaults(), HeaderFields=HeaderField.CreateDefaults() },
+            new() { Kind=WidgetKind.Standings, Title="STANDINGS", Left=18, Top=50, Width=800, Height=310, Rows=8, ShowP2PColumn=true, TopNFixed=3, TimingColumns=TimingColumn.CreateDefaults(), HeaderFields=HeaderField.CreateDefaults() },
             new() { Kind=WidgetKind.Relative, Title="RELATIVE", Left=1180, Top=670, Width=700, Height=255, Rows=5, ShowP2PColumn=true, TimingColumns=TimingColumn.CreateDefaults(), HeaderFields=HeaderField.CreateDefaults() },
             new() { Kind=WidgetKind.Fuel, Title="FUEL", Left=1210, Top=815, Width=250, Height=175 },
             new() { Kind=WidgetKind.Weather, Title="WEATHER", Left=1210, Top=655, Width=250, Height=145 },
