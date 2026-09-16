@@ -285,7 +285,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Pit = row.PitStatus, PitBrush = PitBrush(row.PitStatus),
                 GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? FormatSignedNumber(leaderGap, widget.GapDecimals) : "--",
                 Interval = row.IntervalSeconds is double interval ? FormatSignedNumber(interval, widget.IntervalDecimals) : "--",
-                LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds, widget.LapDeltaDecimals),
+                LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds, widget.LapDeltaDecimals), DeltaBrush = LapDeltaBrush(row.LapDeltaVsPlayerSeconds),
                 Tire = TireText(row.TireCompound), ClassName = row.ClassShortName, IsPlayerClass = row.IsPlayer || rows.FirstOrDefault(candidate => candidate.IsPlayer)?.ClassShortName == row.ClassShortName
             };
             PopulateFields(driver, widget);
@@ -372,7 +372,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         WeatherClimateText = weather.WeatherDeclaredWet ? "Chuvoso" : "Limpo";
         WeatherTemperatureText = $"{weather.TrackTempC:0}°C";
-        WeatherRainText = $"{TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet).ToUpperInvariant()} ({weather.TrackWetness})";
+        WeatherRainText = TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet).ToUpperInvariant();
         WeatherGripText = weather.TrackRubberState ?? TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet);
     }
 
@@ -815,14 +815,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static double P2PLevel(bool? active, double? seconds, bool cooldown) => active is null ? 0 : Math.Clamp((seconds ?? 0) / 200d * 100d, 0, 100);
     private static System.Windows.Media.Brush LicenseBrush(string license) => license.StartsWith("A", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 88, 255)) : license.StartsWith("B", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 151, 87)) : license.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 174, 0)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 52, 230));
     private static System.Windows.Media.Brush IRatingDeltaBrush(double? delta) => (delta ?? 0) >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102));
+    // Lap delta is another driver's completed lap minus the player's.  Positive means the player
+    // was faster (green); negative means the player was slower (red).
+    private static System.Windows.Media.Brush LapDeltaBrush(double? delta) => delta switch
+    {
+        > 0 => new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)),
+        < 0 => new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102)),
+        _ => System.Windows.Media.Brushes.White
+    };
     private static PackIconMaterialKind IRatingArrow(double? delta) => (delta ?? 0) >= 0 ? PackIconMaterialKind.MenuUp : PackIconMaterialKind.MenuDown;
     private static string TrackCondition(int wetness, bool declaredWet) => wetness switch
     {
-        <= 0 when !declaredWet => "Dry",
-        <= 1 => "Very lightly wet",
-        <= 2 => "Lightly wet",
-        <= 3 => "Wet",
-        <= 4 => "Very wet",
+        // irsdk_TrackWetness enum: 0 NotSupported, 1 Dry, 2 MostlyDry,
+        // 3 VeryLightlyWet, 4 LightlyWet, 5 ModeratelyWet, 6 VeryWet,
+        // 7 ExtremelyWet, 8 RacingLineWet, 9 RacingLineDry.
+        <= 1 => "Dry",
+        2 => "Mostly dry",
+        3 => "Very lightly wet",
+        4 => "Lightly wet",
+        5 => "Moderately wet",
+        6 => "Very wet",
+        7 => "Extremely wet",
+        8 => "Racing line wet",
+        9 => "Racing line dry",
         _ => declaredWet ? "Wet" : "Dry"
     };
     private static System.Windows.Media.Brush ClassPositionBrush(int rank) => new LinearGradientBrush(rank switch

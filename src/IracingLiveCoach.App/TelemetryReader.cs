@@ -163,6 +163,12 @@ public class TelemetryReader : IDisposable
     // last completed pit (lap + duration) remains available as useful race context.
     private readonly Dictionary<int, DateTime> _pitRoadEnteredUtcByCarIdx = new();
     private readonly Dictionary<int, string> _lastPitStatusByCarIdx = new();
+    // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
+    // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
+    // last valid bank per car and mark a short recharge window only when the real bank rises.
+    private const int P2PMaxSeconds = 200;
+    private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
+    private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
 
     private double? _bestLapTimeSeconds;
 
@@ -343,6 +349,8 @@ public class TelemetryReader : IDisposable
         _driverCodesByCarIdx.Clear();
         _pitRoadEnteredUtcByCarIdx.Clear();
         _lastPitStatusByCarIdx.Clear();
+        _lastP2PCountByCarIdx.Clear();
+        _p2pChargingUntilByCarIdx.Clear();
         // Always notify: closing can happen between telemetry frames, while the last known
         // in-car state is still true. The V2 window then hides every locked widget immediately.
         OnTrackStateChanged?.Invoke(false);
@@ -487,12 +495,12 @@ public class TelemetryReader : IDisposable
     // bank as a universal validity rule: other supported cars/sessions can publish a different
     // valid count.  The SDK's signed maximum integer is its conventional uninitialised sentinel;
     // that is the only value we suppress.
-    private static int? ReadP2PCount(int raw) => raw >= 0 && raw != int.MaxValue ? raw : null;
+    private static int? ReadP2PCount(int raw) => raw is >= 0 and <= P2PMaxSeconds ? raw : null;
 
     // The two per-car P2P arrays are independently optional in iRacing.  Reading them in one
     // try block made a missing Count on an opponent hide an otherwise valid Status (and vice
     // versa).  Keep every usable part of the telemetry for every CarIdx, as Kapps does.
-    private (bool? Active, int? Seconds) ReadP2P(int carIdx)
+    private (bool? Active, int? Seconds, bool IsCharging) ReadP2P(int carIdx)
     {
         bool? active = null;
         int? seconds = null;
@@ -500,7 +508,15 @@ public class TelemetryReader : IDisposable
         catch { /* OTS status is not published for this car/session. */ }
         try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx)); }
         catch { /* The count can be omitted independently of status. */ }
-        return (active, seconds);
+        var now = DateTime.UtcNow;
+        if (seconds is int current)
+        {
+            if (active != true && _lastP2PCountByCarIdx.TryGetValue(carIdx, out var previous) && current > previous)
+                _p2pChargingUntilByCarIdx[carIdx] = now.AddSeconds(1.5);
+            _lastP2PCountByCarIdx[carIdx] = current;
+        }
+        var charging = active == false && _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now;
+        return (active, seconds, charging);
     }
 
     private void RefreshRaceSessionFlag()
@@ -622,13 +638,13 @@ public class TelemetryReader : IDisposable
                 // (see this task's own plan text / the spec's Phase 1 scope).
                 double gap = theirEstTime - myEstTime;
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                var (p2p, p2pSeconds) = ReadP2P(idx);
+                var (p2p, p2pSeconds, p2pCharging) = ReadP2P(idx);
 
                 var identity = GetIdentity(idx);
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
+                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -679,11 +695,11 @@ public class TelemetryReader : IDisposable
             foreach (var (position, idx) in ordered)
             {
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                var (p2p, p2pSeconds) = ReadP2P(idx);
+                var (p2p, p2pSeconds, p2pCharging) = ReadP2P(idx);
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
-                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
+                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
             }
 
             SecondaryRelativeUpdated?.Invoke(rows);
@@ -705,6 +721,7 @@ public class TelemetryReader : IDisposable
             var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
                 string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, double? Gap,
                 string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus)>();
+            var estimatedTimeByPosition = new Dictionary<int, double>();
 
             var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
             double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
@@ -727,18 +744,24 @@ public class TelemetryReader : IDisposable
                     if (f2 >= 0) gap = f2;
                 }
                 catch { /* not published this session type -- leave gap null */ }
+                try
+                {
+                    var estimatedTime = _sdk.Data.GetFloat("CarIdxEstTime", idx);
+                    if (estimatedTime >= 0) estimatedTimeByPosition[position] = estimatedTime;
+                }
+                catch { /* optional live timing channel */ }
 
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
                 var onPitRoad = false;
                 try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
                 catch { /* channel absent outside an active driving session */ }
                 var pitStatus = UpdatePitStatus(idx, onPitRoad, lapsCompleted);
-                var (p2pActive, p2pSeconds) = ReadP2P(idx);
+                var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
 
                 raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
                     identity.CarClassId, identity.ManufacturerBadge, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
-                    p2pActive, p2pSeconds, p2pSeconds, false, pitStatus));
+                    p2pActive, p2pSeconds, p2pSeconds, p2pCharging, pitStatus));
             }
 
             var ordered = raw.OrderBy(r => r.Position).ToList();
@@ -760,6 +783,7 @@ public class TelemetryReader : IDisposable
                 .ToDictionary(x => x.Position, x => x.Rank);
 
             var rows = new List<StandingsRow>();
+            var leader = ordered.FirstOrDefault();
             for (var i = 0; i < ordered.Count; i++)
             {
                 var r = ordered[i];
@@ -769,16 +793,30 @@ public class TelemetryReader : IDisposable
 
                 double? lapDelta = r.LastLap is double own && playerLastLap is double mine ? own - mine : null;
 
+                // CarIdxF2Time is authoritative across different laps, but it often advances only
+                // at a timing line.  On the same lap, CarIdxEstTime gives the continuously moving
+                // separation used by Relative, so the Standings Gap/Interval no longer freeze
+                // until a lap is completed.
+                var gapToLeader = r.Gap;
+                if (r.Position != leader.Position && r.Laps == leader.Laps &&
+                    estimatedTimeByPosition.TryGetValue(r.Position, out var currentEstimate) &&
+                    estimatedTimeByPosition.TryGetValue(leader.Position, out var leaderEstimate))
+                    gapToLeader = Math.Max(0, currentEstimate - leaderEstimate);
+
                 // INTERVAL (gap to the car directly ahead, not the leader) -- derived from the same
                 // real CarIdxF2Time values already used for GAP: the difference between two
                 // consecutive cars' "time behind leader" is exactly their gap to each other. Null
                 // for the leader (no car ahead) or whenever either car's own F2Time is unavailable.
-                double? interval = i > 0 && r.Gap is double gapHere && ordered[i - 1].Gap is double gapAhead
-                    ? gapHere - gapAhead
-                    : null;
+                double? interval = i > 0 && r.Laps == ordered[i - 1].Laps &&
+                    estimatedTimeByPosition.TryGetValue(r.Position, out var currentIntervalEstimate) &&
+                    estimatedTimeByPosition.TryGetValue(ordered[i - 1].Position, out var aheadIntervalEstimate)
+                    ? Math.Max(0, currentIntervalEstimate - aheadIntervalEstimate)
+                    : i > 0 && r.Gap is double gapHere && ordered[i - 1].Gap is double gapAhead
+                        ? gapHere - gapAhead
+                        : null;
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
-                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, r.Gap, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
+                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
                     r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus));
             }
 

@@ -205,13 +205,13 @@
                       <TextBlock DockPanel.Dock="Right" Text="{Binding DataContext.FuelLapsText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource Label}" Foreground="#FFF4F7FA" />
                     </DockPanel>
                     <StackPanel Grid.Row="1">
-                      <TextBlock Text="{Binding DataContext.FuelLevelText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource WidgetTitle}" FontSize="25" />
+                      <TextBlock Text="{Binding DataContext.FuelLevelText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource WidgetTitle}" FontSize="21" />
                       <Border Height="6" Background="#3335485C" CornerRadius="3" Margin="0,4,9,0"><Border Background="#FF54D9E9" Width="105" HorizontalAlignment="Left" CornerRadius="3" /></Border>
                       <TextBlock Text="{Binding DataContext.FuelAverageText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource Label}" Margin="0,4,0,0" />
                     </StackPanel>
                     <StackPanel Grid.Row="1" Grid.Column="1">
                       <TextBlock Text="REFUEL TO FINISH" Style="{StaticResource Label}" />
-                      <TextBlock Text="{Binding DataContext.FuelRefuelText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource WidgetTitle}" FontSize="25" Foreground="#FFFFB84B" />
+                      <TextBlock Text="{Binding DataContext.FuelRefuelText, RelativeSource={RelativeSource AncestorType=Window}}" Style="{StaticResource WidgetTitle}" FontSize="21" Foreground="#FFFFB84B" />
                       <TextBlock Text="BASED ON COMPLETED LAPS" Style="{StaticResource Label}" Foreground="#FFFFB84B" />
                     </StackPanel>
                     <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,7,0,0">
