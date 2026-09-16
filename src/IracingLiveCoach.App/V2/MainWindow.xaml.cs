@@ -180,7 +180,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _studio.Activate();
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         Closed += (_, _) => { _connectionWatchdog?.Stop(); CompositionTarget.Rendering -= OnRenderFrame; _telemetry.Dispose(); _studio.Close(); };
-        SourceInitialized += (_, _) => SetEditing(!_profile.Locked);
+        SourceInitialized += (_, _) =>
+        {
+            EnableHardwareComposedTransparency(new WindowInteropHelper(this).Handle);
+            SetEditing(!_profile.Locked);
+        };
         ConfigureTelemetry();
         _telemetry.Start();
     }
@@ -458,6 +462,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         BindingOperations.SetBinding(surface, DynamicWidgetSurface.RaceStartProperty, new WpfBinding(nameof(RaceStartPresentation)) { Source = this });
         host.Content = surface;
     }
+
+    // 16/09/2026: root cause of the fluidity gap vs Kapps/GoFast that survived every telemetry-side
+    // fix. AllowsTransparency="True" makes WPF create the window as a Win32 "layered window"
+    // (WS_EX_LAYERED) and composite its own pixels in software via UpdateLayeredWindow on every
+    // paint -- a well-documented WPF cost that bypasses the desktop compositor entirely. Kapps
+    // (Electron/Chromium) and GoFast (WebView2) both get real per-pixel transparency composited by
+    // DWM in hardware. DwmExtendFrameIntoClientArea with a full "sheet of glass" margin gets WPF
+    // the same hardware-composited transparency, without touching a single widget's rendering
+    // logic -- this is why AllowsTransparency was removed from MainWindow.xaml.
+    private static void EnableHardwareComposedTransparency(IntPtr handle)
+    {
+        var margins = new Margins(-1, -1, -1, -1);
+        DwmExtendFrameIntoClientArea(handle, ref margins);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Margins { public int Left, Right, Top, Bottom; public Margins(int left, int right, int top, int bottom) { Left = left; Right = right; Top = top; Bottom = bottom; } }
+    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr handle, ref Margins margins);
 
     private void SetEditing(bool editing)
     {

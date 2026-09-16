@@ -172,10 +172,13 @@ public class TelemetryReader : IDisposable
     // Super Formula's Overtake bank is exactly 0..200 seconds.  Anything outside this range is an
     // uninitialised SDK value, never a larger legitimate bank for this overlay.
     private const int P2PMaxSeconds = 200;
-    // IRSDKSharper's indexed GetInt overload takes a byte offset for this native int[64] array,
-    // not an element index.  Passing CarIdx directly reads overlapping bytes (e.g. 1100454297),
-    // while CarIdx * 4 returns the opponent's real 0..200-second Overtake bank.
-    private const int P2PCountStrideBytes = sizeof(int);
+    // 16/09/2026 correction: this was previously "fixed" by multiplying CarIdx by 4 under the
+    // theory that GetInt's index parameter is a byte offset. Verified against IRSDKSharper's own
+    // source (IRacingSdkData.GetInt): the method already does `Offset + datum.Offset + index * 4`
+    // internally, so `index` IS the element index -- passing CarIdx directly was always correct.
+    // Multiplying by 4 again made every car past CarIdx 15 read 16 bytes per slot instead of 4,
+    // walking past the real 64-int array into unrelated telemetry memory -- reintroducing the
+    // exact garbage-number bug it was meant to fix, just for a different, wider set of cars.
     private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
     private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
 
@@ -515,7 +518,7 @@ public class TelemetryReader : IDisposable
         int? seconds = null;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
         catch { /* OTS status is not published for this car/session. */ }
-        try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx * P2PCountStrideBytes)); }
+        try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx)); }
         catch { /* The count can be omitted independently of status. */ }
         var now = DateTime.UtcNow;
         if (seconds is int current)
