@@ -133,7 +133,10 @@ public class TelemetryReader : IDisposable
     // skips far-field blips (not fabricate a wrong distance) until a real length is known.
     private double? _trackLengthMeters;
 
-    private const int RadarTickInterval = 2;
+    // CarLeftRight is the SDK's purpose-built side-by-side signal.  Sample it on every telemetry
+    // frame so the side warning reacts at the simulator's 60 Hz cadence.  The more expensive
+    // all-car distance scan is still deferred until that signal says a car is actually alongside.
+    private const int RadarTickInterval = 1;
     private int _radarTickCounter;
     private const double RadarMaxRangeMeters = 100.0;
 
@@ -1041,10 +1044,27 @@ public class TelemetryReader : IDisposable
                 var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
                 var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
                 var lap = _sdk.Data.GetInt("LapCompleted");
-                if (avgFuelPerLap is double lapFuel && lapFuel > 0 && int.TryParse(session?.SessionLaps, out var totalLaps) && totalLaps > 0)
+                var isRace = string.Equals(session?.SessionType, "Race", StringComparison.OrdinalIgnoreCase);
+                if (avgFuelPerLap is double lapFuel && lapFuel > 0 && isRace && int.TryParse(session?.SessionLaps, out var totalLaps) && totalLaps > 0)
                 {
+                    // Lap-limited race: SessionLaps is authoritative.  LapCompleted is the number
+                    // already crossed, therefore the current in-progress lap remains in the burn.
                     fuelBurnToFinish = Math.Max(0, (totalLaps - Math.Max(0, lap)) * lapFuel);
                     fuelNeededForFinish = Math.Max(0, fuelBurnToFinish.Value - fuelLevel);
+                }
+                else if (avgFuelPerLap is double timedLapFuel && timedLapFuel > 0 && avgLapTime is double timedLapSeconds && timedLapSeconds > 0 && isRace)
+                {
+                    // Timed races expose no useful SessionLaps.  Estimate the remaining fuel from
+                    // the live SDK clock instead of leaving a stale/full-tank recommendation.
+                    // The small partial-lap fraction is intentionally retained: fuel is consumed
+                    // during the lap that will be completed after the timer reaches zero.
+                    var sessionSecondsRemaining = _sdk.Data.GetFloat("SessionTimeRemain");
+                    if (sessionSecondsRemaining >= 0)
+                    {
+                        var lapsToFinish = sessionSecondsRemaining / timedLapSeconds;
+                        fuelBurnToFinish = Math.Max(0, lapsToFinish * timedLapFuel);
+                        fuelNeededForFinish = Math.Max(0, fuelBurnToFinish.Value - fuelLevel);
+                    }
                 }
             }
             catch { /* time-limited sessions do not have a fixed lap target */ }
@@ -1107,7 +1127,10 @@ public class TelemetryReader : IDisposable
 
             var blips = new List<RadarBlip>();
             var hasTrackLength = _trackLengthMeters is double trackLength0 && trackLength0 > 0;
-            if (hasTrackLength)
+            // Do not turn a general "nearby cars" list into a side-by-side warning.  CarLeftRight
+            // is the exact iRacing SDK condition for that UI.  Avoiding the field scan when clear
+            // also keeps the 60 Hz path extremely cheap for the normal case.
+            if (hasTrackLength && (blindLeft || blindRight))
             {
                 var trackLength = _trackLengthMeters!.Value;
                 var myDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
