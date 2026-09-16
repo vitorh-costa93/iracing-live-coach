@@ -17,7 +17,7 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     private double _left, _top, _width, _height, _fontScale = 1, _opacity = .96;
     private double _positionColumnWidth = 32, _carNumberColumnWidth = 42, _driverColumnWidth = 170, _licenseColumnWidth = 52, _iRatingColumnWidth = 82;
     private bool _sessionVisible = true;
-    private int _rows = 5, _refreshFps = 30, _radarRange = 55, _playerClassRows = 5, _otherClassRows = 2;
+    private int _rows = 5, _refreshFps = 60, _radarRange = 55, _playerClassRows = 5, _otherClassRows = 2;
     private string _driverNameStyle = "Abbreviated";
     private bool _showMulticlass = true;
     private bool _columnLayoutInitialized;

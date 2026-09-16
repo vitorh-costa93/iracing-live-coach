@@ -279,7 +279,7 @@
                   <StackPanel Visibility="{Binding IsStartHelper, Converter={StaticResource BoolToVisibility}}">
                     <DockPanel>
                       <TextBlock Text="START HELPER" FontWeight="Bold" FontSize="11" />
-                      <TextBlock DockPanel.Dock="Right" Text="30 FPS" Style="{StaticResource Label}" />
+                      <TextBlock DockPanel.Dock="Right" Text="60 FPS" Style="{StaticResource Label}" />
                     </DockPanel>
                     <Grid Margin="0,9,0,0">
                       <Grid.RowDefinitions>

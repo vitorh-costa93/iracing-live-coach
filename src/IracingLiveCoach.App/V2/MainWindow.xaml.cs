@@ -33,7 +33,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private List<StandingsRow>? _latestStandings;
     private List<RelativeRow>? _latestRelative;
     // The source remains intact while the visible Relative rows are rebuilt from its settings.
+    // Never use the rendered collection as a Studio source: it is intentionally cropped by the
+    // active row settings.  Doing so made a 5-row preview permanently incapable of growing.
+    private readonly List<DriverRow> _standingsPreviewSource = new();
     private readonly List<DriverRow> _relativePreviewSource = new();
+    private System.Windows.Threading.DispatcherTimer? _connectionWatchdog;
     private string _fuelLevelText = "43.9 L", _fuelAverageText = "2.05 L/LAP", _fuelRefuelText = "+26.1 L", _fuelLapsText = "21.4 laps";
     private string _fuelLastText = "2.10", _fuelFiveText = "2.14", _fuelMaxText = "2.30";
     private string _fuelPitByLapText = "PIT BY LAP 32", _fuelPitAddText = "+26.1 L", _fuelPitStopsText = "1 STOP";
@@ -105,6 +109,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _profile = ProfileStore.Load();
         _radarWidget = _profile.Widgets.First(w => w.Kind == WidgetKind.Radar);
         _startHelperWidget = _profile.Widgets.First(w => w.Kind == WidgetKind.StartHelper);
+        // Profiles created before the 60-FPS render path persisted the old 30-FPS display value.
+        // Upgrade it once on load so the control panel and the rendered widget never disagree.
+        if (_startHelperWidget.RefreshFps < 60) _startHelperWidget.RefreshFps = 60;
         // 760px was an erroneous forced upgrade from the previous build. Restore the compact
         // working size; optional columns now scale instead of making the card wider.
         var standingsProfile = _profile.Widgets.FirstOrDefault(widget => widget.IsStandings);
@@ -134,20 +141,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 // rebuilt -- Value ticks on every telemetry update (SOF/lap/clock) and is already
                 // picked up by its own direct binding, so rebuilding the full row collection for it
                 // was needless per-tick churn (the actual cause of the standings flicker/lag).
-                field.PropertyChanged += (_, args) => { if (args.PropertyName != nameof(HeaderField.Value)) RebuildPreviewMulticlass(); };
+                field.PropertyChanged += (_, args) => { if (args.PropertyName != nameof(HeaderField.Value)) RefreshTimingRows(widget); };
             }
-            widget.HeaderFields.CollectionChanged += (_, _) => RebuildPreviewMulticlass();
+            widget.HeaderFields.CollectionChanged += (_, _) => RefreshTimingRows(widget);
             widget.TimingColumns.CollectionChanged += (_, _) => RebuildTimingLayout(widget);
             foreach (var column in widget.TimingColumns) column.PropertyChanged += (_, _) => RebuildTimingLayout(widget);
             widget.PropertyChanged += (_, args) =>
             {
-                if (args.PropertyName == nameof(WidgetProfile.DriverNameStyle) || args.PropertyName is nameof(WidgetProfile.PlayerClassRows) or nameof(WidgetProfile.OtherClassRows) or nameof(WidgetProfile.TopNFixed) or nameof(WidgetProfile.ShowMulticlass)) { RefreshTimingRows(widget); return; }
+                if (args.PropertyName == nameof(WidgetProfile.DriverNameStyle) || args.PropertyName is nameof(WidgetProfile.PlayerClassRows) or nameof(WidgetProfile.OtherClassRows) or nameof(WidgetProfile.TopNFixed) or nameof(WidgetProfile.ShowMulticlass) or nameof(WidgetProfile.GapDecimals) or nameof(WidgetProfile.IntervalDecimals) or nameof(WidgetProfile.LapDeltaDecimals)) { RefreshTimingRows(widget); return; }
                 if (args.PropertyName is nameof(WidgetProfile.AutoFitToColumns) or nameof(WidgetProfile.FontScale) || args.PropertyName?.EndsWith("ColumnWidth", StringComparison.Ordinal) == true || args.PropertyName == nameof(WidgetProfile.ShowHeader)) RebuildTimingLayout(widget);
             };
         }
         foreach (var driver in PreviewDrivers) { driver.IsPreview = true; driver.RawDriverName = PreviewFullName(driver.Driver); driver.CarNumber = PreviewCarNumber(driver.RawDriverName); PopulateFields(driver, Widgets.First(w => w.IsStandings)); }
         foreach (var driver in RelativeDrivers) { driver.IsPreview = true; driver.RawDriverName = PreviewFullName(driver.Driver); driver.CarNumber = PreviewCarNumber(driver.RawDriverName); PopulateFields(driver, Widgets.First(w => w.IsRelative)); }
-        _relativePreviewSource.AddRange(ExpandPreviewRows(PreviewDrivers));
+        var previewPool = ExpandPreviewRows(PreviewDrivers);
+        _standingsPreviewSource.AddRange(previewPool);
+        _relativePreviewSource.AddRange(previewPool.Select(ClonePreviewRow));
         RefreshDriverNames(Widgets.First(w => w.IsStandings)); RefreshDriverNames(Widgets.First(w => w.IsRelative));
         RebuildPreviewMulticlass();
         DataContext = this;
@@ -161,7 +170,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _studio.Show();
             _studio.Activate();
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-        Closed += (_, _) => { CompositionTarget.Rendering -= OnRenderFrame; _telemetry.Dispose(); _studio.Close(); };
+        Closed += (_, _) => { _connectionWatchdog?.Stop(); CompositionTarget.Rendering -= OnRenderFrame; _telemetry.Dispose(); _studio.Close(); };
         SourceInitialized += (_, _) => SetEditing(!_profile.Locked);
         ConfigureTelemetry();
         _telemetry.Start();
@@ -203,11 +212,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ConfigureTelemetry()
     {
-        _telemetry.OnTrackStateChanged += hasCar => Dispatcher.BeginInvoke(() =>
-        {
-            _hasCar = hasCar;
-            if (!IsEditing) foreach (var widget in Widgets) widget.SessionVisible = hasCar;
-        });
+        _telemetry.OnTrackStateChanged += hasCar => Dispatcher.BeginInvoke(() => ApplyCarPresence(hasCar));
         _telemetry.StandingsUpdated += rows => _pendingStandings = rows;
         _telemetry.FullRelativeUpdated += rows => _pendingRelative = rows;
         _telemetry.SessionStatusUpdated += status => _pendingSessionStatus = status;
@@ -217,6 +222,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _telemetry.RadarUpdated += radar => _pendingRadar = radar;
         _telemetry.RaceStartUpdated += start => _pendingRaceStart = start;
         CompositionTarget.Rendering += OnRenderFrame;
+        // OnDisconnected normally arrives as soon as iRacing exits.  This watchdog is the
+        // defensive second path for a dead shared-memory feed that never raises that callback.
+        _connectionWatchdog = new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(500), System.Windows.Threading.DispatcherPriority.Background,
+            (_, _) => { if (!IsEditing && !_telemetry.HasRecentTelemetry) ApplyCarPresence(false); }, Dispatcher);
+        _connectionWatchdog.Start();
+    }
+
+    private void ApplyCarPresence(bool hasCar)
+    {
+        _hasCar = hasCar;
+        if (!IsEditing) foreach (var widget in Widgets) widget.SessionVisible = hasCar;
     }
 
     private void OnRenderFrame(object? sender, EventArgs e)
@@ -362,10 +379,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
         RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
         var range = _radarWidget.RadarRange;
-        var nearby = radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= range).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList();
-        // The radar only earns its screen space while there's actually a car close enough to
-        // matter (or something in the immediate blind spot) -- otherwise it disappears entirely.
-        _radarWidget.DynamicGateOpen = nearby.Count > 0 || radar.BlindSpotLeft || radar.BlindSpotRight;
+        // This is a spotter, not a proximity map: it appears only once iRacing reports an actual
+        // side-by-side overlap.  Cars merely close in front/behind must never open the widget.
+        var sideBySide = radar.BlindSpotLeft || radar.BlindSpotRight;
+        var nearby = sideBySide
+            ? radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= Math.Min(range, 15)).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList()
+            : new List<RadarBlip>();
+        _radarWidget.DynamicGateOpen = sideBySide;
         var built = new List<RadarDot>();
         foreach (var blip in nearby)
         {
@@ -509,9 +529,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var widget = Widgets.FirstOrDefault(widget => widget.IsStandings);
         if (widget is null) return;
-        var source = PreviewDrivers.Where(row => !row.IsClassHeader).ToList();
+        var source = _standingsPreviewSource.Select(ClonePreviewRow).ToList();
         if (source.Count == 0) return;
-        if (source.Count <= 5) source = ExpandPreviewRows(source);
         var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassName ?? source.First().ClassName;
         var selected = new List<DriverRow>();
         foreach (var group in source.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)))
@@ -535,8 +554,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             });
             foreach (var driver in group)
             {
-                PopulateFields(driver, widget);
-                built.Add(driver);
+                var row = ClonePreviewRow(driver);
+                PopulateFields(row, widget);
+                built.Add(row);
             }
         }
         ApplyRows(PreviewDrivers, built);
@@ -643,12 +663,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static IEnumerable<StandingsRow> SelectStandingsRows(IReadOnlyList<StandingsRow> source, WidgetProfile widget)
     {
-        var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassShortName;
-        if (string.IsNullOrWhiteSpace(playerClass))
+        var player = source.FirstOrDefault(row => row.IsPlayer);
+        if (player is null)
         {
             foreach (var row in source) yield return row;
             yield break;
         }
+        var playerClass = player.ClassShortName ?? string.Empty;
         foreach (var classGroup in source.GroupBy(row => row.ClassShortName ?? string.Empty))
         {
             var inPlayerClass = string.Equals(classGroup.Key, playerClass, StringComparison.OrdinalIgnoreCase);
@@ -672,8 +693,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // median" (e.g. 2 ahead, me, 2 behind for a 5-row window).
     private static IEnumerable<RelativeRow> SelectRelativeRows(IReadOnlyList<RelativeRow> source, WidgetProfile widget)
     {
-        var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassShortName;
-        if (string.IsNullOrWhiteSpace(playerClass)) { foreach (var row in source) yield return row; yield break; }
+        var player = source.FirstOrDefault(row => row.IsPlayer);
+        if (player is null) { foreach (var row in source) yield return row; yield break; }
+        var playerClass = player.ClassShortName ?? string.Empty;
         foreach (var classGroup in source.GroupBy(row => row.ClassShortName ?? string.Empty))
         {
             var mine = string.Equals(classGroup.Key, playerClass, StringComparison.OrdinalIgnoreCase);

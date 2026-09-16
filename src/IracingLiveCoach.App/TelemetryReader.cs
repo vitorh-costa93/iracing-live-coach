@@ -325,6 +325,11 @@ public class TelemetryReader : IDisposable
 
     public void Start() => _sdk.Start();
 
+    private long _lastTelemetryUtcTicks;
+    /// <summary>True while the simulator is still supplying fresh shared-memory frames.  This is
+    /// deliberately independent of OnDisconnected, which some shutdown paths fail to raise.</summary>
+    public bool HasRecentTelemetry => DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastTelemetryUtcTicks) < TimeSpan.FromSeconds(2).Ticks;
+
     private void OnDisconnected()
     {
         _isOnTrack = false;
@@ -394,6 +399,7 @@ public class TelemetryReader : IDisposable
 
     private void OnTelemetryData()
     {
+        Interlocked.Exchange(ref _lastTelemetryUtcTicks, DateTime.UtcNow.Ticks);
         // Relative/P2P doesn't depend on a baseline (there's no "history" for it), so it's read
         // regardless of whether a LiveCoachEngine has been attached yet -- only the corner-coaching
         // half below needs that.
@@ -465,6 +471,20 @@ public class TelemetryReader : IDisposable
     // valid count.  The SDK's signed maximum integer is its conventional uninitialised sentinel;
     // that is the only value we suppress.
     private static int? ReadP2PCount(int raw) => raw >= 0 && raw != int.MaxValue ? raw : null;
+
+    // The two per-car P2P arrays are independently optional in iRacing.  Reading them in one
+    // try block made a missing Count on an opponent hide an otherwise valid Status (and vice
+    // versa).  Keep every usable part of the telemetry for every CarIdx, as Kapps does.
+    private (bool? Active, int? Seconds) ReadP2P(int carIdx)
+    {
+        bool? active = null;
+        int? seconds = null;
+        try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
+        catch { /* OTS status is not published for this car/session. */ }
+        try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx)); }
+        catch { /* The count can be omitted independently of status. */ }
+        return (active, seconds);
+    }
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
 
@@ -573,22 +593,13 @@ public class TelemetryReader : IDisposable
                 // (see this task's own plan text / the spec's Phase 1 scope).
                 double gap = theirEstTime - myEstTime;
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                bool? p2p = null;
-                int? p2pSeconds = null;
-                try
-                {
-                    p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    // CarIdxP2P_Count IS the real remaining-seconds bank for cars with an Overtake
-                    // System (confirmed by the driver for the SF23) -- not a discrete use counter.
-                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
-                }
-                catch { /* no P2P/OTS this session */ }
+                var (p2p, p2pSeconds) = ReadP2P(idx);
 
                 var identity = GetIdentity(idx);
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(position, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
+                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, false, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -639,14 +650,7 @@ public class TelemetryReader : IDisposable
             foreach (var (position, idx) in ordered)
             {
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                bool? p2p = null;
-                int? p2pSeconds = null;
-                try
-                {
-                    p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
-                }
-                catch { /* no P2P/OTS for this class */ }
+                var (p2p, p2pSeconds) = ReadP2P(idx);
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
@@ -700,14 +704,7 @@ public class TelemetryReader : IDisposable
                 try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
                 catch { /* channel absent outside an active driving session */ }
                 var pitStatus = UpdatePitStatus(idx, onPitRoad, lapsCompleted);
-                bool? p2pActive = null;
-                int? p2pSeconds = null;
-                try
-                {
-                    p2pActive = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
-                }
-                catch { /* P2P/OTS is absent for this car/session. */ }
+                var (p2pActive, p2pSeconds) = ReadP2P(idx);
 
                 raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
