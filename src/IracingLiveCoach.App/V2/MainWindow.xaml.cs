@@ -4,6 +4,9 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Controls;
+using System.Windows.Data;
+using WpfBinding = System.Windows.Data.Binding;
 using System.Runtime.InteropServices;
 using System.Globalization;
 using System.Diagnostics;
@@ -68,6 +71,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     };
     public ObservableCollection<WidgetProfile> Widgets => _profile.Widgets;
     public ObservableCollection<RadarDot> RadarDots { get; } = new();
+    private RadarStatus? _radarPresentation;
+    private RaceStartStatus? _raceStartPresentation;
+    public RadarStatus? RadarPresentation { get => _radarPresentation; private set => Set(ref _radarPresentation, value); }
+    public RaceStartStatus? RaceStartPresentation { get => _raceStartPresentation; private set => Set(ref _raceStartPresentation, value); }
     public bool IsEditing
     {
         get => _editing;
@@ -199,14 +206,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private PlayerCarStatus? _pendingPlayerStatus;
     private RadarStatus? _pendingRadar;
     private RaceStartStatus? _pendingRaceStart;
-    // The Kapps widgets the driver compared against render their pit helper at 30 Hz and car-side
-    // indicator at 15 Hz.  Their telemetry can arrive more often, but rendering each arrival just
-    // creates layout contention.  Keep only the latest snapshot and present it at these stable,
-    // perceptually smooth cadences.
+    // Dynamic surfaces draw directly (one visual, no child controls), so presentation can follow
+    // the display/SDK cadence without triggering layout.  Radar is capped at 30 Hz because its
+    // side-by-side state is binary; Start Helper uses 60 Hz for pedal movement.
     private long _lastRadarRenderTimestamp;
     private long _lastStartHelperRenderTimestamp;
-    private const int RadarRenderHz = 15;
-    private const int StartHelperRenderHz = 30;
+    private const int RadarRenderHz = 30;
+    private const int StartHelperRenderHz = 60;
 
     // Replaces an ObservableCollection's contents in place (Replace per changed index) instead of
     // Clear()+Add (Reset) -- Reset forces the bound ItemsControl to drop and regenerate every
@@ -421,6 +427,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ApplyRadar(RadarStatus radar)
     {
+        RadarPresentation = radar;
         RadarSideText = radar.BlindSpotLeft && radar.BlindSpotRight ? "DOS DOIS LADOS" : radar.BlindSpotLeft ? "ESQUERDA" : radar.BlindSpotRight ? "DIREITA" : "LIVRE";
         var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
         RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
@@ -432,35 +439,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ? radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= Math.Min(range, 15)).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList()
             : new List<RadarBlip>();
         _radarWidget.DynamicGateOpen = sideBySide;
-        var built = new List<RadarDot>();
-        foreach (var blip in nearby)
-        {
-            // Forward is up. CarIdxLapDistPct gives the signed distance; iRacing only gives
-            // an actual side for immediate overlap, so far cars remain in the centre lane.
-            var top = Math.Clamp(74 - (blip.DistanceMeters / range * 60), 7, 127);
-            var left = 67d;
-            if (Math.Abs(blip.DistanceMeters) < 10)
-                left = radar.BlindSpotLeft && !radar.BlindSpotRight ? 19 : radar.BlindSpotRight && !radar.BlindSpotLeft ? 115 : 67;
-            built.Add(new RadarDot
-            {
-                Left = left,
-                Top = top,
-                Label = blip.DriverCode,
-                // The SDK only gives an exact number for the longitudinal axis -- show it
-                // directly on the dot instead of leaving the driver to guess from a color alone.
-                DistanceLabel = $"{blip.DistanceMeters:+0;-0;0}m",
-                Fill = blip.DistanceMeters >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 184, 74)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(182, 73, 255))
-            });
-        }
-        ApplyRows(RadarDots, built);
     }
 
     private void ApplyRaceStart(RaceStartStatus start)
     {
+        RaceStartPresentation = start;
         ClutchPct = start.ClutchPct; ThrottlePct = start.ThrottlePct;
         ClutchText = $"{start.ClutchPct:0}%"; ThrottleText = $"{start.ThrottlePct:0}%";
         // Only relevant while actually staged for a standing start -- hidden the rest of the race.
         _startHelperWidget.DynamicGateOpen = start.ShouldShow;
+    }
+
+    private void OnDynamicSurfaceHostLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContentControl { Content: null, Tag: WidgetProfile widget } host) return;
+        var surface = new DynamicWidgetSurface { Widget = widget, IsHitTestVisible = false };
+        BindingOperations.SetBinding(surface, DynamicWidgetSurface.RadarProperty, new WpfBinding(nameof(RadarPresentation)) { Source = this });
+        BindingOperations.SetBinding(surface, DynamicWidgetSurface.RaceStartProperty, new WpfBinding(nameof(RaceStartPresentation)) { Source = this });
+        host.Content = surface;
     }
 
     private void SetEditing(bool editing)
@@ -941,4 +937,5 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Set(ref string field, string value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (field == value) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
     private void Set(ref double field, double value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (Math.Abs(field - value) < .01) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
     private void Set(ref bool field, bool value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) { if (field == value) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
+    private void Set<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null) where T : class? { if (ReferenceEquals(field, value)) return; field = value; PropertyChanged?.Invoke(this, new(name)); }
 }

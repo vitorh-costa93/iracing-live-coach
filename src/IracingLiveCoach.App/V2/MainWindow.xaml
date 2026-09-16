@@ -238,68 +238,8 @@
                       <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,8,0,0"><TextBlock Text="GRIP" Style="{StaticResource Label}"/><TextBlock Text="{Binding DataContext.WeatherGripText, RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold" FontSize="12" Foreground="#FF4DE95F"/></StackPanel>
                     </Grid>
                   </StackPanel>
-                  <Grid Visibility="{Binding IsRadar, Converter={StaticResource BoolToVisibility}}" HorizontalAlignment="Center">
-                    <Ellipse Width="148" Height="148" Stroke="#706AD6EF" StrokeThickness="1" />
-                    <Ellipse Width="96" Height="96" Stroke="#306AD6EF" StrokeThickness="1" />
-                    <Line X1="74" Y1="4" X2="74" Y2="144" Stroke="#305A718C" />
-                    <Line X1="4" Y1="74" X2="144" Y2="74" Stroke="#305A718C" />
-                    <ItemsControl ItemsSource="{Binding DataContext.RadarDots, RelativeSource={RelativeSource AncestorType=Window}}" IsHitTestVisible="False">
-                      <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                          <Canvas Width="148" Height="148" />
-                        </ItemsPanelTemplate>
-                      </ItemsControl.ItemsPanel>
-                      <ItemsControl.ItemContainerStyle>
-                        <Style TargetType="ContentPresenter">
-                          <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                          <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                        </Style>
-                      </ItemsControl.ItemContainerStyle>
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <StackPanel HorizontalAlignment="Center">
-                            <StackPanel.ToolTip>
-                              <TextBlock Text="{Binding Label}" />
-                            </StackPanel.ToolTip>
-                            <Border Width="14" Height="14" Background="{Binding Fill}" CornerRadius="7" BorderBrush="#FF07101D" BorderThickness="2" HorizontalAlignment="Center" />
-                            <Border Background="#D60B101D" CornerRadius="2" Padding="2,0" Margin="0,1,0,0" HorizontalAlignment="Center">
-                              <TextBlock Text="{Binding DistanceLabel}" FontSize="8" FontWeight="Bold" Foreground="#FFE7EDF5" />
-                            </Border>
-                          </StackPanel>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Border Width="29" Height="43" Background="#FF55DDF5" CornerRadius="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <TextBlock Text="VOCÊ" Foreground="#FF07101D" FontSize="7" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center" />
-                    </Border>
-                    <Border Background="#D60B101D" CornerRadius="3" Padding="4,2" HorizontalAlignment="Right" VerticalAlignment="Top">
-                      <TextBlock Text="{Binding DataContext.RadarDistanceText, RelativeSource={RelativeSource AncestorType=Window}}" FontSize="9" />
-                    </Border>
-                    <TextBlock Text="{Binding DataContext.RadarSideText, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Bottom" HorizontalAlignment="Center" Foreground="#FFB5C2D4" FontSize="9" />
-                  </Grid>
-                  <StackPanel Visibility="{Binding IsStartHelper, Converter={StaticResource BoolToVisibility}}">
-                    <DockPanel>
-                      <TextBlock Text="START HELPER" FontWeight="Bold" FontSize="11" />
-                      <TextBlock DockPanel.Dock="Right" Text="60 FPS" Style="{StaticResource Label}" />
-                    </DockPanel>
-                    <Grid Margin="0,9,0,0">
-                      <Grid.RowDefinitions>
-                        <RowDefinition />
-                        <RowDefinition />
-                      </Grid.RowDefinitions>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="78" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="42" />
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Text="EMBREAGEM" Style="{StaticResource Label}" />
-                      <ProgressBar Grid.Column="1" Value="{Binding DataContext.ClutchPct, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}" Maximum="100" Height="11" />
-                      <TextBlock Grid.Column="2" Text="{Binding DataContext.ClutchText, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right" FontWeight="Bold" />
-                      <TextBlock Grid.Row="1" Text="ACELERADOR" Style="{StaticResource Label}" />
-                      <ProgressBar Grid.Row="1" Grid.Column="1" Value="{Binding DataContext.ThrottlePct, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}" Maximum="100" Height="11" />
-                      <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding DataContext.ThrottleText, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalAlignment="Right" FontWeight="Bold" />
-                    </Grid>
-                  </StackPanel>
+                  <ContentControl Visibility="{Binding IsRadar, Converter={StaticResource BoolToVisibility}}" Tag="{Binding}" Loaded="OnDynamicSurfaceHostLoaded" />
+                  <ContentControl Visibility="{Binding IsStartHelper, Converter={StaticResource BoolToVisibility}}" Tag="{Binding}" Loaded="OnDynamicSurfaceHostLoaded" />
                 </Grid>
               </Grid>
               <Border Width="10" Height="10" Background="#B8FFFFFF" BorderBrush="#55FFFFFF" BorderThickness="1" CornerRadius="5" Cursor="SizeNWSE" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,5" PreviewMouseLeftButtonDown="OnResizeMouseDown" PreviewMouseMove="OnResizeMouseMove" PreviewMouseLeftButtonUp="OnResizeMouseUp" Visibility="{Binding DataContext.IsEditing, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}" />
