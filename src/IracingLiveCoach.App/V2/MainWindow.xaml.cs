@@ -27,6 +27,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly TelemetryReader _telemetry = new();
     private readonly WidgetProfile _radarWidget;
     private readonly WidgetProfile _startHelperWidget;
+    private bool _pitActivityDetected;
     // The source remains intact while the visible Relative rows are rebuilt from its settings.
     private readonly List<DriverRow> _relativePreviewSource = new();
     private string _fuelLevelText = "43.9 L", _fuelAverageText = "2.05 L/LAP", _fuelRefuelText = "+26.1 L", _fuelLapsText = "21.4 laps";
@@ -88,12 +89,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public string WeatherGripText { get => _weatherGripText; private set => Set(ref _weatherGripText, value); }
     public string SessionHeaderText { get => _sessionHeaderText; private set => Set(ref _sessionHeaderText, value); }
     public string RadarSideText { get => _radarSideText; private set => Set(ref _radarSideText, value); }
-    private bool _radarBlindLeft, _radarBlindRight;
-    // Drives the simple always-reliable Left/Right spotter bar (Kapps' own "Bar Left Right")
-    // directly from CarLeftRight -- independent of the distance-based dots, which depend on the
-    // track length being known and can legitimately stay empty on some tracks/timing.
-    public bool RadarBlindLeft { get => _radarBlindLeft; private set => Set(ref _radarBlindLeft, value); }
-    public bool RadarBlindRight { get => _radarBlindRight; private set => Set(ref _radarBlindRight, value); }
     public string RadarDistanceText { get => _radarDistanceText; private set => Set(ref _radarDistanceText, value); }
     public double ClutchPct { get => _clutchPct; private set => Set(ref _clutchPct, value); }
     public double ThrottlePct { get => _throttlePct; private set => Set(ref _throttlePct, value); }
@@ -165,7 +160,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _studio.Show();
             _studio.Activate();
         }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-        Closed += (_, _) => { _telemetry.Dispose(); _studio.Close(); };
+        Closed += (_, _) => { CompositionTarget.Rendering -= OnRenderFrame; _telemetry.Dispose(); _studio.Close(); };
         SourceInitialized += (_, _) => SetEditing(!_profile.Locked);
         ConfigureTelemetry();
         _telemetry.Start();
@@ -174,31 +169,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Save() => ProfileStore.Save(_profile);
 
 
-    // Coalesces bursts of telemetry-thread callbacks into a single UI-thread update per frame:
-    // Post() from the telemetry thread never blocks (BeginInvoke, not Invoke), and if several
-    // ticks arrive before the UI thread catches up, only the LATEST snapshot is applied -- the
-    // telemetry thread is never held up waiting on WPF layout, and the UI never works through a
-    // backlog of stale intermediate frames (root cause of "overtakes only show up a lap later").
-    private sealed class UpdateCoalescer<T> where T : class
-    {
-        private readonly System.Windows.Threading.Dispatcher _dispatcher;
-        private readonly Action<T> _apply;
-        private T? _latest;
-        private bool _queued;
-        public UpdateCoalescer(System.Windows.Threading.Dispatcher dispatcher, Action<T> apply) { _dispatcher = dispatcher; _apply = apply; }
-        public void Post(T value)
-        {
-            _latest = value;
-            if (_queued) return;
-            _queued = true;
-            _dispatcher.BeginInvoke(() =>
-            {
-                _queued = false;
-                var v = _latest;
-                if (v is not null) _apply(v);
-            });
-        }
-    }
+    // 16/09/2026: previously each telemetry event independently scheduled its own
+    // Dispatcher.BeginInvoke -- with 8 separate streams all posting around the same moment, that
+    // meant up to 8 separate dispatcher operations (each doing real WPF layout work) competing for
+    // the UI thread inside a single ~16ms frame budget, which is exactly what showed up as choppy,
+    // sub-60fps motion (e.g. the Start Helper's pedal bars). Every stream now just stores its
+    // latest snapshot (a plain reference write, no locking needed); a single CompositionTarget.
+    // Rendering handler -- which fires once per actual composed frame, matched to the display's
+    // own refresh rate -- drains and applies whichever snapshots arrived since the last frame in
+    // ONE pass. This guarantees at most one WPF update per rendered frame, however many telemetry
+    // streams are producing data, instead of one dispatcher operation per stream per tick.
+    private List<StandingsRow>? _pendingStandings;
+    private List<RelativeRow>? _pendingRelative;
+    private SessionStatus? _pendingSessionStatus;
+    private FuelStatus? _pendingFuel;
+    private WeatherStatus? _pendingWeather;
+    private PlayerCarStatus? _pendingPlayerStatus;
+    private RadarStatus? _pendingRadar;
+    private RaceStartStatus? _pendingRaceStart;
 
     // Replaces an ObservableCollection's contents in place (Replace per changed index) instead of
     // Clear()+Add (Reset) -- Reset forces the bound ItemsControl to drop and regenerate every
@@ -214,32 +202,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ConfigureTelemetry()
     {
-        var standings = new UpdateCoalescer<List<StandingsRow>>(Dispatcher, ApplyStandings);
-        var relative = new UpdateCoalescer<List<RelativeRow>>(Dispatcher, ApplyFullRelative);
-        var sessionStatus = new UpdateCoalescer<SessionStatus>(Dispatcher, ApplySessionStatus);
-        var fuel = new UpdateCoalescer<FuelStatus>(Dispatcher, ApplyFuel);
-        var weather = new UpdateCoalescer<WeatherStatus>(Dispatcher, ApplyWeather);
-        var playerStatus = new UpdateCoalescer<PlayerCarStatus>(Dispatcher, ApplyPlayerCarStatus);
-        var radar = new UpdateCoalescer<RadarStatus>(Dispatcher, ApplyRadar);
-        var raceStart = new UpdateCoalescer<RaceStartStatus>(Dispatcher, ApplyRaceStart);
-
         _telemetry.OnTrackStateChanged += hasCar => Dispatcher.BeginInvoke(() =>
         {
             _hasCar = hasCar;
             if (!IsEditing) foreach (var widget in Widgets) widget.SessionVisible = hasCar;
         });
-        _telemetry.StandingsUpdated += standings.Post;
-        _telemetry.FullRelativeUpdated += relative.Post;
-        _telemetry.SessionStatusUpdated += sessionStatus.Post;
-        _telemetry.FuelUpdated += fuel.Post;
-        _telemetry.WeatherUpdated += weather.Post;
-        _telemetry.PlayerCarStatusUpdated += playerStatus.Post;
-        _telemetry.RadarUpdated += radar.Post;
-        _telemetry.RaceStartUpdated += raceStart.Post;
+        _telemetry.StandingsUpdated += rows => _pendingStandings = rows;
+        _telemetry.FullRelativeUpdated += rows => _pendingRelative = rows;
+        _telemetry.SessionStatusUpdated += status => _pendingSessionStatus = status;
+        _telemetry.FuelUpdated += fuel => _pendingFuel = fuel;
+        _telemetry.WeatherUpdated += weather => _pendingWeather = weather;
+        _telemetry.PlayerCarStatusUpdated += status => _pendingPlayerStatus = status;
+        _telemetry.RadarUpdated += radar => _pendingRadar = radar;
+        _telemetry.RaceStartUpdated += start => _pendingRaceStart = start;
+        CompositionTarget.Rendering += OnRenderFrame;
+    }
+
+    private void OnRenderFrame(object? sender, EventArgs e)
+    {
+        if (System.Threading.Interlocked.Exchange(ref _pendingStandings, null) is { } standings) ApplyStandings(standings);
+        if (System.Threading.Interlocked.Exchange(ref _pendingRelative, null) is { } relative) ApplyFullRelative(relative);
+        if (System.Threading.Interlocked.Exchange(ref _pendingSessionStatus, null) is { } sessionStatus) ApplySessionStatus(sessionStatus);
+        if (System.Threading.Interlocked.Exchange(ref _pendingFuel, null) is { } fuel) ApplyFuel(fuel);
+        if (System.Threading.Interlocked.Exchange(ref _pendingWeather, null) is { } weather) ApplyWeather(weather);
+        if (System.Threading.Interlocked.Exchange(ref _pendingPlayerStatus, null) is { } playerStatus) ApplyPlayerCarStatus(playerStatus);
+        if (System.Threading.Interlocked.Exchange(ref _pendingRadar, null) is { } radar) ApplyRadar(radar);
+        if (System.Threading.Interlocked.Exchange(ref _pendingRaceStart, null) is { } raceStart) ApplyRaceStart(raceStart);
     }
 
     private void ApplyStandings(List<StandingsRow> rows)
     {
+        // Sticky: once any car has actually pitted this session, the PIT column earns its place
+        // permanently -- there's no reason to hide it again once it has real data to show.
+        if (!_pitActivityDetected && rows.Any(r => r.PitStatus != "--")) _pitActivityDetected = true;
         var widget = Widgets.First(w => w.Kind == WidgetKind.Standings);
         var renderedClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var built = new List<DriverRow>();
@@ -260,15 +255,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
                 IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k {row.EstimatedDeltaIRating:+0;-0;0}" : "--",
                 IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = row.EstimatedDeltaIRating is double delta ? $"{Math.Abs(delta):0}" : "", IRatingGain = (row.EstimatedDeltaIRating ?? 0) >= 0, IRatingDeltaBrush = IRatingDeltaBrush(row.EstimatedDeltaIRating), IRatingArrow = IRatingArrow(row.EstimatedDeltaIRating),
-                Gap = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double gap ? $"+{gap:0.000}" : "--",
+                Gap = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double gap ? FormatSignedNumber(gap, widget.GapDecimals) : "--",
                 Manufacturer = row.ManufacturerBadge,
                 FlagImage = FlagAsset(row.FlagEmoji), BrandImage = BrandAsset(row.ManufacturerBadge),
                 P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
                 P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown), IsPlayer = row.IsPlayer,
                 Pit = row.PitStatus, PitBrush = PitBrush(row.PitStatus),
-                GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? $"+{leaderGap:0.000}" : "--",
-                Interval = row.IntervalSeconds is double interval ? $"+{interval:0.000}" : "--",
-                LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds),
+                GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? FormatSignedNumber(leaderGap, widget.GapDecimals) : "--",
+                Interval = row.IntervalSeconds is double interval ? FormatSignedNumber(interval, widget.IntervalDecimals) : "--",
+                LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds, widget.LapDeltaDecimals),
                 Tire = TireText(row.TireCompound), ClassName = row.ClassShortName, IsPlayerClass = row.IsPlayer || rows.FirstOrDefault(candidate => candidate.IsPlayer)?.ClassShortName == row.ClassShortName
             };
             PopulateFields(driver, widget);
@@ -295,14 +290,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 RawDriverName=row.DriverCode, Driver = FormatWidgetDriver(row.DriverCode, widget.DriverNameStyle),
                 License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
                 IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = "", IRatingGain = true,
-                Gap = row.GapSeconds is double gap ? $"{gap:+0.0;-0.0;0.0}" : "--",
+                Gap = row.GapSeconds is double gap ? FormatSignedNumber(gap, widget.GapDecimals) : "--",
                 P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
                 P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown),
                 Manufacturer = row.ManufacturerBadge,
                 BrandImage = BrandAsset(row.ManufacturerBadge),
                 IsPlayer = row.IsPlayer,
-                GapToLeader = row.GapSeconds is double relativeGap ? $"{relativeGap:+0.000;-0.000;0.000}" : "--",
-                Interval = row.GapSeconds is double intervalGap ? $"{intervalGap:+0.000;-0.000;0.000}" : "--",
+                GapToLeader = row.GapSeconds is double relativeGap ? FormatSignedNumber(relativeGap, widget.GapDecimals) : "--",
+                Interval = row.GapSeconds is double intervalGap ? FormatSignedNumber(intervalGap, widget.IntervalDecimals) : "--",
                 Tire = TireText(row.TireCompound)
             };
             PopulateFields(driver, widget);
@@ -361,17 +356,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ApplyRadar(RadarStatus radar)
     {
         RadarSideText = radar.BlindSpotLeft && radar.BlindSpotRight ? "DOS DOIS LADOS" : radar.BlindSpotLeft ? "ESQUERDA" : radar.BlindSpotRight ? "DIREITA" : "LIVRE";
-        RadarBlindLeft = radar.BlindSpotLeft;
-        RadarBlindRight = radar.BlindSpotRight;
         var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
         RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
         var range = _radarWidget.RadarRange;
         var nearby = radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= range).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList();
-        // 16/09/2026: the widget only ever earns its screen space from CarLeftRight (the real,
-        // always-reliable blind-spot signal -- iRacing's own "Bar Left Right" style spotter). The
-        // far-field distance dots piggyback on this same visibility instead of gating it, since
-        // they depend on the track length being resolved and a car being within RadarRange.
-        _radarWidget.DynamicGateOpen = radar.BlindSpotLeft || radar.BlindSpotRight;
+        // The radar only earns its screen space while there's actually a car close enough to
+        // matter (or something in the immediate blind spot) -- otherwise it disappears entirely.
+        _radarWidget.DynamicGateOpen = nearby.Count > 0 || radar.BlindSpotLeft || radar.BlindSpotRight;
         var built = new List<RadarDot>();
         foreach (var blip in nearby)
         {
@@ -455,7 +446,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // the real bank (TelemetryReader passes CarIdxP2P_Count through as both the "uses"/"seconds"
     // slots below for compatibility), and only the color (see P2PBrush) reflects active vs idle.
     private static string FormatP2P(bool? active, int? uses, double? seconds, bool cooldown)
-        => active is null ? "--" : $"{uses ?? 0:0}s";
+        => active is null || uses is null ? "--" : $"{uses:0}s";
 
     private static string FormatP2PSummary(RelativeRow? mine)
     {
@@ -488,6 +479,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         foreach (var driver in drivers.Where(driver => !driver.IsClassHeader))
             driver.Driver = FormatWidgetDriver(string.IsNullOrWhiteSpace(driver.RawDriverName) ? driver.Driver : driver.RawDriverName, widget.DriverNameStyle);
     }
+    // 16/09/2026: this Studio-preview rebuild used its own "just take the first N" selection,
+    // independent of SelectStandingsRows -- so a Studio setting change (or any HeaderField
+    // visibility toggle, which also triggers this) could silently overwrite an already-correct
+    // player-centered live table back to "top of the field", which is exactly the stale/duplicated
+    // logic that made the fixed-top-N + centered-window fix appear not to work. Now both paths
+    // share SelectPlayerCenteredIndexes so they can never disagree.
     private void RebuildPreviewMulticlass()
     {
         var widget = Widgets.FirstOrDefault(widget => widget.IsStandings);
@@ -496,11 +493,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (source.Count == 0) return;
         if (source.Count <= 5) source = ExpandPreviewRows(source);
         var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassName ?? source.First().ClassName;
-        var selected = source.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)).SelectMany(group =>
+        var selected = new List<DriverRow>();
+        foreach (var group in source.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)))
         {
             var isPlayerClass = string.Equals(group.Key, playerClass, StringComparison.OrdinalIgnoreCase);
-            return !isPlayerClass && !widget.ShowMulticlass ? Enumerable.Empty<DriverRow>() : group.Take(isPlayerClass ? widget.PlayerClassRows : widget.OtherClassRows);
-        }).ToList();
+            if (!isPlayerClass && !widget.ShowMulticlass) continue;
+            var ordered = group.OrderBy(row => int.TryParse(row.Position, out var p) ? p : int.MaxValue).ToList();
+            if (!isPlayerClass) { selected.AddRange(ordered.Take(widget.OtherClassRows)); continue; }
+            var playerIndex = ordered.FindIndex(row => row.IsPlayer);
+            foreach (var index in SelectPlayerCenteredIndexes(ordered.Count, playerIndex, widget.TopNFixed, widget.PlayerClassRows))
+                selected.Add(ordered[index]);
+        }
         var built = new List<DriverRow>();
         foreach (var group in selected.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)))
         {
@@ -527,11 +530,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var widget = Widgets.FirstOrDefault(candidate => candidate.IsRelative);
         if (widget is null || _relativePreviewSource.Count == 0) return;
         var playerClass = _relativePreviewSource.FirstOrDefault(row => row.IsPlayer)?.ClassName ?? _relativePreviewSource[0].ClassName;
-        var selected = _relativePreviewSource.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)).SelectMany(group =>
+        var selected = new List<DriverRow>();
+        foreach (var group in _relativePreviewSource.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)))
         {
             var mine = string.Equals(group.Key, playerClass, StringComparison.OrdinalIgnoreCase);
-            return !mine && !widget.ShowMulticlass ? Enumerable.Empty<DriverRow>() : group.Take(mine ? widget.PlayerClassRows : widget.OtherClassRows);
-        }).ToList();
+            if (!mine && !widget.ShowMulticlass) continue;
+            var ordered = group.OrderBy(row => int.TryParse(row.Position, out var p) ? p : int.MaxValue).ToList();
+            if (!mine) { selected.AddRange(ordered.Take(widget.OtherClassRows)); continue; }
+            var playerIndex = ordered.FindIndex(row => row.IsPlayer);
+            foreach (var index in SelectPlayerCenteredIndexes(ordered.Count, playerIndex, 0, widget.PlayerClassRows))
+                selected.Add(ordered[index]);
+        }
         var built = new List<DriverRow>();
         foreach (var source in selected)
         {
@@ -594,6 +603,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // top 2 fixed + 5 around, player at P8, shows P1, P2, then P6-P10 (the driver's own worked
     // example). Other classes keep the simple "first N" behavior (there's no "player position" to
     // center on in a class the player isn't racing).
+    // Shared by every player-focused selection (Standings, Relative, and both Studio-preview
+    // rebuilders) so they can never disagree on what "centered on the player" means. The first
+    // topNFixed indexes (0..topNFixed-1) are always included as a fixed leaderboard; the rest is a
+    // window of windowSize entries centered on playerIndex, clamped so it never overflows either
+    // edge of the list (e.g. a player near the back still gets a full-size window, just shifted).
+    private static IEnumerable<int> SelectPlayerCenteredIndexes(int count, int playerIndex, int topNFixed, int windowSize)
+    {
+        var selected = new SortedSet<int>(Enumerable.Range(0, Math.Clamp(topNFixed, 0, count)));
+        var size = Math.Clamp(windowSize, 0, count);
+        if (size > 0)
+        {
+            var half = size / 2;
+            var start = Math.Clamp((playerIndex < 0 ? 0 : playerIndex) - half, 0, Math.Max(0, count - size));
+            for (var i = start; i < start + size; i++) selected.Add(i);
+        }
+        return selected;
+    }
+
     private static IEnumerable<StandingsRow> SelectStandingsRows(IReadOnlyList<StandingsRow> source, WidgetProfile widget)
     {
         var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassShortName;
@@ -612,41 +639,53 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 foreach (var row in ordered.Take(widget.OtherClassRows)) yield return row;
                 continue;
             }
-            var selectedIndexes = new SortedSet<int>(Enumerable.Range(0, Math.Min(widget.TopNFixed, ordered.Count)));
             var playerIndex = ordered.FindIndex(row => row.IsPlayer);
-            if (playerIndex < 0) playerIndex = 0;
-            var windowSize = Math.Min(widget.PlayerClassRows, ordered.Count);
-            if (windowSize > 0)
-            {
-                var half = windowSize / 2;
-                var start = Math.Clamp(playerIndex - half, 0, Math.Max(0, ordered.Count - windowSize));
-                for (var i = start; i < start + windowSize; i++) selectedIndexes.Add(i);
-            }
-            foreach (var index in selectedIndexes) yield return ordered[index];
+            foreach (var index in SelectPlayerCenteredIndexes(ordered.Count, playerIndex, widget.TopNFixed, widget.PlayerClassRows))
+                yield return ordered[index];
         }
     }
+
+    // 16/09/2026: previously took the first PlayerClassRows entries in offset order (-3..+3
+    // ahead-to-behind), which for a 5-row window meant "3 ahead, me, 1 behind" -- always biased
+    // toward the front regardless of the actual window size. Centering the window on the player's
+    // own offset (0) the same way Standings centers on position gives the requested "me in the
+    // median" (e.g. 2 ahead, me, 2 behind for a 5-row window).
     private static IEnumerable<RelativeRow> SelectRelativeRows(IReadOnlyList<RelativeRow> source, WidgetProfile widget)
     {
         var playerClass = source.FirstOrDefault(row => row.IsPlayer)?.ClassShortName;
         if (string.IsNullOrWhiteSpace(playerClass)) { foreach (var row in source) yield return row; yield break; }
-        var visibleByClass = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in source.OrderBy(row => row.PositionOffset))
+        foreach (var classGroup in source.GroupBy(row => row.ClassShortName ?? string.Empty))
         {
-            var mine = string.Equals(row.ClassShortName, playerClass, StringComparison.OrdinalIgnoreCase);
+            var mine = string.Equals(classGroup.Key, playerClass, StringComparison.OrdinalIgnoreCase);
             if (!mine && !widget.ShowMulticlass) continue;
-            var key = row.ClassShortName ?? string.Empty;
-            visibleByClass.TryGetValue(key, out var count);
-            if (count >= (mine ? widget.PlayerClassRows : widget.OtherClassRows)) continue;
-            visibleByClass[key] = count + 1;
-            yield return row;
+            var ordered = classGroup.OrderBy(row => row.PositionOffset).ToList();
+            if (!mine)
+            {
+                foreach (var row in ordered.Take(widget.OtherClassRows)) yield return row;
+                continue;
+            }
+            var playerIndex = ordered.FindIndex(row => row.IsPlayer);
+            foreach (var index in SelectPlayerCenteredIndexes(ordered.Count, playerIndex, 0, widget.PlayerClassRows))
+                yield return ordered[index];
         }
     }
-    private static string FormatSigned(double? seconds) => seconds is double value ? $"{value:+0.000;-0.000;0.000}" : "--";
+    // Configurable decimal precision for Gap/Interval/Δ Volta (WidgetProfile.GapDecimals etc) --
+    // builds the numeric pattern at 0-3 decimals and prefixes the sign explicitly, since a
+    // 0-decimal signed composite format string ("+0;-0;0") would otherwise be a special case.
+    private static string FormatSignedNumber(double value, int decimals)
+    {
+        var pattern = decimals > 0 ? "0." + new string('0', decimals) : "0";
+        var text = Math.Abs(value).ToString(pattern, CultureInfo.InvariantCulture);
+        return value < 0 ? $"-{text}" : $"+{text}";
+    }
+    private static string FormatSigned(double? seconds, int decimals) => seconds is double value ? FormatSignedNumber(value, decimals) : "--";
     private static string TireText(int? compound) => compound is int tire && tire >= 0 ? $"P{tire}" : "--";
-    private static void PopulateFields(DriverRow row, WidgetProfile widget)
+    private void PopulateFields(DriverRow row, WidgetProfile widget)
     {
         row.Fields.Clear();
-        var visibleColumns = widget.TimingColumns.Where(column => column.IsVisible).ToList();
+        // PIT only earns a column once a real pit stop has actually happened this session --
+        // otherwise it's a column of "--" the driver never asked to see yet.
+        var visibleColumns = widget.TimingColumns.Where(column => column.IsVisible && (column.Key != "Pit" || _pitActivityDetected)).ToList();
         // The Studio width is literal.  A selected field is never silently compressed.
         foreach (var column in visibleColumns)
         {
@@ -682,7 +721,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         RebuildVisibleFields();
         if (!widget.AutoFitToColumns) return;
-        var fieldsWidth = widget.TimingColumns.Where(column => column.IsVisible).Sum(column => column.Width);
+        var fieldsWidth = widget.TimingColumns.Where(column => column.IsVisible && (column.Key != "Pit" || _pitActivityDetected)).Sum(column => column.Width);
         var logicalWidth = widget.PositionColumnWidth + widget.CarNumberColumnWidth + widget.DriverColumnWidth + widget.LicenseColumnWidth + widget.IRatingColumnWidth + fieldsWidth;
         // LayoutTransform scales the layout itself (not just its pixels), so the physical card
         // tracks the selected font scale and cannot leave an artificial strip at the right.

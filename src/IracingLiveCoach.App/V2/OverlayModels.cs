@@ -73,6 +73,11 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     public bool ShowMulticlass { get => _showMulticlass; set => Set(ref _showMulticlass, value); }
     public int PlayerClassRows { get => _playerClassRows; set => Set(ref _playerClassRows, Math.Clamp(value, 1, 20)); }
     public int OtherClassRows { get => _otherClassRows; set => Set(ref _otherClassRows, Math.Clamp(value, 0, 20)); }
+    private int _gapDecimals = 3, _intervalDecimals = 3, _lapDeltaDecimals = 3;
+    // How many decimal places GAP/INTERVAL/Δ VOLTA show (0-3) -- e.g. "+1.234" at 3, "+1" at 0.
+    public int GapDecimals { get => _gapDecimals; set => Set(ref _gapDecimals, Math.Clamp(value, 0, 3)); }
+    public int IntervalDecimals { get => _intervalDecimals; set => Set(ref _intervalDecimals, Math.Clamp(value, 0, 3)); }
+    public int LapDeltaDecimals { get => _lapDeltaDecimals; set => Set(ref _lapDeltaDecimals, Math.Clamp(value, 0, 3)); }
     private int _topNFixed;
     // Standings-only: a fixed leaderboard (P1..N) always shown ahead of the player-centered window
     // sized by PlayerClassRows -- e.g. TopNFixed=2 + PlayerClassRows=5 with the player at P8 shows
