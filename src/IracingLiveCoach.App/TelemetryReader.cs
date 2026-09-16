@@ -363,6 +363,7 @@ public class TelemetryReader : IDisposable
         _lastPitStatusByCarIdx.Clear();
         _lastP2PCountByCarIdx.Clear();
         _p2pChargingUntilByCarIdx.Clear();
+        _lastP2PAnomalyLogByCarIdx.Clear();
         // Always notify: closing can happen between telemetry frames, while the last known
         // in-car state is still true. The V2 window then hides every locked widget immediately.
         OnTrackStateChanged?.Invoke(false);
@@ -503,11 +504,33 @@ public class TelemetryReader : IDisposable
     }
 
     // CarIdxP2P_Count and CarIdxP2P_Status are arrays indexed by CarIdx, not player-only values.
-    // Kapps subscribes to this same pair for its Relative widget.  Do not apply the SF23's 200 s
-    // bank as a universal validity rule: other supported cars/sessions can publish a different
-    // valid count.  The SDK's signed maximum integer is its conventional uninitialised sentinel;
-    // that is the only value we suppress.
+    // Kapps subscribes to this same pair for its Relative widget. The driver confirmed the SF23's
+    // Overtake bank is exclusively 0..200 s, so anything outside that range is discarded as an
+    // uninitialised/garbage SDK value rather than shown as a nonsensical number.
     private static int? ReadP2PCount(int raw) => raw is >= 0 and <= P2PMaxSeconds ? raw : null;
+
+    // 16/09/2026: a previous attempt to fix "P2P errado para os outros carros" multiplied CarIdx by
+    // 4 before calling GetInt, based on an unverified assumption about the wrapper's index
+    // parameter. Checked against IRSDKSharper's own source (GetInt does `index * 4` internally, so
+    // a plain element index was always correct) and reverted. If opponents still show wrong/absent
+    // P2P after that revert, guessing again would repeat the same mistake -- so every rejected raw
+    // value (outside 0..200) is now logged with a real timestamp+CarIdx to
+    // %AppData%\iracing-live-coach\p2p-debug.log, throttled per car to avoid flooding, so the next
+    // live session gives real ground truth instead of another unverified theory.
+    private readonly Dictionary<int, DateTime> _lastP2PAnomalyLogByCarIdx = new();
+    private void LogP2PAnomaly(int carIdx, int raw)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            if (_lastP2PAnomalyLogByCarIdx.TryGetValue(carIdx, out var last) && (now - last).TotalSeconds < 5) return;
+            _lastP2PAnomalyLogByCarIdx[carIdx] = now;
+            var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-debug.log");
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+            System.IO.File.AppendAllText(path, $"{now:O} CarIdx={carIdx} RawCarIdxP2P_Count={raw} (outside 0..{P2PMaxSeconds})\n");
+        }
+        catch { /* diagnostics must never break the real read path */ }
+    }
 
     // The two per-car P2P arrays are independently optional in iRacing.  Reading them in one
     // try block made a missing Count on an opponent hide an otherwise valid Status (and vice
@@ -518,7 +541,12 @@ public class TelemetryReader : IDisposable
         int? seconds = null;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
         catch { /* OTS status is not published for this car/session. */ }
-        try { seconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", carIdx)); }
+        try
+        {
+            var raw = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
+            seconds = ReadP2PCount(raw);
+            if (seconds is null) LogP2PAnomaly(carIdx, raw);
+        }
         catch { /* The count can be omitted independently of status. */ }
         var now = DateTime.UtcNow;
         if (seconds is int current)
