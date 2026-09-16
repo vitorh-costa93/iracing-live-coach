@@ -4,8 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using IracingLiveCoach.App;
-using IracingLiveCoach.Core;
+using IracingLiveCoach.V2;
 
 internal static class Program
 {
@@ -15,66 +14,57 @@ internal static class Program
         var output = Path.GetFullPath(args.FirstOrDefault() ?? "artifacts/screenshots");
         Directory.CreateDirectory(output);
         Environment.SetEnvironmentVariable("APPDATA", Path.Combine(Path.GetTempPath(), "live-coach-ui-" + Guid.NewGuid()));
-        foreach (var key in BrandIcons.RealImageByManufacturer.Keys.ToArray())
-            BrandIcons.RealImageByManufacturer[key] = BrandIcons.RealImageByManufacturer[key].Replace("pack://application:,,,/Assets/", "pack://application:,,,/IracingLiveCoach.App;component/Assets/");
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("pack://application:,,,/IracingLiveCoach.App;component/F1Theme.xaml") });
-        app.Resources.Add("BoolToVisibilityConverter", new BooleanToVisibilityConverter());
-        var standings = new StandingsWidget(new WidgetLayout { Width = 800, Height = 460 }, () => { });
-        var names = new[] { "L. MARTINS", "R. ALMEIDA", "P. SANTOS", "G. LIMA", "V. COSTA", "A. SOUZA", "B. ROCHA" };
-        var brands = new[] { "FERRARI", "BMW", "MERCEDES", "PORSCHE", "MCLAREN", "LAMBORGHINI", "AUDI" };
-        standings.UpdateRows(Enumerable.Range(0, 7).Select(i => new StandingsRow(i + 1, names[i], 12, 108.326 + (i - 4) * .15, null, i == 4, "🇧🇷", "A 3.49", "#1764D9", 3574 + i * 30, 1, brands[i], i * 1.78, 40 - i * 9, (i - 4) * .15, "GT3", "#FF9C24", i + 1, 1.78)).ToList());
-        standings.UpdateSessionStatus(new SessionStatus("GT3", "RACE", 12, 28, "GREEN", "#22E889", 3420, 20));
-        Capture(standings, "standings", output);
-        var relative = new RelativeWidget(new WidgetLayout { Width = 650, Height = 440 }, () => { });
-        var rows = Enumerable.Range(0, 5).Select(i => new RelativeRow(i + 3, names[i + 2], (i - 2) * .887, null, null, null, null, false, "🇧🇷", "A 3.49", "#1764D9", 3574, 1, brands[i], i == 2, i + 3, "GT3", "#FF9C24")).ToList();
-        relative.UpdateRows(rows);
-        relative.UpdatePlayerStatus(new PlayerCarStatus(54.2, "Moderate", 107.912, 108.326, 32));
-        if (((RelativeWidgetViewModel)relative.DataContext).HasOvertake) throw new Exception("GT3 must hide overtake.");
-        Capture(relative, "relative-gt3", output);
-        relative.UpdateRows(rows.Select((row, i) => row with { P2PActive = i == 2, P2PSecondsRemaining = i == 2 ? 12 : i == 3 ? 18 : null, P2PInCooldown = i == 3, ManufacturerBadge = "", ClassShortName = "SF23" }).ToList());
-        if (!((RelativeWidgetViewModel)relative.DataContext).HasOvertake) throw new Exception("SF23 must show overtake.");
-        Capture(relative, "relative-sf23", output);
-        var fuel = new FuelWidget(new WidgetLayout { Width = 290, Height = 440 }, () => { });
-        fuel.UpdateStatus(new FuelStatus(18.6, 78, 2.4, 7.75, 838));
-        Capture(fuel, "fuel", output);
-        fuel.SetColumns(false, false, true, true, false);
-        Capture(fuel, "fuel-configured", output);
-        var hiddenMetric = Descendants(fuel).OfType<TextBlock>().First(e => e.Text == "NO TANQUE");
-        if (hiddenMetric.IsVisible) throw new Exception("Hidden fuel field still rendered.");
-        var weather = new WeatherWidget(new WidgetLayout { Width = 300, Height = 230 }, () => { });
-        weather.UpdateStatus(new WeatherStatus(24, 32, 0, 0, false, new()));
-        Capture(weather, "weather", output);
-        var radar = new RadarWidget(new WidgetLayout { Width = 220, Height = 220 }, () => { });
-        radar.UpdateStatus(new RadarStatus(true, false, new() { new RadarBlip(8, "ALM"), new RadarBlip(-6, "SOU") }, true));
-        Capture(radar, "radar", output);
-        var control = new ControlPanelWindow(new WidgetLayoutStore(), () => { }, new[] { ("standings", "Standings", (Window)standings), ("relative", "Relative", (Window)relative), ("fuel", "Combustível", (Window)fuel), ("weather", "Condições da pista", (Window)weather), ("radar", "Radar", (Window)radar) });
-        control.SetLocked(false);
-        control.Height = 980;
-        Capture(control, "control-panel", output);
-        Descendants(control).OfType<ScrollViewer>().First().ScrollToEnd();
-        Capture(control, "control-panel-settings", output);
-        foreach (var window in new Window[] { standings, relative, fuel, control })
+
+        var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        Application.LoadComponent(app, new Uri("/IracingLiveCoach.App;component/V2/App.xaml", UriKind.Relative));
+        var overlay = new MainWindow { WindowState = WindowState.Normal, Width = 1920, Height = 1080, Left = -4000, Top = -4000 };
+        foreach (var profile in overlay.Widgets) profile.SessionVisible = true;
+        overlay.Show();
+        overlay.UpdateLayout();
+        overlay.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+
+        var cards = Descendants(overlay).OfType<Border>()
+            .Where(border => border.DataContext is WidgetProfile)
+            .GroupBy(border => ((WidgetProfile)border.DataContext).Kind)
+            .Select(group => group.OrderByDescending(border => border.ActualWidth * border.ActualHeight).First())
+            .OrderBy(border => ((WidgetProfile)border.DataContext).Kind);
+        foreach (var card in cards)
         {
-            window.Width = window.MinWidth; window.Height = window.MinHeight;
-            Capture(window, window.GetType().Name + "-minimum", output);
+            var profile = (WidgetProfile)card.DataContext;
+            Capture(card, profile.Kind.ToString().ToLowerInvariant(), output);
         }
-        Console.WriteLine("Native WPF screens rendered; configured fuel visibility and overtake states verified.");
-        foreach (Window window in app.Windows.Cast<Window>().ToArray()) window.Close();
+
+        var studio = app.Windows.OfType<StudioWindow>().FirstOrDefault();
+        if (studio is not null)
+        {
+            studio.UpdateLayout();
+            Capture((FrameworkElement)studio.Content, "overlay-studio", output);
+        }
+
+        Console.WriteLine($"V2 widget previews written to {output}.");
+        foreach (var window in app.Windows.Cast<Window>().ToArray()) window.Close();
     }
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-        { var child = VisualTreeHelper.GetChild(parent, i); yield return child; foreach (var next in Descendants(child)) yield return next; }
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
     }
-    private static void Capture(Window window, string name, string output)
+
+    private static void Capture(FrameworkElement element, string name, string output)
     {
-        window.Show(); window.UpdateLayout();
-        window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-        var content = (FrameworkElement)window.Content;
-        var image = new RenderTargetBitmap((int)Math.Ceiling(content.ActualWidth), (int)Math.Ceiling(content.ActualHeight), 96, 96, PixelFormats.Pbgra32);
-        image.Render(content);
-        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
-        using var file = File.Create(Path.Combine(output, name + ".png")); encoder.Save(file);
+        element.UpdateLayout();
+        var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
+        var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
+        var image = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        image.Render(element);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(image));
+        using var file = File.Create(Path.Combine(output, name + ".png"));
+        encoder.Save(file);
     }
 }
