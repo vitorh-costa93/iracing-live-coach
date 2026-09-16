@@ -106,7 +106,7 @@
                               </Border>
                               <TextBlock Grid.Column="1" Text="{Binding CarNumber}" Style="{StaticResource WidgetNumber}" VerticalAlignment="Center" HorizontalAlignment="Center" />
                               <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Width="22" Height="22" Background="#FF151A21" CornerRadius="4" Margin="0,0,4,0" Visibility="{Binding DataContext.ShowLogos, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}">
+                                <Border Width="22" Height="22" Background="Transparent" Margin="0,0,4,0" Visibility="{Binding DataContext.ShowLogos, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}">
                                   <Image Source="{Binding BrandImage}" Stretch="Uniform" Margin="1" SnapsToDevicePixels="True" />
                                 </Border>
                                 <Border Width="20" Height="14" Margin="0,0,5,0" BorderBrush="#405A6670" BorderThickness="0.5" Visibility="{Binding DataContext.ShowFlags, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}">
@@ -213,7 +213,7 @@
                               </Border>
                               <TextBlock Grid.Column="1" Text="{Binding CarNumber}" Style="{StaticResource WidgetNumber}" VerticalAlignment="Center" HorizontalAlignment="Center" />
                               <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Width="19" Height="19" Background="#FF151A21" CornerRadius="4" Margin="0,0,4,0" Visibility="{Binding DataContext.ShowLogos, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}"><Image Source="{Binding BrandImage}" Stretch="Uniform" Margin="1" SnapsToDevicePixels="True"/></Border>
+                                <Border Width="19" Height="19" Background="Transparent" Margin="0,0,4,0" Visibility="{Binding DataContext.ShowLogos, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}"><Image Source="{Binding BrandImage}" Stretch="Uniform" Margin="1" SnapsToDevicePixels="True"/></Border>
                                 <Border Width="16" Height="12" Margin="0,0,4,0" BorderBrush="#405A6670" BorderThickness=".5" Visibility="{Binding DataContext.ShowFlags, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibility}}">
                                   <Grid>
                                     <TextBlock Text="{Binding Flag}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center" />
