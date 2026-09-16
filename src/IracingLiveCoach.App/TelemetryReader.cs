@@ -418,12 +418,17 @@ public class TelemetryReader : IDisposable
         if (_playerCarIdx >= 0)
         {
             UpdateOnTrackState();
+            // A full-field refresh coincides with the proximity refresh every third tick.  Keep
+            // that immutable snapshot for the rest of the tick instead of scanning every CarIdx
+            // a second time just to build Standings.
+            LivePositions? positionsThisTick = null;
 
             _proximityTickCounter++;
             if (_proximityTickCounter >= ProximityTickInterval)
             {
                 _proximityTickCounter = 0;
                 var positions = ComputeLivePositions();
+                positionsThisTick = positions;
                 UpdateRelative(positions);
                 UpdateFullRelative(positions);
                 UpdateSecondaryRelative(positions);
@@ -435,7 +440,7 @@ public class TelemetryReader : IDisposable
             if (_fullFieldTickCounter >= FullFieldTickInterval)
             {
                 _fullFieldTickCounter = 0;
-                UpdateStandings(ComputeLivePositions());
+                UpdateStandings(positionsThisTick ?? ComputeLivePositions());
                 UpdateFuel();
             }
 
