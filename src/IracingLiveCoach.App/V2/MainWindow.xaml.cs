@@ -256,7 +256,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // permanently -- there's no reason to hide it again once it has real data to show.
         if (!_pitActivityDetected && rows.Any(r => r.PitStatus != "--")) _pitActivityDetected = true;
         var widget = Widgets.First(w => w.Kind == WidgetKind.Standings);
-        var isMulticlass = rows.Select(row => row.CarClassId).Where(id => id > 0).Distinct().Skip(1).Any();
+        var isMulticlass = rows.Select(row => row.CarClassId > 0 ? $"id:{row.CarClassId}" : $"name:{row.ClassShortName}").Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any();
         foreach (var profile in Widgets) profile.IsSingleClassSession = !isMulticlass;
         var renderedClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var built = new List<DriverRow>();
@@ -356,7 +356,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         FuelPitByLapText = fuel.LapsRemaining is double remaining && _currentSessionLap is int currentLap
             ? $"PIT BY LAP {Math.Max(currentLap, currentLap + (int)Math.Floor(remaining))}"
             : "PIT WINDOW --";
-        FuelPitAddText = fuel.FuelAfterPitLiters is double afterPit ? $"AFTER PIT {afterPit:0.0} L" : "AFTER PIT --";
+        FuelPitAddText = fuel.FuelAtFinishLiters is double atFinish ? $"FUEL AT END {atFinish:0.0} L" : "FUEL AT END --";
         FuelPitStopsText = fuel.LapsRemaining is double tankLaps && _currentSessionLap is int lap && _sessionTotalLaps is int total && tankLaps > 0
             ? $"{Math.Max(0, (int)Math.Ceiling(Math.Max(0, total - lap) / tankLaps) - 1)} STOPS"
             : "-- STOPS";

@@ -54,7 +54,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -1019,6 +1019,7 @@ public class TelemetryReader : IDisposable
             double? refuelToFull = null;
             double? plannedPitFuel = null;
             double? fuelNeededForFinish = null;
+            double? fuelBurnToFinish = null;
             try
             {
                 var fuelPct = _sdk.Data.GetFloat("FuelLevelPct");
@@ -1041,11 +1042,17 @@ public class TelemetryReader : IDisposable
                 var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
                 var lap = _sdk.Data.GetInt("LapCompleted");
                 if (avgFuelPerLap is double lapFuel && lapFuel > 0 && int.TryParse(session?.SessionLaps, out var totalLaps) && totalLaps > 0)
-                    fuelNeededForFinish = Math.Max(0, (totalLaps - Math.Max(0, lap)) * lapFuel - fuelLevel);
+                {
+                    fuelBurnToFinish = Math.Max(0, (totalLaps - Math.Max(0, lap)) * lapFuel);
+                    fuelNeededForFinish = Math.Max(0, fuelBurnToFinish.Value - fuelLevel);
+                }
             }
             catch { /* time-limited sessions do not have a fixed lap target */ }
             double? fuelAfterPit = plannedPitFuel is double planned ? fuelLevel + planned : null;
-            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit));
+            // "Fuel at end" is based on the actual amount currently selected in the Black Box,
+            // then subtracts the projected race burn.  It is not merely tank level after pitting.
+            double? fuelAtFinish = fuelAfterPit is double afterPit && fuelBurnToFinish is double burn ? Math.Max(0, afterPit - burn) : null;
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish));
         }
         catch
         {
