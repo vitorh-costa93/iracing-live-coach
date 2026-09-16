@@ -25,6 +25,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _editing;
     private bool _hasCar;
     private readonly TelemetryReader _telemetry = new();
+    private readonly WidgetProfile _radarWidget;
+    private readonly WidgetProfile _startHelperWidget;
     // The source remains intact while the visible Relative rows are rebuilt from its settings.
     private readonly List<DriverRow> _relativePreviewSource = new();
     private string _fuelLevelText = "43.9 L", _fuelAverageText = "2.05 L/LAP", _fuelRefuelText = "+26.1 L", _fuelLapsText = "21.4 laps";
@@ -96,6 +98,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         _profile = ProfileStore.Load();
+        _radarWidget = _profile.Widgets.First(w => w.Kind == WidgetKind.Radar);
+        _startHelperWidget = _profile.Widgets.First(w => w.Kind == WidgetKind.StartHelper);
         // 760px was an erroneous forced upgrade from the previous build. Restore the compact
         // working size; optional columns now scale instead of making the card wider.
         var standingsProfile = _profile.Widgets.FirstOrDefault(widget => widget.IsStandings);
@@ -121,7 +125,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 field.Label = HeaderLabel(field.Key);
                 field.Icon = HeaderIcon(field.Key);
-                field.PropertyChanged += (_, _) => RebuildPreviewMulticlass();
+                // Only a genuine layout change (reordering/visibility) needs the whole driver list
+                // rebuilt -- Value ticks on every telemetry update (SOF/lap/clock) and is already
+                // picked up by its own direct binding, so rebuilding the full row collection for it
+                // was needless per-tick churn (the actual cause of the standings flicker/lag).
+                field.PropertyChanged += (_, args) => { if (args.PropertyName != nameof(HeaderField.Value)) RebuildPreviewMulticlass(); };
             }
             widget.HeaderFields.CollectionChanged += (_, _) => RebuildPreviewMulticlass();
             widget.TimingColumns.CollectionChanged += (_, _) => RebuildTimingLayout(widget);
@@ -160,162 +168,229 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void Save() => ProfileStore.Save(_profile);
 
 
+    // Coalesces bursts of telemetry-thread callbacks into a single UI-thread update per frame:
+    // Post() from the telemetry thread never blocks (BeginInvoke, not Invoke), and if several
+    // ticks arrive before the UI thread catches up, only the LATEST snapshot is applied -- the
+    // telemetry thread is never held up waiting on WPF layout, and the UI never works through a
+    // backlog of stale intermediate frames (root cause of "overtakes only show up a lap later").
+    private sealed class UpdateCoalescer<T> where T : class
+    {
+        private readonly System.Windows.Threading.Dispatcher _dispatcher;
+        private readonly Action<T> _apply;
+        private T? _latest;
+        private bool _queued;
+        public UpdateCoalescer(System.Windows.Threading.Dispatcher dispatcher, Action<T> apply) { _dispatcher = dispatcher; _apply = apply; }
+        public void Post(T value)
+        {
+            _latest = value;
+            if (_queued) return;
+            _queued = true;
+            _dispatcher.BeginInvoke(() =>
+            {
+                _queued = false;
+                var v = _latest;
+                if (v is not null) _apply(v);
+            });
+        }
+    }
+
+    // Replaces an ObservableCollection's contents in place (Replace per changed index) instead of
+    // Clear()+Add (Reset) -- Reset forces the bound ItemsControl to drop and regenerate every
+    // container, which is what produced the visible flicker between ticks. A plain index Replace
+    // only touches the row that actually changed.
+    private static void ApplyRows<T>(ObservableCollection<T> target, IReadOnlyList<T> updated)
+    {
+        var shared = Math.Min(target.Count, updated.Count);
+        for (var i = 0; i < shared; i++) target[i] = updated[i];
+        for (var i = target.Count - 1; i >= updated.Count; i--) target.RemoveAt(i);
+        for (var i = target.Count; i < updated.Count; i++) target.Add(updated[i]);
+    }
+
     private void ConfigureTelemetry()
     {
+        var standings = new UpdateCoalescer<List<StandingsRow>>(Dispatcher, ApplyStandings);
+        var relative = new UpdateCoalescer<List<RelativeRow>>(Dispatcher, ApplyFullRelative);
+        var sessionStatus = new UpdateCoalescer<SessionStatus>(Dispatcher, ApplySessionStatus);
+        var fuel = new UpdateCoalescer<FuelStatus>(Dispatcher, ApplyFuel);
+        var weather = new UpdateCoalescer<WeatherStatus>(Dispatcher, ApplyWeather);
+        var playerStatus = new UpdateCoalescer<PlayerCarStatus>(Dispatcher, ApplyPlayerCarStatus);
+        var radar = new UpdateCoalescer<RadarStatus>(Dispatcher, ApplyRadar);
+        var raceStart = new UpdateCoalescer<RaceStartStatus>(Dispatcher, ApplyRaceStart);
+
         _telemetry.OnTrackStateChanged += hasCar => Dispatcher.BeginInvoke(() =>
         {
             _hasCar = hasCar;
             if (!IsEditing) foreach (var widget in Widgets) widget.SessionVisible = hasCar;
         });
-        _telemetry.StandingsUpdated += rows => Dispatcher.Invoke(() =>
+        _telemetry.StandingsUpdated += standings.Post;
+        _telemetry.FullRelativeUpdated += relative.Post;
+        _telemetry.SessionStatusUpdated += sessionStatus.Post;
+        _telemetry.FuelUpdated += fuel.Post;
+        _telemetry.WeatherUpdated += weather.Post;
+        _telemetry.PlayerCarStatusUpdated += playerStatus.Post;
+        _telemetry.RadarUpdated += radar.Post;
+        _telemetry.RaceStartUpdated += raceStart.Post;
+    }
+
+    private void ApplyStandings(List<StandingsRow> rows)
+    {
+        var widget = Widgets.First(w => w.Kind == WidgetKind.Standings);
+        var renderedClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var built = new List<DriverRow>();
+        foreach (var row in SelectStandingsRows(rows, widget))
         {
-            PreviewDrivers.Clear();
-            var widget = Widgets.First(w => w.Kind == WidgetKind.Standings);
-            var renderedClasses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in SelectStandingsRows(rows, widget))
+            if (renderedClasses.Add(row.ClassShortName))
             {
-                if (renderedClasses.Add(row.ClassShortName))
+                built.Add(new DriverRow
                 {
-                    PreviewDrivers.Add(new DriverRow
-                    {
-                        IsClassHeader = true, ClassName = row.ClassShortName,
-                        ClassHeaderText = row.ClassShortName, PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)),
-                        ClassHeaderPositionWidth = widget.PositionColumnWidth, ClassHeaderFields = widget.HeaderFields
-                    });
-                }
-                var driver = new DriverRow
-                {
-                    Position = (row.ClassPosition > 0 ? row.ClassPosition : row.Position).ToString(CultureInfo.InvariantCulture), PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)), Flag = row.FlagEmoji, RawDriverName=row.DriverCode, Driver = FormatWidgetDriver(row.DriverCode, widget.DriverNameStyle),
-                    License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
-                    IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k {row.EstimatedDeltaIRating:+0;-0;0}" : "--",
-                    IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = row.EstimatedDeltaIRating is double delta ? $"{Math.Abs(delta):0}" : "", IRatingGain = (row.EstimatedDeltaIRating ?? 0) >= 0, IRatingDeltaBrush = IRatingDeltaBrush(row.EstimatedDeltaIRating), IRatingArrow = IRatingArrow(row.EstimatedDeltaIRating),
-                    Gap = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double gap ? $"+{gap:0.000}" : "--",
-                    Manufacturer = row.ManufacturerBadge,
-                    FlagImage = FlagAsset(row.FlagEmoji), BrandImage = BrandAsset(row.ManufacturerBadge),
-                    P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
-                    P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown), IsPlayer = row.IsPlayer,
-                    Pit = row.PitStatus, PitBrush = PitBrush(row.PitStatus),
-                    GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? $"+{leaderGap:0.000}" : "--",
-                    Interval = row.IntervalSeconds is double interval ? $"+{interval:0.000}" : "--",
-                    LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds),
-                    Tire = TireText(row.TireCompound), ClassName = row.ClassShortName, IsPlayerClass = row.IsPlayer || rows.FirstOrDefault(candidate => candidate.IsPlayer)?.ClassShortName == row.ClassShortName
-                };
-                PopulateFields(driver, widget);
-                PreviewDrivers.Add(driver);
-            }
-        });
-        _telemetry.FullRelativeUpdated += rows => Dispatcher.Invoke(() =>
-        {
-            var mine = rows.FirstOrDefault(row => row.IsPlayer);
-            var ahead = rows.Where(row => row.PositionOffset < 0).OrderByDescending(row => row.PositionOffset).FirstOrDefault();
-            if (mine is not null) RelativePlayerText = $"{mine.PositionOffset}  •  {mine.DriverCode}";
-            if (ahead is not null) RelativeAheadText = $"{ahead.DriverCode}   {ahead.GapSeconds:+0.0;-0.0;0.0}s";
-            var p2p = mine?.P2PActive;
-            var count = mine?.P2PUsesRemaining is int uses ? $" · {uses} RESTANTES" : string.Empty;
-            P2PText = p2p is null
-                ? "NOT AVAILABLE FOR THIS CAR"
-                : p2p == true
-                    ? $"ATIVO · {mine!.P2PSecondsRemaining:0}s{count}"
-                    : mine!.P2PInCooldown
-                        ? $"RECARGANDO · {mine.P2PSecondsRemaining:0}s{count}"
-                        : $"AVAILABLE{count}";
-            RelativeDrivers.Clear();
-            var widget = Widgets.First(w => w.Kind == WidgetKind.Relative);
-            foreach (var row in SelectRelativeRows(rows, widget))
-            {
-                var driver = new DriverRow
-                {
-                    Position = (row.ClassPosition > 0 ? row.ClassPosition : row.PositionOffset).ToString(CultureInfo.InvariantCulture), PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)),
-                    Flag = row.FlagEmoji, FlagImage = FlagAsset(row.FlagEmoji),
-                    RawDriverName=row.DriverCode, Driver = FormatWidgetDriver(row.DriverCode, widget.DriverNameStyle),
-                    License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
-                    IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = "", IRatingGain = true,
-                    Gap = row.GapSeconds is double gap ? $"{gap:+0.0;-0.0;0.0}" : "--",
-                    P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
-                    P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown),
-                    Manufacturer = row.ManufacturerBadge,
-                    BrandImage = BrandAsset(row.ManufacturerBadge),
-                    IsPlayer = row.IsPlayer,
-                    GapToLeader = row.GapSeconds is double relativeGap ? $"{relativeGap:+0.000;-0.000;0.000}" : "--",
-                    Interval = row.GapSeconds is double intervalGap ? $"{intervalGap:+0.000;-0.000;0.000}" : "--",
-                    Tire = TireText(row.TireCompound)
-                };
-                PopulateFields(driver, widget);
-                RelativeDrivers.Add(driver);
-            }
-        });
-        _telemetry.SessionStatusUpdated += status => Dispatcher.Invoke(() =>
-        {
-            _currentSessionLap = status.CurrentLap;
-            _sessionTotalLaps = status.TotalLaps;
-            var lap = status.CurrentLap is int current ? status.TotalLaps is int total ? $"LAP {current}/{total}" : $"LAP {current}" : "";
-            var sof = status.StrengthOfField is double value ? $"SOF {value:0}" : "";
-            SessionHeaderText = string.Join("  ·  ", new[] { status.CarClassShortName, status.SessionTypeText, lap, sof, status.DriverCount > 0 ? $"{status.DriverCount} DRIVERS" : "" }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            SetHeaderValue("Class", status.CarClassShortName); SetHeaderValue("Session", status.SessionTypeText); SetHeaderValue("Lap", lap);
-            SetHeaderValue("Sof", sof); SetHeaderValue("Drivers", status.DriverCount > 0 ? $"{status.DriverCount} DRIVERS" : "--"); SetHeaderValue("Clock", DateTime.Now.ToString("HH:mm"));
-        });
-        _telemetry.FuelUpdated += fuel => Dispatcher.Invoke(() =>
-        {
-            FuelLevelText = $"{fuel.FuelLevelLiters:0.0} L";
-            FuelAverageText = fuel.AverageFuelPerLapLiters is double avg ? $"{avg:0.00} L/LAP" : "CALIBRATING";
-            FuelRefuelText = fuel.RefuelToFullLiters is double refill ? $"+{refill:0.0} L" : "--";
-            FuelLapsText = fuel.LapsRemaining is double laps ? $"{laps:0.0} laps" : "no estimate";
-            FuelPitByLapText = fuel.LapsRemaining is double remaining && _currentSessionLap is int currentLap
-                ? $"PIT BY LAP {Math.Max(currentLap, currentLap + (int)Math.Floor(remaining))}"
-                : "PIT WINDOW --";
-            FuelPitAddText = fuel.RefuelToFullLiters is double pitFuel ? $"+{pitFuel:0.0} L" : "--";
-            FuelPitStopsText = fuel.LapsRemaining is double tankLaps && _currentSessionLap is int lap && _sessionTotalLaps is int total && tankLaps > 0
-                ? $"{Math.Max(0, (int)Math.Ceiling(Math.Max(0, total - lap) / tankLaps) - 1)} STOPS"
-                : "-- STOPS";
-            if (fuel.AverageFuelPerLapLiters is double measured)
-            {
-                FuelLastText = measured.ToString("0.00", CultureInfo.InvariantCulture);
-                FuelFiveText = measured.ToString("0.00", CultureInfo.InvariantCulture);
-                FuelMaxText = measured.ToString("0.00", CultureInfo.InvariantCulture);
-            }
-        });
-        _telemetry.WeatherUpdated += weather => Dispatcher.Invoke(() =>
-        {
-            WeatherClimateText = weather.WeatherDeclaredWet ? "Chuvoso" : "Limpo";
-            WeatherTemperatureText = $"{weather.TrackTempC:0}°C";
-            WeatherRainText = $"{weather.PrecipitationPct:0}%";
-            WeatherGripText = weather.TrackRubberState ?? TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet);
-        });
-        _telemetry.PlayerCarStatusUpdated += status => Dispatcher.Invoke(() =>
-        {
-            BrakeBiasText = status.BrakeBiasPct is double bias ? $"BRAKE BIAS {bias:0.0}%" : "BRAKE BIAS --";
-            TrackTempText = status.TrackTempC is double temp ? $"TRACK {temp:0}°C" : "TRACK --";
-            SetHeaderValue("BrakeBias", BrakeBiasText); SetHeaderValue("TrackTemp", TrackTempText);
-        });
-        _telemetry.RadarUpdated += radar => Dispatcher.Invoke(() =>
-        {
-            RadarSideText = radar.BlindSpotLeft && radar.BlindSpotRight ? "DOS DOIS LADOS" : radar.BlindSpotLeft ? "ESQUERDA" : radar.BlindSpotRight ? "DIREITA" : "LIVRE";
-            var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
-            RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
-            var range = Widgets.First(w => w.Kind == WidgetKind.Radar).RadarRange;
-            RadarDots.Clear();
-            foreach (var blip in radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= range).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8))
-            {
-                // Forward is up. CarIdxLapDistPct gives the signed distance; iRacing only gives
-                // an actual side for immediate overlap, so far cars remain in the centre lane.
-                var top = Math.Clamp(74 - (blip.DistanceMeters / range * 60), 7, 127);
-                var left = 67d;
-                if (Math.Abs(blip.DistanceMeters) < 10)
-                    left = radar.BlindSpotLeft && !radar.BlindSpotRight ? 19 : radar.BlindSpotRight && !radar.BlindSpotLeft ? 115 : 67;
-                RadarDots.Add(new RadarDot
-                {
-                    Left = left,
-                    Top = top,
-                    Label = blip.DriverCode,
-                    Fill = blip.DistanceMeters >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 184, 74)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(182, 73, 255))
+                    IsClassHeader = true, ClassName = row.ClassShortName,
+                    ClassHeaderText = row.ClassShortName, PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)),
+                    ClassHeaderPositionWidth = widget.PositionColumnWidth, ClassHeaderFields = widget.HeaderFields
                 });
             }
-        });
-        _telemetry.RaceStartUpdated += start => Dispatcher.Invoke(() =>
+            var driver = new DriverRow
+            {
+                Position = (row.ClassPosition > 0 ? row.ClassPosition : row.Position).ToString(CultureInfo.InvariantCulture), PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)), Flag = row.FlagEmoji, RawDriverName=row.DriverCode, Driver = FormatWidgetDriver(row.DriverCode, widget.DriverNameStyle),
+                License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
+                IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k {row.EstimatedDeltaIRating:+0;-0;0}" : "--",
+                IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = row.EstimatedDeltaIRating is double delta ? $"{Math.Abs(delta):0}" : "", IRatingGain = (row.EstimatedDeltaIRating ?? 0) >= 0, IRatingDeltaBrush = IRatingDeltaBrush(row.EstimatedDeltaIRating), IRatingArrow = IRatingArrow(row.EstimatedDeltaIRating),
+                Gap = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double gap ? $"+{gap:0.000}" : "--",
+                Manufacturer = row.ManufacturerBadge,
+                FlagImage = FlagAsset(row.FlagEmoji), BrandImage = BrandAsset(row.ManufacturerBadge),
+                P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
+                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown), IsPlayer = row.IsPlayer,
+                Pit = row.PitStatus, PitBrush = PitBrush(row.PitStatus),
+                GapToLeader = row.Position == 1 ? "LEADER" : row.GapToLeaderSeconds is double leaderGap ? $"+{leaderGap:0.000}" : "--",
+                Interval = row.IntervalSeconds is double interval ? $"+{interval:0.000}" : "--",
+                LastLap = FormatLap(row.LastLapTime), LapDelta = FormatSigned(row.LapDeltaVsPlayerSeconds),
+                Tire = TireText(row.TireCompound), ClassName = row.ClassShortName, IsPlayerClass = row.IsPlayer || rows.FirstOrDefault(candidate => candidate.IsPlayer)?.ClassShortName == row.ClassShortName
+            };
+            PopulateFields(driver, widget);
+            built.Add(driver);
+        }
+        ApplyRows(PreviewDrivers, built);
+    }
+
+    private void ApplyFullRelative(List<RelativeRow> rows)
+    {
+        var mine = rows.FirstOrDefault(row => row.IsPlayer);
+        var ahead = rows.Where(row => row.PositionOffset < 0).OrderByDescending(row => row.PositionOffset).FirstOrDefault();
+        if (mine is not null) RelativePlayerText = $"{mine.PositionOffset}  •  {mine.DriverCode}";
+        if (ahead is not null) RelativeAheadText = $"{ahead.DriverCode}   {ahead.GapSeconds:+0.0;-0.0;0.0}s";
+        P2PText = FormatP2PSummary(mine);
+        var widget = Widgets.First(w => w.Kind == WidgetKind.Relative);
+        var built = new List<DriverRow>();
+        foreach (var row in SelectRelativeRows(rows, widget))
         {
-            ClutchPct = start.ClutchPct; ThrottlePct = start.ThrottlePct;
-            ClutchText = $"{start.ClutchPct:0}%"; ThrottleText = $"{start.ThrottlePct:0}%";
-        });
+            var driver = new DriverRow
+            {
+                Position = (row.ClassPosition > 0 ? row.ClassPosition : row.PositionOffset).ToString(CultureInfo.InvariantCulture), PositionBackground = ClassPositionBrush(ClassRank(row.ClassShortName)),
+                Flag = row.FlagEmoji, FlagImage = FlagAsset(row.FlagEmoji),
+                RawDriverName=row.DriverCode, Driver = FormatWidgetDriver(row.DriverCode, widget.DriverNameStyle),
+                License = row.LicString, LicenseBrush = LicenseBrush(row.LicString),
+                IRating = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingValue = row.IRating > 0 ? $"{row.IRating / 1000.0:0.0}k" : "--", IRatingDelta = "", IRatingGain = true,
+                Gap = row.GapSeconds is double gap ? $"{gap:+0.0;-0.0;0.0}" : "--",
+                P2P = FormatP2P(row.P2PActive, row.P2PUsesRemaining, row.P2PSecondsRemaining, row.P2PInCooldown),
+                P2PState = P2PState(row.P2PActive, row.P2PInCooldown), P2PBrush = P2PBrush(row.P2PActive, row.P2PInCooldown), P2PIcon = P2PIcon(row.P2PActive, row.P2PInCooldown), P2PLevel = P2PLevel(row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown),
+                Manufacturer = row.ManufacturerBadge,
+                BrandImage = BrandAsset(row.ManufacturerBadge),
+                IsPlayer = row.IsPlayer,
+                GapToLeader = row.GapSeconds is double relativeGap ? $"{relativeGap:+0.000;-0.000;0.000}" : "--",
+                Interval = row.GapSeconds is double intervalGap ? $"{intervalGap:+0.000;-0.000;0.000}" : "--",
+                Tire = TireText(row.TireCompound)
+            };
+            PopulateFields(driver, widget);
+            built.Add(driver);
+        }
+        ApplyRows(RelativeDrivers, built);
+    }
+
+    private void ApplySessionStatus(SessionStatus status)
+    {
+        _currentSessionLap = status.CurrentLap;
+        _sessionTotalLaps = status.TotalLaps;
+        var lap = status.CurrentLap is int current ? status.TotalLaps is int total ? $"LAP {current}/{total}" : $"LAP {current}" : "";
+        var sof = status.StrengthOfField is double value ? $"SOF {value:0}" : "";
+        SessionHeaderText = string.Join("  ·  ", new[] { status.CarClassShortName, status.SessionTypeText, lap, sof, status.DriverCount > 0 ? $"{status.DriverCount} DRIVERS" : "" }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        SetHeaderValue("Class", status.CarClassShortName); SetHeaderValue("Session", status.SessionTypeText); SetHeaderValue("Lap", lap);
+        SetHeaderValue("Sof", sof); SetHeaderValue("Drivers", status.DriverCount > 0 ? $"{status.DriverCount} DRIVERS" : "--"); SetHeaderValue("Clock", DateTime.Now.ToString("HH:mm"));
+    }
+
+    private void ApplyFuel(FuelStatus fuel)
+    {
+        FuelLevelText = $"{fuel.FuelLevelLiters:0.0} L";
+        FuelAverageText = fuel.AverageFuelPerLapLiters is double avg ? $"{avg:0.00} L/LAP" : "CALIBRATING";
+        FuelRefuelText = fuel.RefuelToFullLiters is double refill ? $"+{refill:0.0} L" : "--";
+        FuelLapsText = fuel.LapsRemaining is double laps ? $"{laps:0.0} laps" : "no estimate";
+        FuelPitByLapText = fuel.LapsRemaining is double remaining && _currentSessionLap is int currentLap
+            ? $"PIT BY LAP {Math.Max(currentLap, currentLap + (int)Math.Floor(remaining))}"
+            : "PIT WINDOW --";
+        FuelPitAddText = fuel.RefuelToFullLiters is double pitFuel ? $"+{pitFuel:0.0} L" : "--";
+        FuelPitStopsText = fuel.LapsRemaining is double tankLaps && _currentSessionLap is int lap && _sessionTotalLaps is int total && tankLaps > 0
+            ? $"{Math.Max(0, (int)Math.Ceiling(Math.Max(0, total - lap) / tankLaps) - 1)} STOPS"
+            : "-- STOPS";
+        if (fuel.AverageFuelPerLapLiters is double measured)
+        {
+            FuelLastText = measured.ToString("0.00", CultureInfo.InvariantCulture);
+            FuelFiveText = measured.ToString("0.00", CultureInfo.InvariantCulture);
+            FuelMaxText = measured.ToString("0.00", CultureInfo.InvariantCulture);
+        }
+    }
+
+    private void ApplyWeather(WeatherStatus weather)
+    {
+        WeatherClimateText = weather.WeatherDeclaredWet ? "Chuvoso" : "Limpo";
+        WeatherTemperatureText = $"{weather.TrackTempC:0}°C";
+        WeatherRainText = $"{weather.PrecipitationPct:0}%";
+        WeatherGripText = weather.TrackRubberState ?? TrackCondition(weather.TrackWetness, weather.WeatherDeclaredWet);
+    }
+
+    private void ApplyPlayerCarStatus(PlayerCarStatus status)
+    {
+        BrakeBiasText = status.BrakeBiasPct is double bias ? $"BRAKE BIAS {bias:0.0}%" : "BRAKE BIAS --";
+        TrackTempText = status.TrackTempC is double temp ? $"TRACK {temp:0}°C" : "TRACK --";
+        SetHeaderValue("BrakeBias", BrakeBiasText); SetHeaderValue("TrackTemp", TrackTempText);
+    }
+
+    private void ApplyRadar(RadarStatus radar)
+    {
+        RadarSideText = radar.BlindSpotLeft && radar.BlindSpotRight ? "DOS DOIS LADOS" : radar.BlindSpotLeft ? "ESQUERDA" : radar.BlindSpotRight ? "DIREITA" : "LIVRE";
+        var nearest = radar.Blips.OrderBy(blip => Math.Abs(blip.DistanceMeters)).FirstOrDefault();
+        RadarDistanceText = nearest is null ? "" : $"{nearest.DistanceMeters:+0;-0;0} m";
+        var range = _radarWidget.RadarRange;
+        var nearby = radar.Blips.Where(b => Math.Abs(b.DistanceMeters) <= range).OrderBy(b => Math.Abs(b.DistanceMeters)).Take(8).ToList();
+        // The radar only earns its screen space while there's actually a car close enough to
+        // matter (or something in the immediate blind spot) -- otherwise it disappears entirely.
+        _radarWidget.DynamicGateOpen = nearby.Count > 0 || radar.BlindSpotLeft || radar.BlindSpotRight;
+        var built = new List<RadarDot>();
+        foreach (var blip in nearby)
+        {
+            // Forward is up. CarIdxLapDistPct gives the signed distance; iRacing only gives
+            // an actual side for immediate overlap, so far cars remain in the centre lane.
+            var top = Math.Clamp(74 - (blip.DistanceMeters / range * 60), 7, 127);
+            var left = 67d;
+            if (Math.Abs(blip.DistanceMeters) < 10)
+                left = radar.BlindSpotLeft && !radar.BlindSpotRight ? 19 : radar.BlindSpotRight && !radar.BlindSpotLeft ? 115 : 67;
+            built.Add(new RadarDot
+            {
+                Left = left,
+                Top = top,
+                Label = blip.DriverCode,
+                // The SDK only gives an exact number for the longitudinal axis -- show it
+                // directly on the dot instead of leaving the driver to guess from a color alone.
+                DistanceLabel = $"{blip.DistanceMeters:+0;-0;0}m",
+                Fill = blip.DistanceMeters >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 184, 74)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(182, 73, 255))
+            });
+        }
+        ApplyRows(RadarDots, built);
+    }
+
+    private void ApplyRaceStart(RaceStartStatus start)
+    {
+        ClutchPct = start.ClutchPct; ThrottlePct = start.ThrottlePct;
+        ClutchText = $"{start.ClutchPct:0}%"; ThrottleText = $"{start.ThrottlePct:0}%";
+        // Only relevant while actually staged for a standing start -- hidden the rest of the race.
+        _startHelperWidget.DynamicGateOpen = start.ShouldShow;
     }
 
     private void SetEditing(bool editing)
@@ -362,11 +437,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return file is null ? null : $"pack://application:,,,/IracingLiveCoach.App;component/Assets/Brands/Generated/{file}.png";
     }
 
+    // 16/09/2026 UX fix: the countdown text must never go blank and must never show a number
+    // disconnected from the real SF23 Overtake System constants -- previously this returned an
+    // empty string during cooldown (making the number "disappear") and a hardcoded "200s" while
+    // ready that matched neither OtsActiveSeconds nor OtsCooldownSeconds. Now every state always
+    // shows a real number: counting down while active/cooling down, or the full available window
+    // while ready -- only the color (see P2PBrush) should be what changes at a glance.
     private static string FormatP2P(bool? active, int? uses, double? seconds, bool cooldown)
     {
         if (active is null) return "--";
-        if (cooldown) return string.Empty;
-        return active == true && seconds is double remaining ? $"{Math.Ceiling(remaining):0}s" : "200s";
+        if (active == true && seconds is double remaining) return $"{Math.Ceiling(remaining):0}s";
+        if (cooldown && seconds is double recharge) return $"{Math.Ceiling(recharge):0}s";
+        return $"{TelemetryReader.OtsActiveSeconds:0}s";
+    }
+
+    private static string FormatP2PSummary(RelativeRow? mine)
+    {
+        if (mine is null || mine.P2PActive is null) return "NOT AVAILABLE FOR THIS CAR";
+        var count = mine.P2PUsesRemaining is int uses ? $" · {uses} RESTANTES" : string.Empty;
+        if (mine.P2PActive == true) return $"USANDO · {mine.P2PSecondsRemaining:0}s{count}";
+        if (mine.P2PInCooldown) return $"RECARREGANDO · {mine.P2PSecondsRemaining:0}s{count}";
+        return $"DISPONÍVEL · {TelemetryReader.OtsActiveSeconds:0}s{count}";
     }
     private static string FormatLap(double? seconds) => seconds is double value && value > 0 ? TimeSpan.FromSeconds(value).ToString(@"m\:ss\.fff") : "--";
     private static string FormatWidgetDriver(string value, string style)
@@ -406,10 +497,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var isPlayerClass = string.Equals(group.Key, playerClass, StringComparison.OrdinalIgnoreCase);
             return !isPlayerClass && !widget.ShowMulticlass ? Enumerable.Empty<DriverRow>() : group.Take(isPlayerClass ? widget.PlayerClassRows : widget.OtherClassRows);
         }).ToList();
-        PreviewDrivers.Clear();
+        var built = new List<DriverRow>();
         foreach (var group in selected.GroupBy(row => row.ClassName).OrderBy(group => ClassRank(group.Key)))
         {
-            PreviewDrivers.Add(new DriverRow
+            built.Add(new DriverRow
             {
                 IsClassHeader = true, ClassName = group.Key, PositionBackground = ClassPositionBrush(ClassRank(group.Key)),
                 ClassHeaderText = group.Key, ClassHeaderPositionWidth = widget.PositionColumnWidth,
@@ -418,9 +509,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             foreach (var driver in group)
             {
                 PopulateFields(driver, widget);
-                PreviewDrivers.Add(driver);
+                built.Add(driver);
             }
         }
+        ApplyRows(PreviewDrivers, built);
         RefreshDriverNames(widget);
         RebuildRelativePreview();
         RebuildTimingLayout(widget);
@@ -436,13 +528,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var mine = string.Equals(group.Key, playerClass, StringComparison.OrdinalIgnoreCase);
             return !mine && !widget.ShowMulticlass ? Enumerable.Empty<DriverRow>() : group.Take(mine ? widget.PlayerClassRows : widget.OtherClassRows);
         }).ToList();
-        RelativeDrivers.Clear();
+        var built = new List<DriverRow>();
         foreach (var source in selected)
         {
             var row = ClonePreviewRow(source);
             PopulateFields(row, widget);
-            RelativeDrivers.Add(row);
+            built.Add(row);
         }
+        ApplyRows(RelativeDrivers, built);
         RefreshDriverNames(widget);
         RebuildTimingLayout(widget);
     }
@@ -553,9 +646,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
     private static string P2PDisplay(DriverRow row)
     {
-        if (row.P2PState == "Charging") return string.Empty;
         if (row.P2PState == "Unavailable") return "--";
-        if (row.P2PState == "Ready") return "200s";
         var digits = new string(row.P2P.Where(char.IsDigit).ToArray());
         return string.IsNullOrWhiteSpace(digits) ? "--" : $"{digits}s";
     }
@@ -610,8 +701,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static double P2PLevel(bool? active, double? seconds, bool cooldown)
     {
         if (active is null) return 0;
-        if (cooldown) return seconds is double recharge ? Math.Clamp((200d - recharge) / 200d * 100d, 0, 100) : 25;
-        return active == true && seconds is double remaining ? Math.Clamp(remaining / 200d * 100d, 0, 100) : 100;
+        if (active == true && seconds is double remaining) return Math.Clamp(remaining / TelemetryReader.OtsActiveSeconds * 100d, 0, 100);
+        if (cooldown && seconds is double recharge) return Math.Clamp((TelemetryReader.OtsCooldownSeconds - recharge) / TelemetryReader.OtsCooldownSeconds * 100d, 0, 100);
+        return 100;
     }
     private static System.Windows.Media.Brush LicenseBrush(string license) => license.StartsWith("A", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 88, 255)) : license.StartsWith("B", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 151, 87)) : license.StartsWith("C", StringComparison.OrdinalIgnoreCase) ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 174, 0)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(170, 52, 230));
     private static System.Windows.Media.Brush IRatingDeltaBrush(double? delta) => (delta ?? 0) >= 0 ? new SolidColorBrush(System.Windows.Media.Color.FromRgb(77, 233, 95)) : new SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 82, 102));

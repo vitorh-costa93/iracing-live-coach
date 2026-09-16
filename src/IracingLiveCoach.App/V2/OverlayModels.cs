@@ -38,7 +38,11 @@ public sealed class WidgetProfile : INotifyPropertyChanged
     public double Height { get => _height; set => Set(ref _height, Math.Clamp(value, 75, 1600)); }
     public bool Enabled { get => _enabled; set => Set(ref _enabled, value); }
     public bool SessionVisible { get => _sessionVisible; set { if (_sessionVisible == value) return; _sessionVisible = value; PropertyChanged?.Invoke(this, new(nameof(SessionVisible))); PropertyChanged?.Invoke(this, new(nameof(WidgetVisible))); } }
-    public bool WidgetVisible => Enabled && SessionVisible;
+    private bool _dynamicGateOpen = true;
+    // Radar/StartHelper only render themselves while there is something relevant to show (a
+    // nearby car, or the grid before a standing start) -- every other widget ignores this gate.
+    public bool DynamicGateOpen { get => _dynamicGateOpen; set { if (_dynamicGateOpen == value) return; _dynamicGateOpen = value; PropertyChanged?.Invoke(this, new(nameof(DynamicGateOpen))); PropertyChanged?.Invoke(this, new(nameof(WidgetVisible))); } }
+    public bool WidgetVisible => Enabled && SessionVisible && (DynamicGateOpen || (Kind != WidgetKind.Radar && Kind != WidgetKind.StartHelper));
     public bool ShowHeader { get => _showHeader; set { if (_showHeader == value) return; _showHeader = value; PropertyChanged?.Invoke(this, new(nameof(ShowHeader))); PropertyChanged?.Invoke(this, new(nameof(HeaderHeight))); } }
     // Standings carries the selected session fields in each class header; Relative keeps its
     // single header because it has no per-class bands.
@@ -207,5 +211,8 @@ public sealed class RadarDot
     public double Left { get; init; }
     public double Top { get; init; }
     public string Label { get; init; } = "";
+    /// <summary>Real longitudinal distance (meters, signed) -- the SDK's only exact per-car
+    /// proximity number; shown directly on the dot instead of only a generic nearest-car text.</summary>
+    public string DistanceLabel { get; init; } = "";
     public Brush Fill { get; init; } = System.Windows.Media.Brushes.White;
 }

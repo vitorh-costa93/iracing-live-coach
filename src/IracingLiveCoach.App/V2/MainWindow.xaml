@@ -310,11 +310,15 @@
                       </ItemsControl.ItemContainerStyle>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                          <Border Width="14" Height="14" Background="{Binding Fill}" CornerRadius="7" BorderBrush="#FF07101D" BorderThickness="2">
-                            <ToolTip>
+                          <StackPanel HorizontalAlignment="Center">
+                            <StackPanel.ToolTip>
                               <TextBlock Text="{Binding Label}" />
-                            </ToolTip>
-                          </Border>
+                            </StackPanel.ToolTip>
+                            <Border Width="14" Height="14" Background="{Binding Fill}" CornerRadius="7" BorderBrush="#FF07101D" BorderThickness="2" HorizontalAlignment="Center" />
+                            <Border Background="#D60B101D" CornerRadius="2" Padding="2,0" Margin="0,1,0,0" HorizontalAlignment="Center">
+                              <TextBlock Text="{Binding DistanceLabel}" FontSize="8" FontWeight="Bold" Foreground="#FFE7EDF5" />
+                            </Border>
+                          </StackPanel>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>

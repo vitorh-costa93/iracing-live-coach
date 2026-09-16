@@ -104,7 +104,10 @@ public class TelemetryReader : IDisposable
     // just the immediate follower, without turning into a full running order.
     private const int RelativeCarsBehind = 3;
 
-    private readonly IRacingSdk _sdk = new();
+    // UpdateInterval=1 makes IRSDKSharper fire OnTelemetryData on every sim tick (60Hz for most
+    // cars) instead of silently skipping frames -- the app's own tick counters below are what
+    // decide how often each widget actually reacts, not this.
+    private readonly IRacingSdk _sdk = new() { UpdateInterval = 1 };
     private LiveCoachEngine? _engine;
     private bool _sessionDetected;
     private int _playerCarIdx = -1;
@@ -129,16 +132,17 @@ public class TelemetryReader : IDisposable
     // skips far-field blips (not fabricate a wrong distance) until a real length is known.
     private double? _trackLengthMeters;
 
-    private const int RadarTickInterval = 6;
+    private const int RadarTickInterval = 2;
     private int _radarTickCounter;
     private const double RadarMaxRangeMeters = 100.0;
 
-    // Reading every SDK channel is inexpensive; rebuilding WPF item collections is not.  The
-    // simulator can publish at 60 Hz while a wet/new circuit is already CPU-bound, so the live
-    // widgets deliberately run on two small budgets: 10 Hz for proximity information and 2 Hz
-    // for the full-field cards.  The driving-coach engine below remains on every SDK tick.
-    private const int ProximityTickInterval = 6;
-    private const int FullFieldTickInterval = 30;
+    // 16/09/2026: previously 10 Hz / 2 Hz -- with the WPF side now updating rows in place instead
+    // of rebuilding the whole collection every tick (see MainWindow's ApplyRows), that render cost
+    // dropped enough to read proximity/full-field data far closer to the sim's own 60 Hz, which is
+    // what "instant" overtake reporting on a chaotic opening lap actually requires. The
+    // driving-coach engine below remains on every SDK tick regardless.
+    private const int ProximityTickInterval = 1;
+    private const int FullFieldTickInterval = 3;
     private int _proximityTickCounter;
     private int _fullFieldTickCounter;
 
@@ -151,8 +155,11 @@ public class TelemetryReader : IDisposable
     // app hasn't researched, or if iRacing rebalances SF23's own system in a future season -- the
     // underlying CarIdxP2P_Status/CarIdxP2P_Count are always real regardless of whether the
     // countdown numbers happen to be exactly right for the car actually being driven.
-    private const double OtsActiveSeconds = 20.0;
-    private const double OtsCooldownSeconds = 100.0;
+    // Public so MainWindow's own P2P display formatting (countdown text, level bar) is derived
+    // from the SAME real constants this class uses to compute the countdown, instead of a
+    // separately hardcoded number that can silently drift out of sync (see the 16/09/2026 P2P UX fix).
+    public const double OtsActiveSeconds = 20.0;
+    public const double OtsCooldownSeconds = 100.0;
 
     // Keyed by CarIdx so each car's own activation/cooldown phase is timed independently.
     // _p2pPhaseEndUtcByCarIdx holds the UTC instant the CURRENT phase (active or cooldown) ends.
