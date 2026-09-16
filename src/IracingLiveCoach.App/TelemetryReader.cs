@@ -443,14 +443,12 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // 16/09/2026: the driver confirmed CarIdxP2P_Count reads correctly for their OWN car (a real
-    // 0-200s bank) but comes back as clearly-bogus large numbers for opponents -- a known iRacing
-    // SDK reliability gap (opponent P2P/OTS state isn't always fully simulated/published the way
-    // the local player's own is). Rather than display a nonsensical number, anything outside the
-    // SF23's own real range is treated as "unknown" for that car (shown as "--"). This does not
-    // make opponent P2P fully accurate -- that's a sim-side limitation this app cannot fix -- it
-    // only stops it from showing an obviously wrong value.
-    private static int? SanitizeP2PSeconds(int raw) => raw is >= 0 and <= 200 ? raw : null;
+    // CarIdxP2P_Count and CarIdxP2P_Status are arrays indexed by CarIdx, not player-only values.
+    // Kapps subscribes to this same pair for its Relative widget.  Do not apply the SF23's 200 s
+    // bank as a universal validity rule: other supported cars/sessions can publish a different
+    // valid count.  The SDK's signed maximum integer is its conventional uninitialised sentinel;
+    // that is the only value we suppress.
+    private static int? ReadP2PCount(int raw) => raw >= 0 && raw != int.MaxValue ? raw : null;
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
 
@@ -566,7 +564,7 @@ public class TelemetryReader : IDisposable
                     p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
                     // CarIdxP2P_Count IS the real remaining-seconds bank for cars with an Overtake
                     // System (confirmed by the driver for the SF23) -- not a discrete use counter.
-                    p2pSeconds = SanitizeP2PSeconds(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
+                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
                 }
                 catch { /* no P2P/OTS this session */ }
 
@@ -630,7 +628,7 @@ public class TelemetryReader : IDisposable
                 try
                 {
                     p2p = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2pSeconds = SanitizeP2PSeconds(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
+                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
                 }
                 catch { /* no P2P/OTS for this class */ }
 
@@ -691,7 +689,7 @@ public class TelemetryReader : IDisposable
                 try
                 {
                     p2pActive = _sdk.Data.GetBool("CarIdxP2P_Status", idx);
-                    p2pSeconds = SanitizeP2PSeconds(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
+                    p2pSeconds = ReadP2PCount(_sdk.Data.GetInt("CarIdxP2P_Count", idx));
                 }
                 catch { /* P2P/OTS is absent for this car/session. */ }
 
