@@ -51,19 +51,18 @@ public static unsafe class Program
 
     private static bool _clickThrough = true;
     private static bool _editMode;
-    private static nint _hwnd;
+    private static readonly List<nint> OverlayWindows = [];
     private static bool _simulating;
 
     private const string StandingsKey = "standings";
     private const string RelativeKey = "relative";
     private static readonly WidgetPlacementStore PlacementStore = new();
 
-    // Drag state -- set on WM_LBUTTONDOWN, cleared on WM_LBUTTONUP. Single-window prototype: both
-    // widgets share this one HWND for now (true independent per-widget top-level windows, one per
-    // spec §4, is still open -- see the plan's Phase 3 tracking).
-    private static string? _draggingWidget;
+    // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
+    // so movement never carries unrelated overlay content or transparent padding with it.
+    private static nint _draggingWindow;
     private static (int X, int Y) _dragStartMouse;
-    private static WidgetPlacement? _dragStartPlacement;
+    private static (int X, int Y) _dragStartWindow;
 
     /// <summary>Spec §12's "preview com dados fictícios claramente identificado como simulação" --
     /// enough synthetic rows to exercise every column this widget draws (leader with no gap,
@@ -99,10 +98,10 @@ public static unsafe class Program
         Console.WriteLine("V3 Phase 3: SPACE=click-through, E=edit mode (drag widgets), T=simulation, ESC=exit.");
         LoadPrivateFonts();
 
-        // Initial placements -- stacked vertically, matching the prototype's single-window layout.
-        // True independent per-widget windows/monitors (spec §4) are still open work.
-        PlacementStore.Set(StandingsKey, new WidgetPlacement(0, 8, 8, PlacementAnchor.TopLeft, 480, 200, 1f, false, 0));
-        PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 8, 220, PlacementAnchor.TopLeft, 480, 170, 1f, false, 1));
+        // Each widget owns its own top-level GPU surface. The dimensions are content-oriented
+        // starting values; Phase 5 will drive the same values through the Control Center.
+        PlacementStore.Set(StandingsKey, new WidgetPlacement(0, 200, 200, PlacementAnchor.TopLeft, 820, 260, 1f, false, 0));
+        PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 200, 470, PlacementAnchor.TopLeft, 760, 200, 1f, false, 1));
 
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;
@@ -121,26 +120,24 @@ public static unsafe class Program
         if (atom == 0)
             throw new InvalidOperationException($"RegisterClassExW failed: {Marshal.GetLastWin32Error()}");
 
-        int width = 600, height = 420;
-        _hwnd = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT,
-            wc.lpszClassName,
-            "V3 Overlay",
-            WS_POPUP | WS_VISIBLE,
-            200, 200, width, height,
-            0, 0, hInstance, 0);
-        if (_hwnd == 0)
-            throw new InvalidOperationException($"CreateWindowExW failed: {Marshal.GetLastWin32Error()}");
+        var standingsPlacement = PlacementStore.Get(StandingsKey)!;
+        var relativePlacement = PlacementStore.Get(RelativeKey)!;
+        nint standingsHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Standings", standingsPlacement);
+        nint relativeHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Relative", relativePlacement);
+        OverlayWindows.Add(standingsHwnd);
+        OverlayWindows.Add(relativeHwnd);
 
-        ShowWindow(_hwnd, SW_SHOW);
+        using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
+        using var relativeResources = DeviceResources.Create(relativeHwnd, (int)relativePlacement.WidthDip, (int)relativePlacement.HeightDip);
+        standingsResources.SetClickThrough(standingsHwnd, _clickThrough);
+        relativeResources.SetClickThrough(relativeHwnd, _clickThrough);
 
-        using var resources = DeviceResources.Create(_hwnd, width, height);
-        resources.SetClickThrough(_hwnd, _clickThrough);
-
-        using var flags = new FlagBitmapCache(resources.Context);
-        using var standings = new StandingsWidget(resources.Context, resources.DWriteFactory, flags);
-        using var relative = new RelativeWidget(resources.Context, resources.DWriteFactory, flags);
-        resources.DeviceRecovered += () => flags.Recreate(resources.Context);
+        using var standingsFlags = new FlagBitmapCache(standingsResources.Context);
+        using var relativeFlags = new FlagBitmapCache(relativeResources.Context);
+        using var standings = new StandingsWidget(standingsResources.Context, standingsResources.DWriteFactory, standingsFlags);
+        using var relative = new RelativeWidget(relativeResources.Context, relativeResources.DWriteFactory, relativeFlags);
+        standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
+        relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
@@ -178,14 +175,18 @@ public static unsafe class Program
                 relative.SetSimulatedRows(null);
             }
 
-            resources.BeginFrame();
-            var standingsRect = PlacementStore.Get(StandingsKey)!.ToRect();
-            var relativeRect = PlacementStore.Get(RelativeKey)!.ToRect();
-            standings.Draw(resources.Context, standingsRect.Left, standingsRect.Top);
-            relative.Draw(resources.Context, relativeRect.Left, relativeRect.Top);
+            standingsResources.BeginFrame();
+            standings.Draw(standingsResources.Context, 0, 0);
             if (_editMode)
-                DrawEditModeOutlines(resources.Context, standingsRect, relativeRect);
-            if (!resources.EndFrame())
+                DrawEditModeOutlines(standingsResources.Context, (0, 0, standingsPlacement.WidthDip, standingsPlacement.HeightDip));
+            if (!standingsResources.EndFrame())
+                Console.WriteLine("Device lost detected -- recovered without restart.");
+
+            relativeResources.BeginFrame();
+            relative.Draw(relativeResources.Context, 0, 0);
+            if (_editMode)
+                DrawEditModeOutlines(relativeResources.Context, (0, 0, relativePlacement.WidthDip, relativePlacement.HeightDip));
+            if (!relativeResources.EndFrame())
                 Console.WriteLine("Device lost detected -- recovered without restart.");
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush
@@ -239,7 +240,8 @@ public static unsafe class Program
         // Edit mode needs real mouse input to reach the window, so click-through is forced off
         // while editing and restored to its prior state on exit (spec §4's "modo corrida com
         // click-through... atalho para entrar/sair do modo edição").
-        DeviceResources.ApplyClickThrough(_hwnd, enabled ? false : _clickThrough);
+        foreach (var hwnd in OverlayWindows)
+            DeviceResources.ApplyClickThrough(hwnd, enabled ? false : _clickThrough);
     }
 
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
@@ -249,13 +251,14 @@ public static unsafe class Program
             case WM_KEYDOWN:
                 if ((int)wParam == VK_ESCAPE)
                 {
-                    DestroyWindow(hwnd);
+                    foreach (var overlay in OverlayWindows.ToArray()) DestroyWindow(overlay);
                     PostQuitMessage(0);
                 }
                 else if ((int)wParam == VK_SPACE)
                 {
                     _clickThrough = !_clickThrough;
-                    if (!_editMode) DeviceResources.ApplyClickThrough(hwnd, _clickThrough);
+                    if (!_editMode)
+                        foreach (var overlay in OverlayWindows) DeviceResources.ApplyClickThrough(overlay, _clickThrough);
                     Console.WriteLine($"Click-through: {_clickThrough}");
                 }
                 else if ((int)wParam == VK_T)
@@ -274,35 +277,45 @@ public static unsafe class Program
                 {
                     int mx = unchecked((short)(lParam & 0xFFFF));
                     int my = unchecked((short)((lParam >> 16) & 0xFFFF));
-                    var hit = EditModeHitTester.HitTest(PlacementStore.All, mx, my);
-                    if (hit is not null)
-                    {
-                        _draggingWidget = hit.WidgetKey;
-                        _dragStartMouse = (mx, my);
-                        _dragStartPlacement = PlacementStore.Get(hit.WidgetKey);
-                    }
+                    GetWindowRect(hwnd, out var rect);
+                    _draggingWindow = hwnd;
+                    _dragStartMouse = (mx, my);
+                    _dragStartWindow = (rect.Left, rect.Top);
                 }
                 return 0;
             case WM_MOUSEMOVE:
-                if (_editMode && _draggingWidget is not null && _dragStartPlacement is not null)
+                if (_editMode && _draggingWindow == hwnd)
                 {
                     int mx = unchecked((short)(lParam & 0xFFFF));
                     int my = unchecked((short)((lParam >> 16) & 0xFFFF));
                     float dx = mx - _dragStartMouse.X;
                     float dy = my - _dragStartMouse.Y;
-                    var moved = EditModeHitTester.ApplyDragDelta(_dragStartPlacement, dx, dy);
-                    PlacementStore.Set(_draggingWidget, moved);
+                    SetWindowPos(hwnd, 0, _dragStartWindow.X + (int)dx, _dragStartWindow.Y + (int)dy, 0, 0,
+                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                 }
                 return 0;
             case WM_LBUTTONUP:
-                _draggingWidget = null;
-                _dragStartPlacement = null;
+                _draggingWindow = 0;
                 return 0;
             case WM_DESTROY:
-                PostQuitMessage(0);
+                OverlayWindows.Remove(hwnd);
+                if (OverlayWindows.Count == 0) PostQuitMessage(0);
                 return 0;
         }
         return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
+
+    private static nint CreateOverlayWindow(string className, nint hInstance, string title, WidgetPlacement placement)
+    {
+        nint hwnd = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT,
+            className, title, WS_POPUP | WS_VISIBLE,
+            (int)placement.X, (int)placement.Y, (int)placement.WidthDip, (int)placement.HeightDip,
+            0, 0, hInstance, 0);
+        if (hwnd == 0)
+            throw new InvalidOperationException($"CreateWindowExW failed: {Marshal.GetLastWin32Error()}");
+        ShowWindow(hwnd, SW_SHOW);
+        return hwnd;
     }
 
     private delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
@@ -336,6 +349,9 @@ public static unsafe class Program
         public int ptY;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
     [DllImport("kernel32.dll")] private static extern nint GetModuleHandleW(string? lpModuleName);
     [DllImport("user32.dll")] private static extern ushort RegisterClassExW(ref WNDCLASSEXW lpwcx);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -349,10 +365,15 @@ public static unsafe class Program
     [DllImport("user32.dll")] private static extern bool TranslateMessage(ref MSG lpMsg);
     [DllImport("user32.dll")] private static extern nint DispatchMessageW(ref MSG lpMsg);
     [DllImport("user32.dll")] private static extern nint LoadCursorW(nint hInstance, nint lpCursorName);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hWnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] internal static extern int GetWindowLongW(nint hWnd, int nIndex);
     [DllImport("user32.dll")] internal static extern int SetWindowLongW(nint hWnd, int nIndex, int dwNewLong);
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int AddFontResourceExW(string fileName, uint flags, nint reserved);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_NOOWNERZORDER = 0x0200;
 
     /// <summary>Registers the bundled, OFL-licensed Barlow Semi Condensed files privately for
     /// this process only. No system font installation or global Windows state is changed.</summary>
