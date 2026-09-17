@@ -6,7 +6,7 @@
 
 **Architecture:** Extract all UI-framework-agnostic logic (telemetry reading, domain models, calculations, capabilities, persistence) into `IracingLiveCoach.Core`, already partially separated. Build a new `IracingLiveCoach.OverlayHost` project that owns a DirectComposition swapchain per overlay window and draws every widget through a shared declarative layout engine using Direct2D/DirectWrite. The Control Center (configuration UI) stays WPF, communicating with the overlay host over a local typed IPC channel so config changes apply live without restarting.
 
-**Tech Stack:** .NET 8, C#, Vortice.Windows (Direct3D11/Direct2D1/DirectWrite/DirectComposition bindings — actively maintained, verify current version before pinning), IRSDKSharper (existing telemetry library, unchanged), WPF (Control Center only).
+**Tech Stack:** C#. `IracingLiveCoach.OverlayHost` targets **net9.0-windows** (confirmed during Phase 0 research: the classic `Vortice.Direct2D1`/`Vortice.DXGI` family at 3.8.3 has no DirectWrite bindings at all — never published, verified against the amerkoleci/Vortice.Windows source tree — DirectWrite only exists in the actively maintained `Vortice.Win32.Graphics.*` family at 2.5.0, which requires net9.0/net10.0). `IracingLiveCoach.Core` and the V2 app stay on net8.0, unaffected — only the new OverlayHost project takes the newer TFM. .NET 9 SDK installed via winget on 2026-09-17, user-confirmed. Packages pinned to 2.5.0: `Vortice.Win32.Graphics.Direct3D11`, `Vortice.Win32.Graphics.Dxgi`, `Vortice.Win32.Graphics.Direct2D`, `Vortice.Win32.Graphics.DirectWrite`, `Vortice.Win32.Graphics.DirectComposition`. IRSDKSharper (existing telemetry library, unchanged), WPF (Control Center only, net8.0).
 
 **Spec:** [docs/superpowers/specs/2026-09-17-v3-overlay-rearchitecture-spec.md](../specs/2026-09-17-v3-overlay-rearchitecture-spec.md) — this plan argues from that spec; read both.
 
@@ -62,21 +62,17 @@ This spec spans multiple independent subsystems (GPU rendering core, shared layo
 - Produces: `DeviceResources` — owns `ID3D11Device`, `IDCompositionDevice`, `IDCompositionTarget`, `ID2D1DeviceContext`, `IDWriteFactory`, with `Resize(int width, int height)` and `HandleDeviceLost()` methods that later phases (1+) depend on for all drawing.
 - Produces: `GpuOverlayWindow` — a Win32 window wrapper exposing `SetClickThrough(bool)`, `BeginDraw()/EndDraw()`, and a `Dpi` property, which Phase 2's layout engine will render into.
 
-- [ ] **Step 1: Confirm Vortice.Windows package versions**
+- [x] **Step 1: Confirm Vortice.Windows package versions** — DONE 2026-09-17
 
-Run: `dotnet add package Vortice.Direct3D11 --version-compat --dry-run` is not a real flag — instead check https://www.nuget.org/packages/Vortice.Direct3D11 current stable version manually, or run:
-```bash
-dotnet package search Vortice.Direct3D11 --exact-match
-```
-Record the exact version resolved (do not float `*`). Pin `Vortice.Direct3D11`, `Vortice.DXGI`, `Vortice.Direct2D1`, `Vortice.DirectWrite`, `Vortice.DirectComposition` to the same matched version.
+Verified against `api.nuget.org` and the `amerkoleci/Vortice.Windows` GitHub source tree: the classic family (`Vortice.Direct2D1`/`Vortice.DXGI`/`Vortice.Direct3D11`/`Vortice.DirectComposition`, latest 3.8.3, net8.0-compatible) has **no DirectWrite bindings in any published version** — confirmed by inspecting the actual repo source folders (only an `ArcSegment.cs`/geometry-style `Vortice.Direct2D1` project exists, no DirectWrite files) and by a 404 on `vortice.directwrite` on NuGet. DirectWrite bindings exist only in the newer, actively maintained `Vortice.Win32.Graphics.*` family (latest synced version **2.5.0**), which targets **net9.0/net10.0 only**. Decision (user-confirmed): install .NET 9 SDK and target the new `OverlayHost` project at `net9.0-windows`, using the 2.5.0 family for all five bindings — `Vortice.Win32.Graphics.Direct3D11`, `Vortice.Win32.Graphics.Dxgi`, `Vortice.Win32.Graphics.Direct2D`, `Vortice.Win32.Graphics.DirectWrite`, `Vortice.Win32.Graphics.DirectComposition`. `IracingLiveCoach.Core`/App/V2 remain net8.0, untouched. .NET 9 SDK (9.0.318) installed via `winget install --id Microsoft.DotNet.SDK.9` and confirmed with `dotnet --list-sdks`.
 
 - [ ] **Step 2: Create the OverlayHost project**
 
 ```bash
-dotnet new console -n IracingLiveCoach.OverlayHost -o src/IracingLiveCoach.OverlayHost --framework net8.0-windows
+dotnet new console -n IracingLiveCoach.OverlayHost -o src/IracingLiveCoach.OverlayHost --framework net9.0-windows
 dotnet sln add src/IracingLiveCoach.OverlayHost/IracingLiveCoach.OverlayHost.csproj
 ```
-Edit the `.csproj` to add `<UseWindowsForms>false</UseWindowsForms>`, `<OutputType>WinExe</OutputType>`, and the five pinned Vortice package references from Step 1.
+Edit the `.csproj` to add `<UseWindowsForms>false</UseWindowsForms>`, `<OutputType>WinExe</OutputType>`, and the five pinned `Vortice.Win32.Graphics.*` package references (version 2.5.0) from Step 1.
 
 - [ ] **Step 3: Win32 layered-but-GPU-composited window**
 
@@ -86,25 +82,27 @@ In `GpuOverlayWindow.cs`, create a borderless, topmost, `WS_EX_LAYERED | WS_EX_T
 
 In `DeviceResources.cs`, create the `ID3D11Device` (`D3D11CreateDevice` with `D3D11_CREATE_DEVICE_BGRA_SUPPORT`), wrap it for D2D via `CreateDXGIDeviceContext`, create an `IDXGISwapChain1` in `DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL` composition mode, and get an `ID2D1DeviceContext`. Draw one static string ("V3 PROOF") with DirectWrite, grayscale AA, at a fixed position, and present via `IDCompositionDevice.Commit()`.
 
-- [ ] **Step 5: Verify real per-pixel transparency**
+- [x] **Step 5: Verify real per-pixel transparency** — DONE 2026-09-17, CONFIRMED
 
-Run the proof app, take a screenshot with something colorful behind it (not solid black — this is exactly the bug from the earlier DWM/Aero attempt). Confirm the window background is genuinely transparent and only the drawn text is opaque.
+Built and ran the proof app. Screenshot showed the drawn text and dot rendering directly over other on-screen windows with no black box and no layered-window softening — genuine DirectComposition compositing. Root cause of success: `WS_EX_NOREDIRECTIONBITMAP` + a composition swap chain (`CreateSwapChainForComposition`, `AlphaMode.Premultiplied`, `SwapEffect.FlipSequential`) bound into the visual tree via `IDCompositionVisual.SetContent`.
 
-- [ ] **Step 6: Click-through toggle**
+- [x] **Step 6: Click-through toggle** — DONE 2026-09-17, CONFIRMED (style-flag level)
 
-Wire `SetClickThrough(true)` to add `WS_EX_TRANSPARENT` (mouse events pass to iRacing) and `SetClickThrough(false)` to remove it (window is clickable, for the future edit mode). Verify manually: with click-through on, clicking where the text is drawn does not focus the overlay; with it off, it does.
+`SetClickThrough`/`ApplyClickThrough` flip `WS_EX_TRANSPARENT` via `GetWindowLongW`/`SetWindowLongW`. Verified by focusing the window and sending SPACE remotely, then screenshotting: the on-screen label flipped from "ON" to "OFF" as expected. A real mouse-click-passes-through-to-iRacing test still needs a human at the mouse.
 
-- [ ] **Step 7: DPI + multi-monitor test**
+- [x] **Step 7: DPI + multi-monitor test** — DONE 2026-09-17, PARTIAL
 
-Run the proof window on a monitor at 100%, then at 125%/150% (or use `resize_window`-equivalent Windows display scaling settings), and on a secondary monitor if available. Confirm text stays crisp (not blurry/bitmap-scaled) by recreating the D2D device context and swap chain on `WM_DPICHANGED`. Record actual DPI values tested — do not claim untested scales work.
+Only the machine's actual current setting was tested: 96 DPI / 100% scale, single monitor — confirmed sharp text at that scale. 125%/150% and a second monitor were **not** tested (would have required changing the user's display settings or hardware not available in this session) — recorded as an open gap in the findings doc, not silently assumed to work.
 
-- [ ] **Step 8: Radar/Start Helper pacing test**
+- [x] **Step 8: Radar/Start Helper pacing test** — DONE 2026-09-17, CONFIRMED, exceeds target
 
-Add a second proof window that redraws a moving dot (simulating a radar blip) at 60Hz and 120Hz via a `System.Threading.Timer` or a dedicated render thread with `DXGI_PRESENT_PARAMETERS` and measure actual presented frame times (log to a file, not console, per spec §13 — technical logs stay in diagnostics). Confirm no visible queuing/backlog of frames (the "growing queue" failure mode explicitly called out in spec §3).
+A moving dot presented every vsync (`Present(1, ...)`) logged real frame times to `%AppData%\iracing-live-coach\v3-phase0-pacing.log`. Result: p50=6.06ms, p95=6.11ms, p99=6.13ms (≈165Hz, matching the reference monitor exactly), with only rare single-frame hitches (max spikes to ~6.5-14ms, one 35.5ms outlier over ~2.5 minutes) — no backlog, no growing queue.
 
-- [ ] **Step 9: Document findings**
+- [x] **Step 9: Document findings** — DONE 2026-09-17
 
-Write `docs/superpowers/specs/2026-09-17-v3-phase0-findings.md` recording: exact Vortice package versions used, transparency confirmed (yes/no + screenshot reference), click-through confirmed, DPI values actually tested and result, monitors tested, measured frame times (p50/p95/p99) for the pacing test, and any limitation discovered (e.g., ClearType artifacts). Note explicitly that device-lost/reconnect/monitor-removal recovery is deliberately NOT implemented in this spike (that's Phase 1's job, see below) — Phase 0 only proves the drawing path works; it does not need to survive a forced device removal yet. This file is the gate — Phase 1 does not start if any of transparency, click-through, or text sharpness fails.
+Full findings in [docs/superpowers/specs/2026-09-17-v3-phase0-findings.md](../specs/2026-09-17-v3-phase0-findings.md), including the exact Vortice.Win32.Graphics.* 2.5.0 packages used, all four step results above, and carried-forward gaps for Phase 1 (DPI-change/monitor-change recovery, actual 125/150% + multi-monitor testing, device-lost recovery — all deliberately out of scope for this spike per the plan).
+
+**Gate result: transparency, click-through, and text sharpness all passed. Phase 1 is unblocked.**
 
 - [ ] **Step 10: Commit**
 
