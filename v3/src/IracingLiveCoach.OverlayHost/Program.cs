@@ -58,6 +58,8 @@ public static unsafe class Program
     private const string RelativeKey = "relative";
     private const string WeatherKey = "weather";
     private const string FuelKey = "fuel";
+    private const string RadarKey = "radar";
+    private const string StartHelperKey = "start-helper";
     private static readonly WidgetPlacementStore PlacementStore = new();
 
     // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
@@ -106,6 +108,8 @@ public static unsafe class Program
         PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 200, 470, PlacementAnchor.TopLeft, 760, 200, 1f, false, 1));
         PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 980, 470, PlacementAnchor.TopLeft, 280, 116, 1f, false, 2));
         PlacementStore.Set(FuelKey, new WidgetPlacement(0, 980, 595, PlacementAnchor.TopLeft, 300, 138, 1f, false, 3));
+        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 980, 745, PlacementAnchor.TopLeft, 180, 42, 1f, false, 4));
+        PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 980, 795, PlacementAnchor.TopLeft, 280, 50, 1f, false, 5));
 
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;
@@ -128,23 +132,31 @@ public static unsafe class Program
         var relativePlacement = PlacementStore.Get(RelativeKey)!;
         var weatherPlacement = PlacementStore.Get(WeatherKey)!;
         var fuelPlacement = PlacementStore.Get(FuelKey)!;
+        var radarPlacement = PlacementStore.Get(RadarKey)!;
+        var startPlacement = PlacementStore.Get(StartHelperKey)!;
         nint standingsHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Standings", standingsPlacement);
         nint relativeHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Relative", relativePlacement);
         nint weatherHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Weather", weatherPlacement);
         nint fuelHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Fuel", fuelPlacement);
+        nint radarHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Radar", radarPlacement);
+        nint startHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Start Helper", startPlacement);
         OverlayWindows.Add(standingsHwnd);
         OverlayWindows.Add(relativeHwnd);
         OverlayWindows.Add(weatherHwnd);
         OverlayWindows.Add(fuelHwnd);
+        OverlayWindows.Add(radarHwnd); OverlayWindows.Add(startHwnd);
 
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
         using var relativeResources = DeviceResources.Create(relativeHwnd, (int)relativePlacement.WidthDip, (int)relativePlacement.HeightDip);
         using var weatherResources = DeviceResources.Create(weatherHwnd, (int)weatherPlacement.WidthDip, (int)weatherPlacement.HeightDip);
         using var fuelResources = DeviceResources.Create(fuelHwnd, (int)fuelPlacement.WidthDip, (int)fuelPlacement.HeightDip);
+        using var radarResources = DeviceResources.Create(radarHwnd, (int)radarPlacement.WidthDip, (int)radarPlacement.HeightDip);
+        using var startResources = DeviceResources.Create(startHwnd, (int)startPlacement.WidthDip, (int)startPlacement.HeightDip);
         standingsResources.SetClickThrough(standingsHwnd, _clickThrough);
         relativeResources.SetClickThrough(relativeHwnd, _clickThrough);
         weatherResources.SetClickThrough(weatherHwnd, _clickThrough);
         fuelResources.SetClickThrough(fuelHwnd, _clickThrough);
+        radarResources.SetClickThrough(radarHwnd, _clickThrough); startResources.SetClickThrough(startHwnd, _clickThrough);
 
         using var standingsFlags = new FlagBitmapCache(standingsResources.Context);
         using var relativeFlags = new FlagBitmapCache(relativeResources.Context);
@@ -152,6 +164,8 @@ public static unsafe class Program
         using var relative = new RelativeWidget(relativeResources.Context, relativeResources.DWriteFactory, relativeFlags);
         using var weather = new WeatherWidget(weatherResources.Context, weatherResources.DWriteFactory);
         using var fuel = new FuelWidget(fuelResources.Context, fuelResources.DWriteFactory);
+        using var radar = new RadarWidget(radarResources.Context, radarResources.DWriteFactory);
+        using var start = new StartHelperWidget(startResources.Context, startResources.DWriteFactory);
         standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
         relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
@@ -216,6 +230,8 @@ public static unsafe class Program
             fuel.Draw(fuelResources.Context, 0, 0, fuelPlacement.WidthDip);
             if (_editMode) DrawEditModeOutlines(fuelResources.Context, (0, 0, fuelPlacement.WidthDip, fuelPlacement.HeightDip));
             if (!fuelResources.EndFrame()) Console.WriteLine("Device lost detected -- recovered without restart.");
+            radarResources.BeginFrame(); radar.Draw(radarResources.Context, 0, 0, radarPlacement.WidthDip); radarResources.EndFrame();
+            startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip); startResources.EndFrame();
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush
             {
