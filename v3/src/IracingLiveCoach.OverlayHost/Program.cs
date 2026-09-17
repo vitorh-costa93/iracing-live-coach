@@ -119,7 +119,7 @@ public static unsafe class Program
         if (atom == 0)
             throw new InvalidOperationException($"RegisterClassExW failed: {Marshal.GetLastWin32Error()}");
 
-        int width = 500, height = 420;
+        int width = 600, height = 420;
         _hwnd = CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT,
             wc.lpszClassName,

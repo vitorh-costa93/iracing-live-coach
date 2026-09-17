@@ -48,6 +48,8 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float ClassStripWidthDip = 3f;
     private const float PositionColumnWidthDip = 28f;
     private const float NameColumnWidthDip = 150f;
+    private const float FlagColumnWidthDip = 22f;
+    private const float BrandColumnWidthDip = 64f;
     private const float BadgeWidthDip = 70f;
     private const float BadgeHeightDip = 18f;
     private const float GapColumnWidthDip = 60f;
@@ -59,16 +61,19 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
         ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
         ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _numericFormat = numericFormat;
 
         var white = PaletteTokens.TextPrimary;
@@ -167,6 +172,31 @@ public sealed unsafe class StandingsWidget : IDisposable
             dc->DrawText(p, (uint)posText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
         cursorX += PositionColumnWidthDip;
+
+        // Flag -- reuses CountryFlags.ToEmoji's already-resolved Unicode regional-indicator emoji
+        // (spec §18: reuse existing resources, never a new asset catalog). Rendered with the color
+        // font option so DirectWrite's system font fallback (Segoe UI Emoji) draws it in color
+        // instead of a monochrome glyph outline.
+        SetBrushColor(PaletteTokens.TextPrimary);
+        string flag = row.FlagEmoji;
+        fixed (char* p = flag)
+        {
+            var rect = new RectF(cursorX, y, cursorX + FlagColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)flag.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.EnableColorFont, MeasuringMode.Natural);
+        }
+        cursorX += FlagColumnWidthDip;
+
+        // Brand -- plain-text badge fallback (matches V2's own BrandIcons.cs behavior when a
+        // manufacturer has no vector mark available, e.g. Mercedes); a real icon/bitmap pipeline
+        // (spec §18) is still open follow-up work, tracked in the plan.
+        SetBrushColor(PaletteTokens.TextSecondary);
+        string brand = row.ManufacturerBadge;
+        fixed (char* p = brand)
+        {
+            var rect = new RectF(cursorX, y, cursorX + BrandColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)brand.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        cursorX += BrandColumnWidthDip;
 
         // Driver name (full name is expected to already be in DriverCode per spec §5 -- this widget
         // does not truncate or abbreviate on its own).

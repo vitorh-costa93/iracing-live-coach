@@ -40,6 +40,8 @@ public sealed unsafe class RelativeWidget : IDisposable
     private const float RowHeightDip = 22f;
     private const float ClassStripWidthDip = 3f;
     private const float OffsetColumnWidthDip = 30f;
+    private const float FlagColumnWidthDip = 22f;
+    private const float BrandColumnWidthDip = 64f;
     private const float NameColumnWidthDip = 150f;
     private const float IRatingColumnWidthDip = 56f;
     private const float GapColumnWidthDip = 60f;
@@ -49,16 +51,19 @@ public sealed unsafe class RelativeWidget : IDisposable
     {
         ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
         ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
         ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _numericFormat = numericFormat;
 
         var white = PaletteTokens.TextPrimary;
@@ -145,6 +150,26 @@ public sealed unsafe class RelativeWidget : IDisposable
             dc->DrawText(p, (uint)offsetText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
         cursorX += OffsetColumnWidthDip;
+
+        // Flag + brand -- same reuse as StandingsWidget (CountryFlags.ToEmoji already-resolved
+        // emoji, plain-text brand fallback matching V2's BrandIcons.cs behavior).
+        SetBrushColor(PaletteTokens.TextPrimary);
+        string flag = row.FlagEmoji;
+        fixed (char* p = flag)
+        {
+            var rect = new RectF(cursorX, y, cursorX + FlagColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)flag.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.EnableColorFont, MeasuringMode.Natural);
+        }
+        cursorX += FlagColumnWidthDip;
+
+        SetBrushColor(PaletteTokens.TextSecondary);
+        string brand = row.ManufacturerBadge;
+        fixed (char* p = brand)
+        {
+            var rect = new RectF(cursorX, y, cursorX + BrandColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)brand.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        cursorX += BrandColumnWidthDip;
 
         SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
         string name = row.DriverCode;
