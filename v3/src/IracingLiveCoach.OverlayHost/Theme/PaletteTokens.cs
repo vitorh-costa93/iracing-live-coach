@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using Vortice.Win32.Numerics;
 
 namespace IracingLiveCoach.OverlayHost.Theme;
@@ -14,6 +15,7 @@ namespace IracingLiveCoach.OverlayHost.Theme;
 /// </summary>
 public static class PaletteTokens
 {
+    private static readonly ConcurrentDictionary<int, Color4> SessionClassColors = new();
     private static Color4 Hex(string hex, float alpha = 1f)
     {
         var span = hex.AsSpan().TrimStart('#');
@@ -125,6 +127,44 @@ public static class PaletteTokens
 
     /// <summary>Classe não identificada — nunca inferir pela marca.</summary>
     public static readonly Color4 ClassUnidentified = Hex("#73808C");
+
+    /// <summary>Single per-session map used by every table surface. It is keyed first by the
+    /// actual SDK class identifier, never by car make or driver order; recognised class names
+    /// supply the normative palette, while an SDK colour is accepted only as the stable fallback
+    /// for an otherwise unknown class.</summary>
+    public static Color4 ResolveClassColor(int classId, string? classShortName, string? sdkColorHex)
+    {
+        if (classId <= 0) return ClassUnidentified;
+        return SessionClassColors.GetOrAdd(classId, _ =>
+        {
+            string name = classShortName?.Trim().ToUpperInvariant() ?? string.Empty;
+            if (name.Contains("GTP")) return ClassGtp;
+            if (name.Contains("GT3")) return ClassGt3;
+            if (name.Contains("SF23") || name.Contains("SUPER FORMULA")) return ClassSf23;
+            if (name.Contains("LMP2")) return ClassLmp2;
+            return TryParseHex(sdkColorHex, out var color)
+                ? color
+                : OtherClassColors[(classId & int.MaxValue) % OtherClassColors.Length];
+        });
+    }
+
+    private static bool TryParseHex(string? hex, out Color4 color)
+    {
+        color = ClassUnidentified;
+        if (string.IsNullOrWhiteSpace(hex)) return false;
+        var value = hex.AsSpan().Trim().TrimStart('#');
+        if (value.Length != 6) return false;
+        try
+        {
+            color = new Color4(
+                byte.Parse(value[..2], NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255f,
+                byte.Parse(value.Slice(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255f,
+                byte.Parse(value.Slice(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255f,
+                1f);
+            return true;
+        }
+        catch (FormatException) { return false; }
+    }
 
     /// <summary>Licença Rookie (texto #F2F5F7 — ver <see cref="TextPrimary"/>).</summary>
     public static readonly Color4 LicenseRookie = Hex("#B91C1C");

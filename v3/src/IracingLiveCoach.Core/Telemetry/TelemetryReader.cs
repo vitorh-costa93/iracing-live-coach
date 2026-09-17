@@ -24,7 +24,7 @@ public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 /// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
 /// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
 /// driver confirmed this is a real feature they use today.</summary>
-public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null);
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "");
 
 /// <summary>One row of the full classification/standings widget (Task 6).
 /// GapToLeaderSeconds is real (CarIdxF2Time, "race time behind leader or fastest lap otherwise" --
@@ -36,7 +36,7 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// rather than omit the column. LapDeltaVsPlayerSeconds is real (this driver's own CarIdxLastLapTime
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus);
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, string CarNumber = "");
 
 /// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
@@ -230,7 +230,7 @@ public class TelemetryReader : IDisposable
         return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(userName.Trim().ToLowerInvariant());
     }
 
-    private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, string ClassShortName, string? ClassColorHex) GetIdentity(int carIdx)
+    private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, string ClassShortName, string? ClassColorHex, string CarNumber) GetIdentity(int carIdx)
     {
         var sessionInfo = _sdk.Data.SessionInfo;
         var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == carIdx);
@@ -246,7 +246,7 @@ public class TelemetryReader : IDisposable
         // gets a real, session-consistent class indicator rather than an invented palette.
         var classShortName = driver?.CarClassShortName ?? "";
         var classColorHex = driver?.CarClassColor;
-        return (flagEmoji, licString, licColorHex, iRating, carClassId, manufacturerBadge, classShortName, classColorHex);
+        return (flagEmoji, licString, licColorHex, iRating, carClassId, manufacturerBadge, classShortName, classColorHex, driver?.CarNumber ?? "");
     }
 
     // 14/09/2026: "team logo" -- iRacing has no real "team" concept for pickup/public racing and
@@ -762,7 +762,7 @@ public class TelemetryReader : IDisposable
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex));
+                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -817,7 +817,7 @@ public class TelemetryReader : IDisposable
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
-                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge));
+                rows.Add(new RelativeRow(position, code, null, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, CarNumber: identity.CarNumber));
             }
 
             SecondaryRelativeUpdated?.Invoke(rows);
@@ -837,7 +837,7 @@ public class TelemetryReader : IDisposable
         try
         {
             var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
-                string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, double? Gap,
+                string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, string CarNumber, double? Gap,
                 string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus)>();
             var estimatedTimeByPosition = new Dictionary<int, double>();
 
@@ -878,7 +878,7 @@ public class TelemetryReader : IDisposable
 
                 raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
-                    identity.CarClassId, identity.ManufacturerBadge, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
+                    identity.CarClassId, identity.ManufacturerBadge, identity.CarNumber, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
                     p2pActive, p2pSeconds, p2pSeconds, p2pCharging, pitStatus));
             }
 
@@ -935,7 +935,7 @@ public class TelemetryReader : IDisposable
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
                     r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
-                    r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus));
+                    r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus, r.CarNumber));
             }
 
             StandingsUpdated?.Invoke(rows);

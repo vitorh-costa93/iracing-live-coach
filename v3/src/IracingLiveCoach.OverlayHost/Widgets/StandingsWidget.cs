@@ -1,6 +1,7 @@
 using System.Globalization;
 using IracingLiveCoach.Core;
 using IracingLiveCoach.Core.Telemetry;
+using IracingLiveCoach.OverlayHost.Assets;
 using IracingLiveCoach.OverlayHost.Theme;
 using Vortice.Win32;
 using Vortice.Win32.Graphics.Direct2D;
@@ -23,14 +24,13 @@ namespace IracingLiveCoach.OverlayHost.Widgets;
 /// Reuses <see cref="TelemetryReader"/>'s existing StandingsUpdated event and its already-resolved
 /// per-row ClassColorHex/EstimatedDeltaIRating — no recalculation logic duplicated here (spec §3).
 ///
-/// Font: uses the system "Segoe UI" as a placeholder, same as Phase 0. Loading spec §5's mandated
-/// Barlow Semi Condensed requires a private DirectWrite font-loading pipeline (in-memory font file
-/// loader or an installed font resource) that has not been built yet — flagged honestly as
-/// remaining Phase 3 work, not silently skipped.
+/// Font: Barlow Semi Condensed is registered privately by the host from bundled open-font assets;
+/// it is never silently replaced with an installed system font by this code.
 /// </summary>
 public sealed unsafe class StandingsWidget : IDisposable
 {
     private readonly TelemetryReader _telemetry;
+    private readonly FlagBitmapCache _flags;
     private readonly object _lock = new();
     private List<StandingsRow> _rows = new();
 
@@ -45,32 +45,38 @@ public sealed unsafe class StandingsWidget : IDisposable
     private ComPtr<ID2D1SolidColorBrush> _brush; // color set per-draw via SetColor; one brush reused throughout.
 
     private const float RowHeightDip = 24f;
+    private const float ClassHeaderHeightDip = 18f;
     private const float ClassStripWidthDip = 3f;
     private const float PositionColumnWidthDip = 28f;
+    private const float CarNumberColumnWidthDip = 38f;
     private const float NameColumnWidthDip = 150f;
+    private const float LicenseColumnWidthDip = 40f;
     private const float FlagColumnWidthDip = 22f;
     private const float BrandColumnWidthDip = 64f;
     private const float BadgeWidthDip = 70f;
     private const float BadgeHeightDip = 18f;
     private const float GapColumnWidthDip = 60f;
+    private const float IntervalColumnWidthDip = 60f;
     private const float LastLapColumnWidthDip = 68f;
     private const float LapDeltaColumnWidthDip = 60f;
+    private const float OvertakeColumnWidthDip = 52f;
     private const float ColumnGapDip = 6f;
 
-    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory)
+    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags)
     {
-        ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
+        _flags = flags;
+        ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 15f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
-        ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 14f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
-        ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Segoe UI", 13f, fontWeight: FontWeight.Medium, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 14f, fontWeight: FontWeight.Medium, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
         ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -115,12 +121,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            float simRowY = y;
-            foreach (var row in simulated)
-            {
-                DrawRow(dc, x, simRowY, row);
-                simRowY += RowHeightDip;
-            }
+            DrawRows(dc, x, y, simulated);
             return;
         }
 
@@ -133,11 +134,44 @@ public sealed unsafe class StandingsWidget : IDisposable
             return;
         }
 
+        DrawRows(dc, x, y, rows);
+    }
+
+    private void DrawRows(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows)
+    {
+        var groups = StandingsSelection.GroupAndSelect(rows);
+        bool multiClass = groups.Count > 1;
         float rowY = y;
-        foreach (var row in rows)
+        foreach (var group in groups)
         {
-            DrawRow(dc, x, rowY, row);
-            rowY += RowHeightDip;
+            if (multiClass)
+            {
+                DrawClassHeader(dc, x, rowY, group.ClassShortName, group.ClassId, group.ClassColorHex);
+                rowY += ClassHeaderHeightDip;
+            }
+            foreach (var row in group.Rows)
+            {
+                DrawRow(dc, x, rowY, row);
+                rowY += RowHeightDip;
+            }
+        }
+    }
+
+    private void DrawClassHeader(ID2D1DeviceContext* dc, float x, float y, string name, int classId, string? classColorHex)
+    {
+        var color = PaletteTokens.ResolveClassColor(classId, name, classColorHex);
+        SetBrushColor(PaletteTokens.SessionHeaderBand);
+        var background = new RectF(x, y, x + 600f, y + ClassHeaderHeightDip);
+        dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(color);
+        var strip = new RectF(x, y, x + ClassStripWidthDip, y + ClassHeaderHeightDip);
+        dc->FillRectangle(&strip, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PaletteTokens.TextPrimary);
+        string text = string.IsNullOrWhiteSpace(name) ? "CLASS" : name;
+        fixed (char* p = text)
+        {
+            var rect = new RectF(x + 8f, y, x + 180f, y + ClassHeaderHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
@@ -156,7 +190,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         // Class color strip -- keyed by the class, already resolved by TelemetryReader/LiveCoachEngine,
         // never recomputed here from manufacturer/licence/etc (spec §15).
-        var stripColor = ParseHexOrFallback(row.ClassColorHex, PaletteTokens.ClassUnidentified);
+        var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex);
         SetBrushColor(stripColor);
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
         dc->FillRectangle(&stripRect, (ID2D1Brush*)_brush.Get());
@@ -173,28 +207,43 @@ public sealed unsafe class StandingsWidget : IDisposable
         }
         cursorX += PositionColumnWidthDip;
 
-        // Flag -- reuses CountryFlags.ToEmoji's already-resolved Unicode regional-indicator emoji
-        // (spec §18: reuse existing resources, never a new asset catalog). Rendered with the color
-        // font option so DirectWrite's system font fallback (Segoe UI Emoji) draws it in color
-        // instead of a monochrome glyph outline.
-        SetBrushColor(PaletteTokens.TextPrimary);
-        string flag = row.FlagEmoji;
-        fixed (char* p = flag)
+        // Car number is the real SDK DriverInfo.CarNumber, kept separate from CarIdx and from
+        // the rendered row index. Preserve source leading zeroes and use an explicit # prefix.
+        SetBrushColor(PaletteTokens.TextSecondary);
+        string carNumber = string.IsNullOrWhiteSpace(row.CarNumber) ? "—" : $"#{row.CarNumber}";
+        fixed (char* p = carNumber)
         {
-            var rect = new RectF(cursorX, y, cursorX + FlagColumnWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)flag.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.EnableColorFont, MeasuringMode.Natural);
+            var rect = new RectF(cursorX, y, cursorX + CarNumberColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)carNumber.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        cursorX += CarNumberColumnWidthDip;
+
+        // Real local PNG flag asset, decoded once through WIC and reused as a device bitmap.
+        var flag = _flags.Find(row.FlagEmoji);
+        if (flag != null)
+        {
+            var destination = new RectF(cursorX + 1f, y + 4f, cursorX + FlagColumnWidthDip - 1f, y + RowHeightDip - 4f);
+            dc->DrawBitmap(flag, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
         }
         cursorX += FlagColumnWidthDip;
 
-        // Brand -- plain-text badge fallback (matches V2's own BrandIcons.cs behavior when a
-        // manufacturer has no vector mark available, e.g. Mercedes); a real icon/bitmap pipeline
-        // (spec §18) is still open follow-up work, tracked in the plan.
-        SetBrushColor(PaletteTokens.TextSecondary);
-        string brand = row.ManufacturerBadge;
-        fixed (char* p = brand)
+        // Brand image follows the same cache/recovery path as flags. Text is an explicit fallback
+        // only for a make for which no local V2 asset exists.
+        var brandBitmap = _flags.FindBrand(row.ManufacturerBadge);
+        if (brandBitmap != null)
         {
-            var rect = new RectF(cursorX, y, cursorX + BrandColumnWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)brand.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            var destination = new RectF(cursorX + 2f, y + 3f, cursorX + BrandColumnWidthDip - 2f, y + RowHeightDip - 3f);
+            dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
+        }
+        else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge))
+        {
+            SetBrushColor(PaletteTokens.TextSecondary);
+            string brand = row.ManufacturerBadge;
+            fixed (char* p = brand)
+            {
+                var rect = new RectF(cursorX, y, cursorX + BrandColumnWidthDip, y + RowHeightDip);
+                dc->DrawText(p, (uint)brand.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            }
         }
         cursorX += BrandColumnWidthDip;
 
@@ -207,7 +256,10 @@ public sealed unsafe class StandingsWidget : IDisposable
             var rect = new RectF(cursorX, y, cursorX + NameColumnWidthDip, y + RowHeightDip);
             dc->DrawText(p, (uint)name.Length, _nameFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        cursorX += NameColumnWidthDip;
+        cursorX += NameColumnWidthDip + ColumnGapDip;
+
+        DrawLicenseBadge(dc, cursorX, y, row.LicString, row.LicColorHex);
+        cursorX += LicenseColumnWidthDip + ColumnGapDip;
 
         // iRating + Δ combined badge, same row, same rectangle (spec §6: never stacked, never duplicated).
         var badgeRect = new Rect2D(cursorX, y + (RowHeightDip - BadgeHeightDip) / 2, BadgeWidthDip, BadgeHeightDip);
@@ -219,6 +271,11 @@ public sealed unsafe class StandingsWidget : IDisposable
         // null-handling below, matching what the real V2 view model already does for the leader).
         cursorX = DrawNumericOrDash(dc, cursorX, y, GapColumnWidthDip, row.GapToLeaderSeconds,
             v => v.ToString("0.000", CultureInfo.InvariantCulture), PaletteTokens.TextSecondary);
+
+        // Interval is intentionally rendered as a distinct live race metric; it is never derived
+        // from gap-to-leader and a missing SDK value remains an explicit dash.
+        cursorX = DrawNumericOrDash(dc, cursorX, y, IntervalColumnWidthDip, row.IntervalSeconds,
+            v => v.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture), PaletteTokens.TextSecondary);
 
         // Last lap time (m:ss.sss via the shared LapTimeFormatting helper -- not reimplemented here).
         cursorX = DrawNumericOrDash(dc, cursorX, y, LastLapColumnWidthDip, row.LastLapTime,
@@ -234,7 +291,9 @@ public sealed unsafe class StandingsWidget : IDisposable
                 _ => PaletteTokens.NeutralDeltaOrGap
             };
         double? deltaValue = row.IsPlayer ? 0.0 : row.LapDeltaVsPlayerSeconds;
-        DrawNumericOrDash(dc, cursorX, y, LapDeltaColumnWidthDip, deltaValue, v => v.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture), deltaColor);
+        cursorX = DrawNumericOrDash(dc, cursorX, y, LapDeltaColumnWidthDip, deltaValue, v => v.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture), deltaColor);
+
+        DrawOvertakeCell(dc, cursorX, y, row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown);
     }
 
     /// <returns>The cursor X position after this column (its right edge + the standard column gap).</returns>
@@ -251,6 +310,51 @@ public sealed unsafe class StandingsWidget : IDisposable
     }
 
     private readonly record struct Rect2D(float X, float Y, float Width, float Height);
+
+    private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, string license, string? colorHex)
+    {
+        var color = ParseHexOrFallback(colorHex, PaletteTokens.LicenseUnknown);
+        SetBrushColor(color);
+        var rr = new RoundedRect
+        {
+            rect = new RectF(x, y + 3f, x + LicenseColumnWidthDip, y + RowHeightDip - 3f),
+            radiusX = PaletteTokens.BadgeCornerRadiusPx,
+            radiusY = PaletteTokens.BadgeCornerRadiusPx
+        };
+        dc->FillRoundedRectangle(&rr, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PaletteTokens.TextPrimary);
+        string text = string.IsNullOrWhiteSpace(license) ? "—" : license;
+        fixed (char* p = text)
+        {
+            var rect = new RectF(x, y, x + LicenseColumnWidthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+    }
+
+    private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, bool? active, double? seconds, bool cooldown)
+    {
+        Color4 color = active is null ? PaletteTokens.OvertakeUnknown
+            : active == true ? PaletteTokens.OvertakeActive
+            : cooldown ? PaletteTokens.OvertakeCooldown
+            : seconds is <= 0 ? PaletteTokens.OvertakeDepleted
+            : PaletteTokens.OvertakeAvailable;
+        string text = seconds is double s ? $"{Math.Clamp((int)Math.Round(s), 0, TelemetryReader.P2PMaxSeconds)}s" : "—";
+        SetBrushColor(color);
+        fixed (char* p = text)
+        {
+            var textRect = new RectF(x, y, x + OvertakeColumnWidthDip, y + 13f);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &textRect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        var track = new RectF(x + 2f, y + 17f, x + OvertakeColumnWidthDip - 2f, y + 20f);
+        SetBrushColor(PaletteTokens.BarTrackEmpty);
+        dc->FillRectangle(&track, (ID2D1Brush*)_brush.Get());
+        if (seconds is not double bank) return;
+        float fraction = Math.Clamp((float)(bank / TelemetryReader.P2PMaxSeconds), 0f, 1f);
+        if (fraction <= 0f) return;
+        var fill = new RectF(x + 2f, y + 17f, x + 2f + (OvertakeColumnWidthDip - 4f) * fraction, y + 20f);
+        SetBrushColor(color);
+        dc->FillRectangle(&fill, (ID2D1Brush*)_brush.Get());
+    }
 
     private void DrawIRatingBadge(ID2D1DeviceContext* dc, Rect2D bounds, int iRating, double? estimatedDelta)
     {

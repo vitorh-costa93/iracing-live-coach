@@ -15,6 +15,7 @@ using Vortice.Win32.Graphics.DirectWrite;
 using Vortice.Win32.Graphics.Dxgi;
 using Vortice.Win32.Graphics.Dxgi.Common;
 using IracingLiveCoach.Core.Telemetry;
+using IracingLiveCoach.OverlayHost.Assets;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Widgets;
 using static Vortice.Win32.Apis;
@@ -96,6 +97,7 @@ public static unsafe class Program
     public static int Main()
     {
         Console.WriteLine("V3 Phase 3: SPACE=click-through, E=edit mode (drag widgets), T=simulation, ESC=exit.");
+        LoadPrivateFonts();
 
         // Initial placements -- stacked vertically, matching the prototype's single-window layout.
         // True independent per-widget windows/monitors (spec §4) are still open work.
@@ -135,8 +137,10 @@ public static unsafe class Program
         using var resources = DeviceResources.Create(_hwnd, width, height);
         resources.SetClickThrough(_hwnd, _clickThrough);
 
-        using var standings = new StandingsWidget(resources.Context, resources.DWriteFactory);
-        using var relative = new RelativeWidget(resources.Context, resources.DWriteFactory);
+        using var flags = new FlagBitmapCache(resources.Context);
+        using var standings = new StandingsWidget(resources.Context, resources.DWriteFactory, flags);
+        using var relative = new RelativeWidget(resources.Context, resources.DWriteFactory, flags);
+        resources.DeviceRecovered += () => flags.Recreate(resources.Context);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
@@ -347,4 +351,19 @@ public static unsafe class Program
     [DllImport("user32.dll")] private static extern nint LoadCursorW(nint hInstance, nint lpCursorName);
     [DllImport("user32.dll")] internal static extern int GetWindowLongW(nint hWnd, int nIndex);
     [DllImport("user32.dll")] internal static extern int SetWindowLongW(nint hWnd, int nIndex, int dwNewLong);
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int AddFontResourceExW(string fileName, uint flags, nint reserved);
+
+    /// <summary>Registers the bundled, OFL-licensed Barlow Semi Condensed files privately for
+    /// this process only. No system font installation or global Windows state is changed.</summary>
+    private static void LoadPrivateFonts()
+    {
+        const uint FR_PRIVATE = 0x10;
+        string directory = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+        foreach (string file in new[] { "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf" })
+        {
+            string path = Path.Combine(directory, file);
+            if (File.Exists(path)) AddFontResourceExW(path, FR_PRIVATE, 0);
+        }
+    }
 }
