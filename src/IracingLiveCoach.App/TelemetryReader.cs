@@ -188,6 +188,9 @@ public class TelemetryReader : IDisposable
     // exact garbage-number bug it was meant to fix, just for a different, wider set of cars.
     private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
     private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
+    // Tracks whether each car was Active on the PREVIOUS read, so a cooldown window starts exactly
+    // on the true->false transition -- see the 17/09/2026 fix note at ReadP2P's "charging" line.
+    private readonly Dictionary<int, bool> _lastP2PActiveByCarIdx = new();
 
     private double? _bestLapTimeSeconds;
 
@@ -370,6 +373,7 @@ public class TelemetryReader : IDisposable
         _lastPitStatusByCarIdx.Clear();
         _lastP2PCountByCarIdx.Clear();
         _p2pChargingUntilByCarIdx.Clear();
+        _lastP2PActiveByCarIdx.Clear();
         _lastP2PAnomalyLogByCarIdx.Clear();
         // Always notify: closing can happen between telemetry frames, while the last known
         // in-car state is still true. The V2 window then hides every locked widget immediately.
@@ -607,17 +611,25 @@ public class TelemetryReader : IDisposable
         catch { /* The count can be omitted independently of status. */ }
         var now = DateTime.UtcNow;
         if (seconds is int current)
-        {
-            if (active != true && _lastP2PCountByCarIdx.TryGetValue(carIdx, out var previous) && current > previous)
-                _p2pChargingUntilByCarIdx[carIdx] = now.AddSeconds(1.5);
             _lastP2PCountByCarIdx[carIdx] = current;
+
+        // 18/09/2026 fix: the previous version treated "remaining bank < 200s" as "charging", which
+        // is true for nearly the entire race after the very first use -- the 200s bank is a
+        // depleting per-race budget, not a battery that recharges back to full, so that comparison
+        // made the amber cooldown color effectively permanent instead of a brief post-use window.
+        // Confirmed active/inactive detection itself was already correct (driver's real report);
+        // only the cooldown WINDOW was wrong. Fixed by keying cooldown off the actual
+        // Active=true -> Active=false transition and a real 100s timer (the SF23's own documented
+        // cooldown duration), not off the remaining-bank value at all.
+        bool wasActive = _lastP2PActiveByCarIdx.TryGetValue(carIdx, out var prevActive) && prevActive;
+        if (active is bool isActiveNow)
+        {
+            if (wasActive && !isActiveNow)
+                _p2pChargingUntilByCarIdx[carIdx] = now.AddSeconds(100);
+            _lastP2PActiveByCarIdx[carIdx] = isActiveNow;
         }
-        // The remaining bank itself is the useful state for this system.  A non-active car below
-        // the full 200 s bank is replenishing and must be yellow; a full inactive bank is available
-        // and remains gray.  The short rising-edge window also covers a telemetry frame where the
-        // bank crosses the full value.
-        var charging = active == false && (seconds is int remaining && remaining < P2PMaxSeconds ||
-            _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
+
+        var charging = active == false && _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now;
         return (active, seconds, charging);
     }
 
