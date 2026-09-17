@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only the Layout/*.cs files are referenced here: they are pure C# with zero GPU/unsafe
+         dependencies, unlike the rest of OverlayHost. Compiling the project's other files (which
+         require unsafe blocks and native COM interop) into a test project isn't needed to test
+         this pure geometry math, so they are excluded rather than dragging the whole project in. -->
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\ColumnDefinition.cs" Link="Layout\ColumnDefinition.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetLayoutEngine.cs" Link="Layout\WidgetLayoutEngine.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetPlacement.cs" Link="Layout\WidgetPlacement.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\EditModeHitTester.cs" Link="Layout\EditModeHitTester.cs" />
+  </ItemGroup>
+
+</Project>
