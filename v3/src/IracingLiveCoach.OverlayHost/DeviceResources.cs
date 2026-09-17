@@ -66,6 +66,15 @@ public sealed unsafe class DeviceResources : IDisposable
     /// the old device -- see spec section 18's "recrie recursos dependentes da GPU após device lost".</summary>
     public event Action? DeviceRecovered;
 
+    /// <summary>Exposed so widget code (Phase 3+) can draw with the same device context this class
+    /// owns, without each widget standing up its own device chain. Valid only between frames'
+    /// <see cref="RenderFrame"/> BeginDraw/EndDraw -- widgets are drawn from inside that call.</summary>
+    public ID2D1DeviceContext* Context => _dc.Get();
+
+    /// <summary>Exposed for widget code to build its own <see cref="Layout.TextMeasurer"/> and
+    /// <c>IDWriteTextFormat</c>s against the same factory this class owns.</summary>
+    public IDWriteFactory* DWriteFactory => _dwriteFactory.Get();
+
     private DeviceResources() { }
 
     public static DeviceResources Create(nint hwnd, int width, int height)
@@ -202,31 +211,19 @@ public sealed unsafe class DeviceResources : IDisposable
         DeviceRecovered?.Invoke();
     }
 
-    /// <returns>True if the frame presented normally; false if a device-lost condition was
-    /// detected and recovery was triggered -- the caller should simply try again next frame.</returns>
-    public bool RenderFrame(double angle, bool clickThrough)
+    /// <summary>Starts a frame: BeginDraw + clear to fully transparent. Pair with <see cref="EndFrame"/>;
+    /// draw calls (widgets, or <see cref="DrawPhase0Proof"/>) go in between, using <see cref="Context"/>.</summary>
+    public void BeginFrame()
     {
         _dc.Get()->BeginDraw();
-
         var transparent = new Color4(0, 0, 0, 0);
         _dc.Get()->Clear(&transparent);
+    }
 
-        // Static text: proves per-pixel transparency (Step 5) and DirectWrite sharpness (Step 7).
-        string text = $"V3 PROOF  |  click-through: {(clickThrough ? "ON" : "OFF")} (SPACE toggles)";
-        fixed (char* pText = text)
-        {
-            var layoutRect = new RectF(12, 8, 468, 60);
-            _dc.Get()->DrawText(pText, (uint)text.Length, _textFormat.Get(), &layoutRect,
-                (ID2D1Brush*)_textBrush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-
-        // Moving dot: Radar/Start Helper pacing stand-in (Step 8) -- proves the render loop keeps up
-        // with per-frame telemetry-shaped updates without a growing backlog (spec §3).
-        float cx = 240 + (float)(180 * Math.Cos(angle * Math.PI / 180.0));
-        float cy = 110 + (float)(20 * Math.Sin(angle * Math.PI / 180.0));
-        var ellipse = new D2DEllipse { point = new System.Numerics.Vector2(cx, cy), radiusX = 8, radiusY = 8 };
-        _dc.Get()->FillEllipse(&ellipse, (ID2D1Brush*)_dotBrush.Get());
-
+    /// <returns>True if the frame presented normally; false if a device-lost condition was
+    /// detected and recovery was triggered -- the caller should simply try again next frame.</returns>
+    public bool EndFrame()
+    {
         var endDrawResult = _dc.Get()->EndDraw();
         if (IsDeviceLost(endDrawResult))
         {
@@ -245,6 +242,25 @@ public sealed unsafe class DeviceResources : IDisposable
 
         _dcompDevice.Get()->Commit();
         return true;
+    }
+
+    /// <summary>The original Phase 0 proof content (static text + moving dot), extracted verbatim
+    /// so it can still be driven from <see cref="Program"/> for a quick transparency/pacing sanity
+    /// check, now that Phase 3 widgets draw through <see cref="BeginFrame"/>/<see cref="EndFrame"/> instead.</summary>
+    public void DrawPhase0Proof(double angle, bool clickThrough)
+    {
+        string text = $"V3 PROOF  |  click-through: {(clickThrough ? "ON" : "OFF")} (SPACE toggles)";
+        fixed (char* pText = text)
+        {
+            var layoutRect = new RectF(12, 8, 468, 60);
+            _dc.Get()->DrawText(pText, (uint)text.Length, _textFormat.Get(), &layoutRect,
+                (ID2D1Brush*)_textBrush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+
+        float cx = 240 + (float)(180 * Math.Cos(angle * Math.PI / 180.0));
+        float cy = 110 + (float)(20 * Math.Sin(angle * Math.PI / 180.0));
+        var ellipse = new D2DEllipse { point = new System.Numerics.Vector2(cx, cy), radiusX = 8, radiusY = 8 };
+        _dc.Get()->FillEllipse(&ellipse, (ID2D1Brush*)_dotBrush.Get());
     }
 
     private static bool IsDeviceLost(HResult hr) =>

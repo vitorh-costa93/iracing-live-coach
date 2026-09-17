@@ -14,6 +14,7 @@ using Vortice.Win32.Graphics.DirectComposition;
 using Vortice.Win32.Graphics.DirectWrite;
 using Vortice.Win32.Graphics.Dxgi;
 using Vortice.Win32.Graphics.Dxgi.Common;
+using IracingLiveCoach.OverlayHost.Widgets;
 using static Vortice.Win32.Apis;
 using static Vortice.Win32.Graphics.Direct2D.Apis;
 using static Vortice.Win32.Graphics.Direct3D11.Apis;
@@ -45,7 +46,7 @@ public static unsafe class Program
 
     public static int Main()
     {
-        Console.WriteLine("V3 Phase 0 proof: SPACE toggles click-through, ESC exits.");
+        Console.WriteLine("V3 Phase 3 Standings: SPACE toggles click-through, ESC exits.");
 
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;
@@ -57,18 +58,18 @@ public static unsafe class Program
             style = 0,
             lpfnWndProc = wndProcPtr,
             hInstance = hInstance,
-            lpszClassName = "IracingLiveCoach.OverlayHost.ProofWindow",
+            lpszClassName = "IracingLiveCoach.OverlayHost.StandingsWindow",
             hCursor = LoadCursorW(0, (nint)32512) // IDC_ARROW
         };
         ushort atom = RegisterClassExW(ref wc);
         if (atom == 0)
             throw new InvalidOperationException($"RegisterClassExW failed: {Marshal.GetLastWin32Error()}");
 
-        int width = 480, height = 160;
+        int width = 400, height = 320;
         _hwnd = CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT,
             wc.lpszClassName,
-            "V3 Proof",
+            "V3 Standings",
             WS_POPUP | WS_VISIBLE,
             200, 200, width, height,
             0, 0, hInstance, 0);
@@ -80,17 +81,18 @@ public static unsafe class Program
         using var resources = DeviceResources.Create(_hwnd, width, height);
         resources.SetClickThrough(_hwnd, _clickThrough);
 
+        using var standings = new StandingsWidget(resources.Context, resources.DWriteFactory);
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
         double lastFrameMs = sw.Elapsed.TotalMilliseconds;
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "iracing-live-coach", "v3-phase0-pacing.log");
+            "iracing-live-coach", "v3-phase3-pacing.log");
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
 
         MSG msg = default;
         bool running = true;
-        double angle = 0;
         while (running)
         {
             while (PeekMessageW(ref msg, 0, 0, 0, 1))
@@ -105,9 +107,10 @@ public static unsafe class Program
             double delta = now - lastFrameMs;
             lastFrameMs = now;
             frameTimes.Add(delta);
-            angle += delta * 0.12; // moving-dot pacing test (Radar/Start Helper stand-in)
 
-            if (!resources.RenderFrame(angle, _clickThrough))
+            resources.BeginFrame();
+            standings.Draw(resources.Context, x: 8, y: 8);
+            if (!resources.EndFrame())
                 Console.WriteLine("Device lost detected -- recovered without restart.");
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush

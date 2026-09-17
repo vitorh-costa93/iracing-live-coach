@@ -152,14 +152,25 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Acceptance — NOT verified, honestly flagged:** the "manual test drags each widget on a negative-coordinate second monitor" from the original acceptance criterion needs an actual interactive edit-mode surface to drag *in* — `EditModeHitTester`'s logic is fully unit-tested (including a synthetic off-screen-monitor clamp scenario), but nothing yet renders draggable widgets on screen for a human to literally drag with a mouse. That surface is Control Center/edit-mode territory (Phase 5, or an earlier ad-hoc test harness if useful before then) — deferred honestly rather than claimed done via unit tests alone.
 
-## Phase 3 — Standings + Relative (scoped)
+## Phase 3 — Standings + Relative
 
-**Files:**
-- Create: `v3/src/IracingLiveCoach.OverlayHost/Widgets/StandingsWidget.cs`, `RelativeWidget.cs`.
-- Reuse: `LiveCoachEngine.cs`, `ComputeLivePositions`/`UpdateStandings`/`UpdateRelative` from the extracted Core telemetry logic — no recalculation logic duplicated in the render layer.
-- Reuse: `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` and the existing `Assets/Brands`, `Assets/Flags` resources (spec §18) — rasterize/cache them as GPU bitmaps once, keyed by CarId→manufacturer resolution already in place; do not build a parallel asset catalog.
+**Status: started (2026-09-18) — a first real, working slice of Standings; the rest of the phase remains open. This phase is large enough that "scoped" work is happening incrementally rather than in one batch, unlike Phases 0-2.**
 
-**Acceptance:** iRating+Δ combined badge, lap-delta-vs-player, OT balance+bar (200s scale, states modeled separately), class color strip keyed by ClassId, drag-repositioning via Phase 2's hit-tester — each independently verifiable against spec §6/§7 acceptance bullets.
+- [x] `v3/src/IracingLiveCoach.OverlayHost/Layout/TextMeasurer.cs` — the real DirectWrite text-measurement wrapper Phase 2 deferred (measures actual rendered text via `IDWriteFactory.CreateTextLayout` + `GetMetrics`, kept separate from `WidgetLayoutEngine` so that stays unit-testable without a live device).
+- [x] `DeviceResources.cs` refactored: the old monolithic `RenderFrame` split into `BeginFrame()`/`EndFrame()` (device-lost detection unchanged) plus `Context`/`DWriteFactory` properties so widget code can draw through the same device chain. The Phase 0 proof content survives verbatim as `DrawPhase0Proof()` for future sanity checks, just no longer called from the main loop.
+- [x] `v3/src/IracingLiveCoach.OverlayHost/Widgets/StandingsWidget.cs` — connects a real `TelemetryReader`, subscribes to `StandingsUpdated` (no recalculation logic duplicated — consumes `StandingsRow`'s already-resolved `ClassColorHex`/`EstimatedDeltaIRating` as-is), and draws: class color strip, position, driver name, and the iRating+Δ **combined badge in the same row** (spec §6 — green/red delta color from `PaletteTokens`). Shows an honest "Aguardando iRacing..." state (muted `TextDisabled` color) when `HasRecentTelemetry` is false or no rows exist yet — never fabricates a row.
+- [x] `Program.cs` rewired to create real `TelemetryReader`-backed `StandingsWidget` and draw it every frame via the new `BeginFrame`/`Draw`/`EndFrame` cycle.
+- [x] Smoke-tested for real: built Release, ran the exe with no iRacing session active, screenshotted — confirmed "Aguardando iRacing..." renders correctly in the right color, over a genuinely transparent background, no crash, no fabricated data.
+
+**Still open (not started or not finished) — being explicit so nothing here is mistaken for done:**
+- [ ] Relative widget (not started at all).
+- [ ] Standings' remaining columns: car number, flag, brand badge, licence/SR badge, gap, interval, last lap, lap-delta-vs-player, multiclass grouping/headers, Top N + player window, SF23 Overtake column.
+- [ ] Asset reuse from `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` (spec §18) — not wired in yet; current widget draws no flags/brand icons at all.
+- [ ] The mandated Barlow Semi Condensed typeface (spec §5) — still using system "Segoe UI" as a placeholder, same as Phase 0; loading a private/embedded font via DirectWrite needs its own small pipeline (in-memory font file loader) not built yet.
+- [ ] Drag-repositioning via Phase 2's `EditModeHitTester`/`WidgetPlacementStore` — StandingsWidget currently draws at a hardcoded (8, 8) offset in `Program.cs`, not yet wired to a placement.
+- [ ] A live, in-game verification with real telemetry (this session could only verify the honest "disconnected" state — the actual row-drawing code path with real `StandingsRow` data has not been visually confirmed against a live iRacing session).
+
+**Acceptance criteria from the original scope (iRating+Δ badge, OT balance+bar, drag-repositioning, etc.) remain the target — only the iRating+Δ badge and class strip are done and verified so far.**
 
 ## Phase 4 — Weather, Fuel, Radar, Start Helper (scoped)
 
