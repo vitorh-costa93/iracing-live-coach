@@ -106,10 +106,13 @@ public static unsafe class Program
         // starting values; Phase 5 will drive the same values through the Control Center.
         PlacementStore.Set(StandingsKey, new WidgetPlacement(0, 200, 200, PlacementAnchor.TopLeft, 820, 260, 1f, false, 0));
         PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 200, 470, PlacementAnchor.TopLeft, 760, 200, 1f, false, 1));
-        PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 980, 470, PlacementAnchor.TopLeft, 280, 116, 1f, false, 2));
-        PlacementStore.Set(FuelKey, new WidgetPlacement(0, 980, 595, PlacementAnchor.TopLeft, 300, 138, 1f, false, 3));
-        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 980, 745, PlacementAnchor.TopLeft, 180, 42, 1f, false, 4));
-        PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 980, 795, PlacementAnchor.TopLeft, 280, 50, 1f, false, 5));
+        // Heights match each rewritten widget's real content (4/3/full-scale/3 rows) -- previously
+        // undersized for Radar (42px for a widget needing ~130px) and Start Helper (50px for what
+        // is now 3 rows including the RPM readout the earlier pass omitted).
+        PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 980, 470, PlacementAnchor.TopLeft, 280, 132, 1f, false, 2));
+        PlacementStore.Set(FuelKey, new WidgetPlacement(0, 980, 610, PlacementAnchor.TopLeft, 300, 104, 1f, false, 3));
+        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 980, 722, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
+        PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 980, 860, PlacementAnchor.TopLeft, 280, 82, 1f, false, 5));
 
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;

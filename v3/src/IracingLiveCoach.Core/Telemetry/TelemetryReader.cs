@@ -62,7 +62,7 @@ public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, do
 public record TrackPositionDot(string DriverCode, double LapDistPct, bool IsPlayer);
 
 /// <summary>One (throttled, ~10Hz) weather/track-usage snapshot.</summary>
-public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, string? TrackRubberState, List<TrackPositionDot> CarPositions);
+public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, string? TrackRubberState, List<TrackPositionDot> CarPositions, double? WindSpeedMs = null, double? WindDirectionDeg = null);
 
 /// <summary>One far-field car's signed distance from the player along the lap (negative = behind,
 /// positive = ahead), converted from CarIdxLapDistPct using the track's own length. Deliberately
@@ -85,7 +85,7 @@ public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBli
 /// with). No extra latch/state beyond the live Speed check -- if the driver stops again later in
 /// the race (a spin, a full-course caution), the bars simply reappear, matching the plain
 /// "when car is staying still" behavior Kapps itself describes.</summary>
-public record RaceStartStatus(double ClutchPct, double ThrottlePct, bool ShouldShow);
+public record RaceStartStatus(double ClutchPct, double ThrottlePct, bool ShouldShow, double RpmValue = 0);
 
 /// <summary>Wraps IRSDKSharper's IRacingSdk, translating its raw telemetry variables into this
 /// app's own TelemetrySample shape and forwarding each tick to a LiveCoachEngine. IRSDKSharper's
@@ -1092,12 +1092,13 @@ public class TelemetryReader : IDisposable
             var speed = _sdk.Data.GetFloat("Speed");
             var clutch = _sdk.Data.GetFloat("Clutch");
             var throttle = _sdk.Data.GetFloat("Throttle");
+            var rpm = _sdk.Data.GetFloat("RPM"); // same real channel UpdateEngineSample already reads
 
             // SessionInfo is a large parsed object.  Looking it up and LINQ-scanning it on every
             // pedal frame was enough to make the Start Helper feel like 20 FPS.  Its race flag is
             // cached once at session detection; only the three real-time scalar channels remain.
             var shouldShow = _isRaceSession && Math.Abs(speed) < StationarySpeedThreshold;
-            RaceStartUpdated?.Invoke(new RaceStartStatus(clutch * 100.0, throttle * 100.0, shouldShow));
+            RaceStartUpdated?.Invoke(new RaceStartStatus(clutch * 100.0, throttle * 100.0, shouldShow, rpm));
         }
         catch
         {
@@ -1251,6 +1252,14 @@ public class TelemetryReader : IDisposable
             var trackWetness = _sdk.Data.GetInt("TrackWetness");
             var declaredWet = _sdk.Data.GetBool("WeatherDeclaredWet");
 
+            // WindVel/WindDir are independently optional (some sessions/replays omit them), same
+            // defensive pattern as every other per-field try/catch in this method -- spec §8 requires
+            // wind+direction as a distinct field, never fabricated when absent.
+            double? windSpeed = null;
+            double? windDirectionDeg = null;
+            try { windSpeed = _sdk.Data.GetFloat("WindVel"); } catch { /* optional channel */ }
+            try { windDirectionDeg = _sdk.Data.GetFloat("WindDir") * (180.0 / Math.PI); } catch { /* optional channel */ }
+
             var maxCars = IRacingSdkConst.MaxNumCars;
             var positions = new List<TrackPositionDot>();
             for (var idx = 0; idx < maxCars; idx++)
@@ -1269,7 +1278,7 @@ public class TelemetryReader : IDisposable
                 rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
             }
             catch { /* optional session metadata */ }
-            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions));
+            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions, windSpeed, windDirectionDeg));
         }
         catch
         {
