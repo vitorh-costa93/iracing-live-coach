@@ -26,6 +26,9 @@
 - All colors come from the single normative HEX palette (spec §16), centralized as tokens — never scattered literals.
 - Antialiasing is an acceptance requirement: DirectWrite grayscale AA on transparent surfaces, `D2D1_ANTIALIAS_MODE_PER_PRIMITIVE` for vector geometry, correct premultiplied-alpha handling, per-monitor DPI awareness with target/cache recreation on DPI or monitor change.
 - Reference test hardware: Ryzen 5 5500X3D, GTX 1660 6GB, 16GB RAM, 1080p165Hz, iRacing borderless-windowed. No performance claims for other configurations without separate testing.
+- Primary typeface is **Barlow Semi Condensed** (spec §5) — a deliberate change from V2's Satoshi. Rajdhani is opt-in for numeric fields only, and only if it doesn't distort proportions. No `scaleX`/`scaleY` letter-stretching anywhere; tabular numerals for aligned decimals.
+- Reuse existing brand/flag/icon assets and resolution logic first (spec §18): `src/IracingLiveCoach.App/BrandIcons.cs`, `BrandImageLoader.cs`, `src/IracingLiveCoach.Core/CountryFlags.cs`, and `src/IracingLiveCoach.App/Assets/{Brands,Flags}`. Audit before building anything new — no parallel/incompatible catalog.
+- The overlay host must survive device-lost, sim disconnect, session change, and monitor removal without a restart (spec §3) — this is a shipped requirement of Phase 1, not just an observation from Phase 0's spike.
 
 ---
 
@@ -101,7 +104,7 @@ Add a second proof window that redraws a moving dot (simulating a radar blip) at
 
 - [ ] **Step 9: Document findings**
 
-Write `docs/superpowers/specs/2026-09-17-v3-phase0-findings.md` recording: exact Vortice package versions used, transparency confirmed (yes/no + screenshot reference), click-through confirmed, DPI values actually tested and result, monitors tested, measured frame times (p50/p95/p99) for the pacing test, and any limitation discovered (e.g., ClearType artifacts, device-lost behavior not yet handled). This file is the gate — Phase 1 does not start if any of transparency, click-through, or text sharpness fails.
+Write `docs/superpowers/specs/2026-09-17-v3-phase0-findings.md` recording: exact Vortice package versions used, transparency confirmed (yes/no + screenshot reference), click-through confirmed, DPI values actually tested and result, monitors tested, measured frame times (p50/p95/p99) for the pacing test, and any limitation discovered (e.g., ClearType artifacts). Note explicitly that device-lost/reconnect/monitor-removal recovery is deliberately NOT implemented in this spike (that's Phase 1's job, see below) — Phase 0 only proves the drawing path works; it does not need to survive a forced device removal yet. This file is the gate — Phase 1 does not start if any of transparency, click-through, or text sharpness fails.
 
 - [ ] **Step 10: Commit**
 
@@ -121,24 +124,27 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Move/adapt: `src/IracingLiveCoach.App/TelemetryReader.cs` → `src/IracingLiveCoach.Core/Telemetry/TelemetryReader.cs`, keeping the current, user-validated P2P dual-path logic (`ReadP2P`, `ReadP2PCount`, `P2PMaxSeconds = 200`) byte-for-byte — do not "fix" it again without new evidence.
 - Create: `src/IracingLiveCoach.Core/Telemetry/TelemetrySnapshot.cs` — immutable snapshot with timestamp, session id, per-field validity flags (spec §1: "documente capacidades reais por carro e sessão... inclusive dados ausentes, desatualizados e derivados").
 - Create: `src/IracingLiveCoach.OverlayHost/Ipc/` — typed, versioned local IPC (named pipes or a local loopback socket) between Control Center and OverlayHost, with reconnect and schema versioning (spec §3).
+- Create: `src/IracingLiveCoach.OverlayHost/DeviceResources.HandleDeviceLost()` (built on Phase 0's stub) — recreate the D3D device, swap chain, and DirectComposition tree without process restart; `TelemetryReader` reconnect callback already exists (`OnDisconnected`) and must resume the render loop cleanly on sim reconnect, session change, and monitor removal (spec §3).
 
-**Acceptance:** Core project builds with zero WPF/UI references (verify via `dotnet build src/IracingLiveCoach.Core` referencing nothing from `System.Windows.*`); existing 38 unit tests still pass unmodified against the moved `TelemetryReader`.
+**Acceptance:** Core project builds with zero WPF/UI references (verify via `dotnet build src/IracingLiveCoach.Core` referencing nothing from `System.Windows.*`); existing 38 unit tests still pass unmodified against the moved `TelemetryReader`; a manual test unplugging/disabling the overlay's monitor (or forcing `DXGI_ERROR_DEVICE_REMOVED` via `ID3D11Device.RemoveDevice` in a debug hook) shows the overlay recover without relaunching the app.
 
 ## Phase 2 — Shared Declarative Layout Engine (scoped)
 
 **Files:**
 - Create: `src/IracingLiveCoach.OverlayHost/Layout/` — column definitions, text measurement via cached `IDWriteTextLayout`, row/header model, per-widget layout descriptor consumed identically by preview and live overlay (spec §3, §12: "Preview e overlay real devem compartilhar o mesmo motor de layout").
 - Create: `src/IracingLiveCoach.OverlayHost/Theme/PaletteTokens.cs` — every HEX value from spec §16 as named constants, nothing hardcoded elsewhere.
+- Create: `src/IracingLiveCoach.OverlayHost/Layout/WidgetPlacement.cs` and `EditModeHitTester.cs` — free X/Y/monitor/anchor/scale placement per widget (spec §4), including negative virtual-desktop coordinates. Because Direct2D drawing has no built-in mouse routing (unlike WPF), this is where manual hit-testing for drag-move and corner-resize lives: rectangle intersection against each widget's current bounds, driven by the same mouse input WPF used to get for free. Includes the Fuel↔Relative optional link (off by default, configurable spacing) and an undo/redo stack for layout changes (both position and size), plus safe restoration when a widget ends up off-screen after a resolution/monitor change.
 
-**Acceptance:** A geometry test renders the three mandated presets (1 GTP+5 GT3, 5 SF23, Relative 7-row) and asserts physical width/height against the §17 limits (`floor(0.25 × width)`, `floor(0.35 × height)`) at 100/125/150% DPI.
+**Acceptance:** A geometry test renders the three mandated presets (1 GTP+5 GT3, 5 SF23, Relative 7-row) and asserts physical width/height against the §17 limits (`floor(0.25 × width)`, `floor(0.35 × height)`) at 100/125/150% DPI. Separately, a manual test drags each widget to a negative-coordinate second monitor, resizes it against its fixed/flexible column minimums, and confirms undo restores the prior position/size exactly.
 
 ## Phase 3 — Standings + Relative (scoped)
 
 **Files:**
 - Create: `src/IracingLiveCoach.OverlayHost/Widgets/StandingsWidget.cs`, `RelativeWidget.cs`.
 - Reuse: `LiveCoachEngine.cs`, `ComputeLivePositions`/`UpdateStandings`/`UpdateRelative` from the extracted Core telemetry logic — no recalculation logic duplicated in the render layer.
+- Reuse: `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` and the existing `Assets/Brands`, `Assets/Flags` resources (spec §18) — rasterize/cache them as GPU bitmaps once, keyed by CarId→manufacturer resolution already in place; do not build a parallel asset catalog.
 
-**Acceptance:** iRating+Δ combined badge, lap-delta-vs-player, OT balance+bar (200s scale, states modeled separately), class color strip keyed by ClassId — each independently verifiable against spec §6/§7 acceptance bullets.
+**Acceptance:** iRating+Δ combined badge, lap-delta-vs-player, OT balance+bar (200s scale, states modeled separately), class color strip keyed by ClassId, drag-repositioning via Phase 2's hit-tester — each independently verifiable against spec §6/§7 acceptance bullets.
 
 ## Phase 4 — Weather, Fuel, Radar, Start Helper (scoped)
 
@@ -150,6 +156,7 @@ Radar/Start Helper reuse the *data* from `RadarWidgetViewModel`/existing calibra
 ## Phase 5 — Control Center V3 (scoped)
 
 **Files:** New WPF project `src/IracingLiveCoach.ControlCenter/` (kept separate from the render-critical path per spec §3), tabs: Layout, Cabeçalhos, Colunas, Aparência, Cores, Regras, Perfis — talking to OverlayHost over the Phase 1 IPC channel for live, no-restart updates.
+- Layout tab specifically drives Phase 2's `WidgetPlacement`: numeric X/Y/monitor/anchor/scale entry (mirroring on-screen drag), snap/grid toggle (off by default), per-widget and global lock, z-order, and the Fuel↔Relative link toggle — same underlying model the overlay's own edit-mode drag uses, so panel and on-screen edits never diverge.
 
 ## Phase 6 — Profiles & Persistence (scoped)
 
