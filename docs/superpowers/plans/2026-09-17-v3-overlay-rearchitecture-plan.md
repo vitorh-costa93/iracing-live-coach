@@ -162,15 +162,24 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - [x] `Program.cs` rewired to create real `TelemetryReader`-backed `StandingsWidget` and draw it every frame via the new `BeginFrame`/`Draw`/`EndFrame` cycle.
 - [x] Smoke-tested for real: built Release, ran the exe with no iRacing session active, screenshotted — confirmed "Aguardando iRacing..." renders correctly in the right color, over a genuinely transparent background, no crash, no fabricated data.
 
-**Still open (not started or not finished) — being explicit so nothing here is mistaken for done:**
-- [ ] Relative widget (not started at all).
-- [ ] Standings' remaining columns: car number, flag, brand badge, licence/SR badge, gap, interval, last lap, lap-delta-vs-player, multiclass grouping/headers, Top N + player window, SF23 Overtake column.
-- [ ] Asset reuse from `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` (spec §18) — not wired in yet; current widget draws no flags/brand icons at all.
-- [ ] The mandated Barlow Semi Condensed typeface (spec §5) — still using system "Segoe UI" as a placeholder, same as Phase 0; loading a private/embedded font via DirectWrite needs its own small pipeline (in-memory font file loader) not built yet.
-- [ ] Drag-repositioning via Phase 2's `EditModeHitTester`/`WidgetPlacementStore` — StandingsWidget currently draws at a hardcoded (8, 8) offset in `Program.cs`, not yet wired to a placement.
-- [ ] A live, in-game verification with real telemetry (this session could only verify the honest "disconnected" state — the actual row-drawing code path with real `StandingsRow` data has not been visually confirmed against a live iRacing session).
+**Update (2026-09-18, second pass) — Relative widget, more Standings columns, and real drag-repositioning added:**
 
-**Acceptance criteria from the original scope (iRating+Δ badge, OT balance+bar, drag-repositioning, etc.) remain the target — only the iRating+Δ badge and class strip are done and verified so far.**
+- [x] `v3/src/IracingLiveCoach.OverlayHost/Widgets/RelativeWidget.cs` — connects its own `TelemetryReader`, subscribes to `FullRelativeUpdated` (already produces exactly spec §7's mandated 3-ahead/player/3-behind 7-row preset — no row-count logic duplicated). Draws class strip, position offset (`P` for the player's own row, never a fabricated `+0`), name, iRating (no Δ, per spec §7's explicit exclusion), and relative gap.
+- [x] StandingsWidget gained three more columns: gap-to-leader, last lap (via the shared `LapTimeFormatting.Format`, not reimplemented), and lap-delta-vs-player (green/red per spec §6's sign convention, neutral `0.000` on the player's own row).
+- [x] Spec §12's simulation preview (`SetSimulatedRows` on both widgets, toggled with a `T` key in this prototype) — fictitious rows clearly labeled "SIMULAÇÃO" in `PaletteTokens.Warning`, letting every column be verified visually without a live iRacing session. **This is how the screenshots below were produced** — never used as a stand-in for real telemetry in the actual code path.
+- [x] Real drag-repositioning wired end-to-end: `Program.cs` now holds a `WidgetPlacementStore` with one `WidgetPlacement` per widget, an `E`-key edit mode (forces click-through off, draws a focus-colored outline per spec §4's "exibindo limites e alças apenas durante edição" via `DrawEditModeOutlines`), and real `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` handling that calls `EditModeHitTester.HitTest`/`ApplyDragDelta` and writes the result back into the store. Both widgets now draw at their current placement, not a hardcoded offset.
+- [x] Fixed a real bug found via screenshot review: every numeric `ToString` call was using the OS's current culture (this machine's pt-BR settings rendered gaps like `1,800` using a comma decimal separator) instead of the invariant, period-decimal format `LapTimeFormatting.Format` already uses elsewhere in the codebase. All numeric formatting in both widgets now explicitly passes `CultureInfo.InvariantCulture`.
+- [x] Verified all of the above for real: built Release, launched, pressed `T` then `E`, screenshotted (both widgets rendering every column correctly, edit-mode outline visible), then simulated an actual mouse drag (`mouse_event` LBUTTONDOWN → move → LBUTTONUP) on the Standings widget and screenshotted again — **confirmed the widget visibly moved to the dragged position with the outline following it**. This closes the "manual drag test" gap Phase 2 had left open, at least for this single-window prototype.
+
+**Still open (not started or not finished) — being explicit so nothing here is mistaken for done:**
+- [ ] Standings' remaining columns: car number, flag, brand badge, licence/SR badge, interval (distinct from gap-to-leader), multiclass grouping/headers, Top N + player window, SF23 Overtake column.
+- [ ] Relative's remaining columns: car number, flag, brand badge, licence/SR badge, the top header band (brake bias/track temp/rubber/PC clock), Overtake column.
+- [ ] Asset reuse from `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` (spec §18) — not wired in yet; neither widget draws flags/brand icons.
+- [ ] The mandated Barlow Semi Condensed typeface (spec §5) — still using system "Segoe UI" as a placeholder.
+- [ ] True independent per-widget top-level windows (spec §4: any widget on any monitor). The current prototype draws both widgets inside ONE shared window/HWND, stacked vertically — real progress on the placement/drag *logic*, but not yet the "each widget is its own window anywhere on the desktop" architecture the spec ultimately wants. Upgrading this is separate follow-up work, not a blocker for continuing to build out columns.
+- [ ] A live, in-game verification with real telemetry (this session verified the "disconnected" state and the full simulation preview, but the actual live `StandingsUpdated`/`FullRelativeUpdated` data path has not been visually confirmed against a real iRacing session).
+
+**Acceptance criteria from the original scope (OT balance+bar, multiclass grouping, Top N, asset icons, etc.) remain the target — a meaningfully larger slice is done and verified now, but the phase is not complete.**
 
 ## Phase 4 — Weather, Fuel, Radar, Start Helper (scoped)
 
