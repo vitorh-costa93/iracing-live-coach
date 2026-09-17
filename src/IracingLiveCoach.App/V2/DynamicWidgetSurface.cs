@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using IracingLiveCoach.App;
@@ -114,9 +115,27 @@ public sealed class DynamicWidgetSurface : FrameworkElement
     // lost their typography as soon as they moved to this direct-draw surface.
     private static readonly FontFamily SatoshiFont = new("pack://application:,,,/IracingLiveCoach.App;component/V2/Assets/Fonts/#Satoshi");
 
+    private static bool _loggedFontDiagnostics;
+
     private void DrawText(DrawingContext dc, string value, Point origin, double size, Brush brush, TextAlignment alignment, bool bold = false)
     {
         var face = new Typeface(SatoshiFont, FontStyles.Normal, bold ? FontWeights.Bold : FontWeights.Medium, FontStretches.Normal);
+        if (!_loggedFontDiagnostics)
+        {
+            _loggedFontDiagnostics = true;
+            try
+            {
+                var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "font-diagnostics.log");
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+                bool resolved = face.TryGetGlyphTypeface(out var gt);
+                var familyNames = string.Join(", ", SatoshiFont.FamilyNames.Values);
+                var report = resolved
+                    ? $"resolved=true Win32FamilyName={gt.Win32FamilyNames.Values.FirstOrDefault()} Win32FaceName={gt.Win32FaceNames.Values.FirstOrDefault()} Style={gt.Style} Weight={gt.Weight}"
+                    : "resolved=false (TryGetGlyphTypeface failed entirely)";
+                System.IO.File.AppendAllText(path, $"{DateTime.UtcNow:O} SatoshiFont.FamilyNames=[{familyNames}] requestedWeight={(bold ? FontWeights.Bold : FontWeights.Medium)} {report}\n");
+            }
+            catch { /* diagnostics must never break rendering */ }
+        }
         var formatted = new FormattedText(value, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, face, size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
         {
             TextAlignment = alignment

@@ -917,17 +917,21 @@ public class TelemetryReader : IDisposable
                     estimatedTimeByPosition.TryGetValue(leader.Position, out var leaderEstimate))
                     gapToLeader = Math.Max(0, currentEstimate - leaderEstimate);
 
-                // INTERVAL (gap to the car directly ahead, not the leader) -- derived from the same
-                // real CarIdxF2Time values already used for GAP: the difference between two
-                // consecutive cars' "time behind leader" is exactly their gap to each other. Null
-                // for the leader (no car ahead) or whenever either car's own F2Time is unavailable.
-                double? interval = i > 0 && r.Laps == ordered[i - 1].Laps &&
+                // INTERVAL (gap to the car directly ahead, not the leader).
+                // 18/09/2026 fix: previously required BOTH cars to report the exact same completed-
+                // lap count before even trying the CarIdxEstTime-based value, then fell back to a
+                // CarIdxF2Time diff that only updates at the timing line -- in practice this made
+                // Interval null almost always (confirmed working Relative widget never had this
+                // restriction at all -- see UpdateFullRelative's plain `theirEstTime - myEstTime`,
+                // the exact same "known simplification, doesn't correct for a lap-count difference"
+                // tradeoff Relative already ships with). Interval now mirrors that proven approach:
+                // an unguarded EstTime difference against the car immediately ahead in the standings
+                // order, with no same-lap gate and no F2Time fallback.
+                double? interval = i > 0 &&
                     estimatedTimeByPosition.TryGetValue(r.Position, out var currentIntervalEstimate) &&
                     estimatedTimeByPosition.TryGetValue(ordered[i - 1].Position, out var aheadIntervalEstimate)
-                    ? Math.Max(0, currentIntervalEstimate - aheadIntervalEstimate)
-                    : i > 0 && r.Gap is double gapHere && ordered[i - 1].Gap is double gapAhead
-                        ? gapHere - gapAhead
-                        : null;
+                    ? currentIntervalEstimate - aheadIntervalEstimate
+                    : null;
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
                     r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
