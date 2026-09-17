@@ -4,7 +4,9 @@
 
 **Goal:** Replace the WPF layered-window overlay renderer with a GPU-composited renderer (Direct3D11 + Direct2D + DirectWrite + DirectComposition) matching the fluidity of Kapps/GoFast, while preserving every validated feature of the current app (telemetry logic, widget behavior, configuration options). The current app is frozen as a backup; the new app is built alongside it for side-by-side comparison.
 
-**Architecture:** Extract all UI-framework-agnostic logic (telemetry reading, domain models, calculations, capabilities, persistence) into `IracingLiveCoach.Core`, already partially separated. Build a new `IracingLiveCoach.OverlayHost` project that owns a DirectComposition swapchain per overlay window and draws every widget through a shared declarative layout engine using Direct2D/DirectWrite. The Control Center (configuration UI) stays WPF, communicating with the overlay host over a local typed IPC channel so config changes apply live without restarting.
+**Folder isolation (user directive, 2026-09-18):** All V3 code lives under the top-level `v3/` folder (`v3/src/IracingLiveCoach.OverlayHost`, and every subsequent V3 project). **Nothing under `src/` (V2's `IracingLiveCoach.App`, `IracingLiveCoach.Core`) is modified, moved, or deleted for V3's sake.** Both trees stay alive and buildable side by side until the user explicitly authorizes consolidating onto one. Practical consequence for Phase 1 below: where the plan originally said "move `TelemetryReader.cs` into Core," it now means **copy** it into a new `v3/src/IracingLiveCoach.Core` project — a deliberate, acknowledged duplication, not an oversight, made to guarantee V2 never breaks. Reconciling the duplication (or not) is part of whatever the user decides at consolidation time.
+
+**Architecture:** A new `v3/src/IracingLiveCoach.Core` project holds V3's own copy of UI-framework-agnostic logic (telemetry reading, domain models, calculations, capabilities, persistence) — copied from, not shared with, V2's `src/IracingLiveCoach.Core`. `v3/src/IracingLiveCoach.OverlayHost` owns a DirectComposition swapchain per overlay window and draws every widget through a shared declarative layout engine using Direct2D/DirectWrite. The Control Center (configuration UI) stays WPF, communicating with the overlay host over a local typed IPC channel so config changes apply live without restarting.
 
 **Tech Stack:** C#. `IracingLiveCoach.OverlayHost` targets **net9.0-windows** (confirmed during Phase 0 research: the classic `Vortice.Direct2D1`/`Vortice.DXGI` family at 3.8.3 has no DirectWrite bindings at all — never published, verified against the amerkoleci/Vortice.Windows source tree — DirectWrite only exists in the actively maintained `Vortice.Win32.Graphics.*` family at 2.5.0, which requires net9.0/net10.0). `IracingLiveCoach.Core` and the V2 app stay on net8.0, unaffected — only the new OverlayHost project takes the newer TFM. .NET 9 SDK installed via winget on 2026-09-17, user-confirmed. Packages pinned to 2.5.0: `Vortice.Win32.Graphics.Direct3D11`, `Vortice.Win32.Graphics.Dxgi`, `Vortice.Win32.Graphics.Direct2D`, `Vortice.Win32.Graphics.DirectWrite`, `Vortice.Win32.Graphics.DirectComposition`. IRSDKSharper (existing telemetry library, unchanged), WPF (Control Center only, net8.0).
 
@@ -52,10 +54,10 @@ This spec spans multiple independent subsystems (GPU rendering core, shared layo
 ## Phase 0 — GPU Technical Proof
 
 **Files:**
-- Create: `src/IracingLiveCoach.OverlayHost/IracingLiveCoach.OverlayHost.csproj`
-- Create: `src/IracingLiveCoach.OverlayHost/GpuOverlayWindow.cs`
-- Create: `src/IracingLiveCoach.OverlayHost/DeviceResources.cs`
-- Create: `src/IracingLiveCoach.OverlayHost/Program.cs`
+- Create: `v3/src/IracingLiveCoach.OverlayHost/IracingLiveCoach.OverlayHost.csproj`
+- Create: `v3/src/IracingLiveCoach.OverlayHost/GpuOverlayWindow.cs`
+- Create: `v3/src/IracingLiveCoach.OverlayHost/DeviceResources.cs`
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Program.cs`
 - Test: manual/visual (documented below) — no automated UI test framework exists for this; acceptance is evidence-based per spec §13/§19.
 
 **Interfaces:**
@@ -69,8 +71,8 @@ Verified against `api.nuget.org` and the `amerkoleci/Vortice.Windows` GitHub sou
 - [ ] **Step 2: Create the OverlayHost project**
 
 ```bash
-dotnet new console -n IracingLiveCoach.OverlayHost -o src/IracingLiveCoach.OverlayHost --framework net9.0-windows
-dotnet sln add src/IracingLiveCoach.OverlayHost/IracingLiveCoach.OverlayHost.csproj
+dotnet new console -n IracingLiveCoach.OverlayHost -o v3/src/IracingLiveCoach.OverlayHost --framework net9.0-windows
+dotnet sln add v3/src/IracingLiveCoach.OverlayHost/IracingLiveCoach.OverlayHost.csproj
 ```
 Edit the `.csproj` to add `<UseWindowsForms>false</UseWindowsForms>`, `<OutputType>WinExe</OutputType>`, and the five pinned `Vortice.Win32.Graphics.*` package references (version 2.5.0) from Step 1.
 
@@ -107,7 +109,7 @@ Full findings in [docs/superpowers/specs/2026-09-17-v3-phase0-findings.md](../sp
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/IracingLiveCoach.OverlayHost docs/superpowers/specs/2026-09-17-v3-phase0-findings.md IracingLiveCoach.sln
+git add v3/src/IracingLiveCoach.OverlayHost docs/superpowers/specs/2026-09-17-v3-phase0-findings.md IracingLiveCoach.sln
 git commit -m "feat(v3): GPU overlay technical proof -- DirectComposition transparency, click-through, DPI, frame pacing
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
@@ -118,27 +120,28 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 ## Phase 1 — Core Extraction + Telemetry Adapter (scoped)
 
 **Files:**
-- Modify: `src/IracingLiveCoach.Core/Models.cs` — audit against spec §1 for gaps (per-car capability flags: has-P2P, is-multiclass, session type).
-- Move/adapt: `src/IracingLiveCoach.App/TelemetryReader.cs` → `src/IracingLiveCoach.Core/Telemetry/TelemetryReader.cs`, keeping the current, user-validated P2P dual-path logic (`ReadP2P`, `ReadP2PCount`, `P2PMaxSeconds = 200`) byte-for-byte — do not "fix" it again without new evidence.
-- Create: `src/IracingLiveCoach.Core/Telemetry/TelemetrySnapshot.cs` — immutable snapshot with timestamp, session id, per-field validity flags (spec §1: "documente capacidades reais por carro e sessão... inclusive dados ausentes, desatualizados e derivados").
-- Create: `src/IracingLiveCoach.OverlayHost/Ipc/` — typed, versioned local IPC (named pipes or a local loopback socket) between Control Center and OverlayHost, with reconnect and schema versioning (spec §3).
-- Create: `src/IracingLiveCoach.OverlayHost/DeviceResources.HandleDeviceLost()` (built on Phase 0's stub) — recreate the D3D device, swap chain, and DirectComposition tree without process restart; `TelemetryReader` reconnect callback already exists (`OnDisconnected`) and must resume the render loop cleanly on sim reconnect, session change, and monitor removal (spec §3).
+- Create: `v3/src/IracingLiveCoach.Core/IracingLiveCoach.Core.csproj` (new project, net8.0 or net9.0 — telemetry/domain logic has no GPU dependency, pick whichever avoids a second TFM without a reason; default to net9.0 to match OverlayHost unless a reused library forces net8.0).
+- Copy (not move — see Folder isolation note above): `src/IracingLiveCoach.Core/Models.cs` → `v3/src/IracingLiveCoach.Core/Models.cs`, then audit against spec §1 for gaps (per-car capability flags: has-P2P, is-multiclass, session type). V2's copy is untouched.
+- Copy (not move): `src/IracingLiveCoach.App/TelemetryReader.cs` → `v3/src/IracingLiveCoach.Core/Telemetry/TelemetryReader.cs`, keeping the current, user-validated P2P dual-path logic (`ReadP2P`, `ReadP2PCount`, `P2PMaxSeconds = 200`) byte-for-byte — do not "fix" it again without new evidence. V2's original file at `src/IracingLiveCoach.App/TelemetryReader.cs` stays exactly as-is.
+- Create: `v3/src/IracingLiveCoach.Core/Telemetry/TelemetrySnapshot.cs` — immutable snapshot with timestamp, session id, per-field validity flags (spec §1: "documente capacidades reais por carro e sessão... inclusive dados ausentes, desatualizados e derivados").
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Ipc/` — typed, versioned local IPC (named pipes or a local loopback socket) between Control Center and OverlayHost, with reconnect and schema versioning (spec §3).
+- Create: `v3/src/IracingLiveCoach.OverlayHost/DeviceResources.HandleDeviceLost()` (built on Phase 0's stub) — recreate the D3D device, swap chain, and DirectComposition tree without process restart; `TelemetryReader` reconnect callback already exists (`OnDisconnected`) and must resume the render loop cleanly on sim reconnect, session change, and monitor removal (spec §3).
 
-**Acceptance:** Core project builds with zero WPF/UI references (verify via `dotnet build src/IracingLiveCoach.Core` referencing nothing from `System.Windows.*`); existing 38 unit tests still pass unmodified against the moved `TelemetryReader`; a manual test unplugging/disabling the overlay's monitor (or forcing `DXGI_ERROR_DEVICE_REMOVED` via `ID3D11Device.RemoveDevice` in a debug hook) shows the overlay recover without relaunching the app.
+**Acceptance:** `v3/src/IracingLiveCoach.Core` builds with zero WPF/UI references (verify via `dotnet build v3/src/IracingLiveCoach.Core` referencing nothing from `System.Windows.*`); V2's own `dotnet build`/`dotnet test` still succeed completely untouched (proves the copy, not move, didn't regress V2); the copied `TelemetryReader`'s existing 38 unit tests (copied alongside it) still pass; a manual test unplugging/disabling the overlay's monitor (or forcing `DXGI_ERROR_DEVICE_REMOVED` via `ID3D11Device.RemoveDevice` in a debug hook) shows the overlay recover without relaunching the app.
 
 ## Phase 2 — Shared Declarative Layout Engine (scoped)
 
 **Files:**
-- Create: `src/IracingLiveCoach.OverlayHost/Layout/` — column definitions, text measurement via cached `IDWriteTextLayout`, row/header model, per-widget layout descriptor consumed identically by preview and live overlay (spec §3, §12: "Preview e overlay real devem compartilhar o mesmo motor de layout").
-- Create: `src/IracingLiveCoach.OverlayHost/Theme/PaletteTokens.cs` — every HEX value from spec §16 as named constants, nothing hardcoded elsewhere.
-- Create: `src/IracingLiveCoach.OverlayHost/Layout/WidgetPlacement.cs` and `EditModeHitTester.cs` — free X/Y/monitor/anchor/scale placement per widget (spec §4), including negative virtual-desktop coordinates. Because Direct2D drawing has no built-in mouse routing (unlike WPF), this is where manual hit-testing for drag-move and corner-resize lives: rectangle intersection against each widget's current bounds, driven by the same mouse input WPF used to get for free. Includes the Fuel↔Relative optional link (off by default, configurable spacing) and an undo/redo stack for layout changes (both position and size), plus safe restoration when a widget ends up off-screen after a resolution/monitor change.
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Layout/` — column definitions, text measurement via cached `IDWriteTextLayout`, row/header model, per-widget layout descriptor consumed identically by preview and live overlay (spec §3, §12: "Preview e overlay real devem compartilhar o mesmo motor de layout").
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Theme/PaletteTokens.cs` — every HEX value from spec §16 as named constants, nothing hardcoded elsewhere.
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Layout/WidgetPlacement.cs` and `EditModeHitTester.cs` — free X/Y/monitor/anchor/scale placement per widget (spec §4), including negative virtual-desktop coordinates. Because Direct2D drawing has no built-in mouse routing (unlike WPF), this is where manual hit-testing for drag-move and corner-resize lives: rectangle intersection against each widget's current bounds, driven by the same mouse input WPF used to get for free. Includes the Fuel↔Relative optional link (off by default, configurable spacing) and an undo/redo stack for layout changes (both position and size), plus safe restoration when a widget ends up off-screen after a resolution/monitor change.
 
 **Acceptance:** A geometry test renders the three mandated presets (1 GTP+5 GT3, 5 SF23, Relative 7-row) and asserts physical width/height against the §17 limits (`floor(0.25 × width)`, `floor(0.35 × height)`) at 100/125/150% DPI. Separately, a manual test drags each widget to a negative-coordinate second monitor, resizes it against its fixed/flexible column minimums, and confirms undo restores the prior position/size exactly.
 
 ## Phase 3 — Standings + Relative (scoped)
 
 **Files:**
-- Create: `src/IracingLiveCoach.OverlayHost/Widgets/StandingsWidget.cs`, `RelativeWidget.cs`.
+- Create: `v3/src/IracingLiveCoach.OverlayHost/Widgets/StandingsWidget.cs`, `RelativeWidget.cs`.
 - Reuse: `LiveCoachEngine.cs`, `ComputeLivePositions`/`UpdateStandings`/`UpdateRelative` from the extracted Core telemetry logic — no recalculation logic duplicated in the render layer.
 - Reuse: `BrandIcons.cs`/`BrandImageLoader.cs`/`CountryFlags.cs` and the existing `Assets/Brands`, `Assets/Flags` resources (spec §18) — rasterize/cache them as GPU bitmaps once, keyed by CarId→manufacturer resolution already in place; do not build a parallel asset catalog.
 
@@ -146,19 +149,19 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ## Phase 4 — Weather, Fuel, Radar, Start Helper (scoped)
 
-**Files:** `src/IracingLiveCoach.OverlayHost/Widgets/WeatherWidget.cs`, `FuelWidget.cs`, `RadarWidget.cs`, `StartHelperWidget.cs`.
+**Files:** `v3/src/IracingLiveCoach.OverlayHost/Widgets/WeatherWidget.cs`, `FuelWidget.cs`, `RadarWidget.cs`, `StartHelperWidget.cs`.
 Radar/Start Helper reuse the *data* from `RadarWidgetViewModel`/existing calibration logic; drawing is new (Direct2D), replacing `DynamicWidgetSurface`'s WPF `OnRender` with the Phase 2 layout engine.
 
 **Acceptance:** Radar shows symbolic left/right/both indicators only if telemetry supports it (no fabricated XY positions per spec §10); Start Helper calibration/profiles preserved from current `RadarWidgetViewModel`/Start Helper logic.
 
 ## Phase 5 — Control Center V3 (scoped)
 
-**Files:** New WPF project `src/IracingLiveCoach.ControlCenter/` (kept separate from the render-critical path per spec §3), tabs: Layout, Cabeçalhos, Colunas, Aparência, Cores, Regras, Perfis — talking to OverlayHost over the Phase 1 IPC channel for live, no-restart updates.
+**Files:** New WPF project `v3/src/IracingLiveCoach.ControlCenter/` (kept separate from the render-critical path per spec §3), tabs: Layout, Cabeçalhos, Colunas, Aparência, Cores, Regras, Perfis — talking to OverlayHost over the Phase 1 IPC channel for live, no-restart updates.
 - Layout tab specifically drives Phase 2's `WidgetPlacement`: numeric X/Y/monitor/anchor/scale entry (mirroring on-screen drag), snap/grid toggle (off by default), per-widget and global lock, z-order, and the Fuel↔Relative link toggle — same underlying model the overlay's own edit-mode drag uses, so panel and on-screen edits never diverge.
 
 ## Phase 6 — Profiles & Persistence (scoped)
 
-**Files:** Extend `src/IracingLiveCoach.Core/WidgetLayoutStore.cs` (already exists) with versioned migrations, atomic writes, import/export, undo/redo stack (spec §3, §12).
+**Files:** Copy `src/IracingLiveCoach.Core/WidgetLayoutStore.cs` → `v3/src/IracingLiveCoach.Core/WidgetLayoutStore.cs` (V2's original untouched), then extend the V3 copy with versioned migrations, atomic writes, import/export, undo/redo stack (spec §3, §12).
 
 ## Phase 7 — Validation, Benchmarking, Packaging (scoped)
 
