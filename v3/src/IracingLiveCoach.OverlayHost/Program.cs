@@ -18,6 +18,7 @@ using IracingLiveCoach.Core.Telemetry;
 using IracingLiveCoach.OverlayHost.Assets;
 using IracingLiveCoach.OverlayHost.Ipc;
 using IracingLiveCoach.OverlayHost.Layout;
+using IracingLiveCoach.OverlayHost.Persistence;
 using IracingLiveCoach.OverlayHost.Widgets;
 using static Vortice.Win32.Apis;
 using static Vortice.Win32.Graphics.Direct2D.Apis;
@@ -65,6 +66,7 @@ public static unsafe class Program
     private const string StartHelperKey = "start-helper";
     private static readonly WidgetPlacementStore PlacementStore = new();
     private static readonly Dictionary<string, nint> WidgetWindows = new();
+    private static readonly Dictionary<nint, string> WidgetKeysByHandle = new();
 
     // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
     // so movement never carries unrelated overlay content or transparent padding with it.
@@ -118,6 +120,11 @@ public static unsafe class Program
         PlacementStore.Set(RadarKey, new WidgetPlacement(0, 980, 722, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
         PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 980, 860, PlacementAnchor.TopLeft, 280, 82, 1f, false, 5));
 
+        // Spec §3/§12: a saved layout from a previous session overrides the defaults above --
+        // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
+        // starting positions for every widget.
+        PlacementPersistence.Load(PlacementStore);
+
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;
         nint wndProcPtr = Marshal.GetFunctionPointerForDelegate(wndProc);
@@ -158,6 +165,7 @@ public static unsafe class Program
         WidgetWindows[FuelKey] = fuelHwnd;
         WidgetWindows[RadarKey] = radarHwnd;
         WidgetWindows[StartHelperKey] = startHwnd;
+        foreach (var (key, handle) in WidgetWindows) WidgetKeysByHandle[handle] = key;
 
         // Phase 5: the Control Center talks to this process only through this typed, versioned
         // pipe (spec §3) -- it never reaches into PlacementStore or any window handle directly.
@@ -319,6 +327,7 @@ public static unsafe class Program
             Opacity = message.Opacity
         };
         PlacementStore.Set(message.Widget, updated);
+        PlacementPersistence.Save(PlacementStore); // spec §3: every applied edit survives the next launch
 
         SetWindowPos(hwnd, 0, (int)message.X, (int)message.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         ShowWindow(hwnd, message.Visible ? SW_SHOW : SW_HIDE);
@@ -387,6 +396,22 @@ public static unsafe class Program
                 }
                 return 0;
             case WM_LBUTTONUP:
+                // In-game drags (as opposed to Control Center edits) only moved the HWND itself
+                // until now -- PlacementStore and the on-disk profile never learned about them, so
+                // a drag performed directly on the overlay silently reverted on next launch and
+                // left the Control Center showing stale numbers. Persist the final position here,
+                // on drag-end, the same way ApplyPlacementMessage does for IPC-driven changes.
+                if (_editMode && _draggingWindow == hwnd && _draggingWindow != 0
+                    && WidgetKeysByHandle.TryGetValue(hwnd, out var draggedKey))
+                {
+                    GetWindowRect(hwnd, out var finalRect);
+                    var current = PlacementStore.Get(draggedKey);
+                    if (current is not null)
+                    {
+                        PlacementStore.Set(draggedKey, current with { X = finalRect.Left, Y = finalRect.Top });
+                        PlacementPersistence.Save(PlacementStore);
+                    }
+                }
                 _draggingWindow = 0;
                 return 0;
             case WM_DESTROY:
