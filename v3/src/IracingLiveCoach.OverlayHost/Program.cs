@@ -107,7 +107,8 @@ public static unsafe class Program
             frameTimes.Add(delta);
             angle += delta * 0.12; // moving-dot pacing test (Radar/Start Helper stand-in)
 
-            resources.RenderFrame(angle, _clickThrough);
+            if (!resources.RenderFrame(angle, _clickThrough))
+                Console.WriteLine("Device lost detected -- recovered without restart.");
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush
             {

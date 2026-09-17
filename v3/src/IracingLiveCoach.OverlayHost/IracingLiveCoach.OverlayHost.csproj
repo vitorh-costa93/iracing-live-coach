@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\IracingLiveCoach.Core\IracingLiveCoach.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Vortice.Win32.Graphics.Direct3D11" Version="2.5.0" />
     <PackageReference Include="Vortice.Win32.Graphics.Dxgi" Version="2.5.0" />
     <PackageReference Include="Vortice.Win32.Graphics.Direct2D" Version="2.5.0" />

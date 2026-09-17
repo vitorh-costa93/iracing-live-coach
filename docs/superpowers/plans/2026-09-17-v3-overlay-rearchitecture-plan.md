@@ -117,17 +117,25 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ---
 
-## Phase 1 — Core Extraction + Telemetry Adapter (scoped)
+## Phase 1 — Core Extraction + Telemetry Adapter
 
-**Files:**
-- Create: `v3/src/IracingLiveCoach.Core/IracingLiveCoach.Core.csproj` (new project, net8.0 or net9.0 — telemetry/domain logic has no GPU dependency, pick whichever avoids a second TFM without a reason; default to net9.0 to match OverlayHost unless a reused library forces net8.0).
-- Copy (not move — see Folder isolation note above): `src/IracingLiveCoach.Core/Models.cs` → `v3/src/IracingLiveCoach.Core/Models.cs`, then audit against spec §1 for gaps (per-car capability flags: has-P2P, is-multiclass, session type). V2's copy is untouched.
-- Copy (not move): `src/IracingLiveCoach.App/TelemetryReader.cs` → `v3/src/IracingLiveCoach.Core/Telemetry/TelemetryReader.cs`, keeping the current, user-validated P2P dual-path logic (`ReadP2P`, `ReadP2PCount`, `P2PMaxSeconds = 200`) byte-for-byte — do not "fix" it again without new evidence. V2's original file at `src/IracingLiveCoach.App/TelemetryReader.cs` stays exactly as-is.
-- Create: `v3/src/IracingLiveCoach.Core/Telemetry/TelemetrySnapshot.cs` — immutable snapshot with timestamp, session id, per-field validity flags (spec §1: "documente capacidades reais por carro e sessão... inclusive dados ausentes, desatualizados e derivados").
-- Create: `v3/src/IracingLiveCoach.OverlayHost/Ipc/` — typed, versioned local IPC (named pipes or a local loopback socket) between Control Center and OverlayHost, with reconnect and schema versioning (spec §3).
-- Create: `v3/src/IracingLiveCoach.OverlayHost/DeviceResources.HandleDeviceLost()` (built on Phase 0's stub) — recreate the D3D device, swap chain, and DirectComposition tree without process restart; `TelemetryReader` reconnect callback already exists (`OnDisconnected`) and must resume the render loop cleanly on sim reconnect, session change, and monitor removal (spec §3).
+**Status: mostly done (2026-09-18).** Remaining: the IPC skeleton (not yet started — needed once the Control Center exists in Phase 5, not blocking Phase 2/3 work) and a real forced device-removal test (see note below).
 
-**Acceptance:** `v3/src/IracingLiveCoach.Core` builds with zero WPF/UI references (verify via `dotnet build v3/src/IracingLiveCoach.Core` referencing nothing from `System.Windows.*`); V2's own `dotnet build`/`dotnet test` still succeed completely untouched (proves the copy, not move, didn't regress V2); the copied `TelemetryReader`'s existing 38 unit tests (copied alongside it) still pass; a manual test unplugging/disabling the overlay's monitor (or forcing `DXGI_ERROR_DEVICE_REMOVED` via `ID3D11Device.RemoveDevice` in a debug hook) shows the overlay recover without relaunching the app.
+- [x] Create `v3/src/IracingLiveCoach.Core/IracingLiveCoach.Core.csproj` — targets net9.0 (no GPU dependency forcing `-windows`; matches OverlayHost's major version without needing the platform suffix).
+- [x] Copy (not move — see Folder isolation note above) `src/IracingLiveCoach.Core/*.cs` (Models, LiveCoachEngine, BaselineSync, CountryFlags, LapTimeFormatting, WidgetLayoutStore) → `v3/src/IracingLiveCoach.Core/`. V2's originals untouched.
+- [x] Copy (not move) `src/IracingLiveCoach.App/TelemetryReader.cs` → `v3/src/IracingLiveCoach.Core/Telemetry/TelemetryReader.cs`, namespace changed to `IracingLiveCoach.Core.Telemetry` (physical move within the copy, not a logic change) — the validated P2P dual-path logic (`ReadP2P`, `ReadP2PCount`, `P2PMaxSeconds = 200`) is byte-for-byte identical. Added three small ADDITIVE members only (no existing logic touched): `IsRaceSession`, `PlayerCarIdx` read-only pass-through properties, and `CaptureSnapshot()`. V2's original file untouched.
+- [x] Create `v3/src/IracingLiveCoach.Core/Telemetry/TelemetrySnapshot.cs` — immutable record (`CapturedAtUtc`, `HasRecentTelemetry`, `SessionDetected`, `IsRaceSession`, `PlayerCarIdx`) plus a `NeverCaptured` static default, per spec §1.
+- [x] Copy `tests/IracingLiveCoach.Core.Tests/*.cs` (all 6 files, 38 tests) → `v3/tests/IracingLiveCoach.Core.Tests/`, retargeted to net9.0 and referencing the v3 Core project.
+- [x] `v3/src/IracingLiveCoach.OverlayHost/DeviceResources.cs` — refactored Phase 0's one-shot `Create()` into `Initialize()` (re-runnable) + `HandleDeviceLost()` (disposes every GPU-dependent COM object via `ReleaseGpuResources()`, then re-`Initialize()`s against the same HWND/size) + a `DeviceRecovered` event for future GPU-resident caches (fonts/icons, spec §18) to hook their own re-creation. `RenderFrame` now checks `EndDraw`/`Present`'s `HResult` for `DXGI_ERROR_DEVICE_REMOVED/_RESET/_HUNG` (hardcoded stable Win32 values — not exposed as named constants in this binding) and returns `false` (recovered, try again next frame) instead of throwing.
+- [ ] `v3/src/IracingLiveCoach.OverlayHost/Ipc/` — typed, versioned local IPC between Control Center and OverlayHost. **Not started** — no Control Center exists yet to talk to (Phase 5); revisit when that phase starts.
+
+**Acceptance — verified:**
+- `v3/src/IracingLiveCoach.Core` builds standalone with zero WPF/UI references.
+- V2's own `dotnet build IracingLiveCoach.sln` / `dotnet test` still succeed completely untouched — confirmed after every V3 change in this phase (proves copy-not-move never regressed V2).
+- Both test projects pass: `IracingLiveCoach.Core.Tests.dll (net8.0)` — V2, 38/38 — and `IracingLiveCoach.Core.Tests.dll (net9.0)` — V3 copy, 38/38.
+- Smoke test: built Release, launched the OverlayHost exe, confirmed it runs 3+ seconds without crashing after the `DeviceResources` refactor (transparency/click-through already re-verified in Phase 0, not re-screenshotted here).
+
+**Acceptance — NOT verified, honestly flagged:** a real forced-device-removal test (unplugging/disabling the monitor, or calling `ID3D11Device.RemoveDevice`) was not performed. `ID3D11Device.RemoveDevice` is a DirectX 11.1 (`ID3D11Device1`+) method and this Vortice.Win32.Graphics.Direct3D11 2.5.0 binding does not expose `ID3D11Device1`/`RemoveDevice` at all (checked the generated interface files directly — absent). The recovery code follows the standard, MSDN-documented device-lost pattern (check `EndDraw`/`Present` HRESULT, tear down, rebuild), but it has not been exercised by an actual device-lost event. This needs either: a real GPU driver reset/monitor unplug during a later manual test pass, or a different mechanism to force `DXGI_ERROR_DEVICE_REMOVED` in code, found in a later phase.
 
 ## Phase 2 — Shared Declarative Layout Engine (scoped)
 

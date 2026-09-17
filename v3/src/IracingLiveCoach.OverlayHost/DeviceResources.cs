@@ -27,13 +27,14 @@ namespace IracingLiveCoach.OverlayHost;
 
 /// <summary>
 /// Owns the DirectComposition + D3D11 + D2D + DirectWrite chain for one overlay window.
-/// Phase 0 proof only: device-lost recovery is Phase 1's job (see the plan), this class only
-/// proves the drawing path itself -- real transparency, real GPU compositing, sharp text.
+/// Phase 1: survives device-lost (see <see cref="HandleDeviceLost"/>) by tearing down and
+/// rebuilding every GPU resource against the same HWND/visual-tree slot, without a process
+/// restart -- required by spec section 3 ("preveja device lost, desconexão do simulador...").
 /// </summary>
 public sealed unsafe class DeviceResources : IDisposable
 {
     // These fields own their COM references (plain struct-copy transfer, no extra AddRef) --
-    // the locals that produce them in Create() are deliberately NOT `using`, since disposing
+    // the locals that produce them in Initialize() are deliberately NOT `using`, since disposing
     // them there would Release() the only reference and leave these fields dangling.
     private ComPtr<ID3D11Device> _d3dDevice;
     private ComPtr<IDXGIDevice> _dxgiDevice;
@@ -50,11 +51,35 @@ public sealed unsafe class DeviceResources : IDisposable
     private ComPtr<ID2D1SolidColorBrush> _textBrush;
     private ComPtr<ID2D1SolidColorBrush> _dotBrush;
 
+    private nint _hwnd;
+    private int _width;
+    private int _height;
+
+    // DXGI_ERROR_DEVICE_REMOVED / _RESET / _HUNG -- stable, documented Win32 HRESULT values,
+    // not exposed as named constants anywhere in the Vortice.Win32 bindings.
+    private const int DXGI_ERROR_DEVICE_REMOVED = unchecked((int)0x887A0005);
+    private const int DXGI_ERROR_DEVICE_RESET = unchecked((int)0x887A0007);
+    private const int DXGI_ERROR_DEVICE_HUNG = unchecked((int)0x887A0006);
+
+    /// <summary>Raised right after a device-lost recovery completes, so callers (e.g. a future
+    /// layout engine) know to invalidate any GPU-resident caches (fonts, icon bitmaps) tied to
+    /// the old device -- see spec section 18's "recrie recursos dependentes da GPU após device lost".</summary>
+    public event Action? DeviceRecovered;
+
     private DeviceResources() { }
 
     public static DeviceResources Create(nint hwnd, int width, int height)
     {
         var self = new DeviceResources();
+        self.Initialize(hwnd, width, height);
+        return self;
+    }
+
+    private void Initialize(nint hwnd, int width, int height)
+    {
+        _hwnd = hwnd;
+        _width = width;
+        _height = height;
 
         ReadOnlySpan<FeatureLevel> featureLevels = [FeatureLevel.Level_11_0];
         ComPtr<ID3D11Device> device = default;
@@ -68,15 +93,15 @@ public sealed unsafe class DeviceResources : IDisposable
             device.GetAddressOf(),
             &achievedLevel,
             immediateContext.GetAddressOf()));
-        self._d3dDevice = device;
+        _d3dDevice = device;
 
         ComPtr<IDXGIDevice> dxgiDevice = default;
-        ThrowIfFailed(self._d3dDevice.As(ref dxgiDevice));
-        self._dxgiDevice = dxgiDevice;
+        ThrowIfFailed(_d3dDevice.As(ref dxgiDevice));
+        _dxgiDevice = dxgiDevice;
 
         ComPtr<IDXGIFactory2> dxgiFactory = default;
         ThrowIfFailed(CreateDXGIFactory2(CreateFactoryFlags.None, __uuidof<IDXGIFactory2>(), (void**)dxgiFactory.GetAddressOf()));
-        self._dxgiFactory = dxgiFactory;
+        _dxgiFactory = dxgiFactory;
 
         var swapChainDesc = new SwapChainDescription1
         {
@@ -93,59 +118,57 @@ public sealed unsafe class DeviceResources : IDisposable
             Flags = SwapChainFlags.None
         };
         ComPtr<IDXGISwapChain1> swapChain = default;
-        ThrowIfFailed(self._dxgiFactory.Get()->CreateSwapChainForComposition(
-            (IUnknown*)self._d3dDevice.Get(), &swapChainDesc, null, swapChain.GetAddressOf()));
-        self._swapChain = swapChain;
+        ThrowIfFailed(_dxgiFactory.Get()->CreateSwapChainForComposition(
+            (IUnknown*)_d3dDevice.Get(), &swapChainDesc, null, swapChain.GetAddressOf()));
+        _swapChain = swapChain;
 
         ComPtr<IDCompositionDesktopDevice> dcompDevice = default;
         ThrowIfFailed(DCompositionCreateDevice3(
-            (IUnknown*)self._dxgiDevice.Get(), __uuidof<IDCompositionDesktopDevice>(), (void**)dcompDevice.GetAddressOf()));
-        self._dcompDevice = dcompDevice;
+            (IUnknown*)_dxgiDevice.Get(), __uuidof<IDCompositionDesktopDevice>(), (void**)dcompDevice.GetAddressOf()));
+        _dcompDevice = dcompDevice;
 
         ComPtr<IDCompositionTarget> target = default;
-        ThrowIfFailed(self._dcompDevice.Get()->CreateTargetForHwnd(hwnd, true, target.GetAddressOf()));
-        self._target = target;
+        ThrowIfFailed(_dcompDevice.Get()->CreateTargetForHwnd(hwnd, true, target.GetAddressOf()));
+        _target = target;
 
         ComPtr<IDCompositionVisual2> visual = default;
-        ThrowIfFailed(self._dcompDevice.Get()->CreateVisual(visual.GetAddressOf()));
-        self._rootVisual = visual;
-        ThrowIfFailed(((IDCompositionVisual*)self._rootVisual.Get())->SetContent((IUnknown*)self._swapChain.Get()));
-        ThrowIfFailed(self._target.Get()->SetRoot((IDCompositionVisual*)self._rootVisual.Get()));
-        ThrowIfFailed(self._dcompDevice.Get()->Commit());
+        ThrowIfFailed(_dcompDevice.Get()->CreateVisual(visual.GetAddressOf()));
+        _rootVisual = visual;
+        ThrowIfFailed(((IDCompositionVisual*)_rootVisual.Get())->SetContent((IUnknown*)_swapChain.Get()));
+        ThrowIfFailed(_target.Get()->SetRoot((IDCompositionVisual*)_rootVisual.Get()));
+        ThrowIfFailed(_dcompDevice.Get()->Commit());
 
         ComPtr<ID2D1Factory1> d2dFactory = default;
         ThrowIfFailed(D2D1CreateFactory(D2DFactoryType.SingleThreaded, __uuidof<ID2D1Factory1>(), null, (void**)d2dFactory.GetAddressOf()));
-        self._d2dFactory = d2dFactory;
+        _d2dFactory = d2dFactory;
 
         ComPtr<ID2D1Device> d2dDevice = default;
-        ThrowIfFailed(self._d2dFactory.Get()->CreateDevice((Vortice.Win32.Graphics.Dxgi.IDXGIDevice*)self._dxgiDevice.Get(), d2dDevice.GetAddressOf()));
-        self._d2dDevice = d2dDevice;
+        ThrowIfFailed(_d2dFactory.Get()->CreateDevice((Vortice.Win32.Graphics.Dxgi.IDXGIDevice*)_dxgiDevice.Get(), d2dDevice.GetAddressOf()));
+        _d2dDevice = d2dDevice;
 
         ComPtr<ID2D1DeviceContext> dc = default;
-        ThrowIfFailed(self._d2dDevice.Get()->CreateDeviceContext(DeviceContextOptions.None, dc.GetAddressOf()));
-        self._dc = dc;
+        ThrowIfFailed(_d2dDevice.Get()->CreateDeviceContext(DeviceContextOptions.None, dc.GetAddressOf()));
+        _dc = dc;
 
         ComPtr<IDWriteFactory> dwriteFactory = default;
         ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwriteFactory.GetAddressOf()));
-        self._dwriteFactory = dwriteFactory;
+        _dwriteFactory = dwriteFactory;
 
-        ComPtr<IDWriteTextFormat> textFormat = self._dwriteFactory.Get()->CreateTextFormat(
+        ComPtr<IDWriteTextFormat> textFormat = _dwriteFactory.Get()->CreateTextFormat(
             "Segoe UI", 28.0f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
-        self._textFormat = textFormat;
+        _textFormat = textFormat;
 
         var white = new Color4(1f, 1f, 1f, 1f);
         ComPtr<ID2D1SolidColorBrush> textBrush = default;
-        ThrowIfFailed(self._dc.Get()->CreateSolidColorBrush(&white, null, textBrush.GetAddressOf()));
-        self._textBrush = textBrush;
+        ThrowIfFailed(_dc.Get()->CreateSolidColorBrush(&white, null, textBrush.GetAddressOf()));
+        _textBrush = textBrush;
 
         var cyan = new Color4(0f, 0.788f, 0.910f, 1f); // #00C9E8, player-highlight token from spec §16
         ComPtr<ID2D1SolidColorBrush> dotBrush = default;
-        ThrowIfFailed(self._dc.Get()->CreateSolidColorBrush(&cyan, null, dotBrush.GetAddressOf()));
-        self._dotBrush = dotBrush;
+        ThrowIfFailed(_dc.Get()->CreateSolidColorBrush(&cyan, null, dotBrush.GetAddressOf()));
+        _dotBrush = dotBrush;
 
-        self.BindTargetBitmap();
-
-        return self;
+        BindTargetBitmap();
     }
 
     private void BindTargetBitmap()
@@ -165,7 +188,23 @@ public sealed unsafe class DeviceResources : IDisposable
         _dc.Get()->SetTarget((ID2D1Image*)bitmap.Get());
     }
 
-    public void RenderFrame(double angle, bool clickThrough)
+    /// <summary>
+    /// Tears down every GPU-dependent COM object and rebuilds them from scratch against the same
+    /// HWND/size, without recreating the window itself. Call this when <see cref="RenderFrame"/>
+    /// reports device loss. Per spec section 18, anything caching GPU-resident bitmaps (fonts,
+    /// icons) must re-create them after <see cref="DeviceRecovered"/> fires -- this class only
+    /// owns the device/swapchain/visual chain, not those higher-level caches.
+    /// </summary>
+    public void HandleDeviceLost()
+    {
+        ReleaseGpuResources();
+        Initialize(_hwnd, _width, _height);
+        DeviceRecovered?.Invoke();
+    }
+
+    /// <returns>True if the frame presented normally; false if a device-lost condition was
+    /// detected and recovery was triggered -- the caller should simply try again next frame.</returns>
+    public bool RenderFrame(double angle, bool clickThrough)
     {
         _dc.Get()->BeginDraw();
 
@@ -188,10 +227,28 @@ public sealed unsafe class DeviceResources : IDisposable
         var ellipse = new D2DEllipse { point = new System.Numerics.Vector2(cx, cy), radiusX = 8, radiusY = 8 };
         _dc.Get()->FillEllipse(&ellipse, (ID2D1Brush*)_dotBrush.Get());
 
-        ThrowIfFailed(_dc.Get()->EndDraw());
-        _swapChain.Get()->Present(1, PresentFlags.None);
+        var endDrawResult = _dc.Get()->EndDraw();
+        if (IsDeviceLost(endDrawResult))
+        {
+            HandleDeviceLost();
+            return false;
+        }
+        ThrowIfFailed(endDrawResult);
+
+        var presentResult = _swapChain.Get()->Present(1, PresentFlags.None);
+        if (IsDeviceLost(presentResult))
+        {
+            HandleDeviceLost();
+            return false;
+        }
+        ThrowIfFailed(presentResult);
+
         _dcompDevice.Get()->Commit();
+        return true;
     }
+
+    private static bool IsDeviceLost(HResult hr) =>
+        hr.Value is DXGI_ERROR_DEVICE_REMOVED or DXGI_ERROR_DEVICE_RESET or DXGI_ERROR_DEVICE_HUNG;
 
     public void SetClickThrough(nint hwnd, bool clickThrough) => ApplyClickThrough(hwnd, clickThrough);
 
@@ -204,7 +261,7 @@ public sealed unsafe class DeviceResources : IDisposable
         Program.SetWindowLongW(hwnd, GWL_EXSTYLE, style);
     }
 
-    public void Dispose()
+    private void ReleaseGpuResources()
     {
         _dotBrush.Dispose();
         _textBrush.Dispose();
@@ -221,4 +278,6 @@ public sealed unsafe class DeviceResources : IDisposable
         _dxgiDevice.Dispose();
         _d3dDevice.Dispose();
     }
+
+    public void Dispose() => ReleaseGpuResources();
 }
