@@ -20,6 +20,11 @@ public enum PlacementAnchor { TopLeft, TopRight, BottomLeft, BottomRight, Center
 /// <param name="Scale">Independent per-widget scale multiplier (spec §4/§5).</param>
 /// <param name="Locked">When true, edit-mode dragging/resizing this widget is a no-op (spec §4's per-widget lock).</param>
 /// <param name="ZOrder">Higher draws on top; also the hit-test priority order (spec §4: "ordem de sobreposição configurável").</param>
+/// <param name="Visible">Per-widget on/off switch (spec §12's sidebar toggle), independent of <paramref name="Locked"/>.</param>
+/// <param name="Opacity">Background/content opacity multiplier, 0..1 (spec §5's "opacidade de fundo e de conteúdo separadamente" -- this is the single overall value until Phase 6 splits it further).</param>
+/// <remarks>Visible/Opacity were added after Locked/ZOrder (Phase 5) as trailing optional parameters
+/// so every existing positional construction of this record — including the unit tests — keeps
+/// compiling unchanged; this is an additive change, not a breaking one.</remarks>
 public sealed record WidgetPlacement(
     int MonitorIndex,
     float X,
@@ -29,7 +34,9 @@ public sealed record WidgetPlacement(
     float HeightDip,
     float Scale,
     bool Locked,
-    int ZOrder)
+    int ZOrder,
+    bool Visible = true,
+    float Opacity = 1f)
 {
     /// <summary>Resolves this placement to an absolute, anchor-independent top-left rectangle in
     /// virtual-desktop DIPs — what hit-testing and drawing actually need.</summary>

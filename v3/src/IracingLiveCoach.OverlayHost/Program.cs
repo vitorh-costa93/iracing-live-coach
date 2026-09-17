@@ -16,6 +16,7 @@ using Vortice.Win32.Graphics.Dxgi;
 using Vortice.Win32.Graphics.Dxgi.Common;
 using IracingLiveCoach.Core.Telemetry;
 using IracingLiveCoach.OverlayHost.Assets;
+using IracingLiveCoach.OverlayHost.Ipc;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Widgets;
 using static Vortice.Win32.Apis;
@@ -39,6 +40,8 @@ public static unsafe class Program
     private const int WS_POPUP = unchecked((int)0x80000000);
     private const int WS_VISIBLE = 0x10000000;
     private const int SW_SHOW = 5;
+    private const int SW_HIDE = 0;
+    private const uint LWA_ALPHA = 0x2;
     private const uint WM_DESTROY = 0x0002;
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_LBUTTONDOWN = 0x0201;
@@ -61,6 +64,7 @@ public static unsafe class Program
     private const string RadarKey = "radar";
     private const string StartHelperKey = "start-helper";
     private static readonly WidgetPlacementStore PlacementStore = new();
+    private static readonly Dictionary<string, nint> WidgetWindows = new();
 
     // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
     // so movement never carries unrelated overlay content or transparent padding with it.
@@ -148,6 +152,17 @@ public static unsafe class Program
         OverlayWindows.Add(weatherHwnd);
         OverlayWindows.Add(fuelHwnd);
         OverlayWindows.Add(radarHwnd); OverlayWindows.Add(startHwnd);
+        WidgetWindows[StandingsKey] = standingsHwnd;
+        WidgetWindows[RelativeKey] = relativeHwnd;
+        WidgetWindows[WeatherKey] = weatherHwnd;
+        WidgetWindows[FuelKey] = fuelHwnd;
+        WidgetWindows[RadarKey] = radarHwnd;
+        WidgetWindows[StartHelperKey] = startHwnd;
+
+        // Phase 5: the Control Center talks to this process only through this typed, versioned
+        // pipe (spec §3) -- it never reaches into PlacementStore or any window handle directly.
+        using var ipcServer = new PlacementIpcServer();
+        ipcServer.MessageReceived += ApplyPlacementMessage;
 
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
         using var relativeResources = DeviceResources.Create(relativeHwnd, (int)relativePlacement.WidthDip, (int)relativePlacement.HeightDip);
@@ -279,6 +294,36 @@ public static unsafe class Program
         }
         File.AppendAllText(path,
             $"{DateTime.UtcNow:O} samples={sorted.Count} p50={P(0.50):F2}ms p95={P(0.95):F2}ms p99={P(0.99):F2}ms max={sorted[^1]:F2}ms{Environment.NewLine}");
+    }
+
+    /// <summary>Applies one Control Center update live -- spec §3: "aplicação de configurações sem
+    /// reiniciar a corrida". Position/visibility/opacity/lock take effect immediately; width/height/
+    /// scale are stored in <see cref="PlacementStore"/> but do not yet resize the live swap chain
+    /// (that needs a DXGI ResizeBuffers path in DeviceResources -- honestly not built yet, tracked
+    /// in the plan rather than silently ignored).</summary>
+    private static void ApplyPlacementMessage(PlacementMessage message)
+    {
+        if (!WidgetWindows.TryGetValue(message.Widget, out var hwnd)) return;
+        var current = PlacementStore.Get(message.Widget);
+        if (current is null) return;
+
+        var updated = current with
+        {
+            X = message.X,
+            Y = message.Y,
+            WidthDip = message.WidthDip,
+            HeightDip = message.HeightDip,
+            Scale = message.Scale,
+            Locked = message.Locked,
+            Visible = message.Visible,
+            Opacity = message.Opacity
+        };
+        PlacementStore.Set(message.Widget, updated);
+
+        SetWindowPos(hwnd, 0, (int)message.X, (int)message.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        ShowWindow(hwnd, message.Visible ? SW_SHOW : SW_HIDE);
+        byte alpha = (byte)Math.Clamp(message.Opacity * 255f, 0f, 255f);
+        SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
     }
 
     private static void SetEditMode(bool enabled)
@@ -414,6 +459,7 @@ public static unsafe class Program
     [DllImport("user32.dll")] private static extern nint LoadCursorW(nint hInstance, nint lpCursorName);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hWnd, out RECT rect);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(nint hWnd, uint crKey, byte bAlpha, uint dwFlags);
     [DllImport("user32.dll")] internal static extern int GetWindowLongW(nint hWnd, int nIndex);
     [DllImport("user32.dll")] internal static extern int SetWindowLongW(nint hWnd, int nIndex, int dwNewLong);
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
