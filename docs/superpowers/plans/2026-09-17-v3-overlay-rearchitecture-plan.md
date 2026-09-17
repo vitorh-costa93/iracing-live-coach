@@ -250,9 +250,17 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 **Files:** `v3/src/IracingLiveCoach.OverlayHost/Persistence/PlacementPersistence.cs` (new); `v3/src/IracingLiveCoach.OverlayHost/Program.cs` (Load/Save wiring, `WidgetKeysByHandle`, `WM_LBUTTONUP` drag-end sync).
 
-## Phase 7 — Validation, Benchmarking, Packaging (scoped)
+## Phase 7 — Validation, Benchmarking, Packaging (publish + benchmark working; live-iRacing validation still open)
 
-**Files:** `scripts/publish-v3.ps1` (parallel to existing `scripts/publish.ps1`, publishing to `%LOCALAPPDATA%\IracingLiveCoachV3\` so V2 and V3 can run side-by-side without collision). Benchmark harness logging frame latency/CPU/GPU/memory per spec §13, captured on the reference hardware.
+**Status (2026-09-18):**
+
+- [x] `scripts/publish-v3.ps1` — self-contained, single-file `win-x64` publish of both `IracingLiveCoach.OverlayHost.exe` and `IracingLiveCoach.ControlCenter.exe` to `%LOCALAPPDATA%\IracingLiveCoachV3\`, parallel to (never touching) V2's own `%LOCALAPPDATA%\IracingLiveCoach` from `scripts/publish.ps1` — the two can run side-by-side for direct comparison, per this plan's standing rule that V2 stays a frozen baseline. Optional `-Shortcut` drops two Desktop shortcuts (Overlay, Control Center). **Verified live**: ran the script for real, both exes were produced and the published `OverlayHost.exe` was launched successfully from `%LOCALAPPDATA%\IracingLiveCoachV3\`.
+- [x] Frame-pacing benchmark (already existed from the Phase 0 GPU proof, at `%APPDATA%\iracing-live-coach\v3-phase3-pacing.log`) extended to cover the rest of spec §13's "latência de frame/CPU/GPU/memória": each ~10s flush now also logs this process's own CPU% (`Process.TotalProcessorTime` delta over the flush window, normalized by `Environment.ProcessorCount`) and working-set memory in MB, alongside the existing p50/p95/p99/max frame-time percentiles. **Verified live**: ran the published exe for ~12s, confirmed real samples in the log, e.g. `p50=6.06ms p95=6.23ms p99=6.70ms max=8.13ms cpu=0.8% mem=109MB`.
+- [ ] **GPU utilization is honestly not captured.** Windows has no cheap in-process API for it — the "GPU Engine" performance-counter category needs PDH and behaves inconsistently across driver/OS versions. The log says `gpu=not-captured` rather than a fabricated number; a real GPU-usage measurement would need an external tool (PresentMon, Task Manager's GPU column, or a PDH-counter integration) run alongside the exe, not something built into this pass.
+- [ ] **No live-iRacing validation was performed or claimed.** All numbers above come from the overlay's own render loop and idle telemetry-reader state (no live SDK connection was available in this environment) — they measure this process's baseline compositing/IPC/persistence cost, not real-session behavior (car counts, live weather updates, etc.). A real go/no-go on spec §13's targets needs a run against an actual iRacing session, which is outside what this pass could do.
+- [ ] No automated comparison report against V2's own numbers exists yet — both logs exist independently (`v3-phase3-pacing.log` vs whatever V2 logs, if anything), but nothing parses and diffs them.
+
+**Files:** `scripts/publish-v3.ps1` (new); `v3/src/IracingLiveCoach.OverlayHost/Program.cs` (`WriteFindings` extended with CPU/memory sampling).
 
 ---
 

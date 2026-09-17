@@ -292,6 +292,15 @@ public static unsafe class Program
         finally { brush.Dispose(); }
     }
 
+    private static TimeSpan _lastCpuTime = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime;
+    private static double _lastCpuSampleMs;
+
+    /// <summary>Spec §13's "latência de frame/CPU/GPU/memória": frame pacing (p50/p95/p99/max) plus
+    /// this process's own CPU% (TotalProcessorTime delta over the flush window, normalized by core
+    /// count) and working-set memory. GPU utilization is honestly NOT captured here -- Windows has
+    /// no cheap in-process API for it (the "GPU Engine" perf-counter category needs PDH and is
+    /// unreliable across driver/OS versions); this is a real, documented gap, not silently
+    /// skipped.</summary>
     private static void WriteFindings(string path, List<double> frameTimesMs)
     {
         var sorted = frameTimesMs.OrderBy(x => x).ToList();
@@ -300,8 +309,18 @@ public static unsafe class Program
             int idx = (int)Math.Clamp(pct * (sorted.Count - 1), 0, sorted.Count - 1);
             return sorted[idx];
         }
+
+        var process = System.Diagnostics.Process.GetCurrentProcess();
+        double nowMs = Environment.TickCount64;
+        TimeSpan cpuNow = process.TotalProcessorTime;
+        double wallMs = Math.Max(1, nowMs - _lastCpuSampleMs);
+        double cpuPercent = 100.0 * (cpuNow - _lastCpuTime).TotalMilliseconds / wallMs / Environment.ProcessorCount;
+        _lastCpuTime = cpuNow;
+        _lastCpuSampleMs = nowMs;
+        long workingSetMb = process.WorkingSet64 / (1024 * 1024);
+
         File.AppendAllText(path,
-            $"{DateTime.UtcNow:O} samples={sorted.Count} p50={P(0.50):F2}ms p95={P(0.95):F2}ms p99={P(0.99):F2}ms max={sorted[^1]:F2}ms{Environment.NewLine}");
+            $"{DateTime.UtcNow:O} samples={sorted.Count} p50={P(0.50):F2}ms p95={P(0.95):F2}ms p99={P(0.99):F2}ms max={sorted[^1]:F2}ms cpu={cpuPercent:F1}% mem={workingSetMb}MB gpu=not-captured{Environment.NewLine}");
     }
 
     /// <summary>Applies one Control Center update live -- spec §3: "aplicação de configurações sem
