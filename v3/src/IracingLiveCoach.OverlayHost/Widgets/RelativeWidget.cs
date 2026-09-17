@@ -165,6 +165,12 @@ public sealed unsafe class RelativeWidget : IDisposable
         string sessionText = session is null
             ? "RELATIVE"
             : $"{session.CarClassShortName}  {session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}";
+        if (player is not null)
+        {
+            var track = player.TrackTempC is double temperature ? $"  TRACK {temperature:0.#}°C" : "";
+            var brake = player.BrakeBiasPct is double bias ? $"  BB {bias:0.0}%" : "";
+            sessionText += track + brake;
+        }
         string local = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
         SetBrushColor(PaletteTokens.TextPrimary);
         fixed (char* p = sessionText)

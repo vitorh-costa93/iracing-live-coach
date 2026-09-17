@@ -33,6 +33,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private readonly FlagBitmapCache _flags;
     private readonly object _lock = new();
     private List<StandingsRow> _rows = new();
+    private SessionStatus? _sessionStatus;
 
     /// <summary>Non-null while showing fictitious data for layout verification, per spec §12's
     /// explicit requirement: "preview com dados fictícios claramente identificado como simulação,
@@ -46,6 +47,7 @@ public sealed unsafe class StandingsWidget : IDisposable
 
     private const float RowHeightDip = 24f;
     private const float ClassHeaderHeightDip = 18f;
+    private const float SessionHeaderHeightDip = 18f;
     private const float ClassStripWidthDip = 3f;
     private const float PositionColumnWidthDip = 28f;
     private const float CarNumberColumnWidthDip = 38f;
@@ -89,12 +91,18 @@ public sealed unsafe class StandingsWidget : IDisposable
 
         _telemetry = new TelemetryReader();
         _telemetry.StandingsUpdated += OnStandingsUpdated;
+        _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.Start();
     }
 
     private void OnStandingsUpdated(List<StandingsRow> rows)
     {
         lock (_lock) { _rows = rows; }
+    }
+
+    private void OnSessionStatusUpdated(SessionStatus status)
+    {
+        lock (_lock) { _sessionStatus = status; }
     }
 
     private void SetBrushColor(Color4 color)
@@ -121,7 +129,8 @@ public sealed unsafe class StandingsWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            DrawRows(dc, x, y, simulated);
+            DrawSessionHeader(dc, x, y, null);
+            DrawRows(dc, x, y + SessionHeaderHeightDip, simulated);
             return;
         }
 
@@ -134,7 +143,31 @@ public sealed unsafe class StandingsWidget : IDisposable
             return;
         }
 
-        DrawRows(dc, x, y, rows);
+        SessionStatus? session;
+        lock (_lock) { session = _sessionStatus; }
+        DrawSessionHeader(dc, x, y, session);
+        DrawRows(dc, x, y + SessionHeaderHeightDip, rows);
+    }
+
+    private void DrawSessionHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session)
+    {
+        SetBrushColor(PaletteTokens.SessionHeaderBand);
+        var band = new RectF(x, y, x + 820f, y + SessionHeaderHeightDip);
+        dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
+        string text = session is null ? "STANDINGS" : $"{session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}  SOF {session.StrengthOfField?.ToString("0", CultureInfo.InvariantCulture) ?? "—"}  {session.DriverCount} DRIVERS";
+        SetBrushColor(PaletteTokens.TextPrimary);
+        fixed (char* p = text)
+        {
+            var rect = new RectF(x + 8f, y, x + 760f, y + SessionHeaderHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        string local = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        SetBrushColor(PaletteTokens.TextSecondary);
+        fixed (char* p = local)
+        {
+            var rect = new RectF(x + 766f, y, x + 816f, y + SessionHeaderHeightDip);
+            dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
     }
 
     private void DrawRows(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows)
@@ -404,6 +437,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     public void Dispose()
     {
         _telemetry.StandingsUpdated -= OnStandingsUpdated;
+        _telemetry.SessionStatusUpdated -= OnSessionStatusUpdated;
         _telemetry.Dispose();
         _brush.Dispose();
         _numericFormat.Dispose();
