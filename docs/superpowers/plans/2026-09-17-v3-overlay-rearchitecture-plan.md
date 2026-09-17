@@ -299,9 +299,12 @@ If you ever ask "did the plan keep everything from the prompt," this table is th
 
 ## Execution Handoff
 
-Phase 0 is the next actionable work and is fully detailed above. Two options:
+**Status (2026-09-18): all seven phases have been executed**, each with its own honest status block above (what's built and verified live vs. what's still explicitly open). Summary:
 
-1. **Subagent-Driven (recommended)** — dispatch a fresh implementer subagent for Phase 0's task, review the diff, then decide with you whether to write Phase 1's detailed plan.
-2. **Inline Execution** — implement Phase 0 directly in this session with checkpoints.
+- Phases 0–3: GPU proof, Core/adapter split, layout engine, Standings/Relative — done, including a prior critical audit pass that rewrote Phase 4's widgets and restarted Phase 5 for real after finding both were below spec.
+- Phase 4 (Weather/Fuel/Radar/Start Helper): rewritten to spec after the audit.
+- Phase 5 (Control Center Layout tab + typed IPC): working and screenshot-verified; other spec §12 tabs, live read-back, and swap-chain resize remain open.
+- Phase 6 (persistence): versioned/atomic save-load-import-export, wired into startup, IPC edits, and in-game drag-end; verified live across a real process restart.
+- Phase 7 (publish + benchmarking): `scripts/publish-v3.ps1` verified live; frame-pacing + CPU/memory benchmark verified live; GPU utilization and live-iRacing-session validation remain explicitly open (no PDH GPU counter built, no live SDK session available in this environment).
 
-Both stop at the Phase 0 findings doc for your sign-off before Phase 1 gets its own detailed plan — per the spec's own sequencing (§14, step 2 gates step 3).
+**What's left is not a phase gap but the open items each phase already lists honestly** — most notably: swap-chain resize on width/height/scale changes, Control Center read-back and its remaining spec §12 tabs, a real GPU-usage measurement, and validation against an actual live iRacing session. None of these were silently skipped; each is named in its phase's "Still open" list above for a deliberate next pass to pick up.
