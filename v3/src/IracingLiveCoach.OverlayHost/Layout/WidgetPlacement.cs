@@ -98,6 +98,10 @@ public sealed class WidgetPlacementStore
     /// StandingsPresentationOptions.Default" -- never persisted as a redundant copy of the default.</summary>
     public StandingsPresentationOptions? StandingsRules { get; set; }
 
+    /// <summary>Fuel's consumption-source/reserve/pit-exclusion config (spec §9). Null means "use
+    /// FuelConfig.Default".</summary>
+    public FuelConfig? FuelConfig { get; set; }
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);

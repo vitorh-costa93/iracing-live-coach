@@ -23,7 +23,8 @@ public sealed record PlacementProfile(
     float FuelRelativeLinkSpacingDip,
     Dictionary<string, string>? ClassColorOverrides = null,
     Dictionary<string, List<ColumnDefinition>>? ColumnOverrides = null,
-    StandingsPresentationOptions? StandingsRules = null)
+    StandingsPresentationOptions? StandingsRules = null,
+    FuelConfig? FuelConfig = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -91,6 +92,9 @@ public static class PlacementPersistence
 
         if (profile.StandingsRules is not null)
             store.StandingsRules = profile.StandingsRules;
+
+        if (profile.FuelConfig is not null)
+            store.FuelConfig = profile.FuelConfig;
     }
 
     private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
@@ -124,7 +128,8 @@ public static class PlacementPersistence
                 store.FuelRelativeLink.SpacingDip,
                 new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, List<ColumnDefinition>>(store.ColumnOverrides, StringComparer.OrdinalIgnoreCase),
-                store.StandingsRules);
+                store.StandingsRules,
+                store.FuelConfig);
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

@@ -31,6 +31,23 @@ public sealed unsafe class FuelWidget : IDisposable
     /// rationale. Never used as a stand-in for real telemetry.</summary>
     public void SetSimulatedStatus(FuelStatus? status) => _simulatedStatus = status;
 
+    private FuelConfig _config = FuelConfig.Default;
+    public void SetConfig(FuelConfig config) => _config = config;
+
+    /// <summary>Resolves spec §9's consumption-source choice into one liters/lap figure. Manual and
+    /// Max are only used when the user actually opted in (Manual needs a positive value; Max/LastLap
+    /// need at least one clean sample) -- an unusable choice falls back to the average rather than
+    /// silently showing "—" for a control the user explicitly set.</summary>
+    private double? ResolveLitersPerLap(FuelStatus status) => _config.Source switch
+    {
+        FuelConsumptionSource.Manual => _config.ManualLitersPerLap > 0 ? _config.ManualLitersPerLap : status.AverageFuelPerLapLiters,
+        FuelConsumptionSource.LastLap => (_config.ExcludePitLaps && status.LastLapAffectedByPit) || status.LastLapFuelUsedLiters is not > 0
+            ? status.AverageFuelPerLapLiters
+            : status.LastLapFuelUsedLiters,
+        FuelConsumptionSource.Max => status.MaxFuelPerLapLiters ?? status.AverageFuelPerLapLiters,
+        _ => status.AverageFuelPerLapLiters,
+    };
+
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<IDWriteTextFormat> _valueFormat;
     private ComPtr<ID2D1SolidColorBrush> _brush;
@@ -98,16 +115,31 @@ public sealed unsafe class FuelWidget : IDisposable
 
         float colWidth = width / 2 - 4f;
 
+        // Effective per-lap figure per spec §9's consumption-source choice, with the configured
+        // reserve subtracted from the displayed Autonomy (never shown as a negative -- a driver
+        // already below reserve needs "0.0 laps", not a confusing negative number).
+        double? litersPerLap = ResolveLitersPerLap(status);
+        double? rawLapsRemaining = litersPerLap is double perLap and > 0 ? status.FuelLevelLiters / perLap : null;
+        double? lapsRemaining = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
+        double? timeRemaining = lapsRemaining is double laps2 && status.AverageLapTimeSeconds is double lapTime ? laps2 * lapTime : null;
+
         // Fuel level and autonomy get emphasis (larger value text), per spec §9's "dê destaque a
         // combustível e autonomia, com métricas auxiliares menores".
         Metric(dc, "FUEL", $"{status.FuelLevelLiters:0.0} L", x, y, colWidth, PaletteTokens.TextPrimary);
-        string autonomy = status.LapsRemaining is double laps ? $"{laps:0.0} laps" : "—";
+        string autonomy = lapsRemaining is double laps ? $"{laps:0.0} laps" : "—";
         Metric(dc, "AUTONOMY", autonomy, x + colWidth + 8f, y, colWidth, PaletteTokens.TextPrimary);
 
-        string avg = status.AverageFuelPerLapLiters is double avgVal ? $"{avgVal:0.00} L" : "—";
-        MetricSmall(dc, "AVG/LAP", avg, x, y + RowHeightDip, colWidth);
+        string sourceLabel = _config.Source switch
+        {
+            FuelConsumptionSource.LastLap => "LAST LAP",
+            FuelConsumptionSource.Max => "MAX/LAP",
+            FuelConsumptionSource.Manual => "MANUAL",
+            _ => "AVG/LAP"
+        };
+        string avg = litersPerLap is double avgVal ? $"{avgVal:0.00} L" : "—";
+        MetricSmall(dc, sourceLabel, avg, x, y + RowHeightDip, colWidth);
 
-        string time = status.TimeRemainingSeconds is double seconds
+        string time = timeRemaining is double seconds
             ? $"{TimeSpan.FromSeconds(seconds):mm\\:ss}"
             : "—";
         MetricSmall(dc, "TIME LEFT", time, x + colWidth + 8f, y + RowHeightDip, colWidth);

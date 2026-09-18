@@ -116,6 +116,36 @@
                         <CheckBox x:Name="KeepPlayerWindowBox" Content="Manter janela em torno do jogador" IsChecked="True" Margin="0,0,0,12"/>
                         <Button Content="Aplicar" Click="ApplyRules" HorizontalAlignment="Left"/>
                         <TextBlock x:Name="RulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="REGRAS -- COMBUSTÍVEL" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
+                        <TextBlock Text="Qual consumo dita a autonomia/tempo exibidos, margem de reserva em voltas, e se exclui a volta de pit do cálculo (a média/máximo já sempre excluem; isto controla se 'última volta' cai de volta pra média quando a última foi afetada pelo pit)." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Text="Fonte do consumo" Foreground="#A6B0BB" FontSize="11"/>
+                                <ComboBox x:Name="FuelSourceBox" SelectedIndex="1">
+                                    <ComboBoxItem Content="Última volta"/>
+                                    <ComboBoxItem Content="Média móvel"/>
+                                    <ComboBoxItem Content="Máximo"/>
+                                    <ComboBoxItem Content="Manual"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
+                                <TextBlock Text="Valor manual (L/volta)" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="FuelManualBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Reserva (voltas)" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="FuelReserveBox" Text="1.0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox x:Name="FuelExcludePitBox" Content="Excluir volta de pit ao usar 'última volta'" IsChecked="True" Margin="0,0,0,12"/>
+                        <Button Content="Aplicar" Click="ApplyFuelConfig" HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="FuelRulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </TabItem>
 

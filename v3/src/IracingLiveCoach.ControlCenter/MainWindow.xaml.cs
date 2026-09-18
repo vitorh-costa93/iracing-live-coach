@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private List<LayoutColumn> _currentColumns = [];
     private readonly ColumnConfigIpcClient _columnConfigClient = new();
     private readonly RulesIpcClient _rulesClient = new();
+    private readonly FuelConfigIpcClient _fuelConfigClient = new();
 
     public MainWindow()
     {
@@ -57,6 +58,7 @@ public partial class MainWindow : Window
         RefreshClassColorList();
         LoadColumnsForSelectedWidget();
         LoadRulesIntoControls();
+        LoadFuelConfigIntoControls();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -448,6 +450,48 @@ public partial class MainWindow : Window
         _profileStore.StandingsRules = new IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions(topN, ownRows, otherRows, keepWindow);
         PlacementPersistence.Save(_profileStore);
         RulesStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    // --- Combustível (spec §9: fonte do consumo, reserva, exclusão de volta de pit) ---
+
+    private void LoadFuelConfigIntoControls()
+    {
+        var config = _profileStore.FuelConfig ?? IracingLiveCoach.Core.Telemetry.FuelConfig.Default;
+        FuelSourceBox.SelectedIndex = config.Source switch
+        {
+            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.LastLap => 0,
+            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.Average => 1,
+            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.Max => 2,
+            _ => 3
+        };
+        FuelManualBox.Text = config.ManualLitersPerLap.ToString(CultureInfo.InvariantCulture);
+        FuelReserveBox.Text = config.ReserveLaps.ToString(CultureInfo.InvariantCulture);
+        FuelExcludePitBox.IsChecked = config.ExcludePitLaps;
+    }
+
+    private async void ApplyFuelConfig(object sender, RoutedEventArgs e)
+    {
+        string source = FuelSourceBox.SelectedIndex switch
+        {
+            0 => "LastLap",
+            1 => "Average",
+            2 => "Max",
+            _ => "Manual"
+        };
+        if (!double.TryParse(FuelManualBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var manual) ||
+            !double.TryParse(FuelReserveBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var reserve))
+        {
+            FuelRulesStatus.Text = "Valores inválidos.";
+            return;
+        }
+        bool excludePit = FuelExcludePitBox.IsChecked == true;
+        bool sent = await _fuelConfigClient.SendAsync(source, manual, reserve, excludePit);
+        _profileStore.FuelConfig = new IracingLiveCoach.Core.Telemetry.FuelConfig(
+            Enum.Parse<IracingLiveCoach.Core.Telemetry.FuelConsumptionSource>(source), manual, reserve, excludePit);
+        PlacementPersistence.Save(_profileStore);
+        FuelRulesStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
     }

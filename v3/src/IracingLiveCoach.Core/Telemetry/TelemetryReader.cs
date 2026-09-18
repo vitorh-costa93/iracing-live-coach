@@ -54,7 +54,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -121,6 +121,17 @@ public class TelemetryReader : IDisposable
     private int _lastLapCompleted = -1;
     private readonly Queue<double> _fuelPerLapWindow = new();
     private readonly Queue<double> _lapTimeWindow = new();
+
+    /// <summary>Spec §9's fuel-source options ("última volta, média móvel, máximo... exclusão de
+    /// voltas de pit"): the rolling average/max window only ever receives a lap sample that was NOT
+    /// pit-affected (tracked across the whole lap, not just at the crossing tick, since an out-lap's
+    /// pit-road flag clears well before the S/F line). The single most recent lap's raw consumption
+    /// is exposed separately (<see cref="FuelStatus.LastLapFuelUsedLiters"/>) regardless of purity,
+    /// with <see cref="FuelStatus.LastLapAffectedByPit"/> alongside it so a widget/config layer can
+    /// decide whether to trust it as-is or fall back to the average.</summary>
+    private bool _currentLapOnPitRoad;
+    private double? _lastLapFuelUsed;
+    private bool _lastLapWasAffectedByPit;
 
     // 13/09/2026: WeatherUpdated is throttled to ~10Hz (every 6th telemetry tick, 60Hz/6=10) --
     // see this plan's own Global Constraints for why a full-MaxNumCars scan doesn't need 60Hz here.
@@ -1129,6 +1140,12 @@ public class TelemetryReader : IDisposable
             var fuelUsePerHour = _sdk.Data.GetFloat("FuelUsePerHour");
             var lapCompleted = _sdk.Data.GetInt("LapCompleted");
 
+            // Accumulated across every tick of the CURRENT lap (not just read at the crossing) --
+            // an out-lap's pit-road flag clears well before the car reaches the S/F line, so a
+            // single-tick check at the crossing would miss it.
+            try { if (_sdk.Data.GetBool("OnPitRoad")) _currentLapOnPitRoad = true; }
+            catch { /* channel not published in this session -- treat as never on pit road */ }
+
             if (_lastLapCompleted < 0)
             {
                 // First tick ever seen -- we don't know whether "now" lands on a lap boundary, so
@@ -1148,9 +1165,13 @@ public class TelemetryReader : IDisposable
                 _lapTimeWindow.Clear();
                 _lastLapCompleted = lapCompleted;
                 _lastFuelLevel = null;
+                _currentLapOnPitRoad = false;
+                _lastLapFuelUsed = null;
+                _lastLapWasAffectedByPit = false;
             }
             else if (lapCompleted > _lastLapCompleted)
             {
+                bool lapAffectedByPit = _currentLapOnPitRoad;
                 if (_lastFuelLevel is double previousFuel)
                 {
                     var used = previousFuel - fuelLevel;
@@ -1159,14 +1180,26 @@ public class TelemetryReader : IDisposable
                     // corrupt the rolling average with a nonsense sample.
                     if (used > 0)
                     {
-                        _fuelPerLapWindow.Enqueue(used);
-                        if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
+                        // Spec §9: "exclusão de voltas de pit" -- an in-lap or out-lap's consumption
+                        // is real but not representative of green-flag racing pace, so it never
+                        // enters the average/max window. The raw value is still exposed as
+                        // LastLapFuelUsedLiters (with LastLapAffectedByPit alongside it) so a widget
+                        // can choose to show/ignore it explicitly rather than have it silently
+                        // vanish or silently corrupt the "clean" figures.
+                        _lastLapFuelUsed = used;
+                        _lastLapWasAffectedByPit = lapAffectedByPit;
 
-                        var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
-                        if (lapTime > 0)
+                        if (!lapAffectedByPit)
                         {
-                            _lapTimeWindow.Enqueue(lapTime);
-                            if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
+                            _fuelPerLapWindow.Enqueue(used);
+                            if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
+
+                            var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
+                            if (lapTime > 0)
+                            {
+                                _lapTimeWindow.Enqueue(lapTime);
+                                if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
+                            }
                         }
                     }
                 }
@@ -1174,9 +1207,11 @@ public class TelemetryReader : IDisposable
                 // baseline existed before it -- always safe to use as the baseline for the NEXT lap.
                 _lastLapCompleted = lapCompleted;
                 _lastFuelLevel = fuelLevel;
+                _currentLapOnPitRoad = false; // the lap starting now hasn't touched pit road yet
             }
 
             double? avgFuelPerLap = _fuelPerLapWindow.Count > 0 ? _fuelPerLapWindow.Average() : null;
+            double? maxFuelPerLap = _fuelPerLapWindow.Count > 0 ? _fuelPerLapWindow.Max() : null;
             double? avgLapTime = _lapTimeWindow.Count > 0 ? _lapTimeWindow.Average() : null;
             double? lapsRemaining = avgFuelPerLap is double perLap && perLap > 0 ? fuelLevel / perLap : null;
             double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
@@ -1234,7 +1269,7 @@ public class TelemetryReader : IDisposable
             // "Fuel at end" is based on the actual amount currently selected in the Black Box,
             // then subtracts the projected race burn.  It is not merely tank level after pitting.
             double? fuelAtFinish = fuelAfterPit is double afterPit && fuelBurnToFinish is double burn ? Math.Max(0, afterPit - burn) : null;
-            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish));
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _lastLapFuelUsed, _lastLapWasAffectedByPit, maxFuelPerLap, avgLapTime));
         }
         catch
         {

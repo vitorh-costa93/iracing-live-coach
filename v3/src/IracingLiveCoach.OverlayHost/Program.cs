@@ -247,6 +247,18 @@ public static unsafe class Program
             PlacementPersistence.Save(PlacementStore);
         };
 
+        // Fifth small typed channel: Fuel's consumption-source/reserve/pit-exclusion config.
+        if (PlacementStore.FuelConfig is { } savedFuelConfig) fuel.SetConfig(savedFuelConfig);
+        using var fuelConfigIpcServer = new FuelConfigIpcServer();
+        fuelConfigIpcServer.MessageReceived += m =>
+        {
+            if (!Enum.TryParse<FuelConsumptionSource>(m.Source, out var source)) return;
+            var config = new FuelConfig(source, m.ManualLitersPerLap, m.ReserveLaps, m.ExcludePitLaps);
+            fuel.SetConfig(config);
+            PlacementStore.FuelConfig = config;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
         double lastFrameMs = sw.Elapsed.TotalMilliseconds;
