@@ -73,6 +73,8 @@ public sealed unsafe class FuelWidget : IDisposable
         FuelStatus? status;
         lock (_lock) { status = _status; }
 
+        DrawPanel(dc, x, y, width, RowHeightDip * 3);
+
         if (!_telemetry.HasRecentTelemetry || status is null)
         {
             SetBrushColor(PaletteTokens.TextDisabled);
@@ -113,6 +115,17 @@ public sealed unsafe class FuelWidget : IDisposable
         {
             MetricSmall(dc, "TO FINISH", "—", x, y + RowHeightDip * 2, width);
         }
+    }
+
+    /// <summary>Graphite surface + outer border (spec §16) -- this widget previously had no
+    /// background/border at all.</summary>
+    private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, float width, float height)
+    {
+        SetBrushColor(PaletteTokens.OverlayBackground);
+        var background = new RectF(x, y, x + width, y + height);
+        dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PaletteTokens.WidgetOuterBorder);
+        dc->DrawRectangle(&background, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
     private void Metric(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4 valueColor)

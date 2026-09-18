@@ -81,6 +81,10 @@ public sealed unsafe class StartHelperWidget : IDisposable
         DrawBar(dc, "CLUTCH", status.ClutchPct, PaletteTokens.StartHelperInRange, x, rowY, width);
         rowY += RowHeightDip + RowGapDip;
         DrawBar(dc, "THROTTLE", status.ThrottlePct, PaletteTokens.StartHelperInRange, x, rowY, width);
+
+        SetBrushColor(PaletteTokens.WidgetOuterBorder);
+        var outer = new RectF(x, y, x + width, rowY + RowHeightDip);
+        dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
     private void DrawRpmRow(ID2D1DeviceContext* dc, double rpm, float x, float y, float width)

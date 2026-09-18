@@ -72,6 +72,9 @@ public sealed unsafe class WeatherWidget : IDisposable
         WeatherStatus? status;
         lock (_lock) { status = _status; }
 
+        float panelHeight = RowHeightDip * 4;
+        DrawPanel(dc, x, y, width, panelHeight);
+
         if (!_telemetry.HasRecentTelemetry || status is null)
         {
             SetBrushColor(PaletteTokens.TextDisabled);
@@ -104,6 +107,18 @@ public sealed unsafe class WeatherWidget : IDisposable
         // Rubber is a field independent of wetness/humidity (spec §8) -- never derived from it.
         Metric(dc, "RUBBER", string.IsNullOrWhiteSpace(status.TrackRubberState) ? "—" : status.TrackRubberState!,
             x, y + RowHeightDip * 3, width, PaletteTokens.TextSecondary);
+    }
+
+    /// <summary>Graphite surface + outer border (spec §16's OverlayBackground/WidgetOuterBorder)
+    /// behind the whole widget -- previously this widget had no background/border at all, just text
+    /// floating directly on the desktop/game.</summary>
+    private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, float width, float height)
+    {
+        SetBrushColor(PaletteTokens.OverlayBackground);
+        var background = new RectF(x, y, x + width, y + height);
+        dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PaletteTokens.WidgetOuterBorder);
+        dc->DrawRectangle(&background, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
     private void Metric(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4 valueColor)
