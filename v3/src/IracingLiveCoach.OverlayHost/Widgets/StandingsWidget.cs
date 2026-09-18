@@ -306,7 +306,12 @@ public sealed unsafe class StandingsWidget : IDisposable
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
 
         var cells = new List<(string Text, Color4 Color, bool IsClass)>();
-        var classColor = PaletteTokens.ResolveClassColor(group.ClassId, group.ClassShortName, group.ClassColorHex);
+        var classColor = PaletteTokens.ResolveClassColor(group.ClassId, group.ClassShortName, group.ClassColorHex, group.ClassRank);
+        // The class colour also runs down the header so a panel is identifiable even when the sim
+        // publishes no class name (never invented -- spec §15).
+        SetBrushColor(classColor);
+        var headerStrip = new RectF(x, y, x + ClassStripWidthDip, y + HeaderHeightDip);
+        dc->FillRectangle(&headerStrip, (ID2D1Brush*)_brush.Get());
         foreach (var field in _headerFields)
         {
             if (!field.Visible) continue;
@@ -377,7 +382,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             PanelChrome.FillPanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowFill, 4f);
             PanelChrome.StrokePanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowBorder, 1f, 4f);
         }
-        var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex);
+        var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex, row.ClassRank);
         SetBrushColor(stripColor);
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
         dc->FillRectangle(&stripRect, (ID2D1Brush*)_brush.Get());

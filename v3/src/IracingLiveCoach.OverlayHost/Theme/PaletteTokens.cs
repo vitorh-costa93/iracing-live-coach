@@ -15,7 +15,7 @@ namespace IracingLiveCoach.OverlayHost.Theme;
 /// </summary>
 public static class PaletteTokens
 {
-    private static readonly ConcurrentDictionary<int, Color4> SessionClassColors = new();
+    private static readonly ConcurrentDictionary<(int ClassId, int Rank), Color4> SessionClassColors = new();
 
     /// <summary>User overrides of the normative per-class palette (spec §16: "Permita
     /// personalização... por token, paleta de classe"), keyed by class SHORT NAME (stable across
@@ -193,6 +193,14 @@ public static class PaletteTokens
     /// <summary>Classe LMP2, se presente.</summary>
     public static readonly Color4 ClassLmp2 = Hex("#5B8CFF");
 
+    /// <summary>Class colours by SPEED rank within the session (user rule): fastest class yellow,
+    /// second light blue, third pink, fourth green. Two classes can therefore never share a colour
+    /// (previously a class was coloured by NAME, so e.g. LMP2 and GT3 collided).</summary>
+    public static readonly Color4[] ClassRankColors =
+    [
+        Hex("#FFD400"), Hex("#5CC8FF"), Hex("#FF6EB4"), Hex("#3DDC84")
+    ];
+
     /// <summary>Cores adicionais do catálogo para outras classes, em ordem de atribuição estável.</summary>
     public static readonly Color4[] OtherClassColors =
     [
@@ -206,19 +214,20 @@ public static class PaletteTokens
     /// actual SDK class identifier, never by car make or driver order; recognised class names
     /// supply the normative palette, while an SDK colour is accepted only as the stable fallback
     /// for an otherwise unknown class.</summary>
-    public static Color4 ResolveClassColor(int classId, string? classShortName, string? sdkColorHex)
+    public static Color4 ResolveClassColor(int classId, string? classShortName, string? sdkColorHex, int classSpeedRank = 0)
     {
         if (classId <= 0) return ClassUnidentified;
-        return SessionClassColors.GetOrAdd(classId, _ =>
+        return SessionClassColors.GetOrAdd((classId, classSpeedRank), _ =>
         {
             string rawName = classShortName?.Trim() ?? string.Empty;
+            // 1. The user's own colour for this class name always wins (Control Center, "Cores por classe").
             if (rawName.Length > 0 && NameOverrides.TryGetValue(rawName, out var overridden)) return overridden;
 
-            string name = rawName.ToUpperInvariant();
-            if (name.Contains("GTP")) return ClassGtp;
-            if (name.Contains("GT3")) return ClassGt3;
-            if (name.Contains("SF23") || name.Contains("SUPER FORMULA")) return ClassSf23;
-            if (name.Contains("LMP2")) return ClassLmp2;
+            // 2. Otherwise the class's speed rank in THIS session decides (yellow / light blue / pink / green).
+            if (classSpeedRank >= 1 && classSpeedRank <= ClassRankColors.Length) return ClassRankColors[classSpeedRank - 1];
+            if (classSpeedRank > ClassRankColors.Length) return OtherClassColors[(classSpeedRank - ClassRankColors.Length - 1) % OtherClassColors.Length];
+
+            // 3. Rank unknown (e.g. driver-list not read yet): the SDK's own class colour, else a stable fallback.
             return TryParseHex(sdkColorHex, out var color)
                 ? color
                 : OtherClassColors[(classId & int.MaxValue) % OtherClassColors.Length];

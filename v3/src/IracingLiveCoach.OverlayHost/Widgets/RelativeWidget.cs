@@ -278,7 +278,7 @@ public sealed unsafe class RelativeWidget : IDisposable
             PanelChrome.FillPanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowFill, 4f);
             PanelChrome.StrokePanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowBorder, 1f, 4f);
         }
-        var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex);
+        var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex, row.ClassRank);
         SetBrushColor(stripColor);
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
         dc->FillRectangle(&stripRect, (ID2D1Brush*)_brush.Get());

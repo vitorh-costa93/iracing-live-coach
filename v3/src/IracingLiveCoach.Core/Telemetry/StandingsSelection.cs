@@ -14,7 +14,7 @@ public sealed record StandingsPresentationOptions(
     public static StandingsPresentationOptions Default { get; } = new();
 }
 
-public sealed record StandingsClassGroup(int ClassId, string ClassShortName, string? ClassColorHex, IReadOnlyList<StandingsRow> Rows);
+public sealed record StandingsClassGroup(int ClassId, string ClassShortName, string? ClassColorHex, IReadOnlyList<StandingsRow> Rows, int ClassRank = 0);
 
 public static class StandingsSelection
 {
@@ -60,7 +60,7 @@ public static class StandingsSelection
 
                 var visible = picked.Distinct().OrderBy(r => r.ClassPosition > 0 ? r.ClassPosition : r.Position).ToList();
                 var first = ranked.FirstOrDefault();
-                return new StandingsClassGroup(group.Key, first?.ClassShortName ?? "CLASS", first?.ClassColorHex, visible);
+                return new StandingsClassGroup(group.Key, first?.ClassShortName ?? "", first?.ClassColorHex, visible, first?.ClassRank ?? 0);
             })
             .Where(group => group.Rows.Count > 0)
             .ToList();
