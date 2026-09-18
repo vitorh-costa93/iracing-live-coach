@@ -43,6 +43,8 @@ public static unsafe class Program
     private const int SW_SHOW = 5;
     private const int SW_HIDE = 0;
     private const uint LWA_ALPHA = 0x2;
+    private const int SM_CXSCREEN = 0;
+    private const int SM_CYSCREEN = 1;
     private const uint WM_DESTROY = 0x0002;
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_LBUTTONDOWN = 0x0201;
@@ -124,6 +126,7 @@ public static unsafe class Program
         // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
         // starting positions for every widget.
         PlacementPersistence.Load(PlacementStore);
+        ValidatePhysicalLimits();
 
         nint hInstance = GetModuleHandleW(null);
         WndProcDelegate wndProc = WndProc;
@@ -354,6 +357,36 @@ public static unsafe class Program
         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
     }
 
+    /// <summary>Spec §17: no widget may exceed 25% of its target monitor's physical width, and a
+    /// 7-driver table may not exceed 35% of its height. This is a warn-only check for now -- it logs
+    /// every violation with the exact overage in pixels (spec's own "mostre quantos pixels faltam"
+    /// language) but does not yet reject the configuration or fall back to a last-known-good layout
+    /// in the Control Center, since that UI doesn't exist yet. Honest partial implementation of
+    /// <see cref="WidgetLayoutEngine.ComputePhysicalLimits"/>, which previously had zero callers.</summary>
+    private static void ValidatePhysicalLimits()
+    {
+        int screenWidthPx = GetSystemMetrics(SM_CXSCREEN);
+        int screenHeightPx = GetSystemMetrics(SM_CYSCREEN);
+        if (screenWidthPx <= 0 || screenHeightPx <= 0) return;
+
+        var (maxWidthPx, maxHeightForSevenRowsPx) = WidgetLayoutEngine.ComputePhysicalLimits(screenWidthPx, screenHeightPx);
+        foreach (var (key, placement) in PlacementStore.All)
+        {
+            float widthPx = placement.WidthDip * placement.Scale;
+            if (widthPx > maxWidthPx)
+            {
+                Console.WriteLine($"[Spec §17] Widget '{key}' width {widthPx:0}px exceeds the {maxWidthPx:0}px ceiling (25% of {screenWidthPx}px) by {widthPx - maxWidthPx:0}px.");
+            }
+            // Only Standings/Relative render a variable-row table; the 35%-height ceiling is defined
+            // for their real preset (7 drivers), not the other four fixed-content widgets.
+            if ((key == StandingsKey || key == RelativeKey) && placement.HeightDip * placement.Scale > maxHeightForSevenRowsPx)
+            {
+                float heightPx = placement.HeightDip * placement.Scale;
+                Console.WriteLine($"[Spec §17] Widget '{key}' height {heightPx:0}px exceeds the {maxHeightForSevenRowsPx:0}px ceiling (35% of {screenHeightPx}px) by {heightPx - maxHeightForSevenRowsPx:0}px.");
+            }
+        }
+    }
+
     private static void SetEditMode(bool enabled)
     {
         _editMode = enabled;
@@ -504,6 +537,7 @@ public static unsafe class Program
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hWnd, out RECT rect);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(nint hWnd, uint crKey, byte bAlpha, uint dwFlags);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int nIndex);
     [DllImport("user32.dll")] internal static extern int GetWindowLongW(nint hWnd, int nIndex);
     [DllImport("user32.dll")] internal static extern int SetWindowLongW(nint hWnd, int nIndex, int dwNewLong);
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
