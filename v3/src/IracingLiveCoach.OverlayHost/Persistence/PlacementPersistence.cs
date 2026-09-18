@@ -27,7 +27,9 @@ public sealed record PlacementProfile(
     FuelConfig? FuelConfig = null,
     Dictionary<string, WidgetAppearance>? AppearanceOverrides = null,
     NumberFormatConfig? NumberFormat = null,
-    Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null)
+    Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null,
+    SessionVisibilityConfig? SessionVisibility = null,
+    Dictionary<string, Dictionary<string, WidgetPlacement>>? ClassProfiles = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -113,6 +115,15 @@ public static class PlacementPersistence
             foreach (var (widgetKey, fields) in profile.HeaderOverrides)
                 store.HeaderOverrides[widgetKey] = fields;
         }
+
+        if (profile.SessionVisibility is not null)
+            store.SessionVisibility = profile.SessionVisibility;
+
+        if (profile.ClassProfiles is not null)
+        {
+            foreach (var (key, placements) in profile.ClassProfiles)
+                store.ClassProfiles[key] = placements;
+        }
     }
 
     private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
@@ -150,7 +161,9 @@ public static class PlacementPersistence
                 store.FuelConfig,
                 new Dictionary<string, WidgetAppearance>(store.AppearanceOverrides, StringComparer.OrdinalIgnoreCase),
                 store.NumberFormat,
-                new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase),
+                store.SessionVisibility,
+                new Dictionary<string, Dictionary<string, WidgetPlacement>>(store.ClassProfiles, StringComparer.OrdinalIgnoreCase));
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

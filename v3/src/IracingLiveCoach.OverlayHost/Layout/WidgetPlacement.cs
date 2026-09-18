@@ -114,6 +114,21 @@ public sealed class WidgetPlacementStore
     /// is display order.</summary>
     public Dictionary<string, List<HeaderFieldConfig>> HeaderOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Widgets hidden per session kind (spec §12). Null = every widget in every session.</summary>
+    public SessionVisibilityConfig? SessionVisibility { get; set; }
+
+    /// <summary>Named layout profiles keyed by upper-case player class short name OR car screen
+    /// name (spec §12: "perfis por carro/classe"); each is a full placement snapshot that
+    /// auto-applies when the player's class/car matches.</summary>
+    public Dictionary<string, Dictionary<string, WidgetPlacement>> ClassProfiles { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Replaces placements wholesale without undo history or the per-widget lock check --
+    /// for switching to a stored profile, not for an individual user edit.</summary>
+    public void ReplacePlacements(IEnumerable<KeyValuePair<string, WidgetPlacement>> placements)
+    {
+        foreach (var (key, placement) in placements) _placements[key] = placement;
+    }
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);

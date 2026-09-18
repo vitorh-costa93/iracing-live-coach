@@ -53,6 +53,11 @@ public partial class MainWindow : Window
     private readonly UndoRedoIpcClient _undoRedoClient = new();
     private readonly NumberFormatIpcClient _numberFormatClient = new();
     private readonly HeaderConfigIpcClient _headerClient = new();
+    private readonly ProfilesIpcClient _profilesClient = new();
+    private static readonly string[] SessionKindNames = ["Practice", "Qualify", "Race"];
+    private static readonly string[] SessionKindLabels = ["Treino", "Classificação", "Corrida"];
+    private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper"];
+    private readonly Dictionary<(string Widget, string Kind), CheckBox> _sessionBoxes = new();
     private List<IracingLiveCoach.Core.Telemetry.HeaderFieldConfig> _currentHeader = [];
 
     public MainWindow()
@@ -67,6 +72,8 @@ public partial class MainWindow : Window
         LoadAppearanceIntoControls();
         LoadNumberFormatIntoControls();
         LoadHeaderForSelectedWidget();
+        BuildSessionVisibilityGrid();
+        RefreshClassProfileList();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -225,7 +232,7 @@ public partial class MainWindow : Window
             return;
         }
         _profileStore.ClassColorOverrides[className] = hex;
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         // Apply immediately to THIS process's PaletteTokens -- Save() only persists to disk, it
         // doesn't touch live in-memory state, so without this the embedded preview (which shares
         // this same static PaletteTokens class) wouldn't show the change until relaunched.
@@ -240,7 +247,7 @@ public partial class MainWindow : Window
     {
         string className = (string)((Button)sender).Tag;
         _profileStore.ClassColorOverrides.Remove(className);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         PaletteTokens.ClearNameOverride(className);
         RefreshClassColorList();
         ColorStatus.Text = $"Override de '{className}' removido.";
@@ -275,7 +282,7 @@ public partial class MainWindow : Window
     private void RestoreDefaults(object sender, RoutedEventArgs e)
     {
         _profileStore.ClassColorOverrides.Clear();
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         PaletteTokens.ClearAllNameOverrides();
         RefreshClassColorList();
         ProfileStatus.Text = "Overrides de cor restaurados para o padrão normativo (spec §16).";
@@ -420,7 +427,7 @@ public partial class MainWindow : Window
 
         bool sent = await _columnConfigClient.SendAsync(_selectedWidget, entries);
         _profileStore.ColumnOverrides[_selectedWidget] = _currentColumns;
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         ColumnsStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
@@ -432,7 +439,7 @@ public partial class MainWindow : Window
         if (defaults is null) return;
         _currentColumns = defaults;
         _profileStore.ColumnOverrides.Remove(_selectedWidget);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         RefreshColumnList();
         ColumnsStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
     }
@@ -458,7 +465,7 @@ public partial class MainWindow : Window
         bool keepWindow = KeepPlayerWindowBox.IsChecked == true;
         bool sent = await _rulesClient.SendAsync(topN, ownRows, otherRows, keepWindow);
         _profileStore.StandingsRules = new IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions(topN, ownRows, otherRows, keepWindow);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         RulesStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
@@ -500,7 +507,7 @@ public partial class MainWindow : Window
         bool sent = await _fuelConfigClient.SendAsync(source, manual, reserve, excludePit);
         _profileStore.FuelConfig = new IracingLiveCoach.Core.Telemetry.FuelConfig(
             Enum.Parse<IracingLiveCoach.Core.Telemetry.FuelConsumptionSource>(source), manual, reserve, excludePit);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         FuelRulesStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
@@ -536,10 +543,116 @@ public partial class MainWindow : Window
             Enum.Parse<IracingLiveCoach.Core.Telemetry.IRatingFormat>(iRatingFormat),
             Enum.Parse<IracingLiveCoach.Core.Telemetry.SafetyRatingFormat>(safetyRatingFormat),
             Enum.Parse<IracingLiveCoach.Core.Telemetry.NameDisplayFormat>(nameFormat));
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         NumberFormatStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    /// <summary>The running overlay owns live placements, class profiles and session visibility (it
+    /// persists them itself on every change); this Control Center's copies were only loaded at
+    /// startup. Before writing the shared profile file, refresh those three from disk so a save from
+    /// here never rolls the overlay's newer drags/profiles back.</summary>
+    private void SaveProfileStore()
+    {
+        var disk = new WidgetPlacementStore();
+        PlacementPersistence.Load(disk);
+        _profileStore.ReplacePlacements(disk.All);
+        _profileStore.SessionVisibility = disk.SessionVisibility ?? _profileStore.SessionVisibility;
+        _profileStore.ClassProfiles.Clear();
+        foreach (var (key, placements) in disk.ClassProfiles) _profileStore.ClassProfiles[key] = placements;
+        PlacementPersistence.Save(_profileStore);
+    }
+
+    // --- Visibilidade por tipo de sessão + perfis por classe/carro (spec §12) ---
+
+    private void BuildSessionVisibilityGrid()
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(140) });
+        for (int c = 0; c < SessionKindNames.Length; c++) grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(110) });
+        grid.RowDefinitions.Add(new RowDefinition());
+        for (int c = 0; c < SessionKindNames.Length; c++)
+        {
+            var head = new TextBlock { Text = SessionKindLabels[c], Foreground = (Brush)new BrushConverter().ConvertFromString("#A6B0BB")!, FontSize = 11 };
+            Grid.SetColumn(head, c + 1);
+            grid.Children.Add(head);
+        }
+        var config = _profileStore.SessionVisibility ?? IracingLiveCoach.Core.Telemetry.SessionVisibilityConfig.Default;
+        for (int r = 0; r < AllWidgetKeys.Length; r++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition());
+            var label = new TextBlock { Text = AllWidgetKeys[r], Margin = new Thickness(0, 2, 0, 2) };
+            Grid.SetRow(label, r + 1);
+            grid.Children.Add(label);
+            for (int c = 0; c < SessionKindNames.Length; c++)
+            {
+                bool hidden = config.HiddenIn.TryGetValue(AllWidgetKeys[r], out var list) && list.Contains(SessionKindNames[c]);
+                var box = new CheckBox { IsChecked = !hidden, Margin = new Thickness(0, 2, 0, 2) };
+                Grid.SetRow(box, r + 1);
+                Grid.SetColumn(box, c + 1);
+                grid.Children.Add(box);
+                _sessionBoxes[(AllWidgetKeys[r], SessionKindNames[c])] = box;
+            }
+        }
+        SessionVisibilityList.ItemsSource = new[] { grid };
+    }
+
+    private async void ApplySessionVisibility(object sender, RoutedEventArgs e)
+    {
+        var hiddenIn = new Dictionary<string, List<string>>();
+        foreach (var widget in AllWidgetKeys)
+        {
+            var hidden = SessionKindNames.Where(k => _sessionBoxes[(widget, k)].IsChecked != true).ToList();
+            if (hidden.Count > 0) hiddenIn[widget] = hidden;
+        }
+        bool sent = await _profilesClient.SendAsync("setSessionVisibility", "", hiddenIn);
+        _profileStore.SessionVisibility = new IracingLiveCoach.Core.Telemetry.SessionVisibilityConfig(hiddenIn);
+        SaveProfileStore();
+        SessionVisibilityStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    private void RefreshClassProfileList()
+    {
+        var panel = new StackPanel();
+        foreach (var key in _profileStore.ClassProfiles.Keys.OrderBy(k => k))
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            row.Children.Add(new TextBlock { Text = key, Width = 180, VerticalAlignment = VerticalAlignment.Center });
+            var remove = new Button { Content = "Remover", Padding = new Thickness(6, 0, 6, 0) };
+            string captured = key;
+            remove.Click += async (_, _) =>
+            {
+                bool sent = await _profilesClient.SendAsync("deleteClassProfile", captured, null);
+                _profileStore.ClassProfiles.Remove(captured);
+                SaveProfileStore();
+                RefreshClassProfileList();
+                ClassProfileStatus.Text = sent ? $"Perfil '{captured}' removido." : $"Perfil '{captured}' removido do arquivo -- overlay não está rodando.";
+            };
+            row.Children.Add(remove);
+            panel.Children.Add(row);
+        }
+        ClassProfileList.ItemsSource = new[] { panel };
+    }
+
+    private async void SaveClassProfile(object sender, RoutedEventArgs e)
+    {
+        string key = NewProfileKeyBox.Text.Trim();
+        if (key.Length == 0) { ClassProfileStatus.Text = "Informe o nome da classe ou do carro."; return; }
+        bool sent = await _profilesClient.SendAsync("saveClassProfile", key, null);
+        if (!sent)
+        {
+            ClassProfileStatus.Text = "O overlay precisa estar rodando para salvar o layout atual como perfil (ele é quem conhece o layout ao vivo).";
+            return;
+        }
+        await Task.Delay(300); // the overlay persists on receipt; re-read so the list shows it
+        var disk = new WidgetPlacementStore();
+        PlacementPersistence.Load(disk);
+        foreach (var (k, placements) in disk.ClassProfiles) _profileStore.ClassProfiles[k] = placements;
+        RefreshClassProfileList();
+        ClassProfileStatus.Text = $"Layout atual salvo como perfil '{key}'.";
     }
 
     // --- Cabeçalho (spec §12: campos configuráveis e reordenáveis) ---
@@ -616,7 +729,7 @@ public partial class MainWindow : Window
         if (DefaultHeaderFor(_selectedWidget) is null) { HeaderStatus.Text = "Este widget não tem cabeçalho configurável."; return; }
         bool sent = await _headerClient.SendAsync(_selectedWidget, _currentHeader.Select(f => new HeaderFieldWire(f.Key, f.Visible)).ToList());
         _profileStore.HeaderOverrides[_selectedWidget] = _currentHeader.ToList();
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         HeaderStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
@@ -672,7 +785,7 @@ public partial class MainWindow : Window
         float fontScale = (float)FontScaleSlider.Value;
         bool sent = await _appearanceClient.SendAsync(_selectedWidget, fontScale, rowHeight, rowSpacing);
         _profileStore.AppearanceOverrides[_selectedWidget] = new WidgetAppearance(fontScale, rowHeight, rowSpacing);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         AppearanceStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
@@ -681,7 +794,7 @@ public partial class MainWindow : Window
     private async void RestoreDefaultAppearance(object sender, RoutedEventArgs e)
     {
         _profileStore.AppearanceOverrides.Remove(_selectedWidget);
-        PlacementPersistence.Save(_profileStore);
+        SaveProfileStore();
         LoadAppearanceIntoControls();
         bool sent = await _appearanceClient.SendAsync(_selectedWidget, WidgetAppearance.Default.FontScale, WidgetAppearance.Default.RowHeightDip, WidgetAppearance.Default.RowSpacingDip);
         AppearanceStatus.Text = sent

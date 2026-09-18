@@ -223,4 +223,33 @@ public class EditModeHitTesterTests
         Assert.Equal(40, resized.WidthDip);
         Assert.Equal(24, resized.HeightDip);
     }
+
+    private static WidgetPlacement P(float x, bool locked = false) =>
+        new(0, x, 0, PlacementAnchor.TopLeft, 100, 50, 1f, locked, 0);
+
+    [Fact]
+    public void Undo_ReturnsChangedKey_AndNullWhenEmpty()
+    {
+        var store = new WidgetPlacementStore();
+        store.Set("fuel", P(1));
+        store.Set("fuel", P(2));
+        Assert.Equal("fuel", store.Undo());
+        Assert.Equal(1, store.Get("fuel")!.X);
+        Assert.Equal("fuel", store.Redo());
+        store.ClearHistory();
+        Assert.Null(store.Undo());
+        Assert.Null(store.Redo());
+        Assert.Equal(2, store.Get("fuel")!.X);
+    }
+
+    [Fact]
+    public void ReplacePlacements_BypassesLockAndHistory()
+    {
+        var store = new WidgetPlacementStore();
+        store.Set("radar", P(1, true));
+        store.ClearHistory();
+        store.ReplacePlacements(new Dictionary<string, WidgetPlacement> { ["radar"] = P(500, true) });
+        Assert.Equal(500, store.Get("radar")!.X);
+        Assert.False(store.CanUndo);
+    }
 }

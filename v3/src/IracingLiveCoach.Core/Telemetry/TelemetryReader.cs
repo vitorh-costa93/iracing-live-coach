@@ -42,7 +42,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
 /// formula (BR1 = 1600/ln(2), SoF = BR1 * ln(N / Σ e^(-iRating_i / BR1))) over the current field's
 /// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
-public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount);
+public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "");
 
 /// <summary>The player's own current car status for the Relative/Standings widgets' footer.
 /// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
@@ -986,6 +986,7 @@ public class TelemetryReader : IDisposable
     {
         var carClassShortName = "";
         var sessionTypeText = "";
+        var playerCarName = "";
         int? currentLap = null;
         int? totalLaps = null;
         try
@@ -993,6 +994,7 @@ public class TelemetryReader : IDisposable
             var sessionInfo = _sdk.Data.SessionInfo;
             var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == _playerCarIdx);
             carClassShortName = driver?.CarClassShortName?.ToUpperInvariant() ?? "";
+            playerCarName = driver?.CarScreenName ?? "";
 
             var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
             var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
@@ -1005,7 +1007,7 @@ public class TelemetryReader : IDisposable
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
         var (flagText, flagColorHex) = DecodeSessionFlag();
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount);
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),

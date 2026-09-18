@@ -67,6 +67,10 @@ public static unsafe class Program
     /// Starts false: a fresh launch shows nothing until the SDK actually reports a state, matching
     /// the same "never assume, only real telemetry" rule used everywhere else in this file.</summary>
     private static bool _isOnTrack;
+    private static SessionKind? _sessionKind;
+    private static string _playerClassKey = "";
+    private static string _playerCarKey = "";
+    private static string _appliedProfileKey = "";
     private static readonly Dictionary<string, bool> _lastAppliedVisibility = new();
 
     private const string StandingsKey = "standings";
@@ -206,6 +210,12 @@ public static unsafe class Program
         // visibility, so it doesn't couple visibility to any single widget's lifecycle.
         using var trackStateTelemetry = new TelemetryReader();
         trackStateTelemetry.OnTrackStateChanged += onTrack => _isOnTrack = onTrack;
+        trackStateTelemetry.SessionStatusUpdated += s =>
+        {
+            _sessionKind = SessionKinds.Classify(s.SessionTypeText);
+            _playerClassKey = s.CarClassShortName ?? "";
+            _playerCarKey = s.PlayerCarName ?? "";
+        };
         trackStateTelemetry.Start();
 
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
@@ -326,6 +336,26 @@ public static unsafe class Program
             PlacementPersistence.Save(PlacementStore);
         };
 
+        // Ninth small typed channel: session-type visibility + per-class/car layout profiles.
+        using var profilesIpcServer = new ProfilesIpcServer();
+        profilesIpcServer.MessageReceived += m =>
+        {
+            switch (m.Action)
+            {
+                case "setSessionVisibility":
+                    PlacementStore.SessionVisibility = new SessionVisibilityConfig(m.HiddenIn ?? new Dictionary<string, List<string>>());
+                    break;
+                case "saveClassProfile" when !string.IsNullOrWhiteSpace(m.Key):
+                    PlacementStore.ClassProfiles[m.Key.Trim()] = PlacementStore.All.ToDictionary(kv => kv.Key, kv => kv.Value);
+                    break;
+                case "deleteClassProfile":
+                    PlacementStore.ClassProfiles.Remove(m.Key);
+                    break;
+                default: return;
+            }
+            PlacementPersistence.Save(PlacementStore);
+        };
+
         // Eighth small typed channel: spec §4's undo/redo, exposed from the Control Center.
         // Placement is the only history the store tracks (columns/rules/fuel/appearance overrides
         // are simple last-write-wins, same as every profile field) -- an undone/redone key's window
@@ -365,6 +395,7 @@ public static unsafe class Program
             frameTimes.Add(delta);
 
             UpdateOverlayVisibility();
+            ApplyMatchingProfile();
 
             if (_simulating)
             {
@@ -588,13 +619,34 @@ public static unsafe class Program
     /// configured <see cref="WidgetPlacement.Visible"/> AND (on track OR edit mode unlocked).
     /// ShowWindow is only called when the effective state actually changes, not every frame, since
     /// there's no need to re-issue the same Win32 call 60 times a second.</summary>
+    /// <summary>Spec §12 "perfis por carro/classe": when the player's class (or, failing that, car)
+    /// has a saved profile, its placements replace the live layout -- once per change of key, not
+    /// every frame, and not persisted (the stored profile itself is only ever rewritten by an
+    /// explicit "save profile" from the Control Center).</summary>
+    private static void ApplyMatchingProfile()
+    {
+        string key =
+            !string.IsNullOrEmpty(_playerClassKey) && PlacementStore.ClassProfiles.ContainsKey(_playerClassKey) ? _playerClassKey :
+            !string.IsNullOrEmpty(_playerCarKey) && PlacementStore.ClassProfiles.ContainsKey(_playerCarKey) ? _playerCarKey : "";
+        if (key == _appliedProfileKey) return;
+        _appliedProfileKey = key;
+        if (key.Length == 0) return;
+        PlacementStore.ReplacePlacements(PlacementStore.ClassProfiles[key]);
+        foreach (var (widgetKey, placement) in PlacementStore.ClassProfiles[key])
+            SyncWindowToPlacement(widgetKey, placement);
+        Console.WriteLine($"Applied layout profile '{key}'.");
+    }
+
     private static void UpdateOverlayVisibility()
     {
         bool gate = _isOnTrack || _editMode;
         foreach (var (key, hwnd) in WidgetWindows)
         {
             var placement = PlacementStore.Get(key);
-            bool effective = (placement?.Visible ?? true) && gate;
+            // Per-session-type hiding (spec §12) never applies while editing -- unlocking must
+            // always reveal every widget so it can be positioned.
+            bool sessionAllows = _editMode || (PlacementStore.SessionVisibility?.IsVisible(key, _sessionKind) ?? true);
+            bool effective = (placement?.Visible ?? true) && gate && sessionAllows;
             if (_lastAppliedVisibility.TryGetValue(key, out var last) && last == effective) continue;
             _lastAppliedVisibility[key] = effective;
             ShowWindow(hwnd, effective ? SW_SHOW : SW_HIDE);

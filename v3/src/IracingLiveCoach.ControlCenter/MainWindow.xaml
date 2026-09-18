@@ -254,6 +254,20 @@
                             <Button Content="Restaurar cores padrão" Click="RestoreDefaults"/>
                         </StackPanel>
                         <TextBlock x:Name="ProfileStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                        <TextBlock Text="VISIBILIDADE POR TIPO DE SESSÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
+                        <TextBlock Text="Marque em quais sessões cada widget aparece (além da regra 'só na pista'). Desmarcado = escondido naquele tipo de sessão. Ignorado enquanto o modo de edição está destravado." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <ItemsControl x:Name="SessionVisibilityList"/>
+                        <Button Content="Aplicar visibilidade" Click="ApplySessionVisibility" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                        <TextBlock x:Name="SessionVisibilityStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="PERFIS POR CLASSE / CARRO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
+                        <TextBlock Text="Salva o layout ATUAL do overlay (posições, opacidade, visibilidade) sob o nome curto da classe (ex: GT3, GTP) ou o nome do carro. Quando você entra numa sessão com essa classe/carro, o layout salvo é aplicado sozinho. Posicione tudo primeiro (modo de edição), depois salve." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <ItemsControl x:Name="ClassProfileList"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBox x:Name="NewProfileKeyBox" Width="160" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
+                            <Button Content="Salvar layout atual neste perfil" Click="SaveClassProfile"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ClassProfileStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </TabItem>
             </TabControl>
