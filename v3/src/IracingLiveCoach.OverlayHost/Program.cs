@@ -60,6 +60,15 @@ public static unsafe class Program
     private static readonly List<nint> OverlayWindows = [];
     private static bool _simulating;
 
+    /// <summary>"Os overlays só devem ser renderizados quando estiver na pista. Fora dela só se
+    /// estiver editando" -- driven by <see cref="TelemetryReader.OnTrackStateChanged"/> (already a
+    /// real, SDK-confirmed signal; see that event's own doc comment), OR while <see cref="_editMode"/>
+    /// is on (so unlocking from the Control Center to reposition works from the garage/menus too).
+    /// Starts false: a fresh launch shows nothing until the SDK actually reports a state, matching
+    /// the same "never assume, only real telemetry" rule used everywhere else in this file.</summary>
+    private static bool _isOnTrack;
+    private static readonly Dictionary<string, bool> _lastAppliedVisibility = new();
+
     private const string StandingsKey = "standings";
     private const string RelativeKey = "relative";
     private const string WeatherKey = "weather";
@@ -104,6 +113,17 @@ public static unsafe class Program
         new RelativeRow(2, "Simon Wagner", 2.910, null, null, null, null, false, "🇩🇪", "A", null, 3455, 1, "Ford", false, 6, "GT3", "#FFD400"),
         new RelativeRow(3, "James Carter", 5.330, null, null, null, null, false, "🇺🇸", "B", null, 3298, 1, "McLaren", false, 7, "GT3", "#FFD400"),
     ];
+
+    /// <summary>Same spec §12 simulation rationale as the standings/relative rows above -- exercises
+    /// the dynamic weather icon's three states isn't possible from one fixed snapshot, but at least
+    /// proves the "damp track, no rain" branch (wetness 3, no precipitation) renders correctly.</summary>
+    private static WeatherStatus BuildSimulatedWeatherStatus() =>
+        new(AirTempC: 24.5, TrackTempC: 31.2, PrecipitationPct: 0, TrackWetness: 3, WeatherDeclaredWet: false,
+            TrackRubberState: "MODERATE", CarPositions: [], WindSpeedMs: 3.2, WindDirectionDeg: 210);
+
+    private static FuelStatus BuildSimulatedFuelStatus() =>
+        new(FuelLevelLiters: 38.5, FuelUsePerHourLiters: 62.0, AverageFuelPerLapLiters: 2.24,
+            LapsRemaining: 17.2, TimeRemainingSeconds: 21 * 60 + 14, FuelNeededForFinishLiters: -2.7);
 
     public static int Main()
     {
@@ -175,6 +195,18 @@ public static unsafe class Program
         using var ipcServer = new PlacementIpcServer();
         ipcServer.MessageReceived += ApplyPlacementMessage;
 
+        // Second small typed channel: a global lock/unlock so the Control Center can flip edit mode
+        // remotely (the same toggle "E" already does on the overlay window itself).
+        using var editModeIpcServer = new EditModeIpcServer();
+        editModeIpcServer.MessageReceived += m => SetEditMode(m.Enabled);
+
+        // Dedicated reader purely for the on-track signal -- each widget already owns its own
+        // TelemetryReader for its own data; this one is never drawn from, only used to gate
+        // visibility, so it doesn't couple visibility to any single widget's lifecycle.
+        using var trackStateTelemetry = new TelemetryReader();
+        trackStateTelemetry.OnTrackStateChanged += onTrack => _isOnTrack = onTrack;
+        trackStateTelemetry.Start();
+
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
         using var relativeResources = DeviceResources.Create(relativeHwnd, (int)relativePlacement.WidthDip, (int)relativePlacement.HeightDip);
         using var weatherResources = DeviceResources.Create(weatherHwnd, (int)weatherPlacement.WidthDip, (int)weatherPlacement.HeightDip);
@@ -223,15 +255,21 @@ public static unsafe class Program
             lastFrameMs = now;
             frameTimes.Add(delta);
 
+            UpdateOverlayVisibility();
+
             if (_simulating)
             {
                 standings.SetSimulatedRows(BuildSimulatedStandingsRows());
                 relative.SetSimulatedRows(BuildSimulatedRelativeRows());
+                weather.SetSimulatedStatus(BuildSimulatedWeatherStatus());
+                fuel.SetSimulatedStatus(BuildSimulatedFuelStatus());
             }
             else
             {
                 standings.SetSimulatedRows(null);
                 relative.SetSimulatedRows(null);
+                weather.SetSimulatedStatus(null);
+                fuel.SetSimulatedStatus(null);
             }
 
             standingsResources.BeginFrame();
@@ -352,7 +390,9 @@ public static unsafe class Program
         PlacementPersistence.Save(PlacementStore); // spec §3: every applied edit survives the next launch
 
         SetWindowPos(hwnd, 0, (int)message.X, (int)message.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-        ShowWindow(hwnd, message.Visible ? SW_SHOW : SW_HIDE);
+        // Show/hide is now owned exclusively by UpdateOverlayVisibility (on-track/edit-mode gate),
+        // applied on the very next frame -- a direct ShowWindow here would fight that cache and
+        // could leave the two out of sync.
         byte alpha = (byte)Math.Clamp(message.Opacity * 255f, 0f, 255f);
         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
     }
@@ -384,6 +424,24 @@ public static unsafe class Program
                 float heightPx = placement.HeightDip * placement.Scale;
                 Console.WriteLine($"[Spec §17] Widget '{key}' height {heightPx:0}px exceeds the {maxHeightForSevenRowsPx:0}px ceiling (35% of {screenHeightPx}px) by {heightPx - maxHeightForSevenRowsPx:0}px.");
             }
+        }
+    }
+
+    /// <summary>"Os overlays só devem ser renderizados quando estiver na pista. Fora dela só se eu
+    /// estiver redimensionando no painel de controle" -- effective visibility is the widget's own
+    /// configured <see cref="WidgetPlacement.Visible"/> AND (on track OR edit mode unlocked).
+    /// ShowWindow is only called when the effective state actually changes, not every frame, since
+    /// there's no need to re-issue the same Win32 call 60 times a second.</summary>
+    private static void UpdateOverlayVisibility()
+    {
+        bool gate = _isOnTrack || _editMode;
+        foreach (var (key, hwnd) in WidgetWindows)
+        {
+            var placement = PlacementStore.Get(key);
+            bool effective = (placement?.Visible ?? true) && gate;
+            if (_lastAppliedVisibility.TryGetValue(key, out var last) && last == effective) continue;
+            _lastAppliedVisibility[key] = effective;
+            ShowWindow(hwnd, effective ? SW_SHOW : SW_HIDE);
         }
     }
 

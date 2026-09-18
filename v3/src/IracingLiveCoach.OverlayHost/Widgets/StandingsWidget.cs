@@ -270,12 +270,18 @@ public sealed unsafe class StandingsWidget : IDisposable
         SetBrushColor(color);
         var strip = new RectF(x, y, x + ClassStripWidthDip, y + ClassHeaderHeightDip);
         dc->FillRectangle(&strip, (ID2D1Brush*)_brush.Get());
-        SetBrushColor(PaletteTokens.TextPrimary);
-        string text = string.IsNullOrWhiteSpace(name) ? "CLASS" : name;
-        fixed (char* p = text)
+        // Spec §15: never fabricate a class name -- some real sessions genuinely don't populate
+        // DriverInfo.CarClassShortName (confirmed live: a real multiclass session showed this blank
+        // for several classes). A literal "CLASS" placeholder here would look like real data; leaving
+        // the band/strip color but no text is the honest choice when the SDK gives us nothing.
+        if (!string.IsNullOrWhiteSpace(name))
         {
-            var rect = new RectF(x + 8f, y, x + 180f, y + ClassHeaderHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            SetBrushColor(PaletteTokens.TextPrimary);
+            fixed (char* p = name)
+            {
+                var rect = new RectF(x + 8f, y, x + 180f, y + ClassHeaderHeightDip);
+                dc->DrawText(p, (uint)name.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            }
         }
     }
 

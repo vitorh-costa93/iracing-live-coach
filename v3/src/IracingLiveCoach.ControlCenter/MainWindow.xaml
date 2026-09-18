@@ -18,7 +18,13 @@
             <Button Content="Fuel" Tag="fuel" Click="SelectWidget" Margin="0,0,0,4"/>
             <Button Content="Radar" Tag="radar" Click="SelectWidget" Margin="0,0,0,4"/>
             <Button Content="Start Helper" Tag="start-helper" Click="SelectWidget"/>
-            <TextBlock x:Name="ConnectionStatus" Text="" Margin="0,28,0,0" Foreground="#A6B0BB" FontSize="11" TextWrapping="Wrap"/>
+
+            <TextBlock Text="MODO DE EDIÇÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,6" FontSize="11"/>
+            <TextBlock Text="Travado: overlays só aparecem na pista. Destravado: aparecem sempre, para você posicionar." Foreground="#73808C" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,8"/>
+            <Button x:Name="EditModeButton" Content="Destravar para editar" Click="ToggleEditMode"/>
+            <TextBlock x:Name="EditModeStatus" Text="" Foreground="#A6B0BB" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
+
+            <TextBlock x:Name="ConnectionStatus" Text="" Margin="0,20,0,0" Foreground="#A6B0BB" FontSize="11" TextWrapping="Wrap"/>
         </StackPanel>
 
         <ScrollViewer Grid.Column="1" Margin="28,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

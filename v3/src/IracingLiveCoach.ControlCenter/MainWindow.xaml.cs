@@ -27,10 +27,12 @@ namespace IracingLiveCoach.ControlCenter;
 public partial class MainWindow : Window
 {
     private readonly PlacementIpcClient _client = new();
+    private readonly EditModeIpcClient _editModeClient = new();
     private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
     private string _selectedWidget = "standings";
     private bool _suppressChangeEvents;
     private OverlayPreviewHost? _previewHost;
+    private bool _editModeUnlocked;
 
     /// <summary>Backs the Cores/Perfis tabs -- a separate <see cref="WidgetPlacementStore"/> from
     /// the Layout tab's own in-memory <see cref="_state"/> dictionary, because these two tabs work
@@ -253,6 +255,18 @@ public partial class MainWindow : Window
         PaletteTokens.ClearAllNameOverrides();
         RefreshClassColorList();
         ProfileStatus.Text = "Overrides de cor restaurados para o padrão normativo (spec §16).";
+    }
+
+    // --- Modo de edição global (spec §4: overlays só visíveis na pista, exceto durante edição) ---
+
+    private async void ToggleEditMode(object sender, RoutedEventArgs e)
+    {
+        _editModeUnlocked = !_editModeUnlocked;
+        bool sent = await _editModeClient.SendAsync(_editModeUnlocked);
+        EditModeButton.Content = _editModeUnlocked ? "Travar (mostrar só na pista)" : "Destravar para editar";
+        EditModeStatus.Text = sent
+            ? (_editModeUnlocked ? "Destravado -- overlays visíveis agora, em qualquer tela." : "Travado -- overlays só aparecem quando você estiver na pista.")
+            : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
     }
 }
 

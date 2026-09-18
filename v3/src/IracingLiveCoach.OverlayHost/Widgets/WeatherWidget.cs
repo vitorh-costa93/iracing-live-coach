@@ -24,6 +24,11 @@ public sealed unsafe class WeatherWidget : IDisposable
     private readonly TelemetryReader _telemetry;
     private readonly object _lock = new();
     private WeatherStatus? _status;
+    private WeatherStatus? _simulatedStatus;
+
+    /// <summary>Spec §12's simulation preview -- see StandingsWidget.SetSimulatedRows for the same
+    /// rationale. Never used as a stand-in for real telemetry.</summary>
+    public void SetSimulatedStatus(WeatherStatus? status) => _simulatedStatus = status;
 
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<IDWriteTextFormat> _valueFormat;
@@ -70,12 +75,12 @@ public sealed unsafe class WeatherWidget : IDisposable
     public void Draw(ID2D1DeviceContext* dc, float x, float y, float width = WidthDip)
     {
         WeatherStatus? status;
-        lock (_lock) { status = _status; }
+        lock (_lock) { status = _simulatedStatus ?? _status; }
 
         float panelHeight = RowHeightDip * 4;
         DrawPanel(dc, x, y, width, panelHeight);
 
-        if (!_telemetry.HasRecentTelemetry || status is null)
+        if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
         {
             SetBrushColor(PaletteTokens.TextDisabled);
             const string text = "Aguardando iRacing...";
@@ -86,6 +91,11 @@ public sealed unsafe class WeatherWidget : IDisposable
             }
             return;
         }
+
+        // Dynamic condition icon (mockup parity) -- driven by the SAME real TrackWetness/precipitation
+        // fields the text already uses, never a separate guess. Sun = dry, cloud = damp track but no
+        // measured rain, rain = actual measured precipitation right now (spec §8: never a forecast).
+        DrawWeatherIcon(dc, x + width - 22f, y + 2f, status.TrackWetness, status.PrecipitationPct);
 
         float colWidth = width / 2 - 4f;
         Metric(dc, "AIR", $"{status.AirTempC:0.#}°C", x, y, colWidth, PaletteTokens.TextPrimary);
@@ -135,6 +145,61 @@ public sealed unsafe class WeatherWidget : IDisposable
             var rect = new RectF(x, y + 13f, x + width, y + RowHeightDip);
             dc->DrawText(p, (uint)value.Length, _valueFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
+    }
+
+    /// <summary>Vector-drawn (never a bitmap emblem -- this is a generic condition pictogram, not a
+    /// brand/nationality asset spec §18 governs) icon that changes with real telemetry: a sun for a
+    /// genuinely dry track, a cloud once the track is damp but no rain is currently falling, and a
+    /// cloud with rain streaks once <see cref="WeatherStatus.PrecipitationPct"/> is actually
+    /// positive. Never animated/embellished beyond what the data supports.</summary>
+    private void DrawWeatherIcon(ID2D1DeviceContext* dc, float x, float y, int wetness, double precipitationPct)
+    {
+        const float size = 18f;
+        float cx = x + size / 2f;
+        float cy = y + size / 2f;
+
+        if (precipitationPct > 0 || wetness >= 4)
+        {
+            // Cloud + rain streaks.
+            SetBrushColor(PaletteTokens.TextSecondary);
+            DrawCloud(dc, cx, cy - 2f, size);
+            SetBrushColor(PaletteTokens.WeatherWet);
+            for (int i = 0; i < 3; i++)
+            {
+                float sx = x + 4f + i * 5f;
+                var line = new RectF(sx, cy + 4f, sx + 1.4f, cy + 9f);
+                dc->FillRectangle(&line, (ID2D1Brush*)_brush.Get());
+            }
+        }
+        else if (wetness >= 2)
+        {
+            // Damp/drying track, no active rain -- cloud only.
+            SetBrushColor(PaletteTokens.TextSecondary);
+            DrawCloud(dc, cx, cy, size);
+        }
+        else
+        {
+            // Genuinely dry -- sun.
+            SetBrushColor(PaletteTokens.WeatherDry);
+            var sun = new Ellipse { point = new System.Numerics.Vector2(cx, cy), radiusX = size * 0.28f, radiusY = size * 0.28f };
+            dc->FillEllipse(&sun, (ID2D1Brush*)_brush.Get());
+            for (int i = 0; i < 8; i++)
+            {
+                double angle = i * Math.PI / 4.0;
+                float innerR = size * 0.4f, outerR = size * 0.5f;
+                float x1 = cx + (float)(Math.Cos(angle) * innerR), y1 = cy + (float)(Math.Sin(angle) * innerR);
+                float x2 = cx + (float)(Math.Cos(angle) * outerR), y2 = cy + (float)(Math.Sin(angle) * outerR);
+                dc->DrawLine(new System.Numerics.Vector2(x1, y1), new System.Numerics.Vector2(x2, y2), (ID2D1Brush*)_brush.Get(), 1.4f, null);
+            }
+        }
+    }
+
+    private void DrawCloud(ID2D1DeviceContext* dc, float cx, float cy, float size)
+    {
+        var left = new Ellipse { point = new System.Numerics.Vector2(cx - size * 0.22f, cy + size * 0.05f), radiusX = size * 0.22f, radiusY = size * 0.18f };
+        var right = new Ellipse { point = new System.Numerics.Vector2(cx + size * 0.15f, cy), radiusX = size * 0.28f, radiusY = size * 0.22f };
+        dc->FillEllipse(&left, (ID2D1Brush*)_brush.Get());
+        dc->FillEllipse(&right, (ID2D1Brush*)_brush.Get());
     }
 
     private static string Wetness(int wetness) => wetness switch

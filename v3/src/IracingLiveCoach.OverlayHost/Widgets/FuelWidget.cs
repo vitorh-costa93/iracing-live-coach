@@ -25,6 +25,11 @@ public sealed unsafe class FuelWidget : IDisposable
     private readonly TelemetryReader _telemetry;
     private readonly object _lock = new();
     private FuelStatus? _status;
+    private FuelStatus? _simulatedStatus;
+
+    /// <summary>Spec §12's simulation preview -- see StandingsWidget.SetSimulatedRows for the same
+    /// rationale. Never used as a stand-in for real telemetry.</summary>
+    public void SetSimulatedStatus(FuelStatus? status) => _simulatedStatus = status;
 
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<IDWriteTextFormat> _valueFormat;
@@ -71,11 +76,11 @@ public sealed unsafe class FuelWidget : IDisposable
     public void Draw(ID2D1DeviceContext* dc, float x, float y, float width = WidthDip)
     {
         FuelStatus? status;
-        lock (_lock) { status = _status; }
+        lock (_lock) { status = _simulatedStatus ?? _status; }
 
         DrawPanel(dc, x, y, width, RowHeightDip * 3);
 
-        if (!_telemetry.HasRecentTelemetry || status is null)
+        if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
         {
             SetBrushColor(PaletteTokens.TextDisabled);
             const string text = "Aguardando iRacing...";
@@ -86,6 +91,10 @@ public sealed unsafe class FuelWidget : IDisposable
             }
             return;
         }
+
+        // Static fuel-pump pictogram (mockup parity) -- a generic pictogram, not a brand/nationality
+        // asset spec §18 governs, so it's drawn as vector geometry rather than requiring an image.
+        DrawFuelPumpIcon(dc, x + width - 20f, y + 2f);
 
         float colWidth = width / 2 - 4f;
 
@@ -126,6 +135,21 @@ public sealed unsafe class FuelWidget : IDisposable
         dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
         SetBrushColor(PaletteTokens.WidgetOuterBorder);
         dc->DrawRectangle(&background, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
+    }
+
+    /// <summary>Simple vector fuel-pump pictogram: a body rectangle, a small display notch, and a
+    /// nozzle/hose -- static, since (unlike weather) there's no real-time condition it should react
+    /// to besides the numbers already shown next to it.</summary>
+    private void DrawFuelPumpIcon(ID2D1DeviceContext* dc, float x, float y)
+    {
+        SetBrushColor(PaletteTokens.TextSecondary);
+        var body = new RectF(x, y + 3f, x + 10f, y + 16f);
+        dc->DrawRectangle(&body, (ID2D1Brush*)_brush.Get(), 1.3f, null);
+        var display = new RectF(x + 2f, y + 5f, x + 8f, y + 8f);
+        dc->FillRectangle(&display, (ID2D1Brush*)_brush.Get());
+        dc->DrawLine(new System.Numerics.Vector2(x + 10f, y + 6f), new System.Numerics.Vector2(x + 15f, y + 6f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
+        dc->DrawLine(new System.Numerics.Vector2(x + 15f, y + 6f), new System.Numerics.Vector2(x + 15f, y + 14f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
+        dc->DrawLine(new System.Numerics.Vector2(x + 13.5f, y + 14f), new System.Numerics.Vector2(x + 16.5f, y + 14f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
     }
 
     private void Metric(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4 valueColor)

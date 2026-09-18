@@ -101,8 +101,8 @@ public sealed unsafe class FlagBitmapCache : IDisposable
 
     private static readonly string[] KnownBrandAssetKeys =
     [
-        "aston", "audi", "bmw", "cadillac", "chevrolet", "ferrari", "ford",
-        "lamborghini", "mclaren", "mercedes", "porsche"
+        "acura", "aston", "audi", "bmw", "cadillac", "chevrolet", "dallara", "ferrari", "ford",
+        "honda", "lamborghini", "mclaren", "mercedes", "porsche", "toyota"
     ];
 
     private ComPtr<ID2D1Bitmap> LoadBitmap(ID2D1DeviceContext* dc, string path)
@@ -147,17 +147,21 @@ public sealed unsafe class FlagBitmapCache : IDisposable
         string normalized = manufacturer?.Trim().ToUpperInvariant() ?? string.Empty;
         key = normalized switch
         {
+            var value when value.Contains("ACURA") => "acura",
             var value when value.Contains("ASTON") => "aston",
             var value when value.Contains("AUDI") => "audi",
             var value when value.Contains("BMW") => "bmw",
             var value when value.Contains("CADILLAC") => "cadillac",
             var value when value.Contains("CHEVROLET") || value.Contains("CORVETTE") => "chevrolet",
+            var value when value.Contains("DALLARA") => "dallara",
             var value when value.Contains("FERRARI") => "ferrari",
             var value when value.Contains("FORD") => "ford",
+            var value when value.Contains("HONDA") => "honda",
             var value when value.Contains("LAMBORGHINI") => "lamborghini",
             var value when value.Contains("MCLAREN") || value.Contains("MC LAREN") => "mclaren",
             var value when value.Contains("MERCEDES") => "mercedes",
             var value when value.Contains("PORSCHE") => "porsche",
+            var value when value.Contains("TOYOTA") => "toyota",
             _ => string.Empty
         };
         return key.Length != 0;
