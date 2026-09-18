@@ -64,6 +64,17 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float OvertakeColumnWidthDip = 52f;
     private const float ColumnGapDip = 6f;
 
+    /// <summary>Sum of every column's own footprint, used for the header band width, the outer
+    /// border, and the row grid -- kept as one constant so all three always agree (spec §12's
+    /// "largura automática de tabela = soma das colunas"). Not yet driven by live
+    /// <see cref="Layout.ColumnDefinition"/> instances (that wiring is still open), but at least the
+    /// header/border/grid no longer disagree with each other or use an arbitrary literal.</summary>
+    private const float TableWidthDip =
+        ClassStripWidthDip + 4f + PositionColumnWidthDip + CarNumberColumnWidthDip + FlagColumnWidthDip +
+        BrandColumnWidthDip + NameColumnWidthDip + ColumnGapDip + LicenseColumnWidthDip + ColumnGapDip +
+        BadgeWidthDip + ColumnGapDip + GapColumnWidthDip + ColumnGapDip + IntervalColumnWidthDip + ColumnGapDip +
+        LastLapColumnWidthDip + ColumnGapDip + LapDeltaColumnWidthDip + ColumnGapDip + OvertakeColumnWidthDip;
+
     public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags)
     {
         _flags = flags;
@@ -152,20 +163,27 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void DrawSessionHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session)
     {
         SetBrushColor(PaletteTokens.SessionHeaderBand);
-        var band = new RectF(x, y, x + 820f, y + SessionHeaderHeightDip);
+        var band = new RectF(x, y, x + TableWidthDip, y + SessionHeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
-        string text = session is null ? "STANDINGS" : $"{session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}  SOF {session.StrengthOfField?.ToString("0", CultureInfo.InvariantCulture) ?? "—"}  {session.DriverCount} DRIVERS";
-        SetBrushColor(PaletteTokens.TextPrimary);
-        fixed (char* p = text)
+        // Spec §5/§15: no decorative widget title ("STANDINGS") ever -- only real session info.
+        // Without a session yet, the band stays empty rather than a placeholder label.
+        if (session is not null)
         {
-            var rect = new RectF(x + 8f, y, x + 760f, y + SessionHeaderHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            string text = $"{session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}  SOF {session.StrengthOfField?.ToString("0", CultureInfo.InvariantCulture) ?? "—"}  {session.DriverCount} DRIVERS";
+            SetBrushColor(PaletteTokens.TextPrimary);
+            fixed (char* p = text)
+            {
+                var rect = new RectF(x + 8f, y, x + TableWidthDip - 60f, y + SessionHeaderHeightDip);
+                dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            }
         }
-        string local = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
+        // LOCAL clock (spec §8/§15): system-local time, short "LOCAL" label, always shown in the
+        // session header band regardless of whether a live session is present yet.
+        string local = "LOCAL " + DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
         SetBrushColor(PaletteTokens.TextSecondary);
         fixed (char* p = local)
         {
-            var rect = new RectF(x + 766f, y, x + 816f, y + SessionHeaderHeightDip);
+            var rect = new RectF(x + TableWidthDip - 76f, y, x + TableWidthDip - 6f, y + SessionHeaderHeightDip);
             dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
@@ -174,7 +192,9 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         var groups = StandingsSelection.GroupAndSelect(rows);
         bool multiClass = groups.Count > 1;
+        float headerTopY = y - SessionHeaderHeightDip;
         float rowY = y;
+        bool drewAnyRow = false;
         foreach (var group in groups)
         {
             if (multiClass)
@@ -184,17 +204,33 @@ public sealed unsafe class StandingsWidget : IDisposable
             }
             foreach (var row in group.Rows)
             {
+                // Spec §7: rows share the same grid as every other column -- a thin horizontal
+                // separator ABOVE each row (except the very first one drawn), never a per-cell
+                // outline or card.
+                if (drewAnyRow)
+                {
+                    SetBrushColor(PaletteTokens.Grid);
+                    var separator = new RectF(x, rowY - PaletteTokens.BorderAndGridThicknessPx, x + TableWidthDip, rowY);
+                    dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
+                }
                 DrawRow(dc, x, rowY, row);
                 rowY += RowHeightDip;
+                drewAnyRow = true;
             }
         }
+
+        // Outer widget border (spec §16's WidgetOuterBorder), wrapping the session header through
+        // the last row -- drawn last so it sits cleanly over the fills without being occluded.
+        SetBrushColor(PaletteTokens.WidgetOuterBorder);
+        var outer = new RectF(x, headerTopY, x + TableWidthDip, rowY);
+        dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
     private void DrawClassHeader(ID2D1DeviceContext* dc, float x, float y, string name, int classId, string? classColorHex)
     {
         var color = PaletteTokens.ResolveClassColor(classId, name, classColorHex);
         SetBrushColor(PaletteTokens.SessionHeaderBand);
-        var background = new RectF(x, y, x + 600f, y + ClassHeaderHeightDip);
+        var background = new RectF(x, y, x + TableWidthDip, y + ClassHeaderHeightDip);
         dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
         SetBrushColor(color);
         var strip = new RectF(x, y, x + ClassStripWidthDip, y + ClassHeaderHeightDip);

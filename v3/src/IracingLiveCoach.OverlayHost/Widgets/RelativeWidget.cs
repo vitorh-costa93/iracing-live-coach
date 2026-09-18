@@ -55,6 +55,13 @@ public sealed unsafe class RelativeWidget : IDisposable
     private const float OvertakeColumnWidthDip = 52f;
     private const float ColumnGapDip = 6f;
 
+    /// <summary>Sum of every column's footprint -- keeps the header band, outer border, and row
+    /// grid all agreeing on one width instead of the previous arbitrary 600f literal.</summary>
+    private const float TableWidthDip =
+        ClassStripWidthDip + 4f + OffsetColumnWidthDip + CarNumberColumnWidthDip + FlagColumnWidthDip +
+        BrandColumnWidthDip + NameColumnWidthDip + ColumnGapDip + LicenseColumnWidthDip + ColumnGapDip +
+        IRatingColumnWidthDip + ColumnGapDip + GapColumnWidthDip + ColumnGapDip + OvertakeColumnWidthDip;
+
     public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags)
     {
         _flags = flags;
@@ -150,38 +157,64 @@ public sealed unsafe class RelativeWidget : IDisposable
         lock (_lock) { session = _sessionStatus; player = _playerStatus; }
         DrawHeader(dc, x, y, session, player);
         float rowY = y + HeaderHeightDip;
+        bool drewAnyRow = false;
         foreach (var row in rows)
         {
+            if (drewAnyRow)
+            {
+                SetBrushColor(PaletteTokens.Grid);
+                var separator = new RectF(x, rowY - PaletteTokens.BorderAndGridThicknessPx, x + TableWidthDip, rowY);
+                dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
+            }
             DrawRow(dc, x, rowY, row);
             rowY += RowHeightDip;
+            drewAnyRow = true;
         }
+        SetBrushColor(PaletteTokens.WidgetOuterBorder);
+        var outer = new RectF(x, y, x + TableWidthDip, rowY);
+        dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
     private void DrawHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session, PlayerCarStatus? player)
     {
         SetBrushColor(PaletteTokens.SessionHeaderBand);
-        var band = new RectF(x, y, x + 600f, y + HeaderHeightDip);
+        var band = new RectF(x, y, x + TableWidthDip, y + HeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
-        string sessionText = session is null
-            ? "RELATIVE"
-            : $"{session.CarClassShortName}  {session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}";
+        // Spec §5/§15: no decorative "RELATIVE" title -- only real session/player info, distributed
+        // across the header's full width (BB / track temp / rubber on the left, LOCAL clock right).
+        if (session is not null)
+        {
+            string sessionText = $"{session.CarClassShortName}  {session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}";
+            SetBrushColor(PaletteTokens.TextPrimary);
+            fixed (char* p = sessionText)
+            {
+                var rect = new RectF(x + 8f, y, x + TableWidthDip * 0.5f, y + HeaderHeightDip);
+                dc->DrawText(p, (uint)sessionText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            }
+        }
         if (player is not null)
         {
-            var track = player.TrackTempC is double temperature ? $"  TRACK {temperature:0.#}°C" : "";
-            var brake = player.BrakeBiasPct is double bias ? $"  BB {bias:0.0}%" : "";
-            sessionText += track + brake;
+            // spec §7: brake bias / track temp / rubber (emborrachamento), spec §8: rubber is
+            // independent from humidity/wetness -- shown here as its own field, not folded in.
+            var bias = player.BrakeBiasPct is double b ? $"BB {b:0.0}%" : null;
+            var track = player.TrackTempC is double t ? $"TRACK {t:0.#}°C" : null;
+            var rubber = player.TrackRubberState is { Length: > 0 } r ? $"RUBBER {r.ToUpperInvariant()}" : null;
+            string playerText = string.Join("   ", new[] { bias, track, rubber }.Where(s => s is not null));
+            if (playerText.Length > 0)
+            {
+                SetBrushColor(PaletteTokens.TextSecondary);
+                fixed (char* p = playerText)
+                {
+                    var rect = new RectF(x + TableWidthDip * 0.5f, y, x + TableWidthDip - 76f, y + HeaderHeightDip);
+                    dc->DrawText(p, (uint)playerText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                }
+            }
         }
-        string local = DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        SetBrushColor(PaletteTokens.TextPrimary);
-        fixed (char* p = sessionText)
-        {
-            var rect = new RectF(x + 8f, y, x + 450f, y + HeaderHeightDip);
-            dc->DrawText(p, (uint)sessionText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
+        string local = "LOCAL " + DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
         SetBrushColor(PaletteTokens.TextSecondary);
         fixed (char* p = local)
         {
-            var rect = new RectF(x + 540f, y, x + 596f, y + HeaderHeightDip);
+            var rect = new RectF(x + TableWidthDip - 76f, y, x + TableWidthDip - 6f, y + HeaderHeightDip);
             dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
