@@ -112,9 +112,24 @@ public partial class MainWindow : Window
         RepositionPreview();
     }
 
+    private void MainScroll_ScrollChanged(object sender, ScrollChangedEventArgs e) => RepositionPreview();
+
+    /// <summary>The preview is a separate top-level popup window, so WPF's ScrollViewer cannot clip
+    /// it: once scrolled out of view it would float over whatever tab content scrolled beneath it.
+    /// Hide it unless the whole preview box is inside the scroll viewport.</summary>
+    private bool PreviewFullyInViewport()
+    {
+        if (!IsLoaded || MainScroll.ViewportHeight <= 0) return true;
+        var bounds = PreviewBorder.TransformToAncestor(MainScroll).TransformBounds(new Rect(0, 0, PreviewBorder.ActualWidth, PreviewBorder.ActualHeight));
+        return bounds.Top >= -0.5 && bounds.Bottom <= MainScroll.ViewportHeight + 0.5;
+    }
+
     private void RepositionPreview()
     {
         if (_previewHost is null) return;
+        bool visible = WindowState != WindowState.Minimized && PreviewFullyInViewport();
+        _previewHost.SetVisible(visible);
+        if (!visible) return;
         var (x, y, w, h) = PreviewScreenRect();
         _previewHost.MoveTo(x, y, w, h);
     }
@@ -209,7 +224,7 @@ public partial class MainWindow : Window
                 Background = (Brush)new BrushConverter().ConvertFromString(hex)!,
                 BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(1)
             });
-            row.Children.Add(new TextBlock { Text = $"{className}  {hex}", Width = 140, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = $"{className}  {hex}", Foreground = System.Windows.Media.Brushes.White, Width = 140, VerticalAlignment = VerticalAlignment.Center });
             var removeButton = new Button { Content = "Remover", Tag = className };
             removeButton.Click += RemoveClassColorOverride;
             row.Children.Add(removeButton);
@@ -343,7 +358,7 @@ public partial class MainWindow : Window
             Grid.SetColumn(visibleBox, 1);
             row.Children.Add(visibleBox);
 
-            var keyLabel = new TextBlock { Text = column.Key, VerticalAlignment = VerticalAlignment.Center, Width = 90, Margin = new Thickness(6, 0, 0, 0) };
+            var keyLabel = new TextBlock { Text = column.Key, Foreground = System.Windows.Media.Brushes.White, VerticalAlignment = VerticalAlignment.Center, Width = 90, Margin = new Thickness(6, 0, 0, 0) };
             Grid.SetColumn(keyLabel, 2);
             row.Children.Add(keyLabel);
 
@@ -584,7 +599,7 @@ public partial class MainWindow : Window
         for (int r = 0; r < AllWidgetKeys.Length; r++)
         {
             grid.RowDefinitions.Add(new RowDefinition());
-            var label = new TextBlock { Text = AllWidgetKeys[r], Margin = new Thickness(0, 2, 0, 2) };
+            var label = new TextBlock { Text = AllWidgetKeys[r], Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(0, 2, 0, 2) };
             Grid.SetRow(label, r + 1);
             grid.Children.Add(label);
             for (int c = 0; c < SessionKindNames.Length; c++)
@@ -622,7 +637,7 @@ public partial class MainWindow : Window
         foreach (var key in _profileStore.ClassProfiles.Keys.OrderBy(k => k))
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-            row.Children.Add(new TextBlock { Text = key, Width = 180, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = key, Foreground = System.Windows.Media.Brushes.White, Width = 180, VerticalAlignment = VerticalAlignment.Center });
             var remove = new Button { Content = "Remover", Padding = new Thickness(6, 0, 6, 0) };
             string captured = key;
             remove.Click += async (_, _) =>

@@ -130,8 +130,15 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _device.BeginFrame();
         var standingsPlacement = _placements.Get("standings");
         var relativePlacement = _placements.Get("relative");
-        if (standingsPlacement is not null) _standings.Draw(_device.Context, standingsPlacement.X * scale, standingsPlacement.Y * scale);
-        if (relativePlacement is not null) _relative.Draw(_device.Context, relativePlacement.X * scale, relativePlacement.Y * scale);
+        // Scale the whole drawing, not just the positions: widgets are laid out in real 1920x1080
+        // DIPs, so scaling only their origins drew them at full size in a box a third as wide and
+        // made neighbouring widgets overlap.
+        var transform = System.Numerics.Matrix3x2.CreateScale(scale);
+        _device.Context->SetTransform(&transform);
+        if (standingsPlacement is not null) _standings.Draw(_device.Context, standingsPlacement.X, standingsPlacement.Y);
+        if (relativePlacement is not null) _relative.Draw(_device.Context, relativePlacement.X, relativePlacement.Y);
+        var identity = System.Numerics.Matrix3x2.Identity;
+        _device.Context->SetTransform(&identity);
         _device.EndFrame();
     }
 
