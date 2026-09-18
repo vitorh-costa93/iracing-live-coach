@@ -285,7 +285,26 @@ public static unsafe class Program
             PlacementPersistence.Save(PlacementStore);
         };
 
-        // Seventh small typed channel: spec §4's undo/redo, exposed from the Control Center.
+        // Seventh small typed channel: iRating/Safety Rating display format, global across
+        // Standings/Relative (spec §12).
+        if (PlacementStore.NumberFormat is { } savedNumberFormat)
+        {
+            standings.SetNumberFormat(savedNumberFormat);
+            relative.SetNumberFormat(savedNumberFormat);
+        }
+        using var numberFormatIpcServer = new NumberFormatIpcServer();
+        numberFormatIpcServer.MessageReceived += m =>
+        {
+            if (!Enum.TryParse<IRatingFormat>(m.IRatingFormat, out var iRatingFormat)) return;
+            if (!Enum.TryParse<SafetyRatingFormat>(m.SafetyRatingFormat, out var srFormat)) return;
+            var config = new NumberFormatConfig(iRatingFormat, srFormat);
+            standings.SetNumberFormat(config);
+            relative.SetNumberFormat(config);
+            PlacementStore.NumberFormat = config;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
+        // Eighth small typed channel: spec §4's undo/redo, exposed from the Control Center.
         // Placement is the only history the store tracks (columns/rules/fuel/appearance overrides
         // are simple last-write-wins, same as every profile field) -- an undone/redone key's window
         // is re-synced immediately so what's on screen never lags what PlacementStore now holds.

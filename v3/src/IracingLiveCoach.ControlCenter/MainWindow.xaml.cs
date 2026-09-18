@@ -51,6 +51,7 @@ public partial class MainWindow : Window
     private readonly FuelConfigIpcClient _fuelConfigClient = new();
     private readonly AppearanceIpcClient _appearanceClient = new();
     private readonly UndoRedoIpcClient _undoRedoClient = new();
+    private readonly NumberFormatIpcClient _numberFormatClient = new();
 
     public MainWindow()
     {
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
         LoadRulesIntoControls();
         LoadFuelConfigIntoControls();
         LoadAppearanceIntoControls();
+        LoadNumberFormatIntoControls();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -496,6 +498,39 @@ public partial class MainWindow : Window
             Enum.Parse<IracingLiveCoach.Core.Telemetry.FuelConsumptionSource>(source), manual, reserve, excludePit);
         PlacementPersistence.Save(_profileStore);
         FuelRulesStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    // --- Formato de números (spec §12: iRating/Safety Rating) ---
+
+    private void LoadNumberFormatIntoControls()
+    {
+        var config = _profileStore.NumberFormat ?? IracingLiveCoach.Core.Telemetry.NumberFormatConfig.Default;
+        IRatingFormatBox.SelectedIndex = config.IRating == IracingLiveCoach.Core.Telemetry.IRatingFormat.Thousands ? 1 : 0;
+        SafetyRatingFormatBox.SelectedIndex = config.SafetyRating switch
+        {
+            IracingLiveCoach.Core.Telemetry.SafetyRatingFormat.NumberOnly => 1,
+            IracingLiveCoach.Core.Telemetry.SafetyRatingFormat.LetterOnly => 2,
+            _ => 0
+        };
+    }
+
+    private async void ApplyNumberFormat(object sender, RoutedEventArgs e)
+    {
+        string iRatingFormat = IRatingFormatBox.SelectedIndex == 1 ? "Thousands" : "Full";
+        string safetyRatingFormat = SafetyRatingFormatBox.SelectedIndex switch
+        {
+            1 => "NumberOnly",
+            2 => "LetterOnly",
+            _ => "LetterAndNumber"
+        };
+        bool sent = await _numberFormatClient.SendAsync(iRatingFormat, safetyRatingFormat);
+        _profileStore.NumberFormat = new IracingLiveCoach.Core.Telemetry.NumberFormatConfig(
+            Enum.Parse<IracingLiveCoach.Core.Telemetry.IRatingFormat>(iRatingFormat),
+            Enum.Parse<IracingLiveCoach.Core.Telemetry.SafetyRatingFormat>(safetyRatingFormat));
+        PlacementPersistence.Save(_profileStore);
+        NumberFormatStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
     }

@@ -83,6 +83,9 @@ public sealed unsafe class RelativeWidget : IDisposable
     public void SetColumns(List<ColumnDefinition> columns) => _columns = columns;
     public IReadOnlyList<ColumnDefinition> Columns => _columns;
 
+    private NumberFormatConfig _numberFormatConfig = NumberFormatConfig.Default;
+    public void SetNumberFormat(NumberFormatConfig config) => _numberFormatConfig = config;
+
     /// <summary>Sum of every visible column's footprint plus the left margin -- replaces the
     /// previous hardcoded constant (spec §12's auto-width formula).</summary>
     private float TableWidthDip => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_columns);
@@ -328,7 +331,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                 case "irating":
                     // iRating only -- no delta here (spec §7: "Não inclua ΔiRating neste widget").
                     SetBrushColor(PaletteTokens.TextSecondary);
-                    DrawCell(dc, row.IRating.ToString("N0", CultureInfo.InvariantCulture), cellX, y, cellWidth, placement.Column.Alignment);
+                    DrawCell(dc, _numberFormatConfig.FormatIRating(row.IRating), cellX, y, cellWidth, placement.Column.Alignment);
                     break;
                 case "gap":
                     // Player's own row always shows a neutral 0.000, never a computed value.
@@ -388,7 +391,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         };
         dc->FillRoundedRectangle(&rr, (ID2D1Brush*)_brush.Get());
         SetBrushColor(PaletteTokens.TextPrimary);
-        string text = string.IsNullOrWhiteSpace(license) ? "—" : license;
+        string text = string.IsNullOrWhiteSpace(license) ? "—" : _numberFormatConfig.FormatLicense(license);
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);

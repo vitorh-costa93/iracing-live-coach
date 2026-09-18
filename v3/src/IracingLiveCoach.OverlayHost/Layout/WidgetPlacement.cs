@@ -106,6 +106,10 @@ public sealed class WidgetPlacementStore
     /// key. A widget absent from this dictionary uses <see cref="WidgetAppearance.Default"/>.</summary>
     public Dictionary<string, WidgetAppearance> AppearanceOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>iRating/Safety Rating display format (spec §12), global across Standings/Relative.
+    /// Null means "use NumberFormatConfig.Default".</summary>
+    public NumberFormatConfig? NumberFormat { get; set; }
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);

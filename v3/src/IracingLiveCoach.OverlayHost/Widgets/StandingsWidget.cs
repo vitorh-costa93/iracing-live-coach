@@ -110,6 +110,11 @@ public sealed unsafe class StandingsWidget : IDisposable
     private StandingsPresentationOptions _presentationOptions = StandingsPresentationOptions.Default;
     public void SetPresentationOptions(StandingsPresentationOptions options) => _presentationOptions = options;
 
+    /// <summary>Spec §12: "formato de número para iRating e Safety Rating" -- applied to the
+    /// iRating badge and the license/SR badge, live.</summary>
+    private NumberFormatConfig _numberFormatConfig = NumberFormatConfig.Default;
+    public void SetNumberFormat(NumberFormatConfig config) => _numberFormatConfig = config;
+
     /// <summary>Sum of every visible column's footprint plus the left margin -- replaces the
     /// previous hardcoded constant so header band/border/grid always agree with whatever the live
     /// column configuration actually is (spec §12's auto-width formula).</summary>
@@ -500,7 +505,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         };
         dc->FillRoundedRectangle(&rr, (ID2D1Brush*)_brush.Get());
         SetBrushColor(PaletteTokens.TextPrimary);
-        string text = string.IsNullOrWhiteSpace(license) ? "—" : license;
+        string text = string.IsNullOrWhiteSpace(license) ? "—" : _numberFormatConfig.FormatLicense(license);
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
@@ -545,7 +550,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         dc->FillRoundedRectangle(&rr, (ID2D1Brush*)_brush.Get());
 
         SetBrushColor(PaletteTokens.TextPrimary);
-        string iratingText = iRating.ToString("N0", CultureInfo.InvariantCulture);
+        string iratingText = _numberFormatConfig.FormatIRating(iRating);
         fixed (char* p = iratingText)
         {
             var rect = new RectF(bounds.X + 4, bounds.Y, bounds.X + bounds.Width * 0.55f, bounds.Y + bounds.Height);
