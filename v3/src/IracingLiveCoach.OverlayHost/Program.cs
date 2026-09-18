@@ -67,6 +67,7 @@ public static unsafe class Program
     /// Starts false: a fresh launch shows nothing until the SDK actually reports a state, matching
     /// the same "never assume, only real telemetry" rule used everywhere else in this file.</summary>
     private static bool _isOnTrack;
+    private static double _lastHeartbeatMs;
     private static SessionKind? _sessionKind;
     private static string _playerClassKey = "";
     private static string _playerCarKey = "";
@@ -213,10 +214,17 @@ public static unsafe class Program
         // TelemetryReader for its own data; this one is never drawn from, only used to gate
         // visibility, so it doesn't couple visibility to any single widget's lifecycle.
         using var trackStateTelemetry = new TelemetryReader();
-        trackStateTelemetry.OnTrackStateChanged += onTrack => _isOnTrack = onTrack;
+        trackStateTelemetry.OnTrackStateChanged += onTrack =>
+        {
+            _isOnTrack = onTrack;
+            Console.WriteLine($"[State] {DateTime.Now:HH:mm:ss} on-track -> {onTrack}");
+        };
         trackStateTelemetry.SessionStatusUpdated += s =>
         {
-            _sessionKind = SessionKinds.Classify(s.SessionTypeText);
+            var kind = SessionKinds.Classify(s.SessionTypeText);
+            if (kind != _sessionKind || s.CarClassShortName != _playerClassKey)
+                Console.WriteLine($"[State] {DateTime.Now:HH:mm:ss} session='{s.SessionTypeText}' kind={kind?.ToString() ?? "unknown"} class='{s.CarClassShortName}' car='{s.PlayerCarName}'");
+            _sessionKind = kind;
             _playerClassKey = s.CarClassShortName ?? "";
             _playerCarKey = s.PlayerCarName ?? "";
         };
@@ -405,6 +413,14 @@ public static unsafe class Program
 
             UpdateOverlayVisibility();
             ApplyMatchingProfile();
+
+            // 30s heartbeat so a "why are my widgets hidden?" report can be answered from the log:
+            // it shows whether the overlay's own reader is receiving telemetry at all.
+            if (now - _lastHeartbeatMs > 30000)
+            {
+                _lastHeartbeatMs = now;
+                Console.WriteLine($"[State] {DateTime.Now:HH:mm:ss} heartbeat telemetry={trackStateTelemetry.HasRecentTelemetry} onTrack={_isOnTrack} edit={_editMode} kind={_sessionKind?.ToString() ?? "unknown"}");
+            }
 
             // Live size changes (Control Center / undo / profile switch): resize the swap chain and
             // window here on the render thread, then re-read the placements the draw calls below use.
