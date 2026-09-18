@@ -2,6 +2,7 @@ using System.Globalization;
 using IracingLiveCoach.Core;
 using IracingLiveCoach.Core.Telemetry;
 using IracingLiveCoach.OverlayHost.Assets;
+using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Theme;
 using Vortice.Win32;
 using Vortice.Win32.Graphics.Direct2D;
@@ -64,16 +65,43 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float OvertakeColumnWidthDip = 52f;
     private const float ColumnGapDip = 6f;
 
-    /// <summary>Sum of every column's own footprint, used for the header band width, the outer
-    /// border, and the row grid -- kept as one constant so all three always agree (spec §12's
-    /// "largura automática de tabela = soma das colunas"). Not yet driven by live
-    /// <see cref="Layout.ColumnDefinition"/> instances (that wiring is still open), but at least the
-    /// header/border/grid no longer disagree with each other or use an arbitrary literal.</summary>
-    private const float TableWidthDip =
-        ClassStripWidthDip + 4f + PositionColumnWidthDip + CarNumberColumnWidthDip + FlagColumnWidthDip +
-        BrandColumnWidthDip + NameColumnWidthDip + ColumnGapDip + LicenseColumnWidthDip + ColumnGapDip +
-        BadgeWidthDip + ColumnGapDip + GapColumnWidthDip + ColumnGapDip + IntervalColumnWidthDip + ColumnGapDip +
-        LastLapColumnWidthDip + ColumnGapDip + LapDeltaColumnWidthDip + ColumnGapDip + OvertakeColumnWidthDip;
+    /// <summary>Left margin before the first configurable column -- the class-color strip and its
+    /// own small gap are never part of the reorderable/configurable column set (spec §15: "mantenha
+    /// a faixa vinculada à célula de posição").</summary>
+    private const float ColumnsLeftMarginDip = ClassStripWidthDip + 4f;
+
+    /// <summary>Live, user-configurable column set (spec §12: "ativar/ocultar, reordenar... largura
+    /// individual... casas decimais por campo numérico... alinhamento"). Defaults reproduce the
+    /// widths/order this widget always used; <see cref="SetColumns"/> is how the Control Center's
+    /// Colunas tab (once it sends updates) or a loaded profile replaces them.</summary>
+    private List<ColumnDefinition> _columns = BuildDefaultColumns();
+
+    public static List<ColumnDefinition> BuildDefaultColumns() =>
+    [
+        new("position", ColumnWidthMode.Fixed, PositionColumnWidthDip, PositionColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
+        new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
+        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
+        new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
+        new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
+        new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
+        new("iratingDelta", ColumnWidthMode.Fixed, BadgeWidthDip, BadgeWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 6),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 7, DecimalPlaces: 3),
+        new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
+        new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
+        new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 10, DecimalPlaces: 3),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 11),
+    ];
+
+    /// <summary>Spec §12: every column-config change (reorder/width/visibility/decimals/alignment)
+    /// applies live, no restart. Called from the Control Center's IPC handler.</summary>
+    public void SetColumns(List<ColumnDefinition> columns) => _columns = columns;
+
+    public IReadOnlyList<ColumnDefinition> Columns => _columns;
+
+    /// <summary>Sum of every visible column's footprint plus the left margin -- replaces the
+    /// previous hardcoded constant so header band/border/grid always agree with whatever the live
+    /// column configuration actually is (spec §12's auto-width formula).</summary>
+    private float TableWidth => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_columns);
 
     public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
     {
@@ -163,7 +191,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void DrawSessionHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session)
     {
         SetBrushColor(PaletteTokens.SessionHeaderBand);
-        var band = new RectF(x, y, x + TableWidthDip, y + SessionHeaderHeightDip);
+        var band = new RectF(x, y, x + TableWidth, y + SessionHeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
         // Spec §5/§15: no decorative widget title ("STANDINGS") ever -- only real session info.
         // Without a session yet, the band stays empty rather than a placeholder label.
@@ -173,7 +201,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             SetBrushColor(PaletteTokens.TextPrimary);
             fixed (char* p = text)
             {
-                var rect = new RectF(x + 8f, y, x + TableWidthDip - 60f, y + SessionHeaderHeightDip);
+                var rect = new RectF(x + 8f, y, x + TableWidth - 60f, y + SessionHeaderHeightDip);
                 dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
         }
@@ -183,7 +211,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         SetBrushColor(PaletteTokens.TextSecondary);
         fixed (char* p = local)
         {
-            var rect = new RectF(x + TableWidthDip - 76f, y, x + TableWidthDip - 6f, y + SessionHeaderHeightDip);
+            var rect = new RectF(x + TableWidth - 76f, y, x + TableWidth - 6f, y + SessionHeaderHeightDip);
             dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
@@ -200,7 +228,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         // previously this table had no fill at all, just text floating over the desktop/game.
         float bodyHeight = groups.Sum(g => g.Rows.Count * RowHeightDip + (multiClass ? ClassHeaderHeightDip : 0f));
         SetBrushColor(PaletteTokens.OverlayBackground);
-        var bodyBackground = new RectF(x, y, x + TableWidthDip, y + bodyHeight);
+        var bodyBackground = new RectF(x, y, x + TableWidth, y + bodyHeight);
         dc->FillRectangle(&bodyBackground, (ID2D1Brush*)_brush.Get());
         foreach (var group in groups)
         {
@@ -217,7 +245,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                 if (drewAnyRow)
                 {
                     SetBrushColor(PaletteTokens.Grid);
-                    var separator = new RectF(x, rowY - PaletteTokens.BorderAndGridThicknessPx, x + TableWidthDip, rowY);
+                    var separator = new RectF(x, rowY - PaletteTokens.BorderAndGridThicknessPx, x + TableWidth, rowY);
                     dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
                 }
                 DrawRow(dc, x, rowY, row);
@@ -229,7 +257,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         // Outer widget border (spec §16's WidgetOuterBorder), wrapping the session header through
         // the last row -- drawn last so it sits cleanly over the fills without being occluded.
         SetBrushColor(PaletteTokens.WidgetOuterBorder);
-        var outer = new RectF(x, headerTopY, x + TableWidthDip, rowY);
+        var outer = new RectF(x, headerTopY, x + TableWidth, rowY);
         dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
@@ -237,7 +265,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         var color = PaletteTokens.ResolveClassColor(classId, name, classColorHex);
         SetBrushColor(PaletteTokens.SessionHeaderBand);
-        var background = new RectF(x, y, x + TableWidthDip, y + ClassHeaderHeightDip);
+        var background = new RectF(x, y, x + TableWidth, y + ClassHeaderHeightDip);
         dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
         SetBrushColor(color);
         var strip = new RectF(x, y, x + ClassStripWidthDip, y + ClassHeaderHeightDip);
@@ -271,133 +299,158 @@ public sealed unsafe class StandingsWidget : IDisposable
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
         dc->FillRectangle(&stripRect, (ID2D1Brush*)_brush.Get());
 
-        float cursorX = x + ClassStripWidthDip + 4f;
-
-        // Position.
-        SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-        string posText = row.Position.ToString();
-        fixed (char* p = posText)
+        float rowLeft = x + ColumnsLeftMarginDip;
+        var layout = WidgetLayoutEngine.LayoutTable(_columns, rowCount: 1, RowHeightDip, 0, 0, 0, float.MaxValue, float.MaxValue);
+        foreach (var placement in layout.Columns)
         {
-            var rect = new RectF(cursorX, y, cursorX + PositionColumnWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)posText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        cursorX += PositionColumnWidthDip;
-
-        // Car number is the real SDK DriverInfo.CarNumber, kept separate from CarIdx and from
-        // the rendered row index. Preserve source leading zeroes and use an explicit # prefix.
-        SetBrushColor(PaletteTokens.TextSecondary);
-        string carNumber = string.IsNullOrWhiteSpace(row.CarNumber) ? "—" : $"#{row.CarNumber}";
-        fixed (char* p = carNumber)
-        {
-            var rect = new RectF(cursorX, y, cursorX + CarNumberColumnWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)carNumber.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        cursorX += CarNumberColumnWidthDip;
-
-        // Real local PNG flag asset, decoded once through WIC and reused as a device bitmap.
-        var flag = _flags.Find(row.FlagEmoji);
-        if (flag != null)
-        {
-            // Contain-fit, never stretched (spec §18) -- a straight DrawBitmap into a fixed box
-            // distorts any asset whose aspect ratio doesn't match the column exactly.
-            var box = new RectF(cursorX + 1f, y + 4f, cursorX + FlagColumnWidthDip - 1f, y + RowHeightDip - 4f);
-            var destination = FlagBitmapCache.Contain(flag, box);
-            dc->DrawBitmap(flag, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
-        }
-        cursorX += FlagColumnWidthDip;
-
-        // Brand image follows the same cache/recovery path as flags. Text is an explicit fallback
-        // only for a make for which no local V2 asset exists.
-        var brandBitmap = _flags.FindBrand(row.ManufacturerBadge);
-        if (brandBitmap != null)
-        {
-            var box = new RectF(cursorX + 2f, y + 3f, cursorX + BrandColumnWidthDip - 2f, y + RowHeightDip - 3f);
-            var destination = FlagBitmapCache.Contain(brandBitmap, box);
-            dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
-        }
-        else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge))
-        {
-            SetBrushColor(PaletteTokens.TextSecondary);
-            string brand = row.ManufacturerBadge;
-            fixed (char* p = brand)
+            float cellX = rowLeft + placement.OffsetXPx;
+            float cellWidth = placement.ResolvedWidthPx;
+            switch (placement.Column.Key)
             {
-                var rect = new RectF(cursorX, y, cursorX + BrandColumnWidthDip, y + RowHeightDip);
-                dc->DrawText(p, (uint)brand.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                case "position":
+                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
+                    DrawCell(dc, row.Position.ToString(CultureInfo.InvariantCulture), cellX, y, cellWidth, ColumnAlignment.Center);
+                    break;
+                case "carNumber":
+                    // Car number is the real SDK DriverInfo.CarNumber, kept separate from CarIdx and
+                    // from the rendered row index. Preserve source leading zeroes; explicit # prefix.
+                    SetBrushColor(PaletteTokens.TextSecondary);
+                    DrawCell(dc, string.IsNullOrWhiteSpace(row.CarNumber) ? "—" : $"#{row.CarNumber}", cellX, y, cellWidth, ColumnAlignment.Center);
+                    break;
+                case "flag":
+                    var flag = _flags.Find(row.FlagEmoji);
+                    if (flag != null)
+                    {
+                        // Contain-fit, never stretched (spec §18).
+                        var box = new RectF(cellX + 1f, y + 4f, cellX + cellWidth - 1f, y + RowHeightDip - 4f);
+                        var destination = FlagBitmapCache.Contain(flag, box);
+                        dc->DrawBitmap(flag, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
+                    }
+                    break;
+                case "brand":
+                    var brandBitmap = _flags.FindBrand(row.ManufacturerBadge);
+                    if (brandBitmap != null)
+                    {
+                        var box = new RectF(cellX + 2f, y + 3f, cellX + cellWidth - 2f, y + RowHeightDip - 3f);
+                        var destination = FlagBitmapCache.Contain(brandBitmap, box);
+                        dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge))
+                    {
+                        SetBrushColor(PaletteTokens.TextSecondary);
+                        DrawCell(dc, row.ManufacturerBadge, cellX, y, cellWidth, ColumnAlignment.Center);
+                    }
+                    break;
+                case "name":
+                    // Full name is expected to already be in DriverCode per spec §5 -- this widget
+                    // does not truncate or abbreviate on its own.
+                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
+                    DrawCell(dc, row.DriverCode, cellX, y, cellWidth, ColumnAlignment.Left);
+                    break;
+                case "license":
+                    DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
+                    break;
+                case "iratingDelta":
+                    // iRating + Δ combined badge, same row, same rectangle (spec §6: never stacked).
+                    var badgeRect = new Rect2D(cellX, y + (RowHeightDip - BadgeHeightDip) / 2, cellWidth, BadgeHeightDip);
+                    DrawIRatingBadge(dc, badgeRect, row.IRating, row.EstimatedDeltaIRating);
+                    break;
+                case "gap":
+                    // Gap to leader -- distinct field from lap-delta-vs-player (spec §6: "não
+                    // confunda esse valor com gap de corrida"). Leader's own row has no gap.
+                    DrawNumericOrDash(dc, cellX, y, cellWidth, row.GapToLeaderSeconds,
+                        v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture),
+                        PaletteTokens.TextSecondary, placement.Column.Alignment);
+                    break;
+                case "interval":
+                    // Never derived from gap-to-leader; a missing SDK value stays an explicit dash.
+                    DrawNumericOrDash(dc, cellX, y, cellWidth, row.IntervalSeconds,
+                        v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture),
+                        PaletteTokens.TextSecondary, placement.Column.Alignment);
+                    break;
+                case "lastLap":
+                    DrawNumericOrDash(dc, cellX, y, cellWidth, row.LastLapTime,
+                        v => LapTimeFormatting.Format(v, placement.Column.DecimalPlaces ?? 3),
+                        PaletteTokens.TextPrimary, placement.Column.Alignment);
+                    break;
+                case "lapDelta":
+                {
+                    // Negative = this driver faster than the player (spec §6's sign convention),
+                    // colored green/red; player's own row always shows a neutral 0.000.
+                    var deltaColor = row.IsPlayer ? PaletteTokens.NeutralDeltaOrGap
+                        : row.LapDeltaVsPlayerSeconds switch
+                        {
+                            < 0 => PaletteTokens.LapDeltaFaster,
+                            > 0 => PaletteTokens.LapDeltaSlower,
+                            _ => PaletteTokens.NeutralDeltaOrGap
+                        };
+                    double? deltaValue = row.IsPlayer ? 0.0 : row.LapDeltaVsPlayerSeconds;
+                    DrawNumericOrDash(dc, cellX, y, cellWidth, deltaValue,
+                        v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture),
+                        deltaColor, placement.Column.Alignment);
+                    break;
+                }
+                case "overtake":
+                    DrawOvertakeCell(dc, cellX, y, cellWidth, row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown);
+                    break;
             }
         }
-        cursorX += BrandColumnWidthDip;
-
-        // Driver name (full name is expected to already be in DriverCode per spec §5 -- this widget
-        // does not truncate or abbreviate on its own).
-        SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-        string name = row.DriverCode;
-        fixed (char* p = name)
-        {
-            var rect = new RectF(cursorX, y, cursorX + NameColumnWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)name.Length, _nameFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        cursorX += NameColumnWidthDip + ColumnGapDip;
-
-        DrawLicenseBadge(dc, cursorX, y, row.LicString, row.LicColorHex);
-        cursorX += LicenseColumnWidthDip + ColumnGapDip;
-
-        // iRating + Δ combined badge, same row, same rectangle (spec §6: never stacked, never duplicated).
-        var badgeRect = new Rect2D(cursorX, y + (RowHeightDip - BadgeHeightDip) / 2, BadgeWidthDip, BadgeHeightDip);
-        DrawIRatingBadge(dc, badgeRect, row.IRating, row.EstimatedDeltaIRating);
-        cursorX += BadgeWidthDip + ColumnGapDip;
-
-        // Gap to leader -- distinct field from lap-delta-vs-player (spec §6: "não confunda esse
-        // valor com gap de corrida"). Leader's own row has no gap (shown "—" via DrawNumericOrDash's
-        // null-handling below, matching what the real V2 view model already does for the leader).
-        cursorX = DrawNumericOrDash(dc, cursorX, y, GapColumnWidthDip, row.GapToLeaderSeconds,
-            v => v.ToString("0.000", CultureInfo.InvariantCulture), PaletteTokens.TextSecondary);
-
-        // Interval is intentionally rendered as a distinct live race metric; it is never derived
-        // from gap-to-leader and a missing SDK value remains an explicit dash.
-        cursorX = DrawNumericOrDash(dc, cursorX, y, IntervalColumnWidthDip, row.IntervalSeconds,
-            v => v.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture), PaletteTokens.TextSecondary);
-
-        // Last lap time (m:ss.sss via the shared LapTimeFormatting helper -- not reimplemented here).
-        cursorX = DrawNumericOrDash(dc, cursorX, y, LastLapColumnWidthDip, row.LastLapTime,
-            LapTimeFormatting.Format, PaletteTokens.TextPrimary);
-
-        // Lap-delta-vs-player: negative = this driver faster than the player (spec §6's sign
-        // convention), colored green/red; player's own row always shows a neutral 0.000.
-        var deltaColor = row.IsPlayer ? PaletteTokens.NeutralDeltaOrGap
-            : row.LapDeltaVsPlayerSeconds switch
-            {
-                < 0 => PaletteTokens.LapDeltaFaster,
-                > 0 => PaletteTokens.LapDeltaSlower,
-                _ => PaletteTokens.NeutralDeltaOrGap
-            };
-        double? deltaValue = row.IsPlayer ? 0.0 : row.LapDeltaVsPlayerSeconds;
-        cursorX = DrawNumericOrDash(dc, cursorX, y, LapDeltaColumnWidthDip, deltaValue, v => v.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture), deltaColor);
-
-        DrawOvertakeCell(dc, cursorX, y, row.P2PActive, row.P2PSecondsRemaining, row.P2PInCooldown);
     }
 
-    /// <returns>The cursor X position after this column (its right edge + the standard column gap).</returns>
-    private float DrawNumericOrDash(ID2D1DeviceContext* dc, float x, float y, float widthDip, double? value, Func<double, string> format, Color4 color)
+    /// <summary>Builds a numeric format string honoring the column's configured decimal places
+    /// (spec §12: "casas decimais por campo numérico") -- signed columns always show an explicit
+    /// +/- (spec §12: "sinal explícito em deltas"), unsigned ones never fabricate a sign.</summary>
+    private static string DecimalFormat(int? decimalPlaces, bool signed)
+    {
+        int decimals = Math.Clamp(decimalPlaces ?? 3, 0, 6);
+        string digits = decimals > 0 ? "." + new string('0', decimals) : "";
+        return signed ? $"+0{digits};-0{digits};0{digits}" : $"0{digits}";
+    }
+
+    private static TextAlignment ToDWrite(ColumnAlignment alignment) => alignment switch
+    {
+        ColumnAlignment.Left => TextAlignment.Leading,
+        ColumnAlignment.Right => TextAlignment.Trailing,
+        _ => TextAlignment.Center
+    };
+
+    /// <summary>Draws a single line of text respecting a per-column alignment, reusing
+    /// <see cref="_statusFormat"/> (this widget's one general-purpose format) with its text
+    /// alignment swapped per call -- cheaper than keeping one <c>IDWriteTextFormat</c> per
+    /// alignment for a value that changes rarely (only on a column-config update, not per frame).</summary>
+    private void DrawCell(ID2D1DeviceContext* dc, string text, float x, float y, float width, ColumnAlignment alignment)
+    {
+        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        fixed (char* p = text)
+        {
+            var rect = new RectF(x, y, x + width, y + RowHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center)); // restore this format's other callers' expectation
+    }
+
+    private void DrawNumericOrDash(ID2D1DeviceContext* dc, float x, float y, float widthDip, double? value, Func<double, string> format, Color4 color, ColumnAlignment alignment)
     {
         SetBrushColor(value is null ? PaletteTokens.TextDisabled : color);
         string text = value is double v ? format(v) : "—"; // spec §17/§7: missing data is an explicit dash, never a fabricated zero.
+        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
             dc->DrawText(p, (uint)text.Length, _numericFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        return x + widthDip + ColumnGapDip;
+        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing)); // restore this format's default for the next call
     }
 
     private readonly record struct Rect2D(float X, float Y, float Width, float Height);
 
-    private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, string license, string? colorHex)
+    private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, float width, string license, string? colorHex)
     {
         var color = ParseHexOrFallback(colorHex, PaletteTokens.LicenseUnknown);
         SetBrushColor(color);
         var rr = new RoundedRect
         {
-            rect = new RectF(x, y + 3f, x + LicenseColumnWidthDip, y + RowHeightDip - 3f),
+            rect = new RectF(x, y + 3f, x + width, y + RowHeightDip - 3f),
             radiusX = PaletteTokens.BadgeCornerRadiusPx,
             radiusY = PaletteTokens.BadgeCornerRadiusPx
         };
@@ -406,12 +459,12 @@ public sealed unsafe class StandingsWidget : IDisposable
         string text = string.IsNullOrWhiteSpace(license) ? "—" : license;
         fixed (char* p = text)
         {
-            var rect = new RectF(x, y, x + LicenseColumnWidthDip, y + RowHeightDip);
+            var rect = new RectF(x, y, x + width, y + RowHeightDip);
             dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
-    private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, bool? active, double? seconds, bool cooldown)
+    private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, float width, bool? active, double? seconds, bool cooldown)
     {
         Color4 color = active is null ? PaletteTokens.OvertakeUnknown
             : active == true ? PaletteTokens.OvertakeActive
@@ -422,16 +475,16 @@ public sealed unsafe class StandingsWidget : IDisposable
         SetBrushColor(color);
         fixed (char* p = text)
         {
-            var textRect = new RectF(x, y, x + OvertakeColumnWidthDip, y + 13f);
+            var textRect = new RectF(x, y, x + width, y + 13f);
             dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &textRect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        var track = new RectF(x + 2f, y + 17f, x + OvertakeColumnWidthDip - 2f, y + 20f);
+        var track = new RectF(x + 2f, y + 17f, x + width - 2f, y + 20f);
         SetBrushColor(PaletteTokens.BarTrackEmpty);
         dc->FillRectangle(&track, (ID2D1Brush*)_brush.Get());
         if (seconds is not double bank) return;
         float fraction = Math.Clamp((float)(bank / TelemetryReader.P2PMaxSeconds), 0f, 1f);
         if (fraction <= 0f) return;
-        var fill = new RectF(x + 2f, y + 17f, x + 2f + (OvertakeColumnWidthDip - 4f) * fraction, y + 20f);
+        var fill = new RectF(x + 2f, y + 17f, x + 2f + (width - 4f) * fraction, y + 20f);
         SetBrushColor(color);
         dc->FillRectangle(&fill, (ID2D1Brush*)_brush.Get());
     }

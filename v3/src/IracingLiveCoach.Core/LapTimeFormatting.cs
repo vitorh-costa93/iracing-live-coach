@@ -9,10 +9,14 @@ namespace IracingLiveCoach.Core;
 /// living inside untestable WPF view-model code.</summary>
 public static class LapTimeFormatting
 {
-    public static string Format(double seconds)
+    /// <param name="decimalPlaces">Spec §12: "casas decimais por campo numérico" applies to lap
+    /// times too -- defaults to the original 3 (m:ss.000) for every existing call site.</param>
+    public static string Format(double seconds, int decimalPlaces = 3)
     {
         var minutes = (int)(seconds / 60);
         var remainder = seconds - minutes * 60;
-        return $"{minutes}:{remainder.ToString("00.000", CultureInfo.InvariantCulture)}";
+        int decimals = Math.Clamp(decimalPlaces, 0, 6);
+        string secondsFormat = decimals > 0 ? "00." + new string('0', decimals) : "00";
+        return $"{minutes}:{remainder.ToString(secondsFormat, CultureInfo.InvariantCulture)}";
     }
 }
