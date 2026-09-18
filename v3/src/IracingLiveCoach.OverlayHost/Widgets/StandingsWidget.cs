@@ -69,6 +69,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float LastLapColumnWidthDip = 68f;
     private const float LapDeltaColumnWidthDip = 60f;
     private const float OvertakeColumnWidthDip = 52f;
+    private const float PitColumnWidthDip = 60f;
     private const float ColumnGapDip = 6f;
 
     /// <summary>Left margin before the first configurable column -- the class-color strip and its
@@ -95,7 +96,8 @@ public sealed unsafe class StandingsWidget : IDisposable
         new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
         new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
         new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 10, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 11),
+        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, false, 11),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 12),
     ];
 
     /// <summary>Spec §12: every column-config change (reorder/width/visibility/decimals/alignment)
@@ -437,6 +439,14 @@ public sealed unsafe class StandingsWidget : IDisposable
                     DrawNumericOrDash(dc, cellX, y, cellWidth, deltaValue,
                         v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture),
                         deltaColor, placement.Column.Alignment);
+                    break;
+                }
+                case "pit":
+                {
+                    // Core's PitStatus is "L8 24s" (last stop: lap + seconds) or "--" when the driver
+                    // hasn't stopped; the mockups show it as "L8/24s". Never fabricated when absent.
+                    string pit = string.IsNullOrWhiteSpace(row.PitStatus) || row.PitStatus == "--" ? "—" : row.PitStatus.Replace(' ', '/');
+                    DrawCell(dc, pit, cellX, y, cellWidth, placement.Column.Alignment);
                     break;
                 }
                 case "overtake":
