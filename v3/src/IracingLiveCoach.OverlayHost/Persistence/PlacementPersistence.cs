@@ -1,4 +1,5 @@
 using System.Text.Json;
+using IracingLiveCoach.Core.Telemetry;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Theme;
 
@@ -21,7 +22,8 @@ public sealed record PlacementProfile(
     bool FuelRelativeLinkEnabled,
     float FuelRelativeLinkSpacingDip,
     Dictionary<string, string>? ClassColorOverrides = null,
-    Dictionary<string, List<ColumnDefinition>>? ColumnOverrides = null)
+    Dictionary<string, List<ColumnDefinition>>? ColumnOverrides = null,
+    StandingsPresentationOptions? StandingsRules = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -86,6 +88,9 @@ public static class PlacementPersistence
             foreach (var (widgetKey, columns) in profile.ColumnOverrides)
                 store.ColumnOverrides[widgetKey] = columns;
         }
+
+        if (profile.StandingsRules is not null)
+            store.StandingsRules = profile.StandingsRules;
     }
 
     private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
@@ -118,7 +123,8 @@ public static class PlacementPersistence
                 store.FuelRelativeLink.Enabled,
                 store.FuelRelativeLink.SpacingDip,
                 new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase),
-                new Dictionary<string, List<ColumnDefinition>>(store.ColumnOverrides, StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, List<ColumnDefinition>>(store.ColumnOverrides, StringComparer.OrdinalIgnoreCase),
+                store.StandingsRules);
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

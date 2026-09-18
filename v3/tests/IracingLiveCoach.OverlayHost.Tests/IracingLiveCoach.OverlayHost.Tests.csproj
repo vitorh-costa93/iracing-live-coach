@@ -31,4 +31,11 @@
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\EditModeHitTester.cs" Link="Layout\EditModeHitTester.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- WidgetPlacementStore.StandingsRules is a Core.Telemetry.StandingsPresentationOptions,
+         still pure C# with no GPU/unsafe dependency, so this stays consistent with the file-linking
+         approach above rather than pulling in the whole OverlayHost project. -->
+    <ProjectReference Include="..\..\src\IracingLiveCoach.Core\IracingLiveCoach.Core.csproj" />
+  </ItemGroup>
+
 </Project>

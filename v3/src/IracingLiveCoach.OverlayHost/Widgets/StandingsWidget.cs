@@ -98,6 +98,13 @@ public sealed unsafe class StandingsWidget : IDisposable
 
     public IReadOnlyList<ColumnDefinition> Columns => _columns;
 
+    /// <summary>Spec §6/§12: "Top N fixo configurável por classe, combinado com janela em torno do
+    /// jogador, sem duplicações" -- <see cref="StandingsSelection.GroupAndSelect"/> already
+    /// implements the dedup/window logic; this just lets the Control Center's Regras tab change the
+    /// numbers it runs with, live.</summary>
+    private StandingsPresentationOptions _presentationOptions = StandingsPresentationOptions.Default;
+    public void SetPresentationOptions(StandingsPresentationOptions options) => _presentationOptions = options;
+
     /// <summary>Sum of every visible column's footprint plus the left margin -- replaces the
     /// previous hardcoded constant so header band/border/grid always agree with whatever the live
     /// column configuration actually is (spec §12's auto-width formula).</summary>
@@ -218,7 +225,7 @@ public sealed unsafe class StandingsWidget : IDisposable
 
     private void DrawRows(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows)
     {
-        var groups = StandingsSelection.GroupAndSelect(rows);
+        var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);
         bool multiClass = groups.Count > 1;
         float headerTopY = y - SessionHeaderHeightDip;
         float rowY = y;

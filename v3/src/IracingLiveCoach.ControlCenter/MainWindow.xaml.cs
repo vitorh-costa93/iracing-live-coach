@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     /// UI-only shape, since this project already references that assembly for the preview host.</summary>
     private List<LayoutColumn> _currentColumns = [];
     private readonly ColumnConfigIpcClient _columnConfigClient = new();
+    private readonly RulesIpcClient _rulesClient = new();
 
     public MainWindow()
     {
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
         PlacementPersistence.Load(_profileStore);
         RefreshClassColorList();
         LoadColumnsForSelectedWidget();
+        LoadRulesIntoControls();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -421,6 +423,33 @@ public partial class MainWindow : Window
         PlacementPersistence.Save(_profileStore);
         RefreshColumnList();
         ColumnsStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
+    }
+
+    // --- Regras tab (spec §6/§12: Top N, linhas por classe, janela do jogador) ---
+
+    private void LoadRulesIntoControls()
+    {
+        var rules = _profileStore.StandingsRules ?? IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions.Default;
+        TopNBox.Text = rules.TopNPerClass.ToString(CultureInfo.InvariantCulture);
+        OwnClassRowsBox.Text = rules.OwnClassRows.ToString(CultureInfo.InvariantCulture);
+        OtherClassRowsBox.Text = rules.OtherClassRows.ToString(CultureInfo.InvariantCulture);
+        KeepPlayerWindowBox.IsChecked = rules.KeepPlayerWindow;
+    }
+
+    private async void ApplyRules(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(TopNBox.Text, out var topN) || !int.TryParse(OwnClassRowsBox.Text, out var ownRows) || !int.TryParse(OtherClassRowsBox.Text, out var otherRows))
+        {
+            RulesStatus.Text = "Valores inválidos -- use números inteiros.";
+            return;
+        }
+        bool keepWindow = KeepPlayerWindowBox.IsChecked == true;
+        bool sent = await _rulesClient.SendAsync(topN, ownRows, otherRows, keepWindow);
+        _profileStore.StandingsRules = new IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions(topN, ownRows, otherRows, keepWindow);
+        PlacementPersistence.Save(_profileStore);
+        RulesStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
     }
 
     // --- Modo de edição global (spec §4: overlays só visíveis na pista, exceto durante edição) ---

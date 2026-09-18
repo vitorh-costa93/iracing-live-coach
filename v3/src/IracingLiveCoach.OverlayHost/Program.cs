@@ -236,6 +236,17 @@ public static unsafe class Program
         using var columnConfigIpcServer = new ColumnConfigIpcServer();
         columnConfigIpcServer.MessageReceived += m => ApplyColumnConfigMessage(m, standings, relative);
 
+        // Fourth small typed channel: Standings' Top N / rows-per-class selection rules.
+        if (PlacementStore.StandingsRules is { } savedRules) standings.SetPresentationOptions(savedRules);
+        using var rulesIpcServer = new RulesIpcServer();
+        rulesIpcServer.MessageReceived += m =>
+        {
+            var options = new StandingsPresentationOptions(m.TopNPerClass, m.OwnClassRows, m.OtherClassRows, m.KeepPlayerWindow);
+            standings.SetPresentationOptions(options);
+            PlacementStore.StandingsRules = options;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
         double lastFrameMs = sw.Elapsed.TotalMilliseconds;

@@ -1,3 +1,5 @@
+using IracingLiveCoach.Core.Telemetry;
+
 namespace IracingLiveCoach.OverlayHost.Layout;
 
 /// <summary>Which corner/edge of a widget's bounds an X/Y coordinate is measured from.
@@ -91,6 +93,10 @@ public sealed class WidgetPlacementStore
     /// <summary>User overrides of a widget's column configuration (spec §12: reorder/width/decimals/
     /// alignment/visibility), keyed by widget key (e.g. "standings"). Persisted alongside placements.</summary>
     public Dictionary<string, List<ColumnDefinition>> ColumnOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Standings' Top N / rows-per-class selection rules (spec §6/§12). Null means "use
+    /// StandingsPresentationOptions.Default" -- never persisted as a redundant copy of the default.</summary>
+    public StandingsPresentationOptions? StandingsRules { get; set; }
 
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 

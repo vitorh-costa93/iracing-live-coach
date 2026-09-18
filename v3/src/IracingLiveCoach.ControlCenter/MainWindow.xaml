@@ -90,6 +90,35 @@
                     </StackPanel>
                 </TabItem>
 
+                <TabItem Header="Regras">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="REGRAS -- STANDINGS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Top N fixo por classe, linhas da minha classe, linhas de outras classes, e se mantém a janela em torno do jogador -- sem duplicar pilotos já exibidos." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Text="Top N por classe" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="TopNBox" Text="1" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
+                                <TextBlock Text="Linhas da minha classe" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="OwnClassRowsBox" Text="5" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Linhas de outras classes" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="OtherClassRowsBox" Text="1" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox x:Name="KeepPlayerWindowBox" Content="Manter janela em torno do jogador" IsChecked="True" Margin="0,0,0,12"/>
+                        <Button Content="Aplicar" Click="ApplyRules" HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="RulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </TabItem>
+
                 <TabItem Header="Cores">
                     <StackPanel Margin="0,12,0,0">
                         <TextBlock Text="CORES POR CLASSE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
