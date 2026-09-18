@@ -181,10 +181,11 @@
                         <Button Content="Aplicar" Click="ApplyFuelConfig" HorizontalAlignment="Left"/>
                         <TextBlock x:Name="FuelRulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
 
-                        <TextBlock Text="REGRAS -- FORMATO DE NÚMEROS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
-                        <TextBlock Text="Como iRating e Safety Rating aparecem em Standings e Relative -- global, aplicado aos dois widgets ao mesmo tempo." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <TextBlock Text="REGRAS -- FORMATO DE EXIBIÇÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
+                        <TextBlock Text="Como iRating, Safety Rating e nome do piloto aparecem em Standings e Relative -- global, aplicado aos dois widgets ao mesmo tempo." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
@@ -195,12 +196,19 @@
                                     <ComboBoxItem Content="Compacto (4.8k)"/>
                                 </ComboBox>
                             </StackPanel>
-                            <StackPanel Grid.Column="1">
+                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
                                 <TextBlock Text="Safety Rating" Foreground="#A6B0BB" FontSize="11"/>
                                 <ComboBox x:Name="SafetyRatingFormatBox" SelectedIndex="0">
                                     <ComboBoxItem Content="Classe + número (A 4.12)"/>
                                     <ComboBoxItem Content="Somente número (4.12)"/>
                                     <ComboBoxItem Content="Somente classe (A)"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Nome do piloto" Foreground="#A6B0BB" FontSize="11"/>
+                                <ComboBox x:Name="NameFormatBox" SelectedIndex="0">
+                                    <ComboBoxItem Content="Completo (Vitor Costa)"/>
+                                    <ComboBoxItem Content="Abreviado (V. Costa)"/>
                                 </ComboBox>
                             </StackPanel>
                         </Grid>

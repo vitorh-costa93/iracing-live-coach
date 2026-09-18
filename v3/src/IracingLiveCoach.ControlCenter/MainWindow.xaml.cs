@@ -514,6 +514,7 @@ public partial class MainWindow : Window
             IracingLiveCoach.Core.Telemetry.SafetyRatingFormat.LetterOnly => 2,
             _ => 0
         };
+        NameFormatBox.SelectedIndex = config.NameFormat == IracingLiveCoach.Core.Telemetry.NameDisplayFormat.Abbreviated ? 1 : 0;
     }
 
     private async void ApplyNumberFormat(object sender, RoutedEventArgs e)
@@ -525,10 +526,12 @@ public partial class MainWindow : Window
             2 => "LetterOnly",
             _ => "LetterAndNumber"
         };
-        bool sent = await _numberFormatClient.SendAsync(iRatingFormat, safetyRatingFormat);
+        string nameFormat = NameFormatBox.SelectedIndex == 1 ? "Abbreviated" : "Full";
+        bool sent = await _numberFormatClient.SendAsync(iRatingFormat, safetyRatingFormat, nameFormat);
         _profileStore.NumberFormat = new IracingLiveCoach.Core.Telemetry.NumberFormatConfig(
             Enum.Parse<IracingLiveCoach.Core.Telemetry.IRatingFormat>(iRatingFormat),
-            Enum.Parse<IracingLiveCoach.Core.Telemetry.SafetyRatingFormat>(safetyRatingFormat));
+            Enum.Parse<IracingLiveCoach.Core.Telemetry.SafetyRatingFormat>(safetyRatingFormat),
+            Enum.Parse<IracingLiveCoach.Core.Telemetry.NameDisplayFormat>(nameFormat));
         PlacementPersistence.Save(_profileStore);
         NumberFormatStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."

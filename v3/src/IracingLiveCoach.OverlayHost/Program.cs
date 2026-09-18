@@ -297,7 +297,8 @@ public static unsafe class Program
         {
             if (!Enum.TryParse<IRatingFormat>(m.IRatingFormat, out var iRatingFormat)) return;
             if (!Enum.TryParse<SafetyRatingFormat>(m.SafetyRatingFormat, out var srFormat)) return;
-            var config = new NumberFormatConfig(iRatingFormat, srFormat);
+            if (!Enum.TryParse<NameDisplayFormat>(m.NameFormat, out var nameFormat)) return;
+            var config = new NumberFormatConfig(iRatingFormat, srFormat, nameFormat);
             standings.SetNumberFormat(config);
             relative.SetNumberFormat(config);
             PlacementStore.NumberFormat = config;

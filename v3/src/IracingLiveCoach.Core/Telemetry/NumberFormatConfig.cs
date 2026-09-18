@@ -12,14 +12,14 @@ public enum SafetyRatingFormat { LetterAndNumber, NumberOnly, LetterOnly }
 /// <summary>Live, user-configurable number-format preferences, global across widgets (spec §12
 /// groups this with the other cross-cutting formatting asks, not per-widget like column decimals).
 /// Null means "use Default".</summary>
-public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating)
+public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating, NameDisplayFormat NameFormat = NameDisplayFormat.Full)
 {
-    public static NumberFormatConfig Default { get; } = new(IRatingFormat.Full, SafetyRatingFormat.LetterAndNumber);
+    public static NumberFormatConfig Default { get; } = new(IRatingFormat.Full, SafetyRatingFormat.LetterAndNumber, NameDisplayFormat.Full);
 
     /// <summary>Formats a raw iRating value per this config.</summary>
     public string FormatIRating(int iRating) => IRating switch
     {
-        IRatingFormat.Thousands => $"{iRating / 1000.0:0.#}k",
+        IRatingFormat.Thousands => (iRating / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k",
         _ => iRating.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
     };
 

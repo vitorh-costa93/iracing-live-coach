@@ -323,7 +323,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     break;
                 case "name":
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    DrawCell(dc, row.DriverCode, cellX, y, cellWidth, ColumnAlignment.Left);
+                    DrawCell(dc, NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellX, y, cellWidth, ColumnAlignment.Left);
                     break;
                 case "license":
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);

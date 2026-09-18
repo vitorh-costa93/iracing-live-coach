@@ -394,7 +394,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Full name is expected to already be in DriverCode per spec §5 -- this widget
                     // does not truncate or abbreviate on its own.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    DrawCell(dc, row.DriverCode, cellX, y, cellWidth, ColumnAlignment.Left);
+                    DrawCell(dc, NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellX, y, cellWidth, ColumnAlignment.Left);
                     break;
                 case "license":
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
