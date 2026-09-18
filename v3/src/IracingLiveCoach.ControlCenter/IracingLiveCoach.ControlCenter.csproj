@@ -2,5 +2,31 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType><TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <!-- Needed only for OverlayPreviewHost.cs, which calls into OverlayHost's unsafe D2D widget
+         Draw(ID2D1DeviceContext*, ...) APIs to render the real "preview ao vivo" the mockups show
+         (spec 12); not used anywhere else in this project. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64</Platforms>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The Control Center embeds the SAME renderer the live overlay uses (spec 3/12: "Preview e
+         overlay real devem compartilhar o mesmo motor de layout e renderizacao"), rather than a
+         second, divergent WPF-drawn mockup of it. -->
+    <ProjectReference Include="..\IracingLiveCoach.OverlayHost\IracingLiveCoach.OverlayHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same asset files OverlayHost.csproj copies; this process needs its own copy on disk next
+         to ITS exe for FlagBitmapCache/LoadPrivateFonts to find them (spec 18: reuse, don't fork). -->
+    <Content Include="..\IracingLiveCoach.OverlayHost\Assets\Flags\*.png" LinkBase="Assets\Flags">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\IracingLiveCoach.OverlayHost\Assets\Brands\*.png" LinkBase="Assets\Brands">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\IracingLiveCoach.OverlayHost\Assets\Fonts\*.ttf" LinkBase="Assets\Fonts">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

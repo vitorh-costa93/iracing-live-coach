@@ -547,8 +547,10 @@ public static unsafe class Program
     private const uint SWP_NOOWNERZORDER = 0x0200;
 
     /// <summary>Registers the bundled, OFL-licensed Barlow Semi Condensed files privately for
-    /// this process only. No system font installation or global Windows state is changed.</summary>
-    private static void LoadPrivateFonts()
+    /// this process only. No system font installation or global Windows state is changed. Public
+    /// so the Control Center's embedded D2D preview (<c>OverlayPreviewHost</c>) can register the
+    /// same fonts in its own process before creating any <c>IDWriteTextFormat</c>.</summary>
+    public static void LoadPrivateFonts()
     {
         const uint FR_PRIVATE = 0x10;
         string directory = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");

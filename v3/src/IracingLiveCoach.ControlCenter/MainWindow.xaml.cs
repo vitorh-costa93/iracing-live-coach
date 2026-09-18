@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace IracingLiveCoach.ControlCenter;
 
@@ -24,11 +26,60 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
     private string _selectedWidget = "standings";
     private bool _suppressChangeEvents;
+    private OverlayPreviewHost? _previewHost;
 
     public MainWindow()
     {
         InitializeComponent();
         LoadIntoControls(_selectedWidget);
+        Loaded += MainWindow_Loaded;
+        LocationChanged += (_, _) => RepositionPreview();
+        Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        // The preview surface is a real top-level Win32 popup (see OverlayPreviewHost's class doc
+        // comment for why -- a WS_CHILD HwndHost attempt failed DirectComposition's
+        // CreateTargetForHwnd at runtime), owned by this window so it doesn't outlive the panel.
+        nint ownerHwnd = new WindowInteropHelper(this).Handle;
+        var (x, y, w, h) = PreviewScreenRect();
+        _previewHost = new OverlayPreviewHost(ownerHwnd, x, y, w, h);
+        CompositionTarget.Rendering += OnPreviewRenderTick;
+    }
+
+    private void OnPreviewRenderTick(object? sender, EventArgs e) => _previewHost?.RenderFrame();
+
+    /// <summary>Keeps the preview box at a true 16:9 ratio -- spec §12/§17's "Preview inclui modo
+    /// 1920×1080 em escala real" only holds if the box's own aspect ratio matches 1920x1080; a
+    /// mismatched box (e.g. a fixed height regardless of width) makes the single X/Y scale factor
+    /// OverlayPreviewHost.RenderFrame computes wrong for one axis, causing widgets positioned lower
+    /// in the 1920x1080 layout to run past the box's bottom edge.</summary>
+    private bool _adjustingAspect;
+    private void PreviewBorder_AspectSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_adjustingAspect || PreviewBorder.ActualWidth <= 0) return;
+        double targetHeight = PreviewBorder.ActualWidth * 9.0 / 16.0;
+        if (Math.Abs(targetHeight - PreviewBorder.ActualHeight) > 0.5)
+        {
+            _adjustingAspect = true;
+            PreviewBorder.Height = targetHeight;
+            _adjustingAspect = false;
+        }
+        RepositionPreview();
+    }
+
+    private void RepositionPreview()
+    {
+        if (_previewHost is null) return;
+        var (x, y, w, h) = PreviewScreenRect();
+        _previewHost.MoveTo(x, y, w, h);
+    }
+
+    private (int X, int Y, int Width, int Height) PreviewScreenRect()
+    {
+        var topLeft = PreviewBorder.PointToScreen(new Point(0, 0));
+        return ((int)topLeft.X, (int)topLeft.Y, (int)Math.Max(1, PreviewBorder.ActualWidth), (int)Math.Max(1, PreviewBorder.ActualHeight));
     }
 
     /// <summary>Starting values mirror OverlayHost's own <c>Program.cs</c> initial
