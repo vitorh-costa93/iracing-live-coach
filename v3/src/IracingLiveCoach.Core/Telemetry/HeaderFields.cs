@@ -12,13 +12,13 @@ public sealed record HeaderFieldConfig(string Key, bool Visible);
 public static class HeaderFields
 {
     public static readonly IReadOnlyList<string> AllKeys =
-        ["type", "class", "lap", "sof", "drivers", "bb", "track", "rubber", "best", "last", "local"];
+        ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local"];
 
     public static List<HeaderFieldConfig> DefaultStandings() =>
-        Complete([new("type", true), new("lap", true), new("sof", true), new("drivers", true), new("local", true)]);
+        Complete([new("class", true), new("lap", true), new("sof", true), new("clock", true)]);
 
     public static List<HeaderFieldConfig> DefaultRelative() =>
-        Complete([new("class", true), new("type", true), new("lap", true), new("bb", true), new("track", true), new("rubber", true), new("local", true)]);
+        Complete([new("bb", true), new("track", true), new("local", true)]);
 
     /// <summary>Appends every known key missing from <paramref name="fields"/> as hidden, so the
     /// Control Center always lists every available field, and drops unknown keys.</summary>
@@ -38,13 +38,14 @@ public static class HeaderFields
             "type" => session is { SessionTypeText.Length: > 0 } ? session.SessionTypeText : null,
             "class" => session is { CarClassShortName.Length: > 0 } ? session.CarClassShortName : null,
             "lap" => session is null ? null : $"LAP {Int(session.CurrentLap)}/{Int(session.TotalLaps)}",
-            "sof" => session?.StrengthOfField is double s ? "SOF " + s.ToString("0", CultureInfo.InvariantCulture) : null,
+            "sof" => session?.StrengthOfField is double s ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(s)) : null,
             "drivers" => session is null ? null : $"{session.DriverCount} DRIVERS",
             "bb" => player?.BrakeBiasPct is double b ? "BB " + b.ToString("0.0", CultureInfo.InvariantCulture) + "%" : null,
             "track" => player?.TrackTempC is double t ? "TRACK " + t.ToString("0.#", CultureInfo.InvariantCulture) + "°C" : null,
             "rubber" => player?.TrackRubberState is { Length: > 0 } r ? "RUBBER " + r.ToUpperInvariant() : null,
             "best" => player?.BestLapTimeSeconds is double bl ? "BEST " + LapTimeFormatting.Format(bl) : null,
             "last" => player?.LastLapTimeSeconds is double ll ? "LAST " + LapTimeFormatting.Format(ll) : null,
+            "clock" => now.ToString("HH:mm", CultureInfo.InvariantCulture),
             "local" => "LOCAL " + now.ToString("HH:mm", CultureInfo.InvariantCulture),
             _ => null,
         };

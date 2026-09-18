@@ -20,8 +20,14 @@ public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingForma
     public string FormatIRating(int iRating) => IRating switch
     {
         IRatingFormat.Thousands => (iRating / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k",
-        _ => iRating.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+        _ => GroupThousands(iRating),
     };
+
+    /// <summary>Thousands separated by '.' as in the mockups ("4.390"): overlay TEXT is US English
+    /// but numbers follow the user's pt-BR style. Fixed, not culture-dependent, so it looks the same
+    /// on every machine.</summary>
+    public static string GroupThousands(int value) =>
+        value.ToString("N0", new System.Globalization.NumberFormatInfo { NumberGroupSeparator = ".", NumberGroupSizes = [3] });
 
     /// <summary>Reformats an SDK-provided license string ("A 4.12", "R 1.50", or a lone "Pro" with
     /// no numeric part) per this config. Splits on the first space rather than parsing raw SDK

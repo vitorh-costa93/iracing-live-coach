@@ -94,62 +94,26 @@ public static unsafe class Program
     private static (int X, int Y) _dragStartMouse;
     private static (int X, int Y) _dragStartWindow;
 
-    /// <summary>Spec §12's "preview com dados fictícios claramente identificado como simulação" --
-    /// enough synthetic rows to exercise every column this widget draws (leader with no gap,
-    /// positive and negative iRating deltas, a faster and a slower lap-delta, the player's own
-    /// row). Never used as a stand-in for real telemetry.</summary>
-    private static List<StandingsRow> BuildSimulatedStandingsRows() =>
-    [
-        new StandingsRow(1, "Max Verstappen", 12, 88.412, null, false, "🇳🇱", "A", null, 4820, 1,
-            "RedBull", null, 14.2, -0.412, "GT3", "#FFD400", 1, null, null, null, null, false, "—"),
-        new StandingsRow(2, "Lewis Hamilton", 12, 88.901, null, false, "🇬🇧", "A", null, 4650, 1,
-            "Mercedes", 1.8, -3.6, 0.077, "GT3", "#FFD400", 2, 1.8, null, null, null, false, "—"),
-        new StandingsRow(3, "Vitor Costa", 12, 89.150, null, true, "🇧🇷", "B", null, 3200, 1,
-            "Ferrari", 3.1, 0.0, 0.0, "GT3", "#FFD400", 3, 1.3, null, null, null, false, "—"),
-        new StandingsRow(4, "Charles Leclerc", 11, 89.740, null, false, "🇲🇨", "A", null, 4400, 1,
-            "Ferrari", 12.6, 5.9, 0.590, "GT3", "#FFD400", 4, 9.5, null, null, null, false, "—"),
-    ];
-
-    /// <summary>Same rationale as <see cref="BuildSimulatedStandingsRows"/> -- a 7-row preset with
-    /// the player centered, exercising positive and negative offsets and gaps.</summary>
-    private static List<RelativeRow> BuildSimulatedRelativeRows() =>
-    [
-        new RelativeRow(-3, "Oliver Wilson", -8.912, null, null, null, null, false, "🇬🇧", "A", null, 4100, 1, "Aston Martin", false, 1, "GT3", "#FFD400"),
-        new RelativeRow(-2, "Max Hoffmann", -5.201, null, null, null, null, false, "🇩🇪", "A", null, 3980, 1, "BMW", false, 2, "GT3", "#FFD400"),
-        new RelativeRow(-1, "Vitor Costa", -1.892, null, null, null, null, false, "🇧🇷", "B", null, 3200, 1, "Ferrari", false, 3, "GT3", "#FFD400"),
-        new RelativeRow(0, "Vitor Costa", 0, null, null, null, null, false, "🇧🇷", "B", null, 3200, 1, "Ferrari", true, 4, "GT3", "#FFD400"),
-        new RelativeRow(1, "Daniel Walker", 1.304, null, null, null, null, false, "🇺🇸", "A", null, 3012, 1, "Mercedes", false, 5, "GT3", "#FFD400"),
-        new RelativeRow(2, "Simon Wagner", 2.910, null, null, null, null, false, "🇩🇪", "A", null, 3455, 1, "Ford", false, 6, "GT3", "#FFD400"),
-        new RelativeRow(3, "James Carter", 5.330, null, null, null, null, false, "🇺🇸", "B", null, 3298, 1, "McLaren", false, 7, "GT3", "#FFD400"),
-    ];
-
-    /// <summary>Same spec §12 simulation rationale as the standings/relative rows above -- exercises
-    /// the dynamic weather icon's three states isn't possible from one fixed snapshot, but at least
-    /// proves the "damp track, no rain" branch (wetness 3, no precipitation) renders correctly.</summary>
-    private static WeatherStatus BuildSimulatedWeatherStatus() =>
-        new(AirTempC: 24.5, TrackTempC: 31.2, PrecipitationPct: 0, TrackWetness: 3, WeatherDeclaredWet: false,
-            TrackRubberState: "MODERATE", CarPositions: [], WindSpeedMs: 3.2, WindDirectionDeg: 210);
-
-    private static FuelStatus BuildSimulatedFuelStatus() =>
-        new(FuelLevelLiters: 38.5, FuelUsePerHourLiters: 62.0, AverageFuelPerLapLiters: 2.24,
-            LapsRemaining: 17.2, TimeRemainingSeconds: 21 * 60 + 14, FuelNeededForFinishLiters: -2.7);
-
     public static int Main()
     {
+        // Numbers in the overlay ("38.5 L", "+3.816") must not follow the Windows locale (pt-BR would
+        // print "38,5"); set before any worker thread starts so they inherit it.
+        System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
         Console.WriteLine("V3 Phase 3: SPACE=click-through, E=edit mode (drag widgets), T=simulation, ESC=exit.");
         LoadPrivateFonts();
 
         // Each widget owns its own top-level GPU surface. The dimensions are content-oriented
         // starting values; Phase 5 will drive the same values through the Control Center.
-        PlacementStore.Set(StandingsKey, new WidgetPlacement(0, 200, 200, PlacementAnchor.TopLeft, 820, 260, 1f, false, 0));
-        PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 200, 470, PlacementAnchor.TopLeft, 760, 200, 1f, false, 1));
+        PlacementStore.Set(StandingsKey, new WidgetPlacement(0, 28, 30, PlacementAnchor.TopLeft, 800, 264, 1f, false, 0));
+        PlacementStore.Set(RelativeKey, new WidgetPlacement(0, 1440, 740, PlacementAnchor.TopLeft, 470, 262, 1f, false, 1));
         // Heights match each rewritten widget's real content (4/3/full-scale/3 rows) -- previously
         // undersized for Radar (42px for a widget needing ~130px) and Start Helper (50px for what
         // is now 3 rows including the RPM readout the earlier pass omitted).
-        PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 980, 470, PlacementAnchor.TopLeft, 280, 132, 1f, false, 2));
-        PlacementStore.Set(FuelKey, new WidgetPlacement(0, 980, 610, PlacementAnchor.TopLeft, 300, 104, 1f, false, 3));
-        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 980, 722, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
-        PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 980, 860, PlacementAnchor.TopLeft, 280, 82, 1f, false, 5));
+        PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 1590, 30, PlacementAnchor.TopLeft, 300, 118, 1f, false, 2));
+        PlacementStore.Set(FuelKey, new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
+        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 860, 720, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
+        PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
 
         // Spec §3/§12: a saved layout from a previous session overrides the defaults above --
         // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
@@ -443,17 +407,23 @@ public static unsafe class Program
 
             if (_simulating)
             {
-                standings.SetSimulatedRows(BuildSimulatedStandingsRows());
-                relative.SetSimulatedRows(BuildSimulatedRelativeRows());
-                weather.SetSimulatedStatus(BuildSimulatedWeatherStatus());
-                fuel.SetSimulatedStatus(BuildSimulatedFuelStatus());
+                standings.SetSimulatedRows(SimulationData.StandingsRows());
+                standings.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
+                relative.SetSimulatedRows(SimulationData.RelativeRows());
+                relative.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
+                weather.SetSimulatedStatus(SimulationData.Weather());
+                fuel.SetSimulatedStatus(SimulationData.Fuel());
+                fuel.SetSimulatedSession(SimulationData.Session());
             }
             else
             {
                 standings.SetSimulatedRows(null);
+                standings.SetSimulatedSession(null, null);
                 relative.SetSimulatedRows(null);
+                relative.SetSimulatedSession(null, null);
                 weather.SetSimulatedStatus(null);
                 fuel.SetSimulatedStatus(null);
+                fuel.SetSimulatedSession(null);
             }
 
             standingsResources.BeginFrame();

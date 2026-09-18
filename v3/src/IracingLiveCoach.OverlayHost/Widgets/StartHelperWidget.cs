@@ -35,8 +35,8 @@ public sealed unsafe class StartHelperWidget : IDisposable
     private WidgetAppearance _appearance = WidgetAppearance.Default;
 
     private const float WidthDip = 280f;
-    private const float RowHeightDip = 22f;
-    private const float RowGapDip = 4f;
+    private const float RowHeightDip = 26f;
+    private const float RowGapDip = 2f;
 
     // Placeholder default target band -- see the class doc comment. Not a real per-car calibration.
     private const double DefaultTargetRpmLow = 5500;
@@ -62,7 +62,7 @@ public sealed unsafe class StartHelperWidget : IDisposable
     private void CreateTextFormats()
     {
         _labelFormat.Dispose();
-        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 13f * _appearance.FontScale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15f * _appearance.FontScale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _labelFormat = labelFormat;
@@ -95,16 +95,18 @@ public sealed unsafe class StartHelperWidget : IDisposable
         lock (_lock) { status = _status; }
         if (status?.ShouldShow != true) return;
 
-        float rowY = y;
+        float panelHeight = RowHeightDip * 3 + RowGapDip * 2 + 8f;
+        var panel = new RectF(x, y, x + width, y + panelHeight);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+
+        float rowY = y + 4f;
         DrawRpmRow(dc, status.RpmValue, x, rowY, width);
         rowY += RowHeightDip + RowGapDip;
         DrawBar(dc, "CLUTCH", status.ClutchPct, PaletteTokens.StartHelperInRange, x, rowY, width);
         rowY += RowHeightDip + RowGapDip;
         DrawBar(dc, "THROTTLE", status.ThrottlePct, PaletteTokens.StartHelperInRange, x, rowY, width);
 
-        SetBrushColor(PaletteTokens.WidgetOuterBorder);
-        var outer = new RectF(x, y, x + width, rowY + RowHeightDip);
-        dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
+        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
     }
 
     private void DrawRpmRow(ID2D1DeviceContext* dc, double rpm, float x, float y, float width)
@@ -112,10 +114,6 @@ public sealed unsafe class StartHelperWidget : IDisposable
         var color = rpm >= DefaultCriticalRpm ? PaletteTokens.StartHelperCritical
             : rpm >= DefaultTargetRpmLow && rpm <= DefaultTargetRpmHigh ? PaletteTokens.StartHelperInRange
             : PaletteTokens.StartHelperOutOfRange;
-
-        SetBrushColor(PaletteTokens.OverlayBackground);
-        var bg = new RectF(x, y, x + width, y + RowHeightDip);
-        dc->FillRectangle(&bg, (ID2D1Brush*)_brush.Get());
 
         SetBrushColor(PaletteTokens.TextSecondary);
         const string label = "RPM";
@@ -136,10 +134,6 @@ public sealed unsafe class StartHelperWidget : IDisposable
 
     private void DrawBar(ID2D1DeviceContext* dc, string label, double valuePct, Color4 fillColor, float x, float y, float width)
     {
-        SetBrushColor(PaletteTokens.OverlayBackground);
-        var bg = new RectF(x, y, x + width, y + RowHeightDip);
-        dc->FillRectangle(&bg, (ID2D1Brush*)_brush.Get());
-
         SetBrushColor(fillColor);
         float clamped = (float)Math.Clamp(valuePct / 100.0, 0, 1);
         var fill = new RectF(x + 90f, y + 4f, x + 90f + (width - 100f) * clamped, y + RowHeightDip - 4f);

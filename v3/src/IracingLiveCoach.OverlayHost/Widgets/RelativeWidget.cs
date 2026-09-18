@@ -47,18 +47,18 @@ public sealed unsafe class RelativeWidget : IDisposable
     private WidgetAppearance _appearance = WidgetAppearance.Default;
     private float RowHeightDip => (_appearance.RowHeightDip > 0 ? _appearance.RowHeightDip : BaseRowHeightDip) + _appearance.RowSpacingDip;
 
-    private const float BaseRowHeightDip = 22f;
-    private const float HeaderHeightDip = 18f;
-    private const float ClassStripWidthDip = 3f;
+    private const float BaseRowHeightDip = 32f;
+    private const float HeaderHeightDip = 30f;
+    private const float ClassStripWidthDip = 4f;
     private const float OffsetColumnWidthDip = 30f;
-    private const float CarNumberColumnWidthDip = 38f;
-    private const float FlagColumnWidthDip = 22f;
-    private const float BrandColumnWidthDip = 64f;
-    private const float NameColumnWidthDip = 150f;
-    private const float LicenseColumnWidthDip = 40f;
-    private const float IRatingColumnWidthDip = 56f;
-    private const float GapColumnWidthDip = 60f;
-    private const float OvertakeColumnWidthDip = 52f;
+    private const float CarNumberColumnWidthDip = 44f;
+    private const float FlagColumnWidthDip = 30f;
+    private const float BrandColumnWidthDip = 34f;
+    private const float NameColumnWidthDip = 132f;
+    private const float LicenseColumnWidthDip = 56f;
+    private const float IRatingColumnWidthDip = 64f;
+    private const float GapColumnWidthDip = 70f;
+    private const float OvertakeColumnWidthDip = 96f;
     private const float ColumnGapDip = 6f;
 
     private const float ColumnsLeftMarginDip = ClassStripWidthDip + 4f;
@@ -69,15 +69,15 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     public static List<ColumnDefinition> BuildDefaultColumns() =>
     [
-        new("offset", ColumnWidthMode.Fixed, OffsetColumnWidthDip, OffsetColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
+        new("position", ColumnWidthMode.Fixed, OffsetColumnWidthDip, OffsetColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
         new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
-        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
-        new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
+        new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
+        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
         new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
-        new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6),
-        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 7, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 8),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 3),
+        new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 7),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, false, 8),
     ];
 
     public void SetColumns(List<ColumnDefinition> columns) => _columns = columns;
@@ -116,18 +116,18 @@ public sealed unsafe class RelativeWidget : IDisposable
         _numericFormat.Dispose();
 
         float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 17f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
-        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 14f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15.5f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
-        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 14f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 16f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
         ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -172,15 +172,13 @@ public sealed unsafe class RelativeWidget : IDisposable
         if (_simulatedRows is { } simulated)
         {
             SetBrushColor(PaletteTokens.Warning);
-            const string simLabel = "SIMULAÇÃO";
+            const string simLabel = "SIMULATION";
             fixed (char* p = simLabel)
             {
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            DrawHeader(dc, x, y, null, null);
-            float simRowY = y + HeaderHeightDip;
-            foreach (var row in simulated) { DrawRow(dc, x, simRowY, row); simRowY += RowHeightDip; }
+            DrawPanel(dc, x, y, simulated, _simulatedSession, _simulatedPlayer);
             return;
         }
 
@@ -190,7 +188,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         if (!_telemetry.HasRecentTelemetry || rows.Count == 0)
         {
             SetBrushColor(PaletteTokens.TextDisabled);
-            string text = "Aguardando iRacing...";
+            string text = "Waiting for iRacing...";
             fixed (char* p = text)
             {
                 var rect = new RectF(x, y, x + NameColumnWidthDip + OffsetColumnWidthDip + IRatingColumnWidthDip, y + RowHeightDip);
@@ -202,55 +200,79 @@ public sealed unsafe class RelativeWidget : IDisposable
         SessionStatus? session;
         PlayerCarStatus? player;
         lock (_lock) { session = _sessionStatus; player = _playerStatus; }
-        DrawHeader(dc, x, y, session, player);
-        float rowY = y + HeaderHeightDip;
-        bool drewAnyRow = false;
+        DrawPanel(dc, x, y, rows, session, player);
+    }
 
-        // Graphite translucent body background (spec §5/§16) behind every row -- previously this
-        // table had no fill at all, just text floating over the desktop/game.
-        SetBrushColor(PaletteTokens.OverlayBackground);
-        var bodyBackground = new RectF(x, rowY, x + TableWidthDip, rowY + rows.Count * RowHeightDip);
-        dc->FillRectangle(&bodyBackground, (ID2D1Brush*)_brush.Get());
+    private SessionStatus? _simulatedSession;
+    private PlayerCarStatus? _simulatedPlayer;
+    public void SetSimulatedSession(SessionStatus? session, PlayerCarStatus? player)
+    {
+        _simulatedSession = session;
+        _simulatedPlayer = player;
+    }
 
-        foreach (var row in rows)
+    private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
+    {
+        float height = HeaderHeightDip + rows.Count * RowHeightDip;
+        var panel = new RectF(x, y, x + TableWidthDip, y + height);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        using (PanelChrome.PushClip(dc, panel))
         {
-            if (drewAnyRow)
+            DrawHeader(dc, x, y, session, player);
+            float rowY = y + HeaderHeightDip;
+            for (int i = 0; i < rows.Count; i++)
             {
-                SetBrushColor(PaletteTokens.Grid);
-                var separator = new RectF(x, rowY - PaletteTokens.BorderAndGridThicknessPx, x + TableWidthDip, rowY);
-                dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
+                var row = rows[i];
+                if (i > 0 && !row.IsPlayer && !rows[i - 1].IsPlayer)
+                {
+                    SetBrushColor(PaletteTokens.PanelDivider);
+                    var separator = new RectF(x + ClassStripWidthDip, rowY, x + TableWidthDip, rowY + 1f);
+                    dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
+                }
+                DrawRow(dc, x, rowY, row);
+                rowY += RowHeightDip;
             }
-            DrawRow(dc, x, rowY, row);
-            rowY += RowHeightDip;
-            drewAnyRow = true;
         }
-        SetBrushColor(PaletteTokens.WidgetOuterBorder);
-        var outer = new RectF(x, y, x + TableWidthDip, rowY);
-        dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
+        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
     }
 
     private List<HeaderFieldConfig> _headerFields = HeaderFields.DefaultRelative();
     public void SetHeaderFields(List<HeaderFieldConfig> fields) => _headerFields = HeaderFields.Complete(fields);
 
+    /// <summary>Header band: the user-configured fields (spec §12) in equal cells, separated by thin
+    /// vertical dividers as in the mockups ("BB 54.5% | TRACK 29°C | LOCAL 23:42"). Fields without data
+    /// yet are skipped (spec §15: never a placeholder).</summary>
     private void DrawHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session, PlayerCarStatus? player)
     {
-        SetBrushColor(PaletteTokens.SessionHeaderBand);
+        SetBrushColor(PaletteTokens.PanelHeaderBand);
         var band = new RectF(x, y, x + TableWidthDip, y + HeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
-        // Spec §5/§15: no decorative "RELATIVE" title -- only the user-configured real header
-        // fields (spec §12), in the user's chosen order; fields without data yet are skipped.
-        string text = HeaderFields.Compose(_headerFields, session, player, DateTime.Now);
-        if (text.Length == 0) return;
-        SetBrushColor(PaletteTokens.TextPrimary);
-        fixed (char* p = text)
+
+        var texts = _headerFields.Where(f => f.Visible)
+            .Select(f => HeaderFields.Text(f.Key, session, player, DateTime.Now))
+            .Where(t => t is not null).Select(t => t!).ToList();
+        if (texts.Count == 0) return;
+
+        float left = x + ClassStripWidthDip + 4f;
+        float cellWidth = (x + TableWidthDip - 6f - left) / texts.Count;
+        for (int i = 0; i < texts.Count; i++)
         {
-            var rect = new RectF(x + 8f, y, x + TableWidthDip - 6f, y + HeaderHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            float cellX = left + cellWidth * i;
+            if (i > 0) PanelChrome.VerticalDivider(dc, _brush.Get(), cellX, y + 7f, y + HeaderHeightDip - 7f);
+            PanelChrome.DrawText(dc, _brush.Get(), _statusFormat.Get(), texts[i], cellX, y, cellWidth, HeaderHeightDip, PaletteTokens.TextPrimary, TextAlignment.Center);
         }
+        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
     }
 
     private void DrawRow(ID2D1DeviceContext* dc, float x, float y, RelativeRow row)
     {
+        if (row.IsPlayer)
+        {
+            // Mockups: the player's row is a cyan-tinted, cyan-outlined rounded highlight.
+            var highlight = new RectF(x + ClassStripWidthDip + 1f, y + 1f, x + TableWidthDip - 3f, y + RowHeightDip - 1f);
+            PanelChrome.FillPanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowFill, 4f);
+            PanelChrome.StrokePanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowBorder, 1f, 4f);
+        }
         var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex);
         SetBrushColor(stripColor);
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
@@ -264,6 +286,13 @@ public sealed unsafe class RelativeWidget : IDisposable
             float cellWidth = placement.ResolvedWidthPx;
             switch (placement.Column.Key)
             {
+                case "position":
+                    // Mockups: the real running position (overall), not an offset. Falls back to the
+                    // class position when the overall one isn't known.
+                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
+                    int position = row.OverallPosition > 0 ? row.OverallPosition : row.ClassPosition;
+                    DrawCell(dc, position > 0 ? position.ToString(CultureInfo.InvariantCulture) : "—", cellX, y, cellWidth, ColumnAlignment.Center);
+                    break;
                 case "offset":
                     // "P" for the player's own row (never a fabricated "0"/"+0"), otherwise a signed
                     // offset (spec §7 preset: 3 ahead negative, 3 behind positive, centered on the player).
@@ -278,7 +307,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     var flag = _flags.Find(row.FlagEmoji);
                     if (flag != null)
                     {
-                        var box = new RectF(cellX + 1f, y + 4f, cellX + cellWidth - 1f, y + RowHeightDip - 4f);
+                        var box = new RectF(cellX + 1f, y + 7f, cellX + cellWidth - 1f, y + RowHeightDip - 7f);
                         var destination = FlagBitmapCache.Contain(flag, box);
                         dc->DrawBitmap(flag, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
                     }
@@ -287,12 +316,16 @@ public sealed unsafe class RelativeWidget : IDisposable
                     var brandBitmap = _flags.FindBrand(row.ManufacturerBadge);
                     if (brandBitmap != null)
                     {
-                        var box = new RectF(cellX + 2f, y + 3f, cellX + cellWidth - 2f, y + RowHeightDip - 3f);
+                        var box = new RectF(cellX + 2f, y + 5f, cellX + cellWidth - 2f, y + RowHeightDip - 5f);
                         var destination = FlagBitmapCache.Contain(brandBitmap, box);
                         dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
                     }
-                    else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge))
+                    else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge)
+                             && PanelChrome.MeasureWidth(_dwriteFactory, _statusFormat.Get(), row.ManufacturerBadge) <= cellWidth)
                     {
+                        // A make without a bundled logo: its name, but only if it fits the cell --
+                        // an overflowing word (e.g. the pace car's "SAFETY") would spill over the
+                        // neighbouring columns.
                         SetBrushColor(PaletteTokens.TextSecondary);
                         DrawCell(dc, row.ManufacturerBadge, cellX, y, cellWidth, ColumnAlignment.Center);
                     }
@@ -311,7 +344,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     break;
                 case "gap":
                     // Player's own row always shows a neutral 0.000, never a computed value.
-                    SetBrushColor(row.IsPlayer ? PaletteTokens.NeutralDeltaOrGap : PaletteTokens.TextPrimary);
+                    SetBrushColor(row.IsPlayer ? PaletteTokens.TextSecondary : PaletteTokens.TextPrimary);
                     string gapText = row.IsPlayer ? "0" + DecimalSuffix(placement.Column.DecimalPlaces)
                         : row.GapSeconds is double gap ? gap.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture) : "—";
                     DrawCell(dc, gapText, cellX, y, cellWidth, placement.Column.Alignment);
@@ -357,15 +390,11 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, float width, string license, string? colorHex)
     {
-        var color = ParseHexOrFallback(colorHex, PaletteTokens.LicenseUnknown);
-        SetBrushColor(color);
-        var rr = new RoundedRect
-        {
-            rect = new RectF(x, y + 3f, x + width, y + RowHeightDip - 3f),
-            radiusX = PaletteTokens.BadgeCornerRadiusPx,
-            radiusY = PaletteTokens.BadgeCornerRadiusPx
-        };
-        dc->FillRoundedRectangle(&rr, (ID2D1Brush*)_brush.Get());
+        // Mockups: a solid blue rounded pill with bold white "A 4.12".
+        var color = ParseHexOrFallback(colorHex, PaletteTokens.SrPillBlue);
+        const float pillHeight = 24f;
+        var pill = new RectF(x, y + (RowHeightDip - pillHeight) / 2, x + width, y + (RowHeightDip + pillHeight) / 2);
+        PanelChrome.FillPanel(dc, _brush.Get(), pill, color, 5f);
         SetBrushColor(PaletteTokens.TextPrimary);
         string text = string.IsNullOrWhiteSpace(license) ? "—" : _numberFormatConfig.FormatLicense(license);
         fixed (char* p = text)
@@ -377,27 +406,7 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, float width, bool? active, double? seconds, bool cooldown)
     {
-        Color4 color = active is null ? PaletteTokens.OvertakeUnknown
-            : active == true ? PaletteTokens.OvertakeActive
-            : cooldown ? PaletteTokens.OvertakeCooldown
-            : seconds is <= 0 ? PaletteTokens.OvertakeDepleted
-            : PaletteTokens.OvertakeAvailable;
-        string text = seconds is double s ? $"{Math.Clamp((int)Math.Round(s), 0, TelemetryReader.P2PMaxSeconds)}s" : "—";
-        SetBrushColor(color);
-        fixed (char* p = text)
-        {
-            var textRect = new RectF(x, y, x + width, y + 12f);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &textRect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        var track = new RectF(x + 2f, y + 16f, x + width - 2f, y + 19f);
-        SetBrushColor(PaletteTokens.BarTrackEmpty);
-        dc->FillRectangle(&track, (ID2D1Brush*)_brush.Get());
-        if (seconds is not double bank) return;
-        float fraction = Math.Clamp((float)(bank / TelemetryReader.P2PMaxSeconds), 0f, 1f);
-        if (fraction <= 0f) return;
-        var fill = new RectF(x + 2f, y + 16f, x + 2f + (width - 4f) * fraction, y + 19f);
-        SetBrushColor(color);
-        dc->FillRectangle(&fill, (ID2D1Brush*)_brush.Get());
+        StandingsWidget.DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _numericFormat.Get(), _brush.Get());
     }
 
     private static Color4 ParseHexOrFallback(string? hex, Color4 fallback)

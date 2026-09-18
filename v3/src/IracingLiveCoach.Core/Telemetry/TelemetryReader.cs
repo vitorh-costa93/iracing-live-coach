@@ -24,7 +24,7 @@ public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 /// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
 /// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
 /// driver confirmed this is a real feature they use today.</summary>
-public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "");
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "", int OverallPosition = 0);
 
 /// <summary>One row of the full classification/standings widget (Task 6).
 /// GapToLeaderSeconds is real (CarIdxF2Time, "race time behind leader or fastest lap otherwise" --
@@ -62,7 +62,7 @@ public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, do
 public record TrackPositionDot(string DriverCode, double LapDistPct, bool IsPlayer);
 
 /// <summary>One (throttled, ~10Hz) weather/track-usage snapshot.</summary>
-public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, string? TrackRubberState, List<TrackPositionDot> CarPositions, double? WindSpeedMs = null, double? WindDirectionDeg = null);
+public record WeatherStatus(double AirTempC, double TrackTempC, double PrecipitationPct, int TrackWetness, bool WeatherDeclaredWet, string? TrackRubberState, List<TrackPositionDot> CarPositions, double? WindSpeedMs = null, double? WindDirectionDeg = null, double? RelativeHumidityPct = null);
 
 /// <summary>One far-field car's signed distance from the player along the lap (negative = behind,
 /// positive = ahead), converted from CarIdxLapDistPct using the track's own length. Deliberately
@@ -773,7 +773,7 @@ public class TelemetryReader : IDisposable
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
 
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber));
+                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber, position));
             }
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
@@ -903,8 +903,7 @@ public class TelemetryReader : IDisposable
             double? sof = null;
             if (classified.Count > 0)
             {
-                var sumExp = classified.Sum(r => Math.Exp(-r.IRating / SofBr1));
-                if (sumExp > 0) sof = SofBr1 * Math.Log(classified.Count / sumExp);
+                sof = Sof.Compute(classified.Select(r => r.IRating));
             }
             var expectedRankByPosition = classified
                 .OrderByDescending(r => r.IRating)
@@ -1296,6 +1295,8 @@ public class TelemetryReader : IDisposable
             double? windDirectionDeg = null;
             try { windSpeed = _sdk.Data.GetFloat("WindVel"); } catch { /* optional channel */ }
             try { windDirectionDeg = _sdk.Data.GetFloat("WindDir") * (180.0 / Math.PI); } catch { /* optional channel */ }
+            double? humidityPct = null;
+            try { humidityPct = _sdk.Data.GetFloat("RelativeHumidity") * 100.0; } catch { /* optional channel */ }
 
             var maxCars = IRacingSdkConst.MaxNumCars;
             var positions = new List<TrackPositionDot>();
@@ -1315,7 +1316,7 @@ public class TelemetryReader : IDisposable
                 rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
             }
             catch { /* optional session metadata */ }
-            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions, windSpeed, windDirectionDeg));
+            WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions, windSpeed, windDirectionDeg, humidityPct));
         }
         catch
         {

@@ -90,11 +90,9 @@ public sealed unsafe class RadarWidget : IDisposable
         RadarStatus? status;
         lock (_lock) { status = _status; }
 
-        SetBrushColor(PaletteTokens.OverlayBackground);
         var panel = new RectF(x, y, x + width, y + HeightDip);
-        dc->FillRectangle(&panel, (ID2D1Brush*)_brush.Get());
-        SetBrushColor(PaletteTokens.WidgetOuterBorder);
-        dc->DrawRectangle(&panel, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
 
         // Spec §10: "diferencie pista livre de telemetria desconectada/desconhecida" -- these are
         // two genuinely different states and must never look the same. No telemetry at all (or the

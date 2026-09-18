@@ -6,7 +6,8 @@ namespace IracingLiveCoach.Core.Tests;
 public class NumberFormatConfigTests
 {
     [Theory]
-    [InlineData(IRatingFormat.Full, 4820, "4,820")]
+    [InlineData(IRatingFormat.Full, 4820, "4.820")]
+    [InlineData(IRatingFormat.Full, 950, "950")]
     [InlineData(IRatingFormat.Thousands, 4820, "4.8k")]
     [InlineData(IRatingFormat.Thousands, 1000, "1k")]
     [InlineData(IRatingFormat.Thousands, 940, "0.9k")]

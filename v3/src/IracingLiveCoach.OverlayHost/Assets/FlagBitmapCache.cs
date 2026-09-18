@@ -28,14 +28,36 @@ public sealed unsafe class FlagBitmapCache : IDisposable
         ThrowIfFailed(CoCreateInstance(&clsid, null, 0x1u,
             __uuidof<IWICImagingFactory>(), (void**)factory.GetAddressOf()));
         _wicFactory = factory;
+        _dc = dc;
 
         LoadKnownAssets(dc);
     }
 
-    public ID2D1Bitmap* Find(string? flagEmoji) =>
-        TryGetAssetKey(flagEmoji, out var key) && _flagBitmaps.TryGetValue(key, out var bitmap)
-            ? bitmap.Get()
-            : null;
+    private ID2D1DeviceContext* _dc;
+    private readonly HashSet<string> _missingFlags = new(StringComparer.Ordinal);
+
+    /// <summary>Returns the bundled flag image for a flag-emoji key produced by Core's CountryFlags
+    /// (any country, plus the UK nations), loading its PNG on first use -- ~220 flags ship, but a
+    /// race only ever needs a handful, so none are decoded up front. A country with no bundled
+    /// image (or the globe fallback) simply returns null: the cell stays empty, never a code or an
+    /// emoji glyph.</summary>
+    public ID2D1Bitmap* Find(string? flagEmoji)
+    {
+        string? key = IracingLiveCoach.Core.CountryFlags.ToAssetKey(flagEmoji);
+        if (key is null) return null;
+        if (_flagBitmaps.TryGetValue(key, out var cached)) return cached.Get();
+        if (_missingFlags.Contains(key) || _dc is null) return null;
+
+        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "Flags", key + ".png");
+        if (!File.Exists(path)) { _missingFlags.Add(key); return null; }
+        try
+        {
+            var loaded = LoadBitmap(_dc, path);
+            _flagBitmaps[key] = loaded;
+            return loaded.Get();
+        }
+        catch { _missingFlags.Add(key); return null; }
+    }
 
     /// <summary>Returns an untinted transparent PNG logo for known manufacturers. Unknown or
     /// unsupported manufacturers intentionally return null: the caller may show text, but the
@@ -69,6 +91,8 @@ public sealed unsafe class FlagBitmapCache : IDisposable
     public void Recreate(ID2D1DeviceContext* dc)
     {
         ReleaseBitmaps();
+        _dc = dc;
+        _missingFlags.Clear();
         LoadKnownAssets(dc);
     }
 
@@ -82,14 +106,6 @@ public sealed unsafe class FlagBitmapCache : IDisposable
 
     private void LoadKnownAssets(ID2D1DeviceContext* dc)
     {
-        string flagsDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Flags");
-        foreach (string key in new[] { "br", "us", "jp" })
-        {
-            string path = Path.Combine(flagsDirectory, key + ".png");
-            if (!File.Exists(path)) continue;
-            _flagBitmaps[key] = LoadBitmap(dc, path);
-        }
-
         string brandsDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Brands");
         foreach (string key in KnownBrandAssetKeys)
         {
@@ -128,18 +144,6 @@ public sealed unsafe class FlagBitmapCache : IDisposable
         ThrowIfFailed(dc->CreateBitmapFromWicBitmap((IWICBitmapSource*)converter.Get(), null,
             bitmap.GetAddressOf()));
         return bitmap;
-    }
-
-    private static bool TryGetAssetKey(string? emoji, out string key)
-    {
-        key = emoji switch
-        {
-            "🇧🇷" => "br",
-            "🇺🇸" => "us",
-            "🇯🇵" => "jp",
-            _ => string.Empty
-        };
-        return key.Length != 0;
     }
 
     private static bool TryGetBrandAssetKey(string? manufacturer, out string key)

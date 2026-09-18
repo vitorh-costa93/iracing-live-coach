@@ -84,6 +84,35 @@ public static class PaletteTokens
     /// <summary>Borda do badge neutro.</summary>
     public static readonly Color4 NeutralBadgeBorder = Hex("#536777");
 
+    // --- Mockup panel look (rounded navy panels, cyan-tinted player row) ---
+
+    /// <summary>Panel body behind the rows.</summary>
+    public static readonly Color4 PanelBackground = Hex("#0A1520", 0.90f);
+
+    /// <summary>Panel header band (a shade lighter than the body).</summary>
+    public static readonly Color4 PanelHeaderBand = Hex("#10202F", 0.96f);
+
+    /// <summary>Thin panel outline.</summary>
+    public static readonly Color4 PanelBorder = Hex("#36586D", 0.95f);
+
+    /// <summary>Vertical dividers between header fields / faint row separators.</summary>
+    public static readonly Color4 PanelDivider = Hex("#2F4B5E", 0.85f);
+
+    /// <summary>Player row fill.</summary>
+    public static readonly Color4 PlayerRowFill = Hex("#0E4D5A", 0.62f);
+
+    /// <summary>Player row outline.</summary>
+    public static readonly Color4 PlayerRowBorder = Hex("#2AD4E8", 0.95f);
+
+    /// <summary>iRating pill outline.</summary>
+    public static readonly Color4 PillBorder = Hex("#4A6577", 0.95f);
+
+    /// <summary>iRating pill fill.</summary>
+    public static readonly Color4 PillFill = Hex("#08111A", 0.92f);
+
+    /// <summary>Fallback safety-rating pill blue (used when the SDK gives no licence colour).</summary>
+    public static readonly Color4 SrPillBlue = Hex("#1E6BFF");
+
     /// <summary>Borda externa do widget.</summary>
     public static readonly Color4 WidgetOuterBorder = Hex("#405A6B", 0.85f);
 

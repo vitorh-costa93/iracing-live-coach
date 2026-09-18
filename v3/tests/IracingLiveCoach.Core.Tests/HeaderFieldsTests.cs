@@ -32,6 +32,8 @@ public class HeaderFieldsTests
         Assert.Equal("TRACK 22.2°C", HeaderFields.Text("track", Session, Player, Now));
         Assert.Equal("RUBBER EXTENSIVE USAGE", HeaderFields.Text("rubber", Session, Player, Now));
         Assert.Equal("BEST 1:32.345", HeaderFields.Text("best", Session, Player, Now));
+        Assert.Equal("SOF 2.150", HeaderFields.Text("sof", Session, Player, Now));
+        Assert.Equal("13:04", HeaderFields.Text("clock", Session, Player, Now));
     }
 
     [Fact]

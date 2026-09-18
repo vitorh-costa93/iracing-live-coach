@@ -29,9 +29,15 @@ public sealed record PlacementProfile(
     NumberFormatConfig? NumberFormat = null,
     Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null,
     SessionVisibilityConfig? SessionVisibility = null,
-    Dictionary<string, Dictionary<string, WidgetPlacement>>? ClassProfiles = null)
+    Dictionary<string, Dictionary<string, WidgetPlacement>>? ClassProfiles = null,
+    int LayoutRevision = 0)
 {
     public const int CurrentSchemaVersion = 1;
+
+    /// <summary>Bumped whenever the widgets' default content sizes change (2 = the mockup redesign).
+    /// A profile saved under an older revision keeps its positions but takes the new default sizes,
+    /// otherwise the taller/wider redesigned content would be clipped by the old window sizes.</summary>
+    public const int CurrentLayoutRevision = 2;
 }
 
 public static class PlacementPersistence
@@ -70,8 +76,14 @@ public static class PlacementPersistence
         // rather than silently misreading fields that changed meaning.
         if (profile.SchemaVersion != PlacementProfile.CurrentSchemaVersion) return;
 
+        bool sizesAreCurrent = profile.LayoutRevision >= PlacementProfile.CurrentLayoutRevision;
         foreach (var (key, placement) in profile.Widgets)
-            store.Set(key, placement);
+        {
+            var existing = store.Get(key);
+            store.Set(key, !sizesAreCurrent && existing is not null
+                ? placement with { WidthDip = existing.WidthDip, HeightDip = existing.HeightDip }
+                : placement);
+        }
         store.FuelRelativeLink = new FuelRelativeLink(profile.FuelRelativeLinkEnabled, profile.FuelRelativeLinkSpacingDip);
 
         // Spec §16: "Permita personalização e restauração por token, paleta de classe e perfil."
@@ -89,7 +101,10 @@ public static class PlacementPersistence
             }
         }
 
-        if (profile.ColumnOverrides is not null)
+        // Column widths/order encode the OLD default layout; keeping them would override the
+        // redesigned defaults, so overrides saved under an older revision are dropped (the user can
+        // re-customise -- the Colunas tab always starts from the current defaults).
+        if (profile.ColumnOverrides is not null && sizesAreCurrent)
         {
             foreach (var (widgetKey, columns) in profile.ColumnOverrides)
                 store.ColumnOverrides[widgetKey] = columns;
@@ -163,7 +178,8 @@ public static class PlacementPersistence
                 store.NumberFormat,
                 new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase),
                 store.SessionVisibility,
-                new Dictionary<string, Dictionary<string, WidgetPlacement>>(store.ClassProfiles, StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, Dictionary<string, WidgetPlacement>>(store.ClassProfiles, StringComparer.OrdinalIgnoreCase),
+                PlacementProfile.CurrentLayoutRevision);
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

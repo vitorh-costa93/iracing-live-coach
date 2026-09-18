@@ -51,14 +51,22 @@ public sealed unsafe class FuelWidget : IDisposable
 
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<IDWriteTextFormat> _valueFormat;
+    private ComPtr<IDWriteTextFormat> _bigFormat;
+    private ComPtr<IDWriteTextFormat> _unitFormat;
+
+    private SessionStatus? _session;
+    private SessionStatus? _simulatedSession;
+    public void SetSimulatedSession(SessionStatus? session) => _simulatedSession = session;
+
+    private static readonly Color4 PumpYellow = new(1.0f, 0.78f, 0.17f, 1f);
     private ComPtr<ID2D1SolidColorBrush> _brush;
 
     private readonly IDWriteFactory* _dwriteFactory;
     private readonly IDWriteFontCollection1* _fontCollection;
     private WidgetAppearance _appearance = WidgetAppearance.Default;
 
-    private const float WidthDip = 300f;
-    private const float RowHeightDip = 32f;
+    private const float WidthDip = 310f;
+    private const float PanelHeightDip = 116f;
 
     public FuelWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
@@ -73,24 +81,28 @@ public sealed unsafe class FuelWidget : IDisposable
 
         _telemetry = new TelemetryReader();
         _telemetry.FuelUpdated += OnFuelUpdated;
+        _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.Start();
+    }
+
+    private ComPtr<IDWriteTextFormat> MakeFormat(float size, FontWeight weight)
+    {
+        ComPtr<IDWriteTextFormat> format = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, size * _appearance.FontScale, fontWeight: weight, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(format.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(format.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        return format;
     }
 
     private void CreateTextFormats()
     {
         _labelFormat.Dispose();
         _valueFormat.Dispose();
-
-        float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 12f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _labelFormat = labelFormat;
-
-        ComPtr<IDWriteTextFormat> valueFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 20f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(valueFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(valueFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _valueFormat = valueFormat;
+        _bigFormat.Dispose();
+        _unitFormat.Dispose();
+        _labelFormat = MakeFormat(15f, FontWeight.SemiBold);
+        _valueFormat = MakeFormat(24f, FontWeight.SemiBold);
+        _bigFormat = MakeFormat(32f, FontWeight.SemiBold);
+        _unitFormat = MakeFormat(13f, FontWeight.Medium);
     }
 
     public void SetAppearance(WidgetAppearance appearance)
@@ -105,6 +117,11 @@ public sealed unsafe class FuelWidget : IDisposable
         lock (_lock) { _status = status; }
     }
 
+    private void OnSessionStatusUpdated(SessionStatus status)
+    {
+        lock (_lock) { _session = status; }
+    }
+
     private void SetBrushColor(Color4 color)
     {
         var c = color;
@@ -116,167 +133,123 @@ public sealed unsafe class FuelWidget : IDisposable
     public void Draw(ID2D1DeviceContext* dc, float x, float y, float width = WidthDip)
     {
         FuelStatus? status;
-        lock (_lock) { status = _simulatedStatus ?? _status; }
+        SessionStatus? session;
+        lock (_lock) { status = _simulatedStatus ?? _status; session = _simulatedSession ?? _session; }
 
-        DrawPanel(dc, x, y, width, RowHeightDip * 3);
+        var panel = new RectF(x, y, x + width, y + PanelHeightDip);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
 
         if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
         {
-            SetBrushColor(PaletteTokens.TextDisabled);
-            const string text = "Aguardando iRacing...";
-            fixed (char* p = text)
-            {
-                var rect = new RectF(x, y, x + width, y + RowHeightDip);
-                dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
+            PanelChrome.DrawText(dc, _brush.Get(), _labelFormat.Get(), "Waiting for iRacing...", x + 12f, y, width - 24f, PanelHeightDip, PaletteTokens.TextDisabled);
+            PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
             return;
         }
 
-        // Static fuel-pump pictogram (mockup parity) -- a generic pictogram, not a brand/nationality
-        // asset spec §18 governs, so it's drawn as vector geometry rather than requiring an image.
-        DrawFuelPumpIcon(dc, x + width - 20f, y + 2f);
-
-        float colWidth = width / 2 - 4f;
-
         // Effective per-lap figure per spec §9's consumption-source choice, with the configured
-        // reserve subtracted from the displayed Autonomy (never shown as a negative -- a driver
-        // already below reserve needs "0.0 laps", not a confusing negative number).
-        double? litersPerLap = ResolveLitersPerLap(status);
-        double? rawLapsRemaining = litersPerLap is double perLap and > 0 ? status.FuelLevelLiters / perLap : null;
-        double? lapsRemaining = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
-        double? timeRemaining = lapsRemaining is double laps2 && status.AverageLapTimeSeconds is double lapTime ? laps2 * lapTime : null;
+        // reserve subtracted from the displayed autonomy (never negative: a driver already below the
+        // reserve needs "0.0 laps", not a confusing negative number).
+        double? litersPerLap = ResolveLitersPerLap(status!);
+        double? rawLapsRemaining = litersPerLap is double perLap and > 0 ? status!.FuelLevelLiters / perLap : null;
+        double? fuelLaps = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
+        int? raceLapsLeft = session is { TotalLaps: int total, CurrentLap: int current } && total > 0 ? Math.Max(0, total - current) : null;
 
-        // Fuel level and autonomy get emphasis (larger value text), per spec §9's "dê destaque a
-        // combustível e autonomia, com métricas auxiliares menores".
-        Metric(dc, "FUEL", $"{status.FuelLevelLiters:0.0} L", x, y, colWidth, PaletteTokens.TextPrimary);
-        string autonomy = lapsRemaining is double laps ? $"{laps:0.0} laps" : "—";
-        Metric(dc, "AUTONOMY", autonomy, x + colWidth + 8f, y, colWidth, PaletteTokens.TextPrimary);
+        float rowTop = y + 4f;
+        const float topRowHeight = 54f;
+        float divA = x + width * 0.46f;
+        float divB = x + width * 0.73f;
 
-        string sourceLabel = _config.Source switch
-        {
-            FuelConsumptionSource.LastLap => "LAST LAP",
-            FuelConsumptionSource.Max => "MAX/LAP",
-            FuelConsumptionSource.Manual => "MANUAL",
-            _ => "AVG/LAP"
-        };
-        string avg = litersPerLap is double avgVal ? $"{avgVal:0.00} L" : "—";
-        MetricSmall(dc, sourceLabel, avg, x, y + RowHeightDip, colWidth);
+        // Row 1: pump + level | autonomy in laps | race laps left.
+        DrawFuelPumpIcon(dc, x + 14f, rowTop + 10f);
+        string level = $"{status!.FuelLevelLiters:0.0}";
+        float levelWidth = PanelChrome.MeasureWidth(_dwriteFactory, _bigFormat.Get(), level);
+        PanelChrome.DrawText(dc, _brush.Get(), _bigFormat.Get(), level, x + 52f, rowTop, levelWidth + 4f, topRowHeight, PaletteTokens.TextPrimary);
+        PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), "L", x + 52f + levelWidth + 3f, rowTop + 5f, 20f, topRowHeight, PaletteTokens.TextPrimary);
 
-        string time = timeRemaining is double seconds
-            ? $"{TimeSpan.FromSeconds(seconds):mm\\:ss}"
-            : "—";
-        MetricSmall(dc, "TIME LEFT", time, x + colWidth + 8f, y + RowHeightDip, colWidth);
+        PanelChrome.VerticalDivider(dc, _brush.Get(), divA, rowTop + 8f, rowTop + topRowHeight - 4f);
+        PanelChrome.VerticalDivider(dc, _brush.Get(), divB, rowTop + 8f, rowTop + topRowHeight - 4f);
+        DrawStacked(dc, divA, divB, rowTop, fuelLaps is double laps ? $"{laps:0.0}" : "—", "laps");
+        DrawStacked(dc, divB, x + width, rowTop, raceLapsLeft is int left ? $"{left}" : "—", "left");
 
-        // Fuel needed to finish -- only shown when actually calculable (spec §9: never fabricate a
-        // number from zero samples), colored as a warning when a top-up is actually required.
+        // Row 2: last / average / max consumption per lap.
+        float row2 = rowTop + topRowHeight + 4f;
+        PanelChrome.HorizontalDivider(dc, _brush.Get(), x + 8f, x + width - 8f, row2 - 2f);
+        DrawFooterRow(dc, x, width, row2,
+            [("Last", Liters(status.LastLapFuelUsedLiters), PaletteTokens.TextPrimary),
+             ("Avg", Liters(status.AverageFuelPerLapLiters), PaletteTokens.TextPrimary),
+             ("Max", Liters(status.MaxFuelPerLapLiters), PaletteTokens.TextPrimary)]);
+
+        // Row 3: total needed to finish and the margin over it. Core reports "additional fuel needed"
+        // (negative = surplus), so the total is level + needed and the margin is its negation. Only
+        // shown when calculable (spec §9: never fabricate a number from zero samples).
+        float row3 = row2 + 26f;
         if (status.FuelNeededForFinishLiters is double needed)
         {
-            var color = needed > 0 ? PaletteTokens.Warning : PaletteTokens.PositiveDelta;
-            string text = needed > 0 ? $"+{needed:0.0} L NEEDED" : "ENOUGH TO FINISH";
-            MetricSmall(dc, "TO FINISH", text, x, y + RowHeightDip * 2, width, color);
+            double margin = -needed;
+            DrawFooterRow(dc, x, width, row3,
+                [("To finish", $"{status.FuelLevelLiters + needed:0.0} L", PaletteTokens.TextPrimary),
+                 ("Margin", $"{(margin >= 0 ? "+" : "-")}{Math.Abs(margin):0.0} L", margin >= 0 ? PaletteTokens.PositiveDelta : PaletteTokens.NegativeDelta)]);
         }
         else
         {
-            MetricSmall(dc, "TO FINISH", "—", x, y + RowHeightDip * 2, width);
+            DrawFooterRow(dc, x, width, row3, [("To finish", "—", PaletteTokens.TextDisabled), ("Margin", "—", PaletteTokens.TextDisabled)]);
+        }
+        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
+    }
+
+    private static string Liters(double? value) => value is double v ? v.ToString("0.00", CultureInfo.InvariantCulture) : "—";
+
+    /// <summary>A large value with its small unit label centred underneath, inside [left, right].</summary>
+    private void DrawStacked(ID2D1DeviceContext* dc, float left, float right, float top, string value, string unit)
+    {
+        PanelChrome.DrawText(dc, _brush.Get(), _valueFormat.Get(), value, left, top + 2f, right - left, 30f, PaletteTokens.TextPrimary, TextAlignment.Center);
+        PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), unit, left, top + 30f, right - left, 18f, PaletteTokens.TextSecondary, TextAlignment.Center);
+    }
+
+    /// <summary>One footer line: N cells of "label value" split by thin vertical dividers.</summary>
+    private void DrawFooterRow(ID2D1DeviceContext* dc, float x, float width, float y, (string Label, string Value, Color4 ValueColor)[] cells)
+    {
+        float cellWidth = (width - 16f) / cells.Length;
+        for (int i = 0; i < cells.Length; i++)
+        {
+            float cellX = x + 8f + cellWidth * i;
+            if (i > 0) PanelChrome.VerticalDivider(dc, _brush.Get(), cellX, y + 4f, y + 22f);
+            string text = cells[i].Label + " " + cells[i].Value;
+            float textWidth = PanelChrome.MeasureWidth(_dwriteFactory, _labelFormat.Get(), text);
+            float start = cellX + Math.Max(4f, (cellWidth - textWidth) / 2f);
+            PanelChrome.DrawLabelValue(dc, _dwriteFactory, _brush.Get(), _labelFormat.Get(), cells[i].Label + " ", cells[i].Value, start, y, 26f,
+                PaletteTokens.TextSecondary, cells[i].ValueColor);
         }
     }
 
-    /// <summary>Graphite surface + outer border (spec §16) -- this widget previously had no
-    /// background/border at all.</summary>
-    private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, float width, float height)
-    {
-        SetBrushColor(PaletteTokens.OverlayBackground);
-        var background = new RectF(x, y, x + width, y + height);
-        dc->FillRectangle(&background, (ID2D1Brush*)_brush.Get());
-        SetBrushColor(PaletteTokens.WidgetOuterBorder);
-        dc->DrawRectangle(&background, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
-    }
-
-    /// <summary>Simple vector fuel-pump pictogram: a body rectangle, a small display notch, and a
-    /// nozzle/hose -- static, since (unlike weather) there's no real-time condition it should react
-    /// to besides the numbers already shown next to it.</summary>
+    /// <summary>Vector fuel-pump pictogram in the mockups' yellow: a body with a display window, a
+    /// hose and a nozzle. Static -- there is no real-time condition for it to react to.</summary>
     private void DrawFuelPumpIcon(ID2D1DeviceContext* dc, float x, float y)
     {
-        SetBrushColor(PaletteTokens.TextSecondary);
-        var body = new RectF(x, y + 3f, x + 10f, y + 16f);
-        dc->DrawRectangle(&body, (ID2D1Brush*)_brush.Get(), 1.3f, null);
-        var display = new RectF(x + 2f, y + 5f, x + 8f, y + 8f);
-        dc->FillRectangle(&display, (ID2D1Brush*)_brush.Get());
-        dc->DrawLine(new System.Numerics.Vector2(x + 10f, y + 6f), new System.Numerics.Vector2(x + 15f, y + 6f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
-        dc->DrawLine(new System.Numerics.Vector2(x + 15f, y + 6f), new System.Numerics.Vector2(x + 15f, y + 14f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
-        dc->DrawLine(new System.Numerics.Vector2(x + 13.5f, y + 14f), new System.Numerics.Vector2(x + 16.5f, y + 14f), (ID2D1Brush*)_brush.Get(), 1.3f, null);
-    }
-
-    private void Metric(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4 valueColor)
-    {
-        SetBrushColor(PaletteTokens.TextSecondary);
-        fixed (char* p = label)
-        {
-            var rect = new RectF(x, y, x + width, y + 14f);
-            dc->DrawText(p, (uint)label.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        SetBrushColor(valueColor);
-        fixed (char* p = value)
-        {
-            var rect = new RectF(x, y + 13f, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)value.Length, _valueFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-    }
-
-    private void MetricSmall(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4? valueColor = null)
-    {
-        SetBrushColor(PaletteTokens.TextSecondary);
-        if (valueColor is not Color4 color)
-        {
-            string text = $"{label} {value}";
-            fixed (char* p = text)
-            {
-                var rect = new RectF(x, y, x + width, y + RowHeightDip);
-                dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-            return;
-        }
-
-        // Coloured value: label in secondary, then the value in its own colour immediately after
-        // the label's measured width. (Drawing the whole "label value" string and then the value
-        // again on top of it at the same origin -- what this did before -- overprinted the two.)
-        string labelText = label + " ";
-        fixed (char* p = labelText)
-        {
-            var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)labelText.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        float labelWidth = MeasureWidth(labelText);
-        SetBrushColor(color);
-        fixed (char* p = value)
-        {
-            var rect = new RectF(x + labelWidth, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)value.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-    }
-
-    private float MeasureWidth(string text)
-    {
-        ComPtr<IDWriteTextLayout> layout = default;
-        fixed (char* p = text)
-        {
-            if (_dwriteFactory->CreateTextLayout(p, (uint)text.Length, _labelFormat.Get(), 1000f, 100f, layout.GetAddressOf()).Failure)
-                return text.Length * 6f; // rough fallback: never fail a frame over a measurement
-        }
-        try
-        {
-            TextMetrics metrics;
-            return layout.Get()->GetMetrics(&metrics).Success ? metrics.widthIncludingTrailingWhitespace : text.Length * 6f;
-        }
-        finally { layout.Dispose(); }
+        SetBrushColor(PumpYellow);
+        var body = new RectF(x, y, x + 20f, y + 32f);
+        var rounded = new RoundedRect { rect = body, radiusX = 3f, radiusY = 3f };
+        dc->FillRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PaletteTokens.PanelBackground);
+        var window = new RectF(x + 4f, y + 5f, x + 16f, y + 13f);
+        dc->FillRectangle(&window, (ID2D1Brush*)_brush.Get());
+        SetBrushColor(PumpYellow);
+        dc->DrawLine(new System.Numerics.Vector2(x + 20f, y + 10f), new System.Numerics.Vector2(x + 27f, y + 10f), (ID2D1Brush*)_brush.Get(), 2.4f, null);
+        dc->DrawLine(new System.Numerics.Vector2(x + 27f, y + 10f), new System.Numerics.Vector2(x + 27f, y + 24f), (ID2D1Brush*)_brush.Get(), 2.4f, null);
+        dc->DrawLine(new System.Numerics.Vector2(x + 24.5f, y + 24f), new System.Numerics.Vector2(x + 29.5f, y + 24f), (ID2D1Brush*)_brush.Get(), 2.4f, null);
+        var foot = new RectF(x - 2f, y + 32f, x + 22f, y + 35f);
+        dc->FillRectangle(&foot, (ID2D1Brush*)_brush.Get());
     }
 
     public void Dispose()
     {
         _telemetry.FuelUpdated -= OnFuelUpdated;
+        _telemetry.SessionStatusUpdated -= OnSessionStatusUpdated;
         _telemetry.Dispose();
         _labelFormat.Dispose();
         _valueFormat.Dispose();
+        _bigFormat.Dispose();
+        _unitFormat.Dispose();
         _brush.Dispose();
     }
 }
