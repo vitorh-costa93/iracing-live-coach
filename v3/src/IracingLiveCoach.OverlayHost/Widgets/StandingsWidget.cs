@@ -240,6 +240,10 @@ public sealed unsafe class StandingsWidget : IDisposable
         DrawPanels(dc, x, y, rows, session, player);
     }
 
+    /// <summary>Size of what the last <see cref="Draw"/> actually painted -- the overlay resizes an
+    /// auto-sized window to this, so columns/row-count/Top-N changes never clip or leave dead space.</summary>
+    public (float Width, float Height) LastDrawnSize { get; private set; } = (600f, 100f);
+
     private SessionStatus? _simulatedSession;
     private PlayerCarStatus? _simulatedPlayer;
     public void SetSimulatedSession(SessionStatus? session, PlayerCarStatus? player)
@@ -289,6 +293,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
             cursorY += panelHeight + PanelGapDip;
         }
+        LastDrawnSize = (TableWidth, Math.Max(HeaderHeightDip, cursorY - y - PanelGapDip));
     }
 
     /// <summary>Header band: the user-configured fields (spec §12), separated by thin vertical
@@ -351,6 +356,7 @@ public sealed unsafe class StandingsWidget : IDisposable
 
     private void DrawWaitingState(ID2D1DeviceContext* dc, float x, float y)
     {
+        LastDrawnSize = (TableWidth, RowHeightDip);
         SetBrushColor(PaletteTokens.TextDisabled);
         string text = "Waiting for iRacing...";
         fixed (char* p = text)

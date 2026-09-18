@@ -426,6 +426,9 @@ public static unsafe class Program
                 fuel.SetSimulatedSession(null);
             }
 
+            AutoFit(StandingsKey, standings.LastDrawnSize);
+            AutoFit(RelativeKey, relative.LastDrawnSize);
+
             standingsResources.BeginFrame();
             standings.Draw(standingsResources.Context, 0, 0);
             if (_editMode)
@@ -538,7 +541,8 @@ public static unsafe class Program
             Locked = message.Locked,
             Visible = message.Visible,
             Opacity = message.Opacity,
-            ClickThrough = message.ClickThrough
+            ClickThrough = message.ClickThrough,
+            AutoSize = message.AutoSize
         };
         PlacementStore.Set(message.Widget, updated);
         PlacementPersistence.Save(PlacementStore); // spec §3: every applied edit survives the next launch
@@ -641,6 +645,20 @@ public static unsafe class Program
     /// configured <see cref="WidgetPlacement.Visible"/> AND (on track OR edit mode unlocked).
     /// ShowWindow is only called when the effective state actually changes, not every frame, since
     /// there's no need to re-issue the same Win32 call 60 times a second.</summary>
+    /// <summary>"Largura: Automática": an auto-sized widget's window follows what it actually drew, so
+    /// changing columns, Top N or rows never clips content or leaves an empty window. Not a user edit,
+    /// so no undo entry; the swap-chain resize itself happens through the existing queue.</summary>
+    private static void AutoFit(string key, (float Width, float Height) drawn)
+    {
+        var placement = PlacementStore.Get(key);
+        if (placement is not { AutoSize: true }) return;
+        float w = MathF.Ceiling(drawn.Width), h = MathF.Ceiling(drawn.Height);
+        if (w < 16f || h < 16f) return;
+        if (MathF.Abs(placement.WidthDip - w) < 1f && MathF.Abs(placement.HeightDip - h) < 1f) return;
+        PlacementStore.SetSizeQuiet(key, w, h);
+        PendingSizes[key] = ((int)w, (int)h);
+    }
+
     /// <summary>Spec §12 "perfis por carro/classe": when the player's class (or, failing that, car)
     /// has a saved profile, its placements replace the live layout -- once per change of key, not
     /// every frame, and not persisted (the stored profile itself is only ever rewritten by an

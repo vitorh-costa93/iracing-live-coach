@@ -39,7 +39,8 @@ public sealed record WidgetPlacement(
     int ZOrder,
     bool Visible = true,
     float Opacity = 1f,
-    bool ClickThrough = true)
+    bool ClickThrough = true,
+    bool AutoSize = true)
 {
     /// <summary>Resolves this placement to an absolute, anchor-independent top-left rectangle in
     /// virtual-desktop DIPs — what hit-testing and drawing actually need.</summary>
@@ -122,6 +123,14 @@ public sealed class WidgetPlacementStore
     /// name (spec §12: "perfis por carro/classe"); each is a full placement snapshot that
     /// auto-applies when the player's class/car matches.</summary>
     public Dictionary<string, Dictionary<string, WidgetPlacement>> ClassProfiles { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Sets only a widget's width/height, with no undo entry and no lock check -- used when
+    /// an auto-sized widget's window follows its content, which is not a user edit.</summary>
+    public void SetSizeQuiet(string widgetKey, float widthDip, float heightDip)
+    {
+        if (_placements.TryGetValue(widgetKey, out var p))
+            _placements[widgetKey] = p with { WidthDip = widthDip, HeightDip = heightDip };
+    }
 
     /// <summary>Replaces placements wholesale without undo history or the per-widget lock check --
     /// for switching to a stored profile, not for an individual user edit.</summary>

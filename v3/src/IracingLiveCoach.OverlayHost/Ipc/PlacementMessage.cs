@@ -19,7 +19,8 @@ public sealed record PlacementMessage(
     bool Locked,
     bool Visible,
     float Opacity,
-    bool ClickThrough = true)
+    bool ClickThrough = true,
+    bool AutoSize = true)
 {
     public const int CurrentSchemaVersion = 1;
 }

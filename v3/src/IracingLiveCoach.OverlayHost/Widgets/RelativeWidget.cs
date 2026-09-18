@@ -187,6 +187,7 @@ public sealed unsafe class RelativeWidget : IDisposable
 
         if (!_telemetry.HasRecentTelemetry || rows.Count == 0)
         {
+            LastDrawnSize = (TableWidthDip, RowHeightDip);
             SetBrushColor(PaletteTokens.TextDisabled);
             string text = "Waiting for iRacing...";
             fixed (char* p = text)
@@ -203,6 +204,9 @@ public sealed unsafe class RelativeWidget : IDisposable
         DrawPanel(dc, x, y, rows, session, player);
     }
 
+    /// <summary>See StandingsWidget.LastDrawnSize.</summary>
+    public (float Width, float Height) LastDrawnSize { get; private set; } = (470f, 100f);
+
     private SessionStatus? _simulatedSession;
     private PlayerCarStatus? _simulatedPlayer;
     public void SetSimulatedSession(SessionStatus? session, PlayerCarStatus? player)
@@ -214,6 +218,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
         float height = HeaderHeightDip + rows.Count * RowHeightDip;
+        LastDrawnSize = (TableWidthDip, height);
         var panel = new RectF(x, y, x + TableWidthDip, y + height);
         PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
         using (PanelChrome.PushClip(dc, panel))

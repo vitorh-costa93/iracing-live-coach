@@ -41,7 +41,7 @@ public static class HeaderFields
             "sof" => session?.StrengthOfField is double s ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(s)) : null,
             "drivers" => session is null ? null : $"{session.DriverCount} DRIVERS",
             "bb" => player?.BrakeBiasPct is double b ? "BB " + b.ToString("0.0", CultureInfo.InvariantCulture) + "%" : null,
-            "track" => player?.TrackTempC is double t ? "TRACK " + t.ToString("0.#", CultureInfo.InvariantCulture) + "°C" : null,
+            "track" => player?.TrackTempC is double t ? "TRACK " + t.ToString("0", CultureInfo.InvariantCulture) + "°C" : null,
             "rubber" => player?.TrackRubberState is { Length: > 0 } r ? "RUBBER " + r.ToUpperInvariant() : null,
             "best" => player?.BestLapTimeSeconds is double bl ? "BEST " + LapTimeFormatting.Format(bl) : null,
             "last" => player?.LastLapTimeSeconds is double ll ? "LAST " + LapTimeFormatting.Format(ll) : null,

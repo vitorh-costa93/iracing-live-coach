@@ -29,7 +29,7 @@ public class HeaderFieldsTests
     public void Text_formats_player_fields()
     {
         Assert.Equal("BB 54.5%", HeaderFields.Text("bb", Session, Player, Now));
-        Assert.Equal("TRACK 22.2°C", HeaderFields.Text("track", Session, Player, Now));
+        Assert.Equal("TRACK 22°C", HeaderFields.Text("track", Session, Player, Now));
         Assert.Equal("RUBBER EXTENSIVE USAGE", HeaderFields.Text("rubber", Session, Player, Now));
         Assert.Equal("BEST 1:32.345", HeaderFields.Text("best", Session, Player, Now));
         Assert.Equal("SOF 2.150", HeaderFields.Text("sof", Session, Player, Now));

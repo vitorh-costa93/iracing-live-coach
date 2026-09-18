@@ -241,6 +241,18 @@ public class TelemetryReader : IDisposable
         return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(userName.Trim().ToLowerInvariant());
     }
 
+    /// <summary>The pace/safety car is a real entry in the session's driver list (own "class", #0)
+    /// but is not a competitor: it must never appear as a row or a class panel in Standings/Relative.</summary>
+    private bool IsPaceCar(int carIdx)
+    {
+        try
+        {
+            var driver = _sdk.Data.SessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == carIdx);
+            return driver is not null && driver.CarIsPaceCar != 0;
+        }
+        catch { return false; }
+    }
+
     private (string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, string ClassShortName, string? ClassColorHex, string CarNumber) GetIdentity(int carIdx)
     {
         var sessionInfo = _sdk.Data.SessionInfo;
@@ -724,6 +736,7 @@ public class TelemetryReader : IDisposable
             var byOffset = new Dictionary<int, bool>();
             foreach (var (idx, position) in positions.Overall)
             {
+                if (IsPaceCar(idx)) continue;
                 if (idx == _playerCarIdx || position <= myPosition) continue;
                 var offset = position - myPosition;
                 if (offset > RelativeCarsBehind) continue;
@@ -758,6 +771,7 @@ public class TelemetryReader : IDisposable
             var rows = new List<RelativeRow>();
             foreach (var (idx, position) in positions.Overall)
             {
+                if (IsPaceCar(idx)) continue;
                 var offset = position - myPosition;
                 if (Math.Abs(offset) > RelativeCarsBehind) continue;
 
@@ -823,6 +837,7 @@ public class TelemetryReader : IDisposable
             var ordered = byOffset.OrderBy(pair => pair.Position).Take(RelativeCarsBehind * 2 + 1).ToList();
             foreach (var (position, idx) in ordered)
             {
+                if (IsPaceCar(idx)) continue;
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
                 var (p2p, p2pSeconds, p2pCharging) = ReadP2P(idx);
 
@@ -857,6 +872,7 @@ public class TelemetryReader : IDisposable
 
             foreach (var (idx, position) in positions.Overall)
             {
+                if (IsPaceCar(idx)) continue;
                 var lapsCompleted = _sdk.Data.GetInt("CarIdxLap", idx);
                 var lastLap = _sdk.Data.GetFloat("CarIdxLastLapTime", idx);
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
@@ -912,6 +928,9 @@ public class TelemetryReader : IDisposable
 
             var rows = new List<StandingsRow>();
             var leader = ordered.FirstOrDefault();
+            var intervals = ClassIntervals.Compute(
+                ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Laps, o.Gap)).ToList(),
+                estimatedTimeByPosition);
             for (var i = 0; i < ordered.Count; i++)
             {
                 var r = ordered[i];
@@ -931,17 +950,8 @@ public class TelemetryReader : IDisposable
                     estimatedTimeByPosition.TryGetValue(leader.Position, out var leaderEstimate))
                     gapToLeader = Math.Max(0, currentEstimate - leaderEstimate);
 
-                // INTERVAL (gap to the car directly ahead, not the leader) -- derived from the same
-                // real CarIdxF2Time values already used for GAP: the difference between two
-                // consecutive cars' "time behind leader" is exactly their gap to each other. Null
-                // for the leader (no car ahead) or whenever either car's own F2Time is unavailable.
-                double? interval = i > 0 && r.Laps == ordered[i - 1].Laps &&
-                    estimatedTimeByPosition.TryGetValue(r.Position, out var currentIntervalEstimate) &&
-                    estimatedTimeByPosition.TryGetValue(ordered[i - 1].Position, out var aheadIntervalEstimate)
-                    ? Math.Max(0, currentIntervalEstimate - aheadIntervalEstimate)
-                    : i > 0 && r.Gap is double gapHere && ordered[i - 1].Gap is double gapAhead
-                        ? gapHere - gapAhead
-                        : null;
+                // INTERVAL: to the car directly ahead IN THE SAME CLASS (see ClassIntervals).
+                double? interval = intervals[i];
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
                     r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
