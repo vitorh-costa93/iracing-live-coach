@@ -49,6 +49,8 @@ public partial class MainWindow : Window
     private readonly ColumnConfigIpcClient _columnConfigClient = new();
     private readonly RulesIpcClient _rulesClient = new();
     private readonly FuelConfigIpcClient _fuelConfigClient = new();
+    private readonly AppearanceIpcClient _appearanceClient = new();
+    private readonly UndoRedoIpcClient _undoRedoClient = new();
 
     public MainWindow()
     {
@@ -59,6 +61,7 @@ public partial class MainWindow : Window
         LoadColumnsForSelectedWidget();
         LoadRulesIntoControls();
         LoadFuelConfigIntoControls();
+        LoadAppearanceIntoControls();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -128,6 +131,7 @@ public partial class MainWindow : Window
         WidgetTitle.Text = _selectedWidget.ToUpperInvariant().Replace('-', ' ');
         LoadIntoControls(_selectedWidget);
         LoadColumnsForSelectedWidget();
+        LoadAppearanceIntoControls();
     }
 
     private void LoadIntoControls(string widget)
@@ -506,6 +510,76 @@ public partial class MainWindow : Window
         EditModeStatus.Text = sent
             ? (_editModeUnlocked ? "Destravado -- overlays visíveis agora, em qualquer tela." : "Travado -- overlays só aparecem quando você estiver na pista.")
             : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
+    }
+
+    // --- Aparência (spec §12: tamanho de fonte, altura das linhas e espaçamento, por widget) ---
+
+    private void LoadAppearanceIntoControls()
+    {
+        _suppressChangeEvents = true;
+        try
+        {
+            var appearance = _profileStore.AppearanceOverrides.TryGetValue(_selectedWidget, out var saved) ? saved : WidgetAppearance.Default;
+            FontScaleSlider.Value = appearance.FontScale;
+            RowHeightBox.Text = appearance.RowHeightDip.ToString(CultureInfo.InvariantCulture);
+            RowSpacingBox.Text = appearance.RowSpacingDip.ToString(CultureInfo.InvariantCulture);
+        }
+        finally { _suppressChangeEvents = false; }
+    }
+
+    private void AppearanceSliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { /* only sent on Aplicar -- a live font rebuild per drag tick would be wasteful */ }
+
+    private async void ApplyAppearance(object sender, RoutedEventArgs e)
+    {
+        if (!float.TryParse(RowHeightBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var rowHeight) ||
+            !float.TryParse(RowSpacingBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var rowSpacing))
+        {
+            AppearanceStatus.Text = "Valores inválidos.";
+            return;
+        }
+        float fontScale = (float)FontScaleSlider.Value;
+        bool sent = await _appearanceClient.SendAsync(_selectedWidget, fontScale, rowHeight, rowSpacing);
+        _profileStore.AppearanceOverrides[_selectedWidget] = new WidgetAppearance(fontScale, rowHeight, rowSpacing);
+        PlacementPersistence.Save(_profileStore);
+        AppearanceStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    private async void RestoreDefaultAppearance(object sender, RoutedEventArgs e)
+    {
+        _profileStore.AppearanceOverrides.Remove(_selectedWidget);
+        PlacementPersistence.Save(_profileStore);
+        LoadAppearanceIntoControls();
+        bool sent = await _appearanceClient.SendAsync(_selectedWidget, WidgetAppearance.Default.FontScale, WidgetAppearance.Default.RowHeightDip, WidgetAppearance.Default.RowSpacingDip);
+        AppearanceStatus.Text = sent
+            ? "Restaurado ao padrão e aplicado ao overlay ao vivo."
+            : "Restaurado ao padrão -- overlay não está rodando ou inacessível agora.";
+    }
+
+    // --- Restaurar posição/tamanho por widget (spec §4/§12: "restaurar padrões por widget") ---
+
+    private async void RestoreDefaultPlacement(object sender, RoutedEventArgs e)
+    {
+        var defaults = BuildDefaults();
+        if (!defaults.TryGetValue(_selectedWidget, out var defaultState)) return;
+        _state[_selectedWidget] = defaultState;
+        LoadIntoControls(_selectedWidget);
+        await SendAsync(defaultState);
+    }
+
+    // --- Histórico (spec §4: "desfazer/refazer mudanças de layout") ---
+
+    private async void UndoPlacement(object sender, RoutedEventArgs e)
+    {
+        bool sent = await _undoRedoClient.SendAsync("undo");
+        ConnectionStatus.Text = sent ? "Desfeito." : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
+    }
+
+    private async void RedoPlacement(object sender, RoutedEventArgs e)
+    {
+        bool sent = await _undoRedoClient.SendAsync("redo");
+        ConnectionStatus.Text = sent ? "Refeito." : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
     }
 }
 

@@ -146,6 +146,7 @@ public static unsafe class Program
         // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
         // starting positions for every widget.
         PlacementPersistence.Load(PlacementStore);
+        PlacementStore.ClearHistory(); // spec §4: undo/redo covers changes made this session, not the seed+load above
         ValidatePhysicalLimits();
 
         nint hInstance = GetModuleHandleW(null);
@@ -256,6 +257,44 @@ public static unsafe class Program
             var config = new FuelConfig(source, m.ManualLitersPerLap, m.ReserveLaps, m.ExcludePitLaps);
             fuel.SetConfig(config);
             PlacementStore.FuelConfig = config;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
+        // Sixth small typed channel: per-widget font-scale/row-height/row-spacing (spec §12).
+        void ApplyAppearance(string widgetKey, WidgetAppearance appearance)
+        {
+            switch (widgetKey)
+            {
+                case StandingsKey: standings.SetAppearance(appearance); break;
+                case RelativeKey: relative.SetAppearance(appearance); break;
+                case WeatherKey: weather.SetAppearance(appearance); break;
+                case FuelKey: fuel.SetAppearance(appearance); break;
+                case RadarKey: radar.SetAppearance(appearance); break;
+                case StartHelperKey: start.SetAppearance(appearance); break;
+                default: return; // unknown widget key -- ignore rather than guess
+            }
+        }
+        foreach (var (widgetKey, appearance) in PlacementStore.AppearanceOverrides)
+            ApplyAppearance(widgetKey, appearance);
+        using var appearanceIpcServer = new AppearanceIpcServer();
+        appearanceIpcServer.MessageReceived += m =>
+        {
+            var appearance = new WidgetAppearance(m.FontScale, m.RowHeightDip, m.RowSpacingDip);
+            ApplyAppearance(m.WidgetKey, appearance);
+            PlacementStore.AppearanceOverrides[m.WidgetKey] = appearance;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
+        // Seventh small typed channel: spec §4's undo/redo, exposed from the Control Center.
+        // Placement is the only history the store tracks (columns/rules/fuel/appearance overrides
+        // are simple last-write-wins, same as every profile field) -- an undone/redone key's window
+        // is re-synced immediately so what's on screen never lags what PlacementStore now holds.
+        using var undoRedoIpcServer = new UndoRedoIpcServer();
+        undoRedoIpcServer.MessageReceived += m =>
+        {
+            string? changedKey = m.Action == "redo" ? PlacementStore.Redo() : PlacementStore.Undo();
+            if (changedKey is null) return;
+            if (PlacementStore.Get(changedKey) is { } placement) SyncWindowToPlacement(changedKey, placement);
             PlacementPersistence.Save(PlacementStore);
         };
 
@@ -400,7 +439,6 @@ public static unsafe class Program
     /// in the plan rather than silently ignored).</summary>
     private static void ApplyPlacementMessage(PlacementMessage message)
     {
-        if (!WidgetWindows.TryGetValue(message.Widget, out var hwnd)) return;
         var current = PlacementStore.Get(message.Widget);
         if (current is null) return;
 
@@ -417,12 +455,22 @@ public static unsafe class Program
         };
         PlacementStore.Set(message.Widget, updated);
         PlacementPersistence.Save(PlacementStore); // spec §3: every applied edit survives the next launch
+        SyncWindowToPlacement(message.Widget, updated);
+    }
 
-        SetWindowPos(hwnd, 0, (int)message.X, (int)message.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    /// <summary>Pushes one widget's already-stored placement onto its live window -- position and
+    /// opacity only (see <see cref="ApplyPlacementMessage"/>'s doc comment on why width/height/scale
+    /// don't yet resize the swap chain). Shared by every path that changes <see cref="PlacementStore"/>
+    /// out from under a window without going through a fresh <see cref="PlacementMessage"/>, namely
+    /// <see cref="UndoRedoMessage"/>.</summary>
+    private static void SyncWindowToPlacement(string widgetKey, WidgetPlacement placement)
+    {
+        if (!WidgetWindows.TryGetValue(widgetKey, out var hwnd)) return;
+        SetWindowPos(hwnd, 0, (int)placement.X, (int)placement.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         // Show/hide is now owned exclusively by UpdateOverlayVisibility (on-track/edit-mode gate),
         // applied on the very next frame -- a direct ShowWindow here would fight that cache and
         // could leave the two out of sync.
-        byte alpha = (byte)Math.Clamp(message.Opacity * 255f, 0f, 255f);
+        byte alpha = (byte)Math.Clamp(placement.Opacity * 255f, 0f, 255f);
         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
     }
 

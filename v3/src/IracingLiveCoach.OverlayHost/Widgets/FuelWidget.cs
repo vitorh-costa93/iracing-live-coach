@@ -1,5 +1,6 @@
 using System.Globalization;
 using IracingLiveCoach.Core.Telemetry;
+using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Theme;
 using Vortice.Win32;
 using Vortice.Win32.Graphics.Direct2D;
@@ -52,20 +53,18 @@ public sealed unsafe class FuelWidget : IDisposable
     private ComPtr<IDWriteTextFormat> _valueFormat;
     private ComPtr<ID2D1SolidColorBrush> _brush;
 
+    private readonly IDWriteFactory* _dwriteFactory;
+    private readonly IDWriteFontCollection1* _fontCollection;
+    private WidgetAppearance _appearance = WidgetAppearance.Default;
+
     private const float WidthDip = 300f;
     private const float RowHeightDip = 32f;
 
     public FuelWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
-        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 12f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _labelFormat = labelFormat;
-
-        ComPtr<IDWriteTextFormat> valueFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 20f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(valueFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(valueFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _valueFormat = valueFormat;
+        _dwriteFactory = dwriteFactory;
+        _fontCollection = fontCollection;
+        CreateTextFormats();
 
         var white = PaletteTokens.TextPrimary;
         ComPtr<ID2D1SolidColorBrush> brush = default;
@@ -75,6 +74,30 @@ public sealed unsafe class FuelWidget : IDisposable
         _telemetry = new TelemetryReader();
         _telemetry.FuelUpdated += OnFuelUpdated;
         _telemetry.Start();
+    }
+
+    private void CreateTextFormats()
+    {
+        _labelFormat.Dispose();
+        _valueFormat.Dispose();
+
+        float scale = _appearance.FontScale;
+        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 12f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _labelFormat = labelFormat;
+
+        ComPtr<IDWriteTextFormat> valueFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 20f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(valueFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(valueFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _valueFormat = valueFormat;
+    }
+
+    public void SetAppearance(WidgetAppearance appearance)
+    {
+        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        _appearance = appearance;
+        if (fontChanged) CreateTextFormats();
     }
 
     private void OnFuelUpdated(FuelStatus status)

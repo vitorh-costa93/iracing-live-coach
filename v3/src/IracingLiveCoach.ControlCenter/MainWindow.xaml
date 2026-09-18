@@ -24,6 +24,12 @@
             <Button x:Name="EditModeButton" Content="Destravar para editar" Click="ToggleEditMode"/>
             <TextBlock x:Name="EditModeStatus" Text="" Foreground="#A6B0BB" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
 
+            <TextBlock Text="HISTÓRICO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,20,0,6" FontSize="11"/>
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="UndoButton" Content="Desfazer" Click="UndoPlacement" Margin="0,0,6,0"/>
+                <Button x:Name="RedoButton" Content="Refazer" Click="RedoPlacement"/>
+            </StackPanel>
+
             <TextBlock x:Name="ConnectionStatus" Text="" Margin="0,20,0,0" Foreground="#A6B0BB" FontSize="11" TextWrapping="Wrap"/>
         </StackPanel>
 
@@ -73,7 +79,35 @@
                         <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
 
                         <TextBlock Text="SCALE" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-                        <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged"/>
+                        <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
+
+                        <TextBlock Text="APARÊNCIA" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Tamanho de fonte, altura das linhas e espaçamento entre linhas -- aplicado ao vivo. Altura/espaçamento só afetam Standings e Relative (widgets de tabela)." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <TextBlock Text="Tamanho de fonte" Foreground="#A6B0BB" Margin="0,0,0,4"/>
+                        <Slider x:Name="FontScaleSlider" Minimum="0.7" Maximum="1.6" Value="1" ValueChanged="AppearanceSliderChanged" Margin="0,0,0,12"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Text="Altura da linha (px, 0 = padrão)" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="RowHeightBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Espaçamento entre linhas (px)" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="RowSpacingBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <Button Content="Aplicar" Click="ApplyAppearance" Margin="0,0,8,0"/>
+                            <Button Content="Restaurar padrão" Click="RestoreDefaultAppearance"/>
+                        </StackPanel>
+                        <TextBlock x:Name="AppearanceStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,0,0,16" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="RESTAURAR POSIÇÃO/TAMANHO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Volta este widget à posição, tamanho, opacidade e escala padrão -- não afeta os demais widgets." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <Button Content="Restaurar padrão do widget" Click="RestoreDefaultPlacement" HorizontalAlignment="Left"/>
                     </StackPanel>
                 </TabItem>
 

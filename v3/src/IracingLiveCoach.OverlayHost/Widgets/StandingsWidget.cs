@@ -46,7 +46,12 @@ public sealed unsafe class StandingsWidget : IDisposable
     private ComPtr<IDWriteTextFormat> _numericFormat; // right-aligned, for gap/interval/lap-time/delta columns
     private ComPtr<ID2D1SolidColorBrush> _brush; // color set per-draw via SetColor; one brush reused throughout.
 
-    private const float RowHeightDip = 24f;
+    private readonly IDWriteFactory* _dwriteFactory;
+    private readonly IDWriteFontCollection1* _fontCollection;
+    private WidgetAppearance _appearance = WidgetAppearance.Default;
+    private float RowHeightDip => (_appearance.RowHeightDip > 0 ? _appearance.RowHeightDip : BaseRowHeightDip) + _appearance.RowSpacingDip;
+
+    private const float BaseRowHeightDip = 24f;
     private const float ClassHeaderHeightDip = 18f;
     private const float SessionHeaderHeightDip = 18f;
     private const float ClassStripWidthDip = 3f;
@@ -113,22 +118,9 @@ public sealed unsafe class StandingsWidget : IDisposable
     public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
     {
         _flags = flags;
-        ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 15f, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _nameFormat = nameFormat;
-
-        ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 14f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _statusFormat = statusFormat;
-
-        ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 14f, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
-        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _numericFormat = numericFormat;
+        _dwriteFactory = dwriteFactory;
+        _fontCollection = fontCollection;
+        CreateTextFormats();
 
         var white = PaletteTokens.TextPrimary;
         ComPtr<ID2D1SolidColorBrush> brush = default;
@@ -139,6 +131,45 @@ public sealed unsafe class StandingsWidget : IDisposable
         _telemetry.StandingsUpdated += OnStandingsUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.Start();
+    }
+
+    /// <summary>(Re)builds every owned text format at its tuned base size times the current
+    /// <see cref="_appearance"/> font scale. Called from the constructor and again from
+    /// <see cref="SetAppearance"/> -- a DirectWrite text format's size is immutable once created,
+    /// so a live font-scale change means throwing the old ones away and creating new ones, not
+    /// mutating them.</summary>
+    private void CreateTextFormats()
+    {
+        _nameFormat.Dispose();
+        _statusFormat.Dispose();
+        _numericFormat.Dispose();
+
+        float scale = _appearance.FontScale;
+        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _nameFormat = nameFormat;
+
+        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 14f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _statusFormat = statusFormat;
+
+        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 14f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _numericFormat = numericFormat;
+    }
+
+    /// <summary>Spec §12: font scale/row height/row spacing apply live, no restart, same pattern as
+    /// <see cref="SetColumns"/>.</summary>
+    public void SetAppearance(WidgetAppearance appearance)
+    {
+        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        _appearance = appearance;
+        if (fontChanged) CreateTextFormats();
     }
 
     private void OnStandingsUpdated(List<StandingsRow> rows)

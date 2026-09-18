@@ -1,4 +1,5 @@
 using IracingLiveCoach.Core.Telemetry;
+using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Theme;
 using Vortice.Win32;
 using Vortice.Win32.Graphics.Direct2D;
@@ -29,6 +30,10 @@ public sealed unsafe class RadarWidget : IDisposable
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<ID2D1SolidColorBrush> _brush;
 
+    private readonly IDWriteFactory* _dwriteFactory;
+    private readonly IDWriteFontCollection1* _fontCollection;
+    private WidgetAppearance _appearance = WidgetAppearance.Default;
+
     private const float WidthDip = 180f;
     private const float HeightDip = 130f;
     private const float BlindSpotBoxHeightDip = 28f;
@@ -36,11 +41,9 @@ public sealed unsafe class RadarWidget : IDisposable
 
     public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
-        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 12f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
-        ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(labelFormat.Get()->SetTextAlignment(TextAlignment.Center));
-        ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _labelFormat = labelFormat;
+        _dwriteFactory = dwriteFactory;
+        _fontCollection = fontCollection;
+        CreateTextFormats();
 
         var white = PaletteTokens.TextPrimary;
         ComPtr<ID2D1SolidColorBrush> brush = default;
@@ -50,6 +53,23 @@ public sealed unsafe class RadarWidget : IDisposable
         _telemetry = new TelemetryReader();
         _telemetry.RadarUpdated += OnRadarUpdated;
         _telemetry.Start();
+    }
+
+    private void CreateTextFormats()
+    {
+        _labelFormat.Dispose();
+        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 12f * _appearance.FontScale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(labelFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        _labelFormat = labelFormat;
+    }
+
+    public void SetAppearance(WidgetAppearance appearance)
+    {
+        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        _appearance = appearance;
+        if (fontChanged) CreateTextFormats();
     }
 
     private void OnRadarUpdated(RadarStatus status)

@@ -102,6 +102,10 @@ public sealed class WidgetPlacementStore
     /// FuelConfig.Default".</summary>
     public FuelConfig? FuelConfig { get; set; }
 
+    /// <summary>Per-widget font scale/row height/row spacing overrides (spec §12), keyed by widget
+    /// key. A widget absent from this dictionary uses <see cref="WidgetAppearance.Default"/>.</summary>
+    public Dictionary<string, WidgetAppearance> AppearanceOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);
@@ -123,22 +127,37 @@ public sealed class WidgetPlacementStore
     public bool CanUndo => _undoStack.Count > 0;
     public bool CanRedo => _redoStack.Count > 0;
 
-    public void Undo()
+    /// <summary>Discards accumulated undo/redo history without touching current placements. Called
+    /// once at startup, after the default seed values and the persisted profile have both gone
+    /// through <see cref="Set"/> -- otherwise a user's first "desfazer" would undo internal wiring
+    /// they never asked to change, back past the state their profile actually saved.</summary>
+    public void ClearHistory()
     {
-        if (_undoStack.Count == 0) return;
+        _undoStack.Clear();
+        _redoStack.Clear();
+    }
+
+    /// <summary>Returns the widget key that was just reverted (or null if the stack was empty) so
+    /// a caller sitting outside this store -- e.g. the IPC handler that also owns the live overlay
+    /// windows -- knows exactly which widget's window to re-sync, without diffing every key.</summary>
+    public string? Undo()
+    {
+        if (_undoStack.Count == 0) return null;
         var (key, previous) = _undoStack.Pop();
         _redoStack.Push((key, _placements.GetValueOrDefault(key)));
         if (previous is null) _placements.Remove(key);
         else _placements[key] = previous;
+        return key;
     }
 
-    public void Redo()
+    public string? Redo()
     {
-        if (_redoStack.Count == 0) return;
+        if (_redoStack.Count == 0) return null;
         var (key, next) = _redoStack.Pop();
         _undoStack.Push((key, _placements.GetValueOrDefault(key)));
         if (next is null) _placements.Remove(key);
         else _placements[key] = next;
+        return key;
     }
 
     /// <summary>Spec §4: "recuperar widgets fora da tela" after a resolution/monitor change. Clamps

@@ -1,0 +1,17 @@
+namespace IracingLiveCoach.OverlayHost.Layout;
+
+/// <summary>Per-widget text/row sizing (spec §12: "aumentar fonte... altura das linhas e
+/// espaçamento... por widget" -- opacity already lived on <see cref="WidgetPlacement"/>, this is
+/// the rest of that group). Pure data so it round-trips through persistence and IPC identically to
+/// every other override in <see cref="WidgetPlacementStore"/>.</summary>
+/// <param name="FontScale">Multiplier applied to every text format a widget owns (its own base
+/// sizes are the widget's tuned defaults at 1.0).</param>
+/// <param name="RowHeightDip">Table-row height override for row-based widgets (Standings/Relative).
+/// 0 means "use the widget's own default" -- never persisted as a guessed absolute for widgets that
+/// have no rows.</param>
+/// <param name="RowSpacingDip">Extra vertical gap inserted between consecutive rows, on top of
+/// <paramref name="RowHeightDip"/>. Ignored by widgets with no row list.</param>
+public sealed record WidgetAppearance(float FontScale, float RowHeightDip, float RowSpacingDip)
+{
+    public static WidgetAppearance Default { get; } = new(FontScale: 1f, RowHeightDip: 0f, RowSpacingDip: 0f);
+}
