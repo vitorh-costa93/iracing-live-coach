@@ -124,6 +124,19 @@
                     </StackPanel>
                 </TabItem>
 
+                <TabItem Header="Cabeçalho">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="CABEÇALHO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="HeaderHint" Text="Escolha quais campos aparecem na faixa de cabeçalho e em que ordem (↑/↓) -- aplicado ao vivo. Campos sem dado ainda são omitidos, nunca preenchidos com valor falso. Disponível para Standings e Relative." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <ItemsControl x:Name="HeaderList"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Content="Aplicar" Click="ApplyHeaderConfig" Margin="0,0,8,0"/>
+                            <Button Content="Restaurar padrão" Click="RestoreDefaultHeader"/>
+                        </StackPanel>
+                        <TextBlock x:Name="HeaderStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </TabItem>
+
                 <TabItem Header="Regras">
                     <StackPanel Margin="0,12,0,0">
                         <TextBlock Text="REGRAS -- STANDINGS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>

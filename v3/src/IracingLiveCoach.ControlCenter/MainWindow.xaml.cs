@@ -52,6 +52,8 @@ public partial class MainWindow : Window
     private readonly AppearanceIpcClient _appearanceClient = new();
     private readonly UndoRedoIpcClient _undoRedoClient = new();
     private readonly NumberFormatIpcClient _numberFormatClient = new();
+    private readonly HeaderConfigIpcClient _headerClient = new();
+    private List<IracingLiveCoach.Core.Telemetry.HeaderFieldConfig> _currentHeader = [];
 
     public MainWindow()
     {
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
         LoadFuelConfigIntoControls();
         LoadAppearanceIntoControls();
         LoadNumberFormatIntoControls();
+        LoadHeaderForSelectedWidget();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -134,6 +137,7 @@ public partial class MainWindow : Window
         LoadIntoControls(_selectedWidget);
         LoadColumnsForSelectedWidget();
         LoadAppearanceIntoControls();
+        LoadHeaderForSelectedWidget();
     }
 
     private void LoadIntoControls(string widget)
@@ -536,6 +540,96 @@ public partial class MainWindow : Window
         NumberFormatStatus.Text = sent
             ? "Aplicado ao overlay ao vivo e salvo."
             : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    // --- Cabeçalho (spec §12: campos configuráveis e reordenáveis) ---
+
+    private static readonly Dictionary<string, string> HeaderLabels = new()
+    {
+        ["type"] = "Tipo de sessão (RACE)", ["class"] = "Classe", ["lap"] = "Volta atual/total",
+        ["sof"] = "SOF", ["drivers"] = "Nº de pilotos", ["bb"] = "Brake bias", ["track"] = "Temp. da pista",
+        ["rubber"] = "Emborrachamento", ["best"] = "Melhor volta", ["last"] = "Última volta", ["local"] = "Hora local",
+    };
+
+    private static List<IracingLiveCoach.Core.Telemetry.HeaderFieldConfig>? DefaultHeaderFor(string widget) => widget switch
+    {
+        "standings" => IracingLiveCoach.Core.Telemetry.HeaderFields.DefaultStandings(),
+        "relative" => IracingLiveCoach.Core.Telemetry.HeaderFields.DefaultRelative(),
+        _ => null
+    };
+
+    private void LoadHeaderForSelectedWidget()
+    {
+        var defaults = DefaultHeaderFor(_selectedWidget);
+        if (defaults is null)
+        {
+            _currentHeader = [];
+            HeaderHint.Text = $"Cabeçalho configurável não se aplica a '{_selectedWidget}' -- apenas Standings e Relative têm faixa de cabeçalho.";
+        }
+        else
+        {
+            _currentHeader = _profileStore.HeaderOverrides.TryGetValue(_selectedWidget, out var saved)
+                ? IracingLiveCoach.Core.Telemetry.HeaderFields.Complete(saved)
+                : defaults;
+            HeaderHint.Text = "Escolha quais campos aparecem na faixa de cabeçalho e em que ordem (↑/↓) -- aplicado ao vivo. Campos sem dado ainda são omitidos, nunca preenchidos com valor falso.";
+        }
+        RefreshHeaderList();
+    }
+
+    private void RefreshHeaderList()
+    {
+        var panel = new StackPanel();
+        for (int i = 0; i < _currentHeader.Count; i++)
+        {
+            var field = _currentHeader[i];
+            int index = i;
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            var up = new Button { Content = "↑", Padding = new Thickness(6, 0, 6, 0), IsEnabled = index > 0, Margin = new Thickness(0, 0, 2, 0) };
+            up.Click += (_, _) => MoveHeaderField(index, -1);
+            var down = new Button { Content = "↓", Padding = new Thickness(6, 0, 6, 0), IsEnabled = index < _currentHeader.Count - 1, Margin = new Thickness(0, 0, 8, 0) };
+            down.Click += (_, _) => MoveHeaderField(index, 1);
+            var visible = new CheckBox
+            {
+                IsChecked = field.Visible, VerticalAlignment = VerticalAlignment.Center,
+                Content = HeaderLabels.GetValueOrDefault(field.Key, field.Key)
+            };
+            visible.Checked += (_, _) => _currentHeader[index] = _currentHeader[index] with { Visible = true };
+            visible.Unchecked += (_, _) => _currentHeader[index] = _currentHeader[index] with { Visible = false };
+            row.Children.Add(up);
+            row.Children.Add(down);
+            row.Children.Add(visible);
+            panel.Children.Add(row);
+        }
+        HeaderList.ItemsSource = new[] { panel };
+    }
+
+    private void MoveHeaderField(int index, int direction)
+    {
+        int target = index + direction;
+        if (target < 0 || target >= _currentHeader.Count) return;
+        (_currentHeader[index], _currentHeader[target]) = (_currentHeader[target], _currentHeader[index]);
+        RefreshHeaderList();
+    }
+
+    private async void ApplyHeaderConfig(object sender, RoutedEventArgs e)
+    {
+        if (DefaultHeaderFor(_selectedWidget) is null) { HeaderStatus.Text = "Este widget não tem cabeçalho configurável."; return; }
+        bool sent = await _headerClient.SendAsync(_selectedWidget, _currentHeader.Select(f => new HeaderFieldWire(f.Key, f.Visible)).ToList());
+        _profileStore.HeaderOverrides[_selectedWidget] = _currentHeader.ToList();
+        PlacementPersistence.Save(_profileStore);
+        HeaderStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    private void RestoreDefaultHeader(object sender, RoutedEventArgs e)
+    {
+        var defaults = DefaultHeaderFor(_selectedWidget);
+        if (defaults is null) return;
+        _currentHeader = defaults;
+        _profileStore.HeaderOverrides.Remove(_selectedWidget);
+        RefreshHeaderList();
+        HeaderStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
     }
 
     // --- Modo de edição global (spec §4: overlays só visíveis na pista, exceto durante edição) ---

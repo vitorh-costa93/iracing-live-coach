@@ -26,7 +26,8 @@ public sealed record PlacementProfile(
     StandingsPresentationOptions? StandingsRules = null,
     FuelConfig? FuelConfig = null,
     Dictionary<string, WidgetAppearance>? AppearanceOverrides = null,
-    NumberFormatConfig? NumberFormat = null)
+    NumberFormatConfig? NumberFormat = null,
+    Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -106,6 +107,12 @@ public static class PlacementPersistence
 
         if (profile.NumberFormat is not null)
             store.NumberFormat = profile.NumberFormat;
+
+        if (profile.HeaderOverrides is not null)
+        {
+            foreach (var (widgetKey, fields) in profile.HeaderOverrides)
+                store.HeaderOverrides[widgetKey] = fields;
+        }
     }
 
     private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
@@ -142,7 +149,8 @@ public static class PlacementPersistence
                 store.StandingsRules,
                 store.FuelConfig,
                 new Dictionary<string, WidgetAppearance>(store.AppearanceOverrides, StringComparer.OrdinalIgnoreCase),
-                store.NumberFormat);
+                store.NumberFormat,
+                new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase));
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

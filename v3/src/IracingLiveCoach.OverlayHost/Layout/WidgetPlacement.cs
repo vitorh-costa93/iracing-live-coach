@@ -110,6 +110,10 @@ public sealed class WidgetPlacementStore
     /// Null means "use NumberFormatConfig.Default".</summary>
     public NumberFormatConfig? NumberFormat { get; set; }
 
+    /// <summary>Per-widget configurable header fields (spec §12), keyed by widget key; list order
+    /// is display order.</summary>
+    public Dictionary<string, List<HeaderFieldConfig>> HeaderOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);

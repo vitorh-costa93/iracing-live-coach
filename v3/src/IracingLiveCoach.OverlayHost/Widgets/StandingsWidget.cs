@@ -35,6 +35,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private readonly object _lock = new();
     private List<StandingsRow> _rows = new();
     private SessionStatus? _sessionStatus;
+    private PlayerCarStatus? _playerStatus;
 
     /// <summary>Non-null while showing fictitious data for layout verification, per spec §12's
     /// explicit requirement: "preview com dados fictícios claramente identificado como simulação,
@@ -135,6 +136,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         _telemetry = new TelemetryReader();
         _telemetry.StandingsUpdated += OnStandingsUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
+        _telemetry.PlayerCarStatusUpdated += OnPlayerCarStatusUpdated;
         _telemetry.Start();
     }
 
@@ -187,6 +189,11 @@ public sealed unsafe class StandingsWidget : IDisposable
         lock (_lock) { _sessionStatus = status; }
     }
 
+    private void OnPlayerCarStatusUpdated(PlayerCarStatus status)
+    {
+        lock (_lock) { _playerStatus = status; }
+    }
+
     private void SetBrushColor(Color4 color)
     {
         var c = color;
@@ -211,7 +218,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            DrawSessionHeader(dc, x, y, null);
+            DrawSessionHeader(dc, x, y, null, null);
             DrawRows(dc, x, y + SessionHeaderHeightDip, simulated);
             return;
         }
@@ -226,36 +233,29 @@ public sealed unsafe class StandingsWidget : IDisposable
         }
 
         SessionStatus? session;
-        lock (_lock) { session = _sessionStatus; }
-        DrawSessionHeader(dc, x, y, session);
+        PlayerCarStatus? player;
+        lock (_lock) { session = _sessionStatus; player = _playerStatus; }
+        DrawSessionHeader(dc, x, y, session, player);
         DrawRows(dc, x, y + SessionHeaderHeightDip, rows);
     }
 
-    private void DrawSessionHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session)
+    private List<HeaderFieldConfig> _headerFields = HeaderFields.DefaultStandings();
+    public void SetHeaderFields(List<HeaderFieldConfig> fields) => _headerFields = HeaderFields.Complete(fields);
+
+    private void DrawSessionHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session, PlayerCarStatus? player)
     {
         SetBrushColor(PaletteTokens.SessionHeaderBand);
         var band = new RectF(x, y, x + TableWidth, y + SessionHeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
-        // Spec §5/§15: no decorative widget title ("STANDINGS") ever -- only real session info.
-        // Without a session yet, the band stays empty rather than a placeholder label.
-        if (session is not null)
+        // Spec §5/§15: no decorative widget title -- only the user-configured real header fields
+        // (spec §12), in the user's chosen order; fields without data yet are skipped.
+        string text = HeaderFields.Compose(_headerFields, session, player, DateTime.Now);
+        if (text.Length == 0) return;
+        SetBrushColor(PaletteTokens.TextPrimary);
+        fixed (char* p = text)
         {
-            string text = $"{session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}  SOF {session.StrengthOfField?.ToString("0", CultureInfo.InvariantCulture) ?? "—"}  {session.DriverCount} DRIVERS";
-            SetBrushColor(PaletteTokens.TextPrimary);
-            fixed (char* p = text)
-            {
-                var rect = new RectF(x + 8f, y, x + TableWidth - 60f, y + SessionHeaderHeightDip);
-                dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-        }
-        // LOCAL clock (spec §8/§15): system-local time, short "LOCAL" label, always shown in the
-        // session header band regardless of whether a live session is present yet.
-        string local = "LOCAL " + DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        SetBrushColor(PaletteTokens.TextSecondary);
-        fixed (char* p = local)
-        {
-            var rect = new RectF(x + TableWidth - 76f, y, x + TableWidth - 6f, y + SessionHeaderHeightDip);
-            dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            var rect = new RectF(x + 8f, y, x + TableWidth - 6f, y + SessionHeaderHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
@@ -587,6 +587,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         _telemetry.StandingsUpdated -= OnStandingsUpdated;
         _telemetry.SessionStatusUpdated -= OnSessionStatusUpdated;
+        _telemetry.PlayerCarStatusUpdated -= OnPlayerCarStatusUpdated;
         _telemetry.Dispose();
         _brush.Dispose();
         _numericFormat.Dispose();

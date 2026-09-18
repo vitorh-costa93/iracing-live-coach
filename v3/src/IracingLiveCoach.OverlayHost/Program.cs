@@ -285,6 +285,27 @@ public static unsafe class Program
             PlacementPersistence.Save(PlacementStore);
         };
 
+        // Configurable header fields (spec §12): reorder + show/hide per widget, live and persisted.
+        void ApplyHeaderFields(string widgetKey, List<HeaderFieldConfig> fields)
+        {
+            switch (widgetKey)
+            {
+                case StandingsKey: standings.SetHeaderFields(fields); break;
+                case RelativeKey: relative.SetHeaderFields(fields); break;
+                default: return; // only the two table widgets have a session header
+            }
+        }
+        foreach (var (widgetKey, fields) in PlacementStore.HeaderOverrides)
+            ApplyHeaderFields(widgetKey, fields);
+        using var headerConfigIpcServer = new HeaderConfigIpcServer();
+        headerConfigIpcServer.MessageReceived += m =>
+        {
+            var fields = m.Fields.Select(f => new HeaderFieldConfig(f.Key, f.Visible)).ToList();
+            ApplyHeaderFields(m.Widget, fields);
+            PlacementStore.HeaderOverrides[m.Widget] = fields;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
         // Seventh small typed channel: iRating/Safety Rating display format, global across
         // Standings/Relative (spec §12).
         if (PlacementStore.NumberFormat is { } savedNumberFormat)

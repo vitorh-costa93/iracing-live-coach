@@ -229,47 +229,23 @@ public sealed unsafe class RelativeWidget : IDisposable
         dc->DrawRectangle(&outer, (ID2D1Brush*)_brush.Get(), PaletteTokens.BorderAndGridThicknessPx, null);
     }
 
+    private List<HeaderFieldConfig> _headerFields = HeaderFields.DefaultRelative();
+    public void SetHeaderFields(List<HeaderFieldConfig> fields) => _headerFields = HeaderFields.Complete(fields);
+
     private void DrawHeader(ID2D1DeviceContext* dc, float x, float y, SessionStatus? session, PlayerCarStatus? player)
     {
         SetBrushColor(PaletteTokens.SessionHeaderBand);
         var band = new RectF(x, y, x + TableWidthDip, y + HeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
-        // Spec §5/§15: no decorative "RELATIVE" title -- only real session/player info, distributed
-        // across the header's full width (BB / track temp / rubber on the left, LOCAL clock right).
-        if (session is not null)
+        // Spec §5/§15: no decorative "RELATIVE" title -- only the user-configured real header
+        // fields (spec §12), in the user's chosen order; fields without data yet are skipped.
+        string text = HeaderFields.Compose(_headerFields, session, player, DateTime.Now);
+        if (text.Length == 0) return;
+        SetBrushColor(PaletteTokens.TextPrimary);
+        fixed (char* p = text)
         {
-            string sessionText = $"{session.CarClassShortName}  {session.SessionTypeText}  LAP {session.CurrentLap?.ToString(CultureInfo.InvariantCulture) ?? "—"}/{session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—"}";
-            SetBrushColor(PaletteTokens.TextPrimary);
-            fixed (char* p = sessionText)
-            {
-                var rect = new RectF(x + 8f, y, x + TableWidthDip * 0.5f, y + HeaderHeightDip);
-                dc->DrawText(p, (uint)sessionText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-        }
-        if (player is not null)
-        {
-            // spec §7: brake bias / track temp / rubber (emborrachamento), spec §8: rubber is
-            // independent from humidity/wetness -- shown here as its own field, not folded in.
-            var bias = player.BrakeBiasPct is double b ? $"BB {b:0.0}%" : null;
-            var track = player.TrackTempC is double t ? $"TRACK {t:0.#}°C" : null;
-            var rubber = player.TrackRubberState is { Length: > 0 } r ? $"RUBBER {r.ToUpperInvariant()}" : null;
-            string playerText = string.Join("   ", new[] { bias, track, rubber }.Where(s => s is not null));
-            if (playerText.Length > 0)
-            {
-                SetBrushColor(PaletteTokens.TextSecondary);
-                fixed (char* p = playerText)
-                {
-                    var rect = new RectF(x + TableWidthDip * 0.5f, y, x + TableWidthDip - 76f, y + HeaderHeightDip);
-                    dc->DrawText(p, (uint)playerText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-                }
-            }
-        }
-        string local = "LOCAL " + DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        SetBrushColor(PaletteTokens.TextSecondary);
-        fixed (char* p = local)
-        {
-            var rect = new RectF(x + TableWidthDip - 76f, y, x + TableWidthDip - 6f, y + HeaderHeightDip);
-            dc->DrawText(p, (uint)local.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            var rect = new RectF(x + 8f, y, x + TableWidthDip - 6f, y + HeaderHeightDip);
+            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
