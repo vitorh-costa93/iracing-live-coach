@@ -9,7 +9,8 @@ public sealed record StandingsPresentationOptions(
     int TopNPerClass = 1,
     int OwnClassRows = 5,
     int OtherClassRows = 1,
-    bool KeepPlayerWindow = true)
+    bool KeepPlayerWindow = true,
+    bool TopNCountsTowardTotal = true)
 {
     public static StandingsPresentationOptions Default { get; } = new();
 }
@@ -33,11 +34,14 @@ public static class StandingsSelection
             {
                 var ranked = group.OrderBy(r => r.ClassPosition > 0 ? r.ClassPosition : r.Position).ToList();
                 bool isPlayerClass = hasPlayer && group.Key == playerClassId;
-                int budget = isPlayerClass ? Math.Max(1, settings.OwnClassRows) : Math.Max(0, settings.OtherClassRows);
+                int topN = Math.Max(0, settings.TopNPerClass);
+                // "Top N incluído no total" (spec §12): when off, the Top N rows are ADDED to the class budget.
+                int budget = (isPlayerClass ? Math.Max(1, settings.OwnClassRows) : Math.Max(0, settings.OtherClassRows))
+                             + (settings.TopNCountsTowardTotal ? 0 : topN);
                 var picked = new List<StandingsRow>();
 
                 // The Top-N requirement is class-local, not the table index/global grid rank.
-                picked.AddRange(ranked.Take(Math.Min(Math.Max(0, settings.TopNPerClass), budget)));
+                picked.AddRange(ranked.Take(Math.Min(topN, budget)));
 
                 if (isPlayerClass && settings.KeepPlayerWindow)
                 {

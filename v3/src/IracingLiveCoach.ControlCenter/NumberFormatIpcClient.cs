@@ -12,7 +12,7 @@ public sealed class NumberFormatIpcClient
     private const int SchemaVersion = 1;
     private const int ConnectTimeoutMs = 200;
 
-    public async Task<bool> SendAsync(string iRatingFormat, string safetyRatingFormat, string nameFormat)
+    public async Task<bool> SendAsync(string iRatingFormat, string safetyRatingFormat, string nameFormat, bool showIRatingDelta = true)
     {
         try
         {
@@ -20,7 +20,7 @@ public sealed class NumberFormatIpcClient
             using var cts = new CancellationTokenSource(ConnectTimeoutMs);
             await pipe.ConnectAsync(cts.Token);
 
-            var message = new NumberFormatMessageWire(SchemaVersion, iRatingFormat, safetyRatingFormat, nameFormat);
+            var message = new NumberFormatMessageWire(SchemaVersion, iRatingFormat, safetyRatingFormat, nameFormat, showIRatingDelta);
             string json = JsonSerializer.Serialize(message) + "\n";
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             await pipe.WriteAsync(bytes);
@@ -33,4 +33,4 @@ public sealed class NumberFormatIpcClient
     }
 }
 
-file sealed record NumberFormatMessageWire(int SchemaVersion, string IRatingFormat, string SafetyRatingFormat, string NameFormat);
+file sealed record NumberFormatMessageWire(int SchemaVersion, string IRatingFormat, string SafetyRatingFormat, string NameFormat, bool ShowIRatingDelta);

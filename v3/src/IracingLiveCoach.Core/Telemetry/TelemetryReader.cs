@@ -103,6 +103,7 @@ public class TelemetryReader : IDisposable
     // ultrapassagem" -- how many cars behind to report. 3 covers "who might attack me soon", not
     // just the immediate follower, without turning into a full running order.
     private const int RelativeCarsBehind = 3;
+    private const int RelativeCarsMax = RelativeRules.Max;
 
     // UpdateInterval=1 makes IRSDKSharper fire OnTelemetryData on every sim tick (60Hz for most
     // cars) instead of silently skipping frames -- the app's own tick counters below are what
@@ -789,7 +790,7 @@ public class TelemetryReader : IDisposable
             {
                 if (IsPaceCar(idx)) continue;
                 var offset = position - myPosition;
-                if (Math.Abs(offset) > RelativeCarsBehind) continue;
+                if (Math.Abs(offset) > RelativeCarsMax) continue;
 
                 var theirEstTime = _sdk.Data.GetFloat("CarIdxEstTime", idx);
                 // Simple same-lap gap estimate -- does not correct for a lap-count difference

@@ -30,7 +30,9 @@ public sealed record PlacementProfile(
     Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null,
     SessionVisibilityConfig? SessionVisibility = null,
     Dictionary<string, Dictionary<string, WidgetPlacement>>? ClassProfiles = null,
-    int LayoutRevision = 0)
+    int LayoutRevision = 0,
+    RelativeRules? RelativeRules = null,
+    List<string>? ClassRankColors = null)
 {
     public const int CurrentSchemaVersion = 1;
 
@@ -134,6 +136,12 @@ public static class PlacementPersistence
         if (profile.SessionVisibility is not null)
             store.SessionVisibility = profile.SessionVisibility;
 
+        if (profile.RelativeRules is not null)
+            store.RelativeRules = profile.RelativeRules;
+
+        if (profile.ClassRankColors is { Count: > 0 })
+            store.ClassRankColors = profile.ClassRankColors;
+
         if (profile.ClassProfiles is not null)
         {
             foreach (var (key, placements) in profile.ClassProfiles)
@@ -179,7 +187,9 @@ public static class PlacementPersistence
                 new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase),
                 store.SessionVisibility,
                 new Dictionary<string, Dictionary<string, WidgetPlacement>>(store.ClassProfiles, StringComparer.OrdinalIgnoreCase),
-                PlacementProfile.CurrentLayoutRevision);
+                PlacementProfile.CurrentLayoutRevision,
+                store.RelativeRules,
+                store.ClassRankColors);
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

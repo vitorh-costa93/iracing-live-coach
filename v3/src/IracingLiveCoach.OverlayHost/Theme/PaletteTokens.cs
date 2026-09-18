@@ -196,10 +196,21 @@ public static class PaletteTokens
     /// <summary>Class colours by SPEED rank within the session (user rule): fastest class yellow,
     /// second light blue, third pink, fourth green. Two classes can therefore never share a colour
     /// (previously a class was coloured by NAME, so e.g. LMP2 and GT3 collided).</summary>
-    public static readonly Color4[] ClassRankColors =
+    public static Color4[] ClassRankColors { get; private set; } =
     [
         Hex("#FFD400"), Hex("#5CC8FF"), Hex("#FF6EB4"), Hex("#3DDC84")
     ];
+
+    /// <summary>Replaces the rank colours (fastest class first) from "#RRGGBB" strings; entries that
+    /// don't parse keep the current colour. Live: the cache is cleared so the next frame repaints.</summary>
+    public static void SetRankColors(IReadOnlyList<string> hexes)
+    {
+        var next = (Color4[])ClassRankColors.Clone();
+        for (int i = 0; i < Math.Min(hexes.Count, next.Length); i++)
+            if (TryParseHex(hexes[i], out var color)) next[i] = color;
+        ClassRankColors = next;
+        InvalidateSessionCache();
+    }
 
     /// <summary>Cores adicionais do catálogo para outras classes, em ordem de atribuição estável.</summary>
     public static readonly Color4[] OtherClassColors =

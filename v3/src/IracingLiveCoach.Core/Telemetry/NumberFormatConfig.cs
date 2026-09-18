@@ -12,7 +12,7 @@ public enum SafetyRatingFormat { LetterAndNumber, NumberOnly, LetterOnly }
 /// <summary>Live, user-configurable number-format preferences, global across widgets (spec §12
 /// groups this with the other cross-cutting formatting asks, not per-widget like column decimals).
 /// Null means "use Default".</summary>
-public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating, NameDisplayFormat NameFormat = NameDisplayFormat.Full)
+public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating, NameDisplayFormat NameFormat = NameDisplayFormat.Full, bool ShowIRatingDelta = true)
 {
     public static NumberFormatConfig Default { get; } = new(IRatingFormat.Full, SafetyRatingFormat.LetterAndNumber, NameDisplayFormat.Full);
 

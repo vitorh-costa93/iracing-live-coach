@@ -19,6 +19,7 @@ using IracingLiveCoach.OverlayHost.Assets;
 using IracingLiveCoach.OverlayHost.Ipc;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Persistence;
+using IracingLiveCoach.OverlayHost.Theme;
 using IracingLiveCoach.OverlayHost.Widgets;
 using static Vortice.Win32.Apis;
 using static Vortice.Win32.Graphics.Direct2D.Apis;
@@ -230,12 +231,17 @@ public static unsafe class Program
 
         // Fourth small typed channel: Standings' Top N / rows-per-class selection rules.
         if (PlacementStore.StandingsRules is { } savedRules) standings.SetPresentationOptions(savedRules);
+        if (PlacementStore.RelativeRules is { } savedRelativeRules) relative.SetRelativeRules(savedRelativeRules);
+        if (PlacementStore.ClassRankColors is { Count: > 0 } savedRankColors) PaletteTokens.SetRankColors(savedRankColors);
         using var rulesIpcServer = new RulesIpcServer();
         rulesIpcServer.MessageReceived += m =>
         {
-            var options = new StandingsPresentationOptions(m.TopNPerClass, m.OwnClassRows, m.OtherClassRows, m.KeepPlayerWindow);
+            var options = new StandingsPresentationOptions(m.TopNPerClass, m.OwnClassRows, m.OtherClassRows, m.KeepPlayerWindow, m.TopNCountsTowardTotal);
+            var relativeRules = new RelativeRules(m.RelativeAhead, m.RelativeBehind).Clamped();
             standings.SetPresentationOptions(options);
+            relative.SetRelativeRules(relativeRules);
             PlacementStore.StandingsRules = options;
+            PlacementStore.RelativeRules = relativeRules;
             PlacementPersistence.Save(PlacementStore);
         };
 
@@ -270,7 +276,7 @@ public static unsafe class Program
         using var appearanceIpcServer = new AppearanceIpcServer();
         appearanceIpcServer.MessageReceived += m =>
         {
-            var appearance = new WidgetAppearance(m.FontScale, m.RowHeightDip, m.RowSpacingDip);
+            var appearance = new WidgetAppearance(m.FontScale, m.RowHeightDip, m.RowSpacingDip, m.FontWeight, m.PaddingHDip);
             ApplyAppearance(m.WidgetKey, appearance);
             PlacementStore.AppearanceOverrides[m.WidgetKey] = appearance;
             PlacementPersistence.Save(PlacementStore);
@@ -310,12 +316,57 @@ public static unsafe class Program
             if (!Enum.TryParse<IRatingFormat>(m.IRatingFormat, out var iRatingFormat)) return;
             if (!Enum.TryParse<SafetyRatingFormat>(m.SafetyRatingFormat, out var srFormat)) return;
             if (!Enum.TryParse<NameDisplayFormat>(m.NameFormat, out var nameFormat)) return;
-            var config = new NumberFormatConfig(iRatingFormat, srFormat, nameFormat);
+            var config = new NumberFormatConfig(iRatingFormat, srFormat, nameFormat, m.ShowIRatingDelta);
             standings.SetNumberFormat(config);
             relative.SetNumberFormat(config);
             PlacementStore.NumberFormat = config;
             PlacementPersistence.Save(PlacementStore);
         };
+
+        // Class colours (spec §16), live: the four speed-rank colours and the per-name overrides.
+        using var classColorsIpcServer = new ClassColorsIpcServer();
+        classColorsIpcServer.MessageReceived += m =>
+        {
+            PaletteTokens.SetRankColors(m.RankColors);
+            PaletteTokens.ClearAllNameOverrides();
+            foreach (var (className, hex) in m.NameOverrides)
+                if (TryParseHexColor(hex, out var color)) PaletteTokens.SetNameOverride(className, color);
+            PlacementStore.ClassRankColors = m.RankColors.ToList();
+            PlacementStore.ClassColorOverrides.Clear();
+            foreach (var (className, hex) in m.NameOverrides) PlacementStore.ClassColorOverrides[className] = hex;
+            PlacementPersistence.Save(PlacementStore);
+        };
+
+        // Loads a whole profile from disk into the RUNNING overlay (profile switch / import): every
+        // section is re-applied live, and anything the profile does not define falls back to the
+        // widget's default rather than keeping a stale value from the previous profile.
+        void ApplyProfileFromDisk()
+        {
+            PaletteTokens.ClearAllNameOverrides();
+            var loaded = new WidgetPlacementStore();
+            PlacementPersistence.Load(loaded);
+            PlacementStore.CopyFrom(loaded);
+
+            foreach (var (widgetKey, placement) in PlacementStore.All)
+                SyncWindowToPlacement(widgetKey, placement);
+
+            standings.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(StandingsKey, out var sc) ? sc : StandingsWidget.BuildDefaultColumns());
+            relative.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(RelativeKey, out var rc) ? rc : RelativeWidget.BuildDefaultColumns());
+            foreach (var widgetKey in new[] { StandingsKey, RelativeKey, WeatherKey, FuelKey, RadarKey, StartHelperKey })
+                ApplyAppearance(widgetKey, PlacementStore.AppearanceOverrides.TryGetValue(widgetKey, out var ap) ? ap : WidgetAppearance.Default);
+            ApplyHeaderFields(StandingsKey, PlacementStore.HeaderOverrides.TryGetValue(StandingsKey, out var sh) ? sh : HeaderFields.DefaultStandings());
+            ApplyHeaderFields(RelativeKey, PlacementStore.HeaderOverrides.TryGetValue(RelativeKey, out var rh) ? rh : HeaderFields.DefaultRelative());
+
+            var format = PlacementStore.NumberFormat ?? NumberFormatConfig.Default;
+            standings.SetNumberFormat(format);
+            relative.SetNumberFormat(format);
+            standings.SetPresentationOptions(PlacementStore.StandingsRules ?? StandingsPresentationOptions.Default);
+            relative.SetRelativeRules(PlacementStore.RelativeRules ?? RelativeRules.Default);
+            fuel.SetConfig(PlacementStore.FuelConfig ?? FuelConfig.Default);
+            PaletteTokens.SetRankColors(PlacementStore.ClassRankColors ?? ["#FFD400", "#5CC8FF", "#FF6EB4", "#3DDC84"]);
+            _appliedProfileKey = ""; // let the class/car auto-profile re-evaluate against the new profile
+            Console.WriteLine("Profile reloaded from disk.");
+        }
 
         // Ninth small typed channel: session-type visibility + per-class/car layout profiles.
         using var profilesIpcServer = new ProfilesIpcServer();
@@ -332,6 +383,9 @@ public static unsafe class Program
                 case "deleteClassProfile":
                     PlacementStore.ClassProfiles.Remove(m.Key);
                     break;
+                case "reloadFromDisk":
+                    ApplyProfileFromDisk();
+                    return;
                 default: return;
             }
             PlacementPersistence.Save(PlacementStore);
@@ -675,6 +729,18 @@ public static unsafe class Program
         foreach (var (widgetKey, placement) in PlacementStore.ClassProfiles[key])
             SyncWindowToPlacement(widgetKey, placement);
         Console.WriteLine($"Applied layout profile '{key}'.");
+    }
+
+    private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
+    {
+        color = default;
+        var span = hex.AsSpan().Trim().TrimStart('#');
+        if (span.Length != 6) return false;
+        if (!byte.TryParse(span[..2], System.Globalization.NumberStyles.HexNumber, null, out var r)
+            || !byte.TryParse(span.Slice(2, 2), System.Globalization.NumberStyles.HexNumber, null, out var g)
+            || !byte.TryParse(span.Slice(4, 2), System.Globalization.NumberStyles.HexNumber, null, out var b)) return false;
+        color = new Vortice.Win32.Numerics.Color4(r / 255f, g / 255f, b / 255f, 1f);
+        return true;
     }
 
     private static void UpdateOverlayVisibility()

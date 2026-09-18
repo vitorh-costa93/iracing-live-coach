@@ -9,9 +9,11 @@ namespace IracingLiveCoach.OverlayHost.Layout;
 /// <param name="RowHeightDip">Table-row height override for row-based widgets (Standings/Relative).
 /// 0 means "use the widget's own default" -- never persisted as a guessed absolute for widgets that
 /// have no rows.</param>
+/// <param name="FontWeight">0 = the widget's own weights; 400 = Regular; 600 = SemiBold (the two bundled cuts).</param>
+/// <param name="PaddingHDip">Right padding of every padded table column; negative = each column's own default.</param>
 /// <param name="RowSpacingDip">Extra vertical gap inserted between consecutive rows, on top of
 /// <paramref name="RowHeightDip"/>. Ignored by widgets with no row list.</param>
-public sealed record WidgetAppearance(float FontScale, float RowHeightDip, float RowSpacingDip)
+public sealed record WidgetAppearance(float FontScale, float RowHeightDip, float RowSpacingDip, int FontWeight = 0, float PaddingHDip = -1f)
 {
     public static WidgetAppearance Default { get; } = new(FontScale: 1f, RowHeightDip: 0f, RowSpacingDip: 0f);
 }

@@ -116,6 +116,33 @@ public sealed class WidgetPlacementStore
     /// is display order.</summary>
     public Dictionary<string, List<HeaderFieldConfig>> HeaderOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Relative's cars ahead/behind (spec §12). Null = <see cref="RelativeRules.Default"/>.</summary>
+    public RelativeRules? RelativeRules { get; set; }
+
+    /// <summary>The four speed-rank class colours as "#RRGGBB", fastest class first. Null = the
+    /// built-in yellow / light blue / pink / green.</summary>
+    public List<string>? ClassRankColors { get; set; }
+
+    /// <summary>Replaces every configuration section (not placements' undo history) with another
+    /// store's -- used when a whole profile is loaded from disk into the running overlay.</summary>
+    public void CopyFrom(WidgetPlacementStore other)
+    {
+        ReplacePlacements(other.All);
+        FuelRelativeLink = other.FuelRelativeLink;
+        ClassColorOverrides.Clear(); foreach (var (k, v) in other.ClassColorOverrides) ClassColorOverrides[k] = v;
+        ColumnOverrides.Clear(); foreach (var (k, v) in other.ColumnOverrides) ColumnOverrides[k] = v;
+        AppearanceOverrides.Clear(); foreach (var (k, v) in other.AppearanceOverrides) AppearanceOverrides[k] = v;
+        HeaderOverrides.Clear(); foreach (var (k, v) in other.HeaderOverrides) HeaderOverrides[k] = v;
+        ClassProfiles.Clear(); foreach (var (k, v) in other.ClassProfiles) ClassProfiles[k] = v;
+        StandingsRules = other.StandingsRules;
+        RelativeRules = other.RelativeRules;
+        FuelConfig = other.FuelConfig;
+        NumberFormat = other.NumberFormat;
+        SessionVisibility = other.SessionVisibility;
+        ClassRankColors = other.ClassRankColors;
+        ClearHistory();
+    }
+
     /// <summary>Widgets hidden per session kind (spec §12). Null = every widget in every session.</summary>
     public SessionVisibilityConfig? SessionVisibility { get; set; }
 

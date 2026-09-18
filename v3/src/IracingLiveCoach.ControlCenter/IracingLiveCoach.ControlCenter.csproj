@@ -28,5 +28,8 @@
     <Content Include="..\IracingLiveCoach.OverlayHost\Assets\Fonts\*.ttf" LinkBase="Assets\Fonts">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- The same Barlow Semi Condensed files, embedded so WPF can use them as a FontFamily
+         (pack URI) -- the Control Center speaks the overlay's typography. -->
+    <Resource Include="..\IracingLiveCoach.OverlayHost\Assets\Fonts\*.ttf" Link="Assets\Fonts\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

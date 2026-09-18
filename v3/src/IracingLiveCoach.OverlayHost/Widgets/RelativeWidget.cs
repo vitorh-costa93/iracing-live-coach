@@ -80,7 +80,29 @@ public sealed unsafe class RelativeWidget : IDisposable
         new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, false, 8),
     ];
 
-    public void SetColumns(List<ColumnDefinition> columns) => _columns = columns;
+    public void SetColumns(List<ColumnDefinition> columns)
+    {
+        _columns = columns;
+        RebuildEffectiveColumns();
+    }
+
+    /// <summary>The user's columns with the appearance's horizontal padding applied to every padded
+    /// column ("Padding (H)"); what layout and width actually use.</summary>
+    private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
+
+    private void RebuildEffectiveColumns() =>
+        _effectiveColumns = _appearance.PaddingHDip < 0
+            ? _columns
+            : _columns.Select(c => c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+
+    /// <summary>The weight to use for a text format: the widget's own choice unless the appearance
+    /// forces Regular (400) or SemiBold (600) -- the two bundled cuts.</summary>
+    private FontWeight Weight(FontWeight own) => _appearance.FontWeight switch
+    {
+        >= 600 => FontWeight.SemiBold,
+        > 0 => FontWeight.Regular,
+        _ => own
+    };
     public IReadOnlyList<ColumnDefinition> Columns => _columns;
 
     private NumberFormatConfig _numberFormatConfig = NumberFormatConfig.Default;
@@ -88,7 +110,7 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     /// <summary>Sum of every visible column's footprint plus the left margin -- replaces the
     /// previous hardcoded constant (spec §12's auto-width formula).</summary>
-    private float TableWidthDip => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_columns);
+    private float TableWidthDip => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_effectiveColumns);
 
     public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
     {
@@ -116,18 +138,18 @@ public sealed unsafe class RelativeWidget : IDisposable
         _numericFormat.Dispose();
 
         float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 17f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 17f * scale, fontWeight: Weight(FontWeight.Medium), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
-        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15.5f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15.5f * scale, fontWeight: Weight(FontWeight.SemiBold), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
-        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 16f * scale, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 16f * scale, fontWeight: Weight(FontWeight.Medium), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
         ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -136,8 +158,9 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     public void SetAppearance(WidgetAppearance appearance)
     {
-        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight;
         _appearance = appearance;
+        RebuildEffectiveColumns();
         if (fontChanged) CreateTextFormats();
     }
 
@@ -178,7 +201,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            DrawPanel(dc, x, y, simulated, _simulatedSession, _simulatedPlayer);
+            DrawPanel(dc, x, y, simulated.Where(r => _relativeRules.Includes(r.PositionOffset)).ToList(), _simulatedSession, _simulatedPlayer);
             return;
         }
 
@@ -201,11 +224,16 @@ public sealed unsafe class RelativeWidget : IDisposable
         SessionStatus? session;
         PlayerCarStatus? player;
         lock (_lock) { session = _sessionStatus; player = _playerStatus; }
-        DrawPanel(dc, x, y, rows, session, player);
+        DrawPanel(dc, x, y, rows.Where(r => r.IsPlayer || _relativeRules.Includes(r.PositionOffset)).ToList(), session, player);
     }
 
     /// <summary>See StandingsWidget.LastDrawnSize.</summary>
     public (float Width, float Height) LastDrawnSize { get; private set; } = (470f, 100f);
+
+    private RelativeRules _relativeRules = RelativeRules.Default;
+
+    /// <summary>Spec §12 "Relative (acima) / (abaixo)": how many cars each side to show, live.</summary>
+    public void SetRelativeRules(RelativeRules rules) => _relativeRules = rules.Clamped();
 
     private SessionStatus? _simulatedSession;
     private PlayerCarStatus? _simulatedPlayer;
@@ -284,7 +312,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         dc->FillRectangle(&stripRect, (ID2D1Brush*)_brush.Get());
 
         float rowLeft = x + ColumnsLeftMarginDip;
-        var layout = WidgetLayoutEngine.LayoutTable(_columns, rowCount: 1, RowHeightDip, 0, 0, 0, float.MaxValue, float.MaxValue);
+        var layout = WidgetLayoutEngine.LayoutTable(_effectiveColumns, rowCount: 1, RowHeightDip, 0, 0, 0, float.MaxValue, float.MaxValue);
         foreach (var placement in layout.Columns)
         {
             float cellX = rowLeft + placement.OffsetXPx;

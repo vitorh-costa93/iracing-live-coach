@@ -5,14 +5,14 @@ using System.Text.Json;
 
 namespace IracingLiveCoach.ControlCenter;
 
-/// <summary>Same short-lived-connection pattern as the other IPC clients, on the dedicated rules pipe.</summary>
-public sealed class RulesIpcClient
+/// <summary>Same short-lived-connection pattern as the other IPC clients, on the class-colours pipe.</summary>
+public sealed class ClassColorsIpcClient
 {
-    private const string PipeName = "iracinglivecoach-v3-rules";
+    private const string PipeName = "iracinglivecoach-v3-classcolors";
     private const int SchemaVersion = 1;
     private const int ConnectTimeoutMs = 200;
 
-    public async Task<bool> SendAsync(int topNPerClass, int ownClassRows, int otherClassRows, bool keepPlayerWindow, int relativeAhead = 3, int relativeBehind = 3, bool topNCountsTowardTotal = true)
+    public async Task<bool> SendAsync(List<string> rankColors, Dictionary<string, string> nameOverrides)
     {
         try
         {
@@ -20,7 +20,7 @@ public sealed class RulesIpcClient
             using var cts = new CancellationTokenSource(ConnectTimeoutMs);
             await pipe.ConnectAsync(cts.Token);
 
-            var message = new RulesMessageWire(SchemaVersion, topNPerClass, ownClassRows, otherClassRows, keepPlayerWindow, relativeAhead, relativeBehind, topNCountsTowardTotal);
+            var message = new ClassColorsMessageWire(SchemaVersion, rankColors, nameOverrides);
             string json = JsonSerializer.Serialize(message) + "\n";
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             await pipe.WriteAsync(bytes);
@@ -33,4 +33,4 @@ public sealed class RulesIpcClient
     }
 }
 
-file sealed record RulesMessageWire(int SchemaVersion, int TopNPerClass, int OwnClassRows, int OtherClassRows, bool KeepPlayerWindow, int RelativeAhead, int RelativeBehind, bool TopNCountsTowardTotal);
+file sealed record ClassColorsMessageWire(int SchemaVersion, List<string> RankColors, Dictionary<string, string> NameOverrides);
