@@ -224,11 +224,11 @@ public static unsafe class Program
         using var fuelResources = DeviceResources.Create(fuelHwnd, (int)fuelPlacement.WidthDip, (int)fuelPlacement.HeightDip);
         using var radarResources = DeviceResources.Create(radarHwnd, (int)radarPlacement.WidthDip, (int)radarPlacement.HeightDip);
         using var startResources = DeviceResources.Create(startHwnd, (int)startPlacement.WidthDip, (int)startPlacement.HeightDip);
-        standingsResources.SetClickThrough(standingsHwnd, _clickThrough);
-        relativeResources.SetClickThrough(relativeHwnd, _clickThrough);
-        weatherResources.SetClickThrough(weatherHwnd, _clickThrough);
-        fuelResources.SetClickThrough(fuelHwnd, _clickThrough);
-        radarResources.SetClickThrough(radarHwnd, _clickThrough); startResources.SetClickThrough(startHwnd, _clickThrough);
+        standingsResources.SetClickThrough(standingsHwnd, EffectiveClickThrough(standingsHwnd));
+        relativeResources.SetClickThrough(relativeHwnd, EffectiveClickThrough(relativeHwnd));
+        weatherResources.SetClickThrough(weatherHwnd, EffectiveClickThrough(weatherHwnd));
+        fuelResources.SetClickThrough(fuelHwnd, EffectiveClickThrough(fuelHwnd));
+        radarResources.SetClickThrough(radarHwnd, EffectiveClickThrough(radarHwnd)); startResources.SetClickThrough(startHwnd, EffectiveClickThrough(startHwnd));
 
         using var standingsFlags = new FlagBitmapCache(standingsResources.Context);
         using var relativeFlags = new FlagBitmapCache(relativeResources.Context);
@@ -523,7 +523,8 @@ public static unsafe class Program
             Scale = message.Scale,
             Locked = message.Locked,
             Visible = message.Visible,
-            Opacity = message.Opacity
+            Opacity = message.Opacity,
+            ClickThrough = message.ClickThrough
         };
         PlacementStore.Set(message.Widget, updated);
         PlacementPersistence.Save(PlacementStore); // spec §3: every applied edit survives the next launch
@@ -544,7 +545,13 @@ public static unsafe class Program
         // could leave the two out of sync.
         byte alpha = (byte)Math.Clamp(placement.Opacity * 255f, 0f, 255f);
         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
+        if (!_editMode) DeviceResources.ApplyClickThrough(hwnd, EffectiveClickThrough(hwnd));
     }
+
+    /// <summary>Spec §12 "passagem de cliques" per widget: the global Space toggle AND the widget's
+    /// own setting must both allow click-through (either one off makes the widget interactive).</summary>
+    private static bool EffectiveClickThrough(nint hwnd) =>
+        _clickThrough && (!WidgetKeysByHandle.TryGetValue(hwnd, out var key) || (PlacementStore.Get(key)?.ClickThrough ?? true));
 
     /// <summary>Applies a saved column-config profile (if any) to Standings/Relative at startup --
     /// only these two widgets have a column engine wired in; a persisted override for any other key
@@ -660,7 +667,7 @@ public static unsafe class Program
         // while editing and restored to its prior state on exit (spec §4's "modo corrida com
         // click-through... atalho para entrar/sair do modo edição").
         foreach (var hwnd in OverlayWindows)
-            DeviceResources.ApplyClickThrough(hwnd, enabled ? false : _clickThrough);
+            DeviceResources.ApplyClickThrough(hwnd, enabled ? false : EffectiveClickThrough(hwnd));
     }
 
     private static nint WndProc(nint hwnd, uint msg, nint wParam, nint lParam)
@@ -677,7 +684,7 @@ public static unsafe class Program
                 {
                     _clickThrough = !_clickThrough;
                     if (!_editMode)
-                        foreach (var overlay in OverlayWindows) DeviceResources.ApplyClickThrough(overlay, _clickThrough);
+                        foreach (var overlay in OverlayWindows) DeviceResources.ApplyClickThrough(overlay, EffectiveClickThrough(overlay));
                     Console.WriteLine($"Click-through: {_clickThrough}");
                 }
                 else if ((int)wParam == VK_T)

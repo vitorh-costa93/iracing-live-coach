@@ -72,6 +72,7 @@ public partial class MainWindow : Window
         LoadAppearanceIntoControls();
         LoadNumberFormatIntoControls();
         LoadHeaderForSelectedWidget();
+        LoadMonitors();
         BuildSessionVisibilityGrid();
         RefreshClassProfileList();
         Loaded += MainWindow_Loaded;
@@ -159,6 +160,7 @@ public partial class MainWindow : Window
             HeightBox.Text = state.Height.ToString(CultureInfo.InvariantCulture);
             VisibleBox.IsChecked = state.Visible;
             LockedBox.IsChecked = state.Locked;
+            ClickThroughBox.IsChecked = state.ClickThrough;
             OpacitySlider.Value = state.Opacity;
             ScaleSlider.Value = state.Scale;
         }
@@ -179,7 +181,7 @@ public partial class MainWindow : Window
 
         var state = new WidgetUiState(x, y, width, height,
             VisibleBox.IsChecked == true, LockedBox.IsChecked == true,
-            (float)OpacitySlider.Value, (float)ScaleSlider.Value);
+            (float)OpacitySlider.Value, (float)ScaleSlider.Value, ClickThroughBox.IsChecked == true);
         _state[_selectedWidget] = state;
 
         _ = SendAsync(state);
@@ -655,6 +657,31 @@ public partial class MainWindow : Window
         ClassProfileStatus.Text = $"Layout atual salvo como perfil '{key}'.";
     }
 
+    // --- Monitor (spec §4/§12: posição livre em qualquer monitor) ---
+
+    private List<MonitorRect> _monitors = [];
+
+    private void LoadMonitors()
+    {
+        _monitors = MonitorEnumerator.GetMonitors();
+        MonitorBox.ItemsSource = _monitors.Select((m, i) => $"Monitor {i + 1}{(m.Primary ? " (principal)" : "")} -- {m.Width}x{m.Height} @ {m.Left},{m.Top}").ToList();
+        if (_monitors.Count > 0) MonitorBox.SelectedIndex = 0;
+    }
+
+    private async void MoveToMonitor(object sender, RoutedEventArgs e)
+    {
+        if (MonitorBox.SelectedIndex < 0 || MonitorBox.SelectedIndex >= _monitors.Count) return;
+        var target = _monitors[MonitorBox.SelectedIndex];
+        var state = _state[_selectedWidget];
+        var current = _monitors.FirstOrDefault(m => state.X >= m.Left && state.X < m.Left + m.Width && state.Y >= m.Top && state.Y < m.Top + m.Height) ?? _monitors[0];
+        float newX = target.Left + Math.Clamp(state.X - current.Left, 0, Math.Max(0, target.Width - 40));
+        float newY = target.Top + Math.Clamp(state.Y - current.Top, 0, Math.Max(0, target.Height - 40));
+        _state[_selectedWidget] = state with { X = newX, Y = newY };
+        LoadIntoControls(_selectedWidget);
+        await SendAsync(_state[_selectedWidget]);
+        MonitorStatus.Text = $"Movido para o monitor {MonitorBox.SelectedIndex + 1} (X={newX:0}, Y={newY:0}).";
+    }
+
     // --- Cabeçalho (spec §12: campos configuráveis e reordenáveis) ---
 
     private static readonly Dictionary<string, string> HeaderLabels = new()
@@ -831,4 +858,4 @@ public partial class MainWindow : Window
 /// <param name="X">Virtual-desktop DIPs, top-left anchored (spec §4).</param>
 public readonly record struct WidgetUiState(
     float X, float Y, float Width, float Height,
-    bool Visible = true, bool Locked = false, float Opacity = 1f, float Scale = 1f);
+    bool Visible = true, bool Locked = false, float Opacity = 1f, float Scale = 1f, bool ClickThrough = true);

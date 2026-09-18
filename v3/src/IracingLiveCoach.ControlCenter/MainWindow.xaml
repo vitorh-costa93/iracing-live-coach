@@ -73,7 +73,15 @@
 
                         <TextBlock Text="VISIBILITY &amp; LOCK" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
                         <CheckBox x:Name="VisibleBox" Content="Visible" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
-                        <CheckBox x:Name="LockedBox" Content="Lock (prevent drag/resize in-game)" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,16"/>
+                        <CheckBox x:Name="LockedBox" Content="Lock (prevent drag/resize in-game)" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
+                        <CheckBox x:Name="ClickThroughBox" Content="Passar cliques para o jogo (click-through)" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,16"/>
+
+                        <TextBlock Text="MONITOR" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ComboBox x:Name="MonitorBox" Width="260" Margin="0,0,8,0"/>
+                            <Button Content="Mover para este monitor" Click="MoveToMonitor"/>
+                        </StackPanel>
+                        <TextBlock x:Name="MonitorStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,0,0,16" TextWrapping="Wrap"/>
 
                         <TextBlock Text="OPACITY" Foreground="#A6B0BB" Margin="0,0,0,4"/>
                         <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>

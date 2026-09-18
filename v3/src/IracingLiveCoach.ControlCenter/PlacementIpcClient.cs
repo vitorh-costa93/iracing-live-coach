@@ -30,7 +30,7 @@ public sealed class PlacementIpcClient
             await pipe.ConnectAsync(cts.Token);
 
             var message = new PlacementMessage(SchemaVersion, widget, state.X, state.Y, state.Width, state.Height,
-                state.Scale, state.Locked, state.Visible, state.Opacity);
+                state.Scale, state.Locked, state.Visible, state.Opacity, state.ClickThrough);
             string json = JsonSerializer.Serialize(message) + "\n";
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             await pipe.WriteAsync(bytes);
@@ -53,4 +53,5 @@ file sealed record PlacementMessage(
     float Scale,
     bool Locked,
     bool Visible,
-    float Opacity);
+    float Opacity,
+    bool ClickThrough);

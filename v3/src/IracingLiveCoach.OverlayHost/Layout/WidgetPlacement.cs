@@ -38,7 +38,8 @@ public sealed record WidgetPlacement(
     bool Locked,
     int ZOrder,
     bool Visible = true,
-    float Opacity = 1f)
+    float Opacity = 1f,
+    bool ClickThrough = true)
 {
     /// <summary>Resolves this placement to an absolute, anchor-independent top-left rectangle in
     /// virtual-desktop DIPs — what hit-testing and drawing actually need.</summary>
