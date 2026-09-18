@@ -3,6 +3,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using Microsoft.Win32;
+using IracingLiveCoach.OverlayHost.Layout;
+using IracingLiveCoach.OverlayHost.Persistence;
+using IracingLiveCoach.OverlayHost.Theme;
 
 namespace IracingLiveCoach.ControlCenter;
 
@@ -28,10 +32,18 @@ public partial class MainWindow : Window
     private bool _suppressChangeEvents;
     private OverlayPreviewHost? _previewHost;
 
+    /// <summary>Backs the Cores/Perfis tabs -- a separate <see cref="WidgetPlacementStore"/> from
+    /// the Layout tab's own in-memory <see cref="_state"/> dictionary, because these two tabs work
+    /// directly against the on-disk profile (spec §16's palette overrides, spec §12's
+    /// import/export/restore) rather than against the live IPC channel Layout uses.</summary>
+    private readonly WidgetPlacementStore _profileStore = new();
+
     public MainWindow()
     {
         InitializeComponent();
         LoadIntoControls(_selectedWidget);
+        PlacementPersistence.Load(_profileStore);
+        RefreshClassColorList();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -58,9 +70,9 @@ public partial class MainWindow : Window
     private bool _adjustingAspect;
     private void PreviewBorder_AspectSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_adjustingAspect || PreviewBorder.ActualWidth <= 0) return;
-        double targetHeight = PreviewBorder.ActualWidth * 9.0 / 16.0;
-        if (Math.Abs(targetHeight - PreviewBorder.ActualHeight) > 0.5)
+        if (_adjustingAspect || e.NewSize.Width <= 0) return;
+        double targetHeight = e.NewSize.Width * 9.0 / 16.0;
+        if (Math.Abs(targetHeight - e.NewSize.Height) > 0.5)
         {
             _adjustingAspect = true;
             PreviewBorder.Height = targetHeight;
@@ -146,6 +158,101 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() => ConnectionStatus.Text = sent
             ? "Connected — overlay updated live."
             : "Overlay not running or unreachable — changes will apply once it starts.");
+    }
+
+    // --- Cores tab (spec §16: "Permita personalização e restauração por token, paleta de classe") ---
+
+    private void RefreshClassColorList()
+    {
+        var panel = new StackPanel();
+        foreach (var (className, hex) in _profileStore.ClassColorOverrides)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            row.Children.Add(new Border
+            {
+                Width = 16, Height = 16, Margin = new Thickness(0, 0, 8, 0),
+                Background = (Brush)new BrushConverter().ConvertFromString(hex)!,
+                BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(1)
+            });
+            row.Children.Add(new TextBlock { Text = $"{className}  {hex}", Width = 140, VerticalAlignment = VerticalAlignment.Center });
+            var removeButton = new Button { Content = "Remover", Tag = className };
+            removeButton.Click += RemoveClassColorOverride;
+            row.Children.Add(removeButton);
+            panel.Children.Add(row);
+        }
+        ClassColorList.Items.Clear();
+        ClassColorList.Items.Add(panel);
+    }
+
+    private void AddClassColorOverride(object sender, RoutedEventArgs e)
+    {
+        string className = NewClassNameBox.Text.Trim();
+        string hex = NewClassColorBox.Text.Trim();
+        if (className.Length == 0)
+        {
+            ColorStatus.Text = "Informe o nome curto da classe (ex: GT3).";
+            return;
+        }
+        if (!System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-Fa-f]{6}$"))
+        {
+            ColorStatus.Text = "Cor inválida -- use o formato #RRGGBB.";
+            return;
+        }
+        _profileStore.ClassColorOverrides[className] = hex;
+        PlacementPersistence.Save(_profileStore);
+        // Apply immediately to THIS process's PaletteTokens -- Save() only persists to disk, it
+        // doesn't touch live in-memory state, so without this the embedded preview (which shares
+        // this same static PaletteTokens class) wouldn't show the change until relaunched.
+        var mediaColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!;
+        PaletteTokens.SetNameOverride(className, new Vortice.Win32.Numerics.Color4(
+            mediaColor.R / 255f, mediaColor.G / 255f, mediaColor.B / 255f, 1f));
+        RefreshClassColorList();
+        ColorStatus.Text = "Salvo e aplicado neste preview imediatamente. O OverlayHost.exe em execução real só aplica no próximo carregamento do perfil (reinicie-o para ver na corrida).";
+    }
+
+    private void RemoveClassColorOverride(object sender, RoutedEventArgs e)
+    {
+        string className = (string)((Button)sender).Tag;
+        _profileStore.ClassColorOverrides.Remove(className);
+        PlacementPersistence.Save(_profileStore);
+        PaletteTokens.ClearNameOverride(className);
+        RefreshClassColorList();
+        ColorStatus.Text = $"Override de '{className}' removido.";
+    }
+
+    // --- Perfis tab (spec §12: "duplicar, renomear, importar/exportar, desfazer, restaurar") ---
+
+    private void ExportProfile(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json", FileName = "v3-layout-export.json" };
+        if (dialog.ShowDialog() != true) return;
+        bool ok = PlacementPersistence.TryExport(dialog.FileName);
+        ProfileStatus.Text = ok ? $"Exportado para {dialog.FileName}" : "Falha ao exportar -- nenhum perfil salvo ainda?";
+    }
+
+    private void ImportProfile(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json" };
+        if (dialog.ShowDialog() != true) return;
+        bool ok = PlacementPersistence.TryImport(_profileStore, dialog.FileName);
+        if (ok)
+        {
+            RefreshClassColorList();
+            ProfileStatus.Text = "Importado. Reinicie o OverlayHost.exe para aplicar ao overlay ao vivo.";
+        }
+        else
+        {
+            ProfileStatus.Text = "Falha ao importar -- arquivo inválido ou versão de esquema incompatível.";
+        }
+    }
+
+    private void RestoreDefaults(object sender, RoutedEventArgs e)
+    {
+        _profileStore.ClassColorOverrides.Clear();
+        PlacementPersistence.Save(_profileStore);
+        PaletteTokens.ClearAllNameOverrides();
+        RefreshClassColorList();
+        ProfileStatus.Text = "Overrides de cor restaurados para o padrão normativo (spec §16).";
     }
 }
 

@@ -1,6 +1,7 @@
 using Vortice.Win32;
 using Vortice.Win32.Graphics.Direct2D;
 using Vortice.Win32.Graphics.Imaging;
+using Vortice.Win32.Numerics;
 using static Vortice.Win32.Apis;
 
 namespace IracingLiveCoach.OverlayHost.Assets;
@@ -43,6 +44,24 @@ public sealed unsafe class FlagBitmapCache : IDisposable
         TryGetBrandAssetKey(manufacturer, out var key) && _brandBitmaps.TryGetValue(key, out var bitmap)
             ? bitmap.Get()
             : null;
+
+    /// <summary>Fits <paramref name="bitmap"/> into <paramref name="box"/> preserving its own aspect
+    /// ratio and centering it -- spec §18: "ajuste proporcional contain, centralizado verticalmente,
+    /// sem deformar ou recortar". Every flag/brand DrawBitmap call must use this instead of stretching
+    /// the source pixels directly into the box's own (usually differently-proportioned) rectangle.</summary>
+    public static RectF Contain(ID2D1Bitmap* bitmap, RectF box)
+    {
+        var size = bitmap->GetSize();
+        if (size.Width <= 0 || size.Height <= 0) return box;
+        float boxWidth = box.Right - box.Left;
+        float boxHeight = box.Bottom - box.Top;
+        float scale = Math.Min(boxWidth / size.Width, boxHeight / size.Height);
+        float fittedWidth = size.Width * scale;
+        float fittedHeight = size.Height * scale;
+        float offsetX = box.Left + (boxWidth - fittedWidth) / 2f;
+        float offsetY = box.Top + (boxHeight - fittedHeight) / 2f;
+        return new RectF(offsetX, offsetY, offsetX + fittedWidth, offsetY + fittedHeight);
+    }
 
     /// <summary>Rebuilds only the device-dependent D2D bitmaps after DeviceResources recovered
     /// from a removed/reset GPU. The WIC decoder factory remains valid and no disk/catalog lookup

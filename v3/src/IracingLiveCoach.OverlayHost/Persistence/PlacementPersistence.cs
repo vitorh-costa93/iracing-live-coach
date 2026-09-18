@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IracingLiveCoach.OverlayHost.Layout;
+using IracingLiveCoach.OverlayHost.Theme;
 
 namespace IracingLiveCoach.OverlayHost.Persistence;
 
@@ -18,7 +19,8 @@ public sealed record PlacementProfile(
     int SchemaVersion,
     Dictionary<string, WidgetPlacement> Widgets,
     bool FuelRelativeLinkEnabled,
-    float FuelRelativeLinkSpacingDip)
+    float FuelRelativeLinkSpacingDip,
+    Dictionary<string, string>? ClassColorOverrides = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -62,6 +64,37 @@ public static class PlacementPersistence
         foreach (var (key, placement) in profile.Widgets)
             store.Set(key, placement);
         store.FuelRelativeLink = new FuelRelativeLink(profile.FuelRelativeLinkEnabled, profile.FuelRelativeLinkSpacingDip);
+
+        // Spec §16: "Permita personalização e restauração por token, paleta de classe e perfil."
+        // Applied to both the store (so a later Save doesn't lose them) and PaletteTokens directly
+        // (so this process's widgets pick them up immediately -- no separate live-IPC channel for
+        // color exists yet, so a running OverlayHost.exe only sees a new override on its own next
+        // Load call, i.e. next launch; documented as an honest gap in OverlayPreviewHost/the Cores
+        // tab, not silently pretended to be instant).
+        if (profile.ClassColorOverrides is not null)
+        {
+            foreach (var (className, hex) in profile.ClassColorOverrides)
+            {
+                store.ClassColorOverrides[className] = hex;
+                if (TryParseHexColor(hex, out var color)) PaletteTokens.SetNameOverride(className, color);
+            }
+        }
+    }
+
+    private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
+    {
+        color = default;
+        var span = hex.AsSpan().Trim().TrimStart('#');
+        if (span.Length != 6) return false;
+        try
+        {
+            byte r = byte.Parse(span[..2], System.Globalization.NumberStyles.HexNumber);
+            byte g = byte.Parse(span.Slice(2, 2), System.Globalization.NumberStyles.HexNumber);
+            byte b = byte.Parse(span.Slice(4, 2), System.Globalization.NumberStyles.HexNumber);
+            color = new Vortice.Win32.Numerics.Color4(r / 255f, g / 255f, b / 255f, 1f);
+            return true;
+        }
+        catch (FormatException) { return false; }
     }
 
     /// <summary>Atomic write: serializes to a temp file in the same directory, then renames over
@@ -76,7 +109,8 @@ public static class PlacementPersistence
                 PlacementProfile.CurrentSchemaVersion,
                 store.All.ToDictionary(kv => kv.Key, kv => kv.Value),
                 store.FuelRelativeLink.Enabled,
-                store.FuelRelativeLink.SpacingDip);
+                store.FuelRelativeLink.SpacingDip,
+                new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase));
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

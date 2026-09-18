@@ -62,21 +62,21 @@ public sealed unsafe class RelativeWidget : IDisposable
         BrandColumnWidthDip + NameColumnWidthDip + ColumnGapDip + LicenseColumnWidthDip + ColumnGapDip +
         IRatingColumnWidthDip + ColumnGapDip + GapColumnWidthDip + ColumnGapDip + OvertakeColumnWidthDip;
 
-    public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags)
+    public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
     {
         _flags = flags;
-        ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 15f, fontWeight: FontWeight.Medium, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> nameFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 15f, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
-        ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 14f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> statusFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 14f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
-        ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 14f, fontWeight: FontWeight.Medium, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> numericFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 14f, fontWeight: FontWeight.Medium, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
         ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -158,6 +158,13 @@ public sealed unsafe class RelativeWidget : IDisposable
         DrawHeader(dc, x, y, session, player);
         float rowY = y + HeaderHeightDip;
         bool drewAnyRow = false;
+
+        // Graphite translucent body background (spec §5/§16) behind every row -- previously this
+        // table had no fill at all, just text floating over the desktop/game.
+        SetBrushColor(PaletteTokens.OverlayBackground);
+        var bodyBackground = new RectF(x, rowY, x + TableWidthDip, rowY + rows.Count * RowHeightDip);
+        dc->FillRectangle(&bodyBackground, (ID2D1Brush*)_brush.Get());
+
         foreach (var row in rows)
         {
             if (drewAnyRow)
@@ -252,7 +259,9 @@ public sealed unsafe class RelativeWidget : IDisposable
         var flag = _flags.Find(row.FlagEmoji);
         if (flag != null)
         {
-            var destination = new RectF(cursorX + 1f, y + 4f, cursorX + FlagColumnWidthDip - 1f, y + RowHeightDip - 4f);
+            // Contain-fit, never stretched (spec §18).
+            var box = new RectF(cursorX + 1f, y + 4f, cursorX + FlagColumnWidthDip - 1f, y + RowHeightDip - 4f);
+            var destination = FlagBitmapCache.Contain(flag, box);
             dc->DrawBitmap(flag, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
         }
         cursorX += FlagColumnWidthDip;
@@ -260,7 +269,8 @@ public sealed unsafe class RelativeWidget : IDisposable
         var brandBitmap = _flags.FindBrand(row.ManufacturerBadge);
         if (brandBitmap != null)
         {
-            var destination = new RectF(cursorX + 2f, y + 3f, cursorX + BrandColumnWidthDip - 2f, y + RowHeightDip - 3f);
+            var box = new RectF(cursorX + 2f, y + 3f, cursorX + BrandColumnWidthDip - 2f, y + RowHeightDip - 3f);
+            var destination = FlagBitmapCache.Contain(brandBitmap, box);
             dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
         }
         else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge))

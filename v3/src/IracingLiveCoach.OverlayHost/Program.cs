@@ -189,12 +189,12 @@ public static unsafe class Program
 
         using var standingsFlags = new FlagBitmapCache(standingsResources.Context);
         using var relativeFlags = new FlagBitmapCache(relativeResources.Context);
-        using var standings = new StandingsWidget(standingsResources.Context, standingsResources.DWriteFactory, standingsFlags);
-        using var relative = new RelativeWidget(relativeResources.Context, relativeResources.DWriteFactory, relativeFlags);
-        using var weather = new WeatherWidget(weatherResources.Context, weatherResources.DWriteFactory);
-        using var fuel = new FuelWidget(fuelResources.Context, fuelResources.DWriteFactory);
-        using var radar = new RadarWidget(radarResources.Context, radarResources.DWriteFactory);
-        using var start = new StartHelperWidget(startResources.Context, startResources.DWriteFactory);
+        using var standings = new StandingsWidget(standingsResources.Context, standingsResources.DWriteFactory, standingsFlags, standingsResources.FontCollection);
+        using var relative = new RelativeWidget(relativeResources.Context, relativeResources.DWriteFactory, relativeFlags, relativeResources.FontCollection);
+        using var weather = new WeatherWidget(weatherResources.Context, weatherResources.DWriteFactory, weatherResources.FontCollection);
+        using var fuel = new FuelWidget(fuelResources.Context, fuelResources.DWriteFactory, fuelResources.FontCollection);
+        using var radar = new RadarWidget(radarResources.Context, radarResources.DWriteFactory, radarResources.FontCollection);
+        using var start = new StartHelperWidget(startResources.Context, startResources.DWriteFactory, startResources.FontCollection);
         standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
         relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
@@ -557,7 +557,15 @@ public static unsafe class Program
         foreach (string file in new[] { "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf" })
         {
             string path = Path.Combine(directory, file);
-            if (File.Exists(path)) AddFontResourceExW(path, FR_PRIVATE, 0);
+            if (!File.Exists(path))
+            {
+                Console.WriteLine($"[Fonts] Missing bundled font file: {path}");
+                continue;
+            }
+            int added = AddFontResourceExW(path, FR_PRIVATE, 0);
+            Console.WriteLine(added > 0
+                ? $"[Fonts] Registered {file} ({added} face(s))."
+                : $"[Fonts] AddFontResourceExW FAILED for {file} (Win32 error {Marshal.GetLastWin32Error()}).");
         }
     }
 }

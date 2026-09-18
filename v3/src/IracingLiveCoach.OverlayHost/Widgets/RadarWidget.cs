@@ -34,9 +34,9 @@ public sealed unsafe class RadarWidget : IDisposable
     private const float BlindSpotBoxHeightDip = 28f;
     private const float ScaleRangeMeters = 60f; // +/- this many meters of track distance fits the vertical scale
 
-    public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory)
+    public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
-        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 12f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 12f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));

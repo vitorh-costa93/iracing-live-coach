@@ -83,8 +83,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     {
         _device = DeviceResources.Create(_hwnd, _width, _height);
         _flags = new FlagBitmapCache(_device.Context);
-        _standings = new StandingsWidget(_device.Context, _device.DWriteFactory, _flags);
-        _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags);
+        _standings = new StandingsWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
+        _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
         _standings.SetSimulatedRows(PreviewData.StandingsRows());
         _relative.SetSimulatedRows(PreviewData.RelativeRows());
     }

@@ -16,6 +16,51 @@ namespace IracingLiveCoach.OverlayHost.Theme;
 public static class PaletteTokens
 {
     private static readonly ConcurrentDictionary<int, Color4> SessionClassColors = new();
+
+    /// <summary>User overrides of the normative per-class palette (spec §16: "Permita
+    /// personalização... por token, paleta de classe"), keyed by class SHORT NAME (stable across
+    /// sessions, unlike <c>classId</c> which <see cref="SessionClassColors"/> uses). Populated from
+    /// <c>PlacementPersistence.Load</c>/<c>TryImport</c> -- never guessed at, never applied
+    /// speculatively.</summary>
+    private static readonly ConcurrentDictionary<string, Color4> NameOverrides = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Registers (or replaces) the color used for every class whose short name matches
+    /// <paramref name="className"/>, across every already-resolved <see cref="SessionClassColors"/>
+    /// entry for that name too -- spec §16: "Alterar a cor de uma classe atualiza os dois widgets e
+    /// todos os seus pilotos atomicamente."</summary>
+    public static void SetNameOverride(string className, Color4 color)
+    {
+        if (string.IsNullOrWhiteSpace(className)) return;
+        NameOverrides[className.Trim()] = color;
+        InvalidateSessionCache();
+    }
+
+    /// <summary>Removes a previously-set override -- the class falls back to the spec §16 normative
+    /// palette again on the next resolve.</summary>
+    public static void ClearNameOverride(string className)
+    {
+        NameOverrides.TryRemove(className.Trim(), out _);
+        InvalidateSessionCache();
+    }
+
+    public static void ClearAllNameOverrides()
+    {
+        NameOverrides.Clear();
+        InvalidateSessionCache();
+    }
+
+    /// <summary>Any classId already resolved (and cached) under an overridden name must pick up the
+    /// change too, not just future/unresolved classIds. SessionClassColors doesn't retain the name
+    /// it was resolved from, so the safest atomic update is to clear the whole cache -- the next
+    /// Draw() call re-resolves every classId, which is cheap (a handful of classes per session) and
+    /// never wrong -- spec §16: "Alterar a cor de uma classe atualiza os dois widgets e todos os
+    /// seus pilotos atomicamente."</summary>
+    private static void InvalidateSessionCache()
+    {
+        foreach (var key in SessionClassColors.Keys.ToList())
+            SessionClassColors.TryRemove(key, out _);
+    }
+
     private static Color4 Hex(string hex, float alpha = 1f)
     {
         var span = hex.AsSpan().TrimStart('#');
@@ -137,7 +182,10 @@ public static class PaletteTokens
         if (classId <= 0) return ClassUnidentified;
         return SessionClassColors.GetOrAdd(classId, _ =>
         {
-            string name = classShortName?.Trim().ToUpperInvariant() ?? string.Empty;
+            string rawName = classShortName?.Trim() ?? string.Empty;
+            if (rawName.Length > 0 && NameOverrides.TryGetValue(rawName, out var overridden)) return overridden;
+
+            string name = rawName.ToUpperInvariant();
             if (name.Contains("GTP")) return ClassGtp;
             if (name.Contains("GT3")) return ClassGt3;
             if (name.Contains("SF23") || name.Contains("SUPER FORMULA")) return ClassSf23;

@@ -21,49 +21,84 @@
             <TextBlock x:Name="ConnectionStatus" Text="" Margin="0,28,0,0" Foreground="#A6B0BB" FontSize="11" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Margin="28,0,0,0">
+        <ScrollViewer Grid.Column="1" Margin="28,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
             <TextBlock x:Name="WidgetTitle" Text="STANDINGS" FontSize="20" FontWeight="Bold"/>
             <TextBlock Text="Changes are sent immediately to the running overlay — no restart." Margin="0,6,0,12" Foreground="#A6B0BB"/>
 
             <TextBlock Text="PREVIEW AO VIVO · 1920×1080" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
             <TextBlock Text="Esta é uma prévia visual real (mesmo renderer D2D do overlay), com dados fictícios de simulação -- disponível mesmo sem o iRacing aberto." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6"/>
-            <Border x:Name="PreviewBorder" BorderBrush="#405A6B" BorderThickness="1" Background="#0B1219" Height="260" SizeChanged="PreviewBorder_AspectSizeChanged"/>
+            <Border x:Name="PreviewBorder" BorderBrush="#405A6B" BorderThickness="1" Background="#0B1219" Height="260" MaxWidth="640" HorizontalAlignment="Stretch" SizeChanged="PreviewBorder_AspectSizeChanged"/>
 
-            <TextBlock Text="POSITION &amp; SIZE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,20,0,8"/>
-            <Grid Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                    <TextBlock Text="X" Foreground="#A6B0BB" FontSize="11"/>
-                    <TextBox x:Name="XBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                    <TextBlock Text="Y" Foreground="#A6B0BB" FontSize="11"/>
-                    <TextBox x:Name="YBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2" Margin="0,0,6,0">
-                    <TextBlock Text="Width" Foreground="#A6B0BB" FontSize="11"/>
-                    <TextBox x:Name="WidthBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                </StackPanel>
-                <StackPanel Grid.Column="3">
-                    <TextBlock Text="Height" Foreground="#A6B0BB" FontSize="11"/>
-                    <TextBox x:Name="HeightBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                </StackPanel>
-            </Grid>
+            <TabControl Margin="0,20,0,0" Background="Transparent" BorderThickness="0">
+                <TabItem Header="Layout">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="POSITION &amp; SIZE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Text="X" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="XBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
+                                <TextBlock Text="Y" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="YBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="0,0,6,0">
+                                <TextBlock Text="Width" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="WidthBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="Height" Foreground="#A6B0BB" FontSize="11"/>
+                                <TextBox x:Name="HeightBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+                            </StackPanel>
+                        </Grid>
 
-            <TextBlock Text="VISIBILITY &amp; LOCK" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
-            <CheckBox x:Name="VisibleBox" Content="Visible" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
-            <CheckBox x:Name="LockedBox" Content="Lock (prevent drag/resize in-game)" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,16"/>
+                        <TextBlock Text="VISIBILITY &amp; LOCK" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="VisibleBox" Content="Visible" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
+                        <CheckBox x:Name="LockedBox" Content="Lock (prevent drag/resize in-game)" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,16"/>
 
-            <TextBlock Text="OPACITY" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-            <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
+                        <TextBlock Text="OPACITY" Foreground="#A6B0BB" Margin="0,0,0,4"/>
+                        <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
 
-            <TextBlock Text="SCALE" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-            <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged"/>
+                        <TextBlock Text="SCALE" Foreground="#A6B0BB" Margin="0,0,0,4"/>
+                        <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged"/>
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="Cores">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="CORES POR CLASSE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Sobrescreve a cor normativa (spec §16) para uma classe pelo nome curto (ex: GT3, GTP, SF23). Aplica-se à faixa de posição e ao cabeçalho de classe em Standings e Relative, ao vivo." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <ItemsControl x:Name="ClassColorList"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBox x:Name="NewClassNameBox" Width="80" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
+                            <TextBox x:Name="NewClassColorBox" Width="90" Text="#FFD400" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
+                            <Button Content="Adicionar / Atualizar" Click="AddClassColorOverride"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ColorStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="Perfis">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="PERFIS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
+                        <TextBlock Text="Exporta/importa o layout salvo (v3-layout.json): posições, tamanhos, visibilidade e cores de classe de todos os widgets." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Exportar perfil..." Click="ExportProfile" Margin="0,0,8,0"/>
+                            <Button Content="Importar perfil..." Click="ImportProfile" Margin="0,0,8,0"/>
+                            <Button Content="Restaurar cores padrão" Click="RestoreDefaults"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ProfileStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
         </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Window>

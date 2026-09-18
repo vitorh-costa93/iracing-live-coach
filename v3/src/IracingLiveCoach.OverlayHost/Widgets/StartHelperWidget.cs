@@ -38,9 +38,9 @@ public sealed unsafe class StartHelperWidget : IDisposable
     private const double DefaultTargetRpmHigh = 7000;
     private const double DefaultCriticalRpm = 8500;
 
-    public StartHelperWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory)
+    public StartHelperWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
-        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow Semi Condensed", 13f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> labelFormat = dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)fontCollection, 13f, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
         ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _labelFormat = labelFormat;

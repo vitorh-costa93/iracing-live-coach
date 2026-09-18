@@ -83,6 +83,11 @@ public sealed class WidgetPlacementStore
 
     public FuelRelativeLink FuelRelativeLink { get; set; } = FuelRelativeLink.Default;
 
+    /// <summary>User overrides of the normative per-class palette (spec §16), keyed by class short
+    /// name (e.g. "GT3"). Persisted alongside placements; applied to <see cref="Theme.PaletteTokens"/>
+    /// by <see cref="Persistence.PlacementPersistence"/>, never read directly by widget draw code.</summary>
+    public Dictionary<string, string> ClassColorOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);
