@@ -79,13 +79,13 @@ public sealed unsafe class DeviceResources : IDisposable
     /// <summary>The bundled Barlow Semi Condensed files as a private, explicit DirectWrite font
     /// collection -- NOT the system collection. <c>AddFontResourceExW(FR_PRIVATE)</c> alone
     /// registers the font with GDI but DirectWrite's system collection does not reliably pick that
-    /// up (confirmed via <see cref="LogWhetherBarlowIsVisibleToDirectWrite"/> logging "does NOT
+    /// up (confirmed via the system collection logging "does NOT
     /// see" even with <c>checkForUpdates: true</c>), so every widget's <c>CreateTextFormat</c> call
     /// must pass this collection explicitly or it silently falls back to a system font -- exactly
     /// the bug spec §5 warns against ("recursos de fonte licenciados... e fallback" implies a real,
     /// working font, not a silent substitute). Null if the font files are missing or the
     /// FontSet-builder chain failed -- callers fall back to the system collection (pass null) rather
-    /// than throwing, and <see cref="LogWhetherBarlowIsVisibleToDirectWrite"/>'s log line is the
+    /// than throwing, and the system collection's log line is the
     /// signal that happened.</summary>
     public IDWriteFontCollection1* FontCollection => _fontCollection.Get();
 
@@ -176,7 +176,6 @@ public sealed unsafe class DeviceResources : IDisposable
         ComPtr<IDWriteFactory> dwriteFactory = default;
         ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwriteFactory.GetAddressOf()));
         _dwriteFactory = dwriteFactory;
-        LogWhetherBarlowIsVisibleToDirectWrite();
         _fontCollection = BuildPrivateFontCollection();
 
         ComPtr<IDWriteTextFormat> textFormat = _dwriteFactory.Get()->CreateTextFormat(
@@ -196,40 +195,12 @@ public sealed unsafe class DeviceResources : IDisposable
         BindTargetBitmap();
     }
 
-    /// <summary>Diagnostic only, per spec §5's "inclua recursos de fonte licenciados adequadamente e
-    /// fallback": <c>AddFontResourceExW(FR_PRIVATE)</c> registers a font with GDI, but DirectWrite's
-    /// own system font collection does not always pick up a GDI-private registration automatically
-    /// -- this checks, with <c>checkForUpdates: true</c> to force a fresh enumeration, and logs
-    /// PASS/FAIL rather than silently assuming every <c>CreateTextFormat("Barlow Semi Condensed",
-    /// ...)</c> call actually got Barlow instead of a silent system fallback (spec explicitly
-    /// forbids a silently-replaced font).</summary>
-    private void LogWhetherBarlowIsVisibleToDirectWrite()
-    {
-        using ComPtr<IDWriteFontCollection> collection = default;
-        var hr = _dwriteFactory.Get()->GetSystemFontCollection(collection.GetAddressOf(), true);
-        if (hr.Failure)
-        {
-            Console.WriteLine($"[Fonts] GetSystemFontCollection failed: {hr}");
-            return;
-        }
-        const string family = "Barlow Semi Condensed";
-        fixed (char* p = family)
-        {
-            uint index = 0;
-            Bool32 exists = false;
-            var findHr = collection.Get()->FindFamilyName(p, &index, &exists);
-            Console.WriteLine(findHr.Success && exists
-                ? $"[Fonts] DirectWrite sees '{family}' at index {index} -- CreateTextFormat will use it."
-                : $"[Fonts] DirectWrite does NOT see '{family}' (hr={findHr}, exists={exists}) -- every CreateTextFormat(\"{family}\", ...) call is silently falling back to a system font.");
-        }
-    }
-
     /// <summary>Builds an explicit DirectWrite font collection directly from the bundled .ttf files
     /// via <c>IDWriteFactory3::CreateFontSetBuilder</c>/<c>CreateFontFaceReference</c>/
     /// <c>CreateFontCollectionFromFontSet</c> -- the reliable way to make a private font visible to
     /// DirectWrite, since <c>AddFontResourceExW(FR_PRIVATE)</c> (still called too, for GDI-based
     /// consumers) does not reliably surface in DirectWrite's own system collection (see
-    /// <see cref="LogWhetherBarlowIsVisibleToDirectWrite"/>). Returns an empty/default ComPtr (never
+    /// the system collection). Returns an empty/default ComPtr (never
     /// throws) on any failure -- every widget's CreateTextFormat call treats a null collection as
     /// "use the system collection", so a failure here degrades to the old (wrong-but-not-crashing)
     /// behavior rather than taking the overlay down.</summary>
@@ -298,14 +269,14 @@ public sealed unsafe class DeviceResources : IDisposable
                 }
             }
 
-            fixed (char* p = "Barlow Semi Condensed")
+            fixed (char* p = "Barlow")
             {
                 uint index = 0;
                 Bool32 exists = false;
                 collection.Get()->FindFamilyName(p, &index, &exists);
                 Console.WriteLine(exists
-                    ? "[Fonts] Private font collection built successfully -- 'Barlow Semi Condensed' is available to CreateTextFormat via DeviceResources.FontCollection."
-                    : "[Fonts] Private font collection built, but 'Barlow Semi Condensed' still not found in it -- check the .ttf files' actual family name.");
+                    ? "[Fonts] Private font collection built successfully -- 'Barlow' (SemiCondensed stretch) is available to CreateTextFormat via DeviceResources.FontCollection."
+                    : "[Fonts] Private font collection built, but 'Barlow' still not found in it -- check the .ttf files' actual family name.");
             }
             return collection;
         }

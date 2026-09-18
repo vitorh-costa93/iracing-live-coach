@@ -226,21 +226,49 @@ public sealed unsafe class FuelWidget : IDisposable
     private void MetricSmall(ID2D1DeviceContext* dc, string label, string value, float x, float y, float width, Color4? valueColor = null)
     {
         SetBrushColor(PaletteTokens.TextSecondary);
-        string text = $"{label} {value}";
-        fixed (char* p = text)
+        if (valueColor is not Color4 color)
         {
-            var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
-        if (valueColor is Color4 color)
-        {
-            SetBrushColor(color);
-            fixed (char* p = value)
+            string text = $"{label} {value}";
+            fixed (char* p = text)
             {
                 var rect = new RectF(x, y, x + width, y + RowHeightDip);
-                dc->DrawText(p, (uint)value.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
+            return;
         }
+
+        // Coloured value: label in secondary, then the value in its own colour immediately after
+        // the label's measured width. (Drawing the whole "label value" string and then the value
+        // again on top of it at the same origin -- what this did before -- overprinted the two.)
+        string labelText = label + " ";
+        fixed (char* p = labelText)
+        {
+            var rect = new RectF(x, y, x + width, y + RowHeightDip);
+            dc->DrawText(p, (uint)labelText.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        float labelWidth = MeasureWidth(labelText);
+        SetBrushColor(color);
+        fixed (char* p = value)
+        {
+            var rect = new RectF(x + labelWidth, y, x + width, y + RowHeightDip);
+            dc->DrawText(p, (uint)value.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+    }
+
+    private float MeasureWidth(string text)
+    {
+        ComPtr<IDWriteTextLayout> layout = default;
+        fixed (char* p = text)
+        {
+            if (_dwriteFactory->CreateTextLayout(p, (uint)text.Length, _labelFormat.Get(), 1000f, 100f, layout.GetAddressOf()).Failure)
+                return text.Length * 6f; // rough fallback: never fail a frame over a measurement
+        }
+        try
+        {
+            TextMetrics metrics;
+            return layout.Get()->GetMetrics(&metrics).Success ? metrics.widthIncludingTrailingWhitespace : text.Length * 6f;
+        }
+        finally { layout.Dispose(); }
     }
 
     public void Dispose()
