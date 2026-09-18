@@ -431,5 +431,34 @@ public sealed unsafe class DeviceResources : IDisposable
         _d3dDevice.Dispose();
     }
 
+    /// <summary>Resizes the swap chain live (spec §12: width/height edits from the Control Center
+    /// take effect without a restart). Must be called on the render thread, never between
+    /// <see cref="BeginFrame"/> and <see cref="EndFrame"/>. The D2D target must be released before
+    /// ResizeBuffers (it holds a reference to the old back buffer) and is always re-bound afterwards,
+    /// so a failed resize leaves rendering intact at the previous size instead of blank.</summary>
+    /// <returns>True if the swap chain now has the requested size.</returns>
+    public bool Resize(int width, int height)
+    {
+        width = Math.Max(16, width);
+        height = Math.Max(16, height);
+        if (width == _width && height == _height) return true;
+
+        _dc.Get()->SetTarget(null);
+        bool ok = false;
+        try
+        {
+            var hr = _swapChain.Get()->ResizeBuffers(0, (uint)width, (uint)height, DxgiFormat.Unknown, SwapChainFlags.None);
+            if (hr.Success)
+            {
+                _width = width;
+                _height = height;
+                ok = true;
+            }
+            else Console.WriteLine($"[Resize] ResizeBuffers({width}x{height}) failed: {hr} -- keeping {_width}x{_height}.");
+        }
+        finally { BindTargetBitmap(); }
+        return ok;
+    }
+
     public void Dispose() => ReleaseGpuResources();
 }

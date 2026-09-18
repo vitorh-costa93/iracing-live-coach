@@ -83,6 +83,10 @@ public static unsafe class Program
     private static readonly Dictionary<string, nint> WidgetWindows = new();
     private static readonly Dictionary<nint, string> WidgetKeysByHandle = new();
 
+    /// <summary>Width/height edits arrive on the IPC thread but a swap chain may only be resized on
+    /// the render thread between frames -- they queue here and the render loop drains them.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int Width, int Height)> PendingSizes = new();
+
     // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
     // so movement never carries unrelated overlay content or transparent padding with it.
     private static nint _draggingWindow;
@@ -224,6 +228,11 @@ public static unsafe class Program
         using var fuelResources = DeviceResources.Create(fuelHwnd, (int)fuelPlacement.WidthDip, (int)fuelPlacement.HeightDip);
         using var radarResources = DeviceResources.Create(radarHwnd, (int)radarPlacement.WidthDip, (int)radarPlacement.HeightDip);
         using var startResources = DeviceResources.Create(startHwnd, (int)startPlacement.WidthDip, (int)startPlacement.HeightDip);
+        var resourcesByKey = new Dictionary<string, DeviceResources>
+        {
+            [StandingsKey] = standingsResources, [RelativeKey] = relativeResources, [WeatherKey] = weatherResources,
+            [FuelKey] = fuelResources, [RadarKey] = radarResources, [StartHelperKey] = startResources,
+        };
         standingsResources.SetClickThrough(standingsHwnd, EffectiveClickThrough(standingsHwnd));
         relativeResources.SetClickThrough(relativeHwnd, EffectiveClickThrough(relativeHwnd));
         weatherResources.SetClickThrough(weatherHwnd, EffectiveClickThrough(weatherHwnd));
@@ -397,6 +406,25 @@ public static unsafe class Program
             UpdateOverlayVisibility();
             ApplyMatchingProfile();
 
+            // Live size changes (Control Center / undo / profile switch): resize the swap chain and
+            // window here on the render thread, then re-read the placements the draw calls below use.
+            if (!PendingSizes.IsEmpty)
+            {
+                foreach (var key in PendingSizes.Keys.ToArray())
+                {
+                    if (!PendingSizes.TryRemove(key, out var size)) continue;
+                    if (!resourcesByKey.TryGetValue(key, out var res) || !WidgetWindows.TryGetValue(key, out var hwnd)) continue;
+                    if (res.Resize(size.Width, size.Height))
+                        SetWindowPos(hwnd, 0, 0, 0, size.Width, size.Height, SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+                }
+                standingsPlacement = PlacementStore.Get(StandingsKey)!;
+                relativePlacement = PlacementStore.Get(RelativeKey)!;
+                weatherPlacement = PlacementStore.Get(WeatherKey)!;
+                fuelPlacement = PlacementStore.Get(FuelKey)!;
+                radarPlacement = PlacementStore.Get(RadarKey)!;
+                startPlacement = PlacementStore.Get(StartHelperKey)!;
+            }
+
             if (_simulating)
             {
                 standings.SetSimulatedRows(BuildSimulatedStandingsRows());
@@ -540,6 +568,7 @@ public static unsafe class Program
     {
         if (!WidgetWindows.TryGetValue(widgetKey, out var hwnd)) return;
         SetWindowPos(hwnd, 0, (int)placement.X, (int)placement.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        PendingSizes[widgetKey] = ((int)placement.WidthDip, (int)placement.HeightDip);
         // Show/hide is now owned exclusively by UpdateOverlayVisibility (on-track/edit-mode gate),
         // applied on the very next frame -- a direct ShowWindow here would fight that cache and
         // could leave the two out of sync.
@@ -816,6 +845,7 @@ public static unsafe class Program
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int AddFontResourceExW(string fileName, uint flags, nint reserved);
     private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_NOOWNERZORDER = 0x0200;
 
