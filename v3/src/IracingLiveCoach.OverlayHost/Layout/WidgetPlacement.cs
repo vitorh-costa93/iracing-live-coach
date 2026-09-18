@@ -88,6 +88,10 @@ public sealed class WidgetPlacementStore
     /// by <see cref="Persistence.PlacementPersistence"/>, never read directly by widget draw code.</summary>
     public Dictionary<string, string> ClassColorOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>User overrides of a widget's column configuration (spec §12: reorder/width/decimals/
+    /// alignment/visibility), keyed by widget key (e.g. "standings"). Persisted alongside placements.</summary>
+    public Dictionary<string, List<ColumnDefinition>> ColumnOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, WidgetPlacement> All => _placements;
 
     public WidgetPlacement? Get(string widgetKey) => _placements.GetValueOrDefault(widgetKey);

@@ -20,7 +20,8 @@ public sealed record PlacementProfile(
     Dictionary<string, WidgetPlacement> Widgets,
     bool FuelRelativeLinkEnabled,
     float FuelRelativeLinkSpacingDip,
-    Dictionary<string, string>? ClassColorOverrides = null)
+    Dictionary<string, string>? ClassColorOverrides = null,
+    Dictionary<string, List<ColumnDefinition>>? ColumnOverrides = null)
 {
     public const int CurrentSchemaVersion = 1;
 }
@@ -79,6 +80,12 @@ public static class PlacementPersistence
                 if (TryParseHexColor(hex, out var color)) PaletteTokens.SetNameOverride(className, color);
             }
         }
+
+        if (profile.ColumnOverrides is not null)
+        {
+            foreach (var (widgetKey, columns) in profile.ColumnOverrides)
+                store.ColumnOverrides[widgetKey] = columns;
+        }
     }
 
     private static bool TryParseHexColor(string hex, out Vortice.Win32.Numerics.Color4 color)
@@ -110,7 +117,8 @@ public static class PlacementPersistence
                 store.All.ToDictionary(kv => kv.Key, kv => kv.Value),
                 store.FuelRelativeLink.Enabled,
                 store.FuelRelativeLink.SpacingDip,
-                new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, List<ColumnDefinition>>(store.ColumnOverrides, StringComparer.OrdinalIgnoreCase));
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

@@ -7,6 +7,8 @@ using Microsoft.Win32;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Persistence;
 using IracingLiveCoach.OverlayHost.Theme;
+using IracingLiveCoach.OverlayHost.Widgets;
+using LayoutColumn = IracingLiveCoach.OverlayHost.Layout.ColumnDefinition;
 
 namespace IracingLiveCoach.ControlCenter;
 
@@ -40,12 +42,19 @@ public partial class MainWindow : Window
     /// import/export/restore) rather than against the live IPC channel Layout uses.</summary>
     private readonly WidgetPlacementStore _profileStore = new();
 
+    /// <summary>Working set for the Colunas tab -- whichever widget is selected in the sidebar.
+    /// Reuses OverlayHost's own <see cref="ColumnDefinition"/> type directly instead of a parallel
+    /// UI-only shape, since this project already references that assembly for the preview host.</summary>
+    private List<LayoutColumn> _currentColumns = [];
+    private readonly ColumnConfigIpcClient _columnConfigClient = new();
+
     public MainWindow()
     {
         InitializeComponent();
         LoadIntoControls(_selectedWidget);
         PlacementPersistence.Load(_profileStore);
         RefreshClassColorList();
+        LoadColumnsForSelectedWidget();
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
@@ -114,6 +123,7 @@ public partial class MainWindow : Window
         _selectedWidget = (string)((Button)sender).Tag;
         WidgetTitle.Text = _selectedWidget.ToUpperInvariant().Replace('-', ' ');
         LoadIntoControls(_selectedWidget);
+        LoadColumnsForSelectedWidget();
     }
 
     private void LoadIntoControls(string widget)
@@ -255,6 +265,162 @@ public partial class MainWindow : Window
         PaletteTokens.ClearAllNameOverrides();
         RefreshClassColorList();
         ProfileStatus.Text = "Overrides de cor restaurados para o padrão normativo (spec §16).";
+    }
+
+    // --- Colunas tab (spec §12: reorder/width/decimals/alignment/visibility, ao vivo) ---
+
+    private static List<LayoutColumn>? DefaultColumnsFor(string widget) => widget switch
+    {
+        "standings" => StandingsWidget.BuildDefaultColumns(),
+        "relative" => RelativeWidget.BuildDefaultColumns(),
+        _ => null
+    };
+
+    private void LoadColumnsForSelectedWidget()
+    {
+        var defaults = DefaultColumnsFor(_selectedWidget);
+        if (defaults is null)
+        {
+            _currentColumns = [];
+            ColumnsHint.Text = $"Colunas configuráveis ainda não disponíveis para '{_selectedWidget}' -- apenas Standings e Relative têm o motor de colunas ligado.";
+            RefreshColumnList();
+            return;
+        }
+        ColumnsHint.Text = "Reordenar (↑/↓), largura, casas decimais, alinhamento e visibilidade -- aplicado ao vivo.";
+        _currentColumns = _profileStore.ColumnOverrides.TryGetValue(_selectedWidget, out var saved)
+            ? saved.OrderBy(c => c.Order).ToList()
+            : defaults;
+        RefreshColumnList();
+    }
+
+    private void RefreshColumnList()
+    {
+        var panel = new StackPanel();
+        var ordered = _currentColumns.OrderBy(c => c.Order).ToList();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var column = ordered[i];
+            int index = i;
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+            for (int c = 0; c < 7; c++) row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition());
+
+            var upDown = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
+            var upButton = new Button { Content = "↑", Padding = new Thickness(4, 0, 4, 0), IsEnabled = index > 0 };
+            upButton.Click += (_, _) => MoveColumn(column.Key, -1);
+            var downButton = new Button { Content = "↓", Padding = new Thickness(4, 0, 4, 0), IsEnabled = index < ordered.Count - 1 };
+            downButton.Click += (_, _) => MoveColumn(column.Key, 1);
+            upDown.Children.Add(upButton);
+            upDown.Children.Add(downButton);
+            Grid.SetColumn(upDown, 0);
+            row.Children.Add(upDown);
+
+            var visibleBox = new CheckBox { IsChecked = column.Visible, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+            visibleBox.Checked += (_, _) => UpdateColumn(column.Key, c => c with { Visible = true });
+            visibleBox.Unchecked += (_, _) => UpdateColumn(column.Key, c => c with { Visible = false });
+            Grid.SetColumn(visibleBox, 1);
+            row.Children.Add(visibleBox);
+
+            var keyLabel = new TextBlock { Text = column.Key, VerticalAlignment = VerticalAlignment.Center, Width = 90, Margin = new Thickness(6, 0, 0, 0) };
+            Grid.SetColumn(keyLabel, 2);
+            row.Children.Add(keyLabel);
+
+            var widthBox = new TextBox
+            {
+                Text = column.WidthPx.ToString("0", CultureInfo.InvariantCulture), Width = 50,
+                Background = (Brush)new BrushConverter().ConvertFromString("#17232E")!, Foreground = System.Windows.Media.Brushes.White,
+                BorderBrush = (Brush)new BrushConverter().ConvertFromString("#405A6B")!, Margin = new Thickness(6, 0, 0, 0)
+            };
+            widthBox.LostFocus += (_, _) =>
+            {
+                if (float.TryParse(widthBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var w))
+                    UpdateColumn(column.Key, c => c with { WidthPx = w, MinWidthPx = Math.Min(c.MinWidthPx, w) });
+            };
+            Grid.SetColumn(widthBox, 3);
+            row.Children.Add(widthBox);
+
+            var decimalsBox = new TextBox
+            {
+                Text = column.DecimalPlaces?.ToString(CultureInfo.InvariantCulture) ?? "", Width = 30,
+                Background = (Brush)new BrushConverter().ConvertFromString("#17232E")!, Foreground = System.Windows.Media.Brushes.White,
+                BorderBrush = (Brush)new BrushConverter().ConvertFromString("#405A6B")!, Margin = new Thickness(6, 0, 0, 0),
+                IsEnabled = column.DecimalPlaces is not null
+            };
+            decimalsBox.LostFocus += (_, _) =>
+            {
+                if (int.TryParse(decimalsBox.Text, out var d))
+                    UpdateColumn(column.Key, c => c with { DecimalPlaces = Math.Clamp(d, 0, 6) });
+            };
+            Grid.SetColumn(decimalsBox, 4);
+            row.Children.Add(decimalsBox);
+
+            var alignBox = new ComboBox { Width = 70, Margin = new Thickness(6, 0, 0, 0) };
+            alignBox.Items.Add(ColumnAlignment.Left);
+            alignBox.Items.Add(ColumnAlignment.Center);
+            alignBox.Items.Add(ColumnAlignment.Right);
+            alignBox.SelectedItem = column.Alignment;
+            alignBox.SelectionChanged += (_, _) =>
+            {
+                if (alignBox.SelectedItem is ColumnAlignment a) UpdateColumn(column.Key, c => c with { Alignment = a });
+            };
+            Grid.SetColumn(alignBox, 5);
+            row.Children.Add(alignBox);
+
+            panel.Children.Add(row);
+        }
+        ColumnList.Items.Clear();
+        ColumnList.Items.Add(panel);
+    }
+
+    private void UpdateColumn(string key, Func<LayoutColumn, LayoutColumn> update)
+    {
+        int idx = _currentColumns.FindIndex(c => c.Key == key);
+        if (idx < 0) return;
+        _currentColumns[idx] = update(_currentColumns[idx]);
+    }
+
+    private void MoveColumn(string key, int direction)
+    {
+        var ordered = _currentColumns.OrderBy(c => c.Order).ToList();
+        int idx = ordered.FindIndex(c => c.Key == key);
+        int target = idx + direction;
+        if (idx < 0 || target < 0 || target >= ordered.Count) return;
+        (ordered[idx], ordered[target]) = (ordered[target], ordered[idx]);
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            int keyIdx = _currentColumns.FindIndex(c => c.Key == ordered[i].Key);
+            _currentColumns[keyIdx] = _currentColumns[keyIdx] with { Order = i };
+        }
+        RefreshColumnList();
+    }
+
+    private async void ApplyColumnConfig(object sender, RoutedEventArgs e)
+    {
+        if (_currentColumns.Count == 0)
+        {
+            ColumnsStatus.Text = "Nada para aplicar.";
+            return;
+        }
+        var entries = _currentColumns.Select(c => new ColumnConfigEntry(
+            c.Key, c.Visible, c.Order, c.WidthPx, c.MinWidthPx, c.WidthMode.ToString(),
+            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx)).ToList();
+
+        bool sent = await _columnConfigClient.SendAsync(_selectedWidget, entries);
+        _profileStore.ColumnOverrides[_selectedWidget] = _currentColumns;
+        PlacementPersistence.Save(_profileStore);
+        ColumnsStatus.Text = sent
+            ? "Aplicado ao overlay ao vivo e salvo."
+            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+    }
+
+    private void RestoreDefaultColumns(object sender, RoutedEventArgs e)
+    {
+        var defaults = DefaultColumnsFor(_selectedWidget);
+        if (defaults is null) return;
+        _currentColumns = defaults;
+        _profileStore.ColumnOverrides.Remove(_selectedWidget);
+        PlacementPersistence.Save(_profileStore);
+        RefreshColumnList();
+        ColumnsStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
     }
 
     // --- Modo de edição global (spec §4: overlays só visíveis na pista, exceto durante edição) ---

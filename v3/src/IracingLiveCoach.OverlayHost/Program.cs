@@ -230,6 +230,12 @@ public static unsafe class Program
         standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
         relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
+        // Third small typed channel: per-widget column configuration (spec §12's reorder/width/
+        // decimals/alignment/visibility asks). Applies live and persists, same as placement edits.
+        ApplyPersistedColumnConfig(standings, relative);
+        using var columnConfigIpcServer = new ColumnConfigIpcServer();
+        columnConfigIpcServer.MessageReceived += m => ApplyColumnConfigMessage(m, standings, relative);
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var frameTimes = new List<double>(20000);
         double lastFrameMs = sw.Elapsed.TotalMilliseconds;
@@ -395,6 +401,44 @@ public static unsafe class Program
         // could leave the two out of sync.
         byte alpha = (byte)Math.Clamp(message.Opacity * 255f, 0f, 255f);
         SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
+    }
+
+    /// <summary>Applies a saved column-config profile (if any) to Standings/Relative at startup --
+    /// only these two widgets have a column engine wired in; a persisted override for any other key
+    /// is silently ignored rather than crashing.</summary>
+    private static void ApplyPersistedColumnConfig(StandingsWidget standings, RelativeWidget relative)
+    {
+        if (PlacementStore.ColumnOverrides.TryGetValue(StandingsKey, out var standingsColumns))
+            standings.SetColumns(standingsColumns);
+        if (PlacementStore.ColumnOverrides.TryGetValue(RelativeKey, out var relativeColumns))
+            relative.SetColumns(relativeColumns);
+    }
+
+    /// <summary>Spec §12: reorder/width/decimals/alignment/visibility, applied live and persisted --
+    /// converts the wire DTO to the real <see cref="ColumnDefinition"/> the widgets consume.</summary>
+    private static void ApplyColumnConfigMessage(ColumnConfigMessage message, StandingsWidget standings, RelativeWidget relative)
+    {
+        var columns = message.Columns.Select(c => new ColumnDefinition(
+            c.Key,
+            Enum.TryParse<ColumnWidthMode>(c.WidthMode, out var widthMode) ? widthMode : ColumnWidthMode.Fixed,
+            c.WidthPx,
+            c.MinWidthPx,
+            Enum.TryParse<ColumnAlignment>(c.Alignment, out var alignment) ? alignment : ColumnAlignment.Left,
+            c.PaddingLeftPx,
+            c.PaddingRightPx,
+            c.Visible,
+            c.Order,
+            c.DecimalPlaces)).ToList();
+
+        switch (message.Widget)
+        {
+            case StandingsKey: standings.SetColumns(columns); break;
+            case RelativeKey: relative.SetColumns(columns); break;
+            default: return; // unknown widget key -- ignore rather than guess
+        }
+
+        PlacementStore.ColumnOverrides[message.Widget] = columns;
+        PlacementPersistence.Save(PlacementStore);
     }
 
     /// <summary>Spec §17: no widget may exceed 25% of its target monitor's physical width, and a
