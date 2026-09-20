@@ -54,7 +54,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     private const float CarNumberColumnWidthDip = 44f;
     private const float FlagColumnWidthDip = 30f;
     private const float BrandColumnWidthDip = 34f;
-    private const float NameColumnWidthDip = 124f;
+    private const float NameColumnWidthDip = 118f;
     private const float LicenseColumnWidthDip = 56f;
     private const float IRatingColumnWidthDip = 64f;
     private const float GapColumnWidthDip = 70f;
@@ -72,7 +72,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         new("position", ColumnWidthMode.Fixed, OffsetColumnWidthDip, OffsetColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
         new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
         new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
-        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
+        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 3),
         new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
         new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 3),

@@ -35,6 +35,33 @@ public static class SimulationData
         new(3, "James Carter", 2.611, null, null, null, null, false, "🇺🇸", "A 3.67", null, 3670, 1, "Ford", false, 6, "GT3", Gt3, "7", 7, 2),
     ];
 
+    // ---- Suzuka / Super Formula scenario (SF23, push-to-pass): the reference for the Overtake column ----
+    private const string Sf23 = "#FF3038";
+
+    public static List<StandingsRow> Sf23StandingsRows() =>
+    [
+        new(1, "Ryo Hirakawa", 12, 96.240, null, false, "\U0001F1EF\U0001F1F5", "A 4.12", null, 5180, 3, "Honda", 0, 12, -0.240, "SF23", Sf23, 1, null, true, null, 124, false, "L8 24s", "6", 1),
+        new(2, "Ritomo Miyata", 12, 96.812, null, false, "\U0001F1EF\U0001F1F5", "A 4.10", null, 5020, 3, "Toyota", 0.788, -8, 0.332, "SF23", Sf23, 2, 0.788, true, null, 156, false, "L8 24s", "27", 1),
+        new(3, "Vitor Costa", 12, 97.028, null, true, "\U0001F1E7\U0001F1F7", "A 3.49", null, 5180, 3, "Honda", 1.0, 12, 0.0, "SF23", Sf23, 3, 0.216, true, null, 108, false, "L8 24s", "93", 1),
+        new(4, "Ayumu Iwasa", 12, 97.114, null, false, "\U0001F1EF\U0001F1F5", "A 3.65", null, 4980, 3, "Honda", 1.4, 5, 0.086, "SF23", Sf23, 4, 0.086, false, null, 142, true, "L8 24s", "15", 1),
+        new(5, "Sho Tsuboi", 12, 97.420, null, false, "\U0001F1EF\U0001F1F5", "A 4.01", null, 5210, 3, "Toyota", 1.8, -3, 0.392, "SF23", Sf23, 5, 0.306, false, null, 167, true, "L8 24s", "36", 1),
+        new(6, "Kenta Yamashita", 12, 97.610, null, false, "\U0001F1EF\U0001F1F5", "A 3.37", null, 4750, 3, "Toyota", 2.3, 2, 0.582, "SF23", Sf23, 6, 0.5, false, null, 96, false, "L8 24s", "3", 1),
+    ];
+
+    public static List<RelativeRow> Sf23RelativeRows() =>
+    [
+        new(-2, "Ryo Hirakawa", -3.922, null, true, null, 124, false, "\U0001F1EF\U0001F1F5", "A 4.12", null, 5180, 3, "Honda", false, 1, "SF23", Sf23, "6", 1, 1),
+        new(-1, "Ritomo Miyata", -2.537, null, true, null, 156, false, "\U0001F1EF\U0001F1F5", "A 4.10", null, 5020, 3, "Toyota", false, 2, "SF23", Sf23, "27", 2, 1),
+        new(0, "Vitor Costa", 0, null, true, null, 108, false, "\U0001F1E7\U0001F1F7", "A 3.49", null, 5180, 3, "Honda", true, 3, "SF23", Sf23, "93", 3, 1),
+        new(1, "Ayumu Iwasa", 1.386, null, false, null, 142, true, "\U0001F1EF\U0001F1F5", "A 3.65", null, 4980, 3, "Honda", false, 4, "SF23", Sf23, "15", 4, 1),
+        new(2, "Sho Tsuboi", 2.083, null, false, null, 167, true, "\U0001F1EF\U0001F1F5", "A 4.01", null, 5210, 3, "Toyota", false, 5, "SF23", Sf23, "36", 5, 1),
+        new(3, "Kenta Yamashita", 2.941, null, false, null, 96, false, "\U0001F1EF\U0001F1F5", "A 3.37", null, 4750, 3, "Toyota", false, 6, "SF23", Sf23, "3", 6, 1),
+        new(4, "Nirei Fukuzumi", 3.611, null, false, null, 88, false, "\U0001F1EF\U0001F1F5", "A 3.67", null, 5060, 3, "Honda", false, 7, "SF23", Sf23, "50", 7, 1),
+    ];
+
+    public static SessionStatus Sf23Session() =>
+        new("SF23", "RACE", 12, 28, "", "", 5420, 7, "Super Formula SF23");
+
     public static SessionStatus Session() =>
         new("GT3", "RACE", 12, 28, "", "", 3980, 6, "McLaren 720S GT3 EVO");
 

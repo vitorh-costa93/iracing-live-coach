@@ -94,6 +94,8 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
         StateChanged += (_, _) => RepositionPreview();
+        // The preview's anchor can move without changing size (window resize re-centres it).
+        LayoutUpdated += (_, _) => RepositionPreview();
         Activated += (_, _) => RefreshLiveStateFromDisk();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
     }
@@ -385,6 +387,7 @@ public partial class MainWindow : Window
             "E — alternar modo de edição (mostrar/arrastar os widgets)\n" +
             "Espaço — alternar click-through global\n" +
             "T — alternar a simulação (dados fictícios)\n" +
+            "Y — na simulação, alternar entre GT3 multiclasse e Super Fórmula (com overtake)\n" +
             "Esc — fechar o overlay",
             "Atalhos de teclado", MessageBoxButton.OK, MessageBoxImage.Information);
     }

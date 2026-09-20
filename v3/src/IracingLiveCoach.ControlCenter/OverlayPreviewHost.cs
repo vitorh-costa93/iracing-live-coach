@@ -59,6 +59,7 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private WeatherWidget? _weather;
     private FuelWidget? _fuel;
     private ComPtr<ID2D1SolidColorBrush> _backdropBrush;
+    private (int X, int Y, int Width, int Height) _lastRect;
     private readonly WidgetPlacementStore _placements = new();
     private WidgetPlacementStore? _profile;
     private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel"];
@@ -159,6 +160,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     public void MoveTo(int x, int y, int width, int height)
     {
         if (_hwnd == 0 || width <= 0 || height <= 0) return;
+        if ((x, y, width, height) == _lastRect) return;
+        _lastRect = (x, y, width, height);
         bool sizeChanged = width != _width || height != _height;
         SetWindowPos(_hwnd, 0, x, y, width, height, SWP_NOACTIVATE | SWP_NOZORDER);
         if (sizeChanged)
@@ -189,17 +192,44 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         // Scale the whole drawing, not just the positions: widgets are laid out in real 1920x1080
         // DIPs, so scaling only their origins drew them at full size in a box a third as wide and
         // made neighbouring widgets overlap.
-        var transform = System.Numerics.Matrix3x2.CreateScale(scale);
-        _device.Context->SetTransform(&transform);
         var weatherPlacement = _placements.Get("weather");
         var fuelPlacement = _placements.Get("fuel");
-        if (standingsPlacement is { Visible: true }) _standings.Draw(_device.Context, standingsPlacement.X, standingsPlacement.Y);
-        if (relativePlacement is { Visible: true }) _relative.Draw(_device.Context, relativePlacement.X, relativePlacement.Y);
-        if (weatherPlacement is { Visible: true }) _weather.Draw(_device.Context, weatherPlacement.X, weatherPlacement.Y);
-        if (fuelPlacement is { Visible: true }) _fuel.Draw(_device.Context, fuelPlacement.X, fuelPlacement.Y);
+        DrawWidget(standingsPlacement, scale, (x, y) => _standings.Draw(_device.Context, x, y));
+        DrawWidget(relativePlacement, scale, (x, y) => _relative.Draw(_device.Context, x, y));
+        DrawWidget(weatherPlacement, scale, (x, y) => _weather.Draw(_device.Context, x, y));
+        DrawWidget(fuelPlacement, scale, (x, y) => _fuel.Draw(_device.Context, x, y));
         var identity = System.Numerics.Matrix3x2.Identity;
         _device.Context->SetTransform(&identity);
         _device.EndFrame();
+    }
+
+    /// <summary>Draws one widget the way the overlay window would: at its position, with its own scale
+    /// (about its top-left corner) and opacity, all inside the preview's 1920x1080 -> panel scaling.</summary>
+    private void DrawWidget(WidgetPlacement? placement, float previewScale, Action<float, float> draw)
+    {
+        if (placement is not { Visible: true } || _device is null) return;
+        var transform = System.Numerics.Matrix3x2.CreateScale(placement.Scale, new System.Numerics.Vector2(placement.X, placement.Y))
+                        * System.Numerics.Matrix3x2.CreateScale(previewScale);
+        _device.Context->SetTransform(&transform);
+        bool faded = placement.Opacity < 0.995f;
+        if (faded)
+        {
+            var layer = new LayerParameters1
+            {
+                contentBounds = new RectF(float.NegativeInfinity, float.NegativeInfinity, float.PositiveInfinity, float.PositiveInfinity),
+                geometricMask = null,
+                maskAntialiasMode = AntialiasMode.PerPrimitive,
+                maskTransform = System.Numerics.Matrix3x2.Identity,
+                opacity = Math.Clamp(placement.Opacity, 0f, 1f),
+                opacityBrush = null,
+                layerOptions = LayerOptions1.None
+            };
+            _device.Context->PushLayer(&layer, null);
+        }
+        draw(placement.X, placement.Y);
+        if (faded) _device.Context->PopLayer();
+        var identity = System.Numerics.Matrix3x2.Identity;
+        _device.Context->SetTransform(&identity);
     }
 
     /// <summary>A quiet navy gradient (sky to asphalt) so the widgets read as sitting over a game view

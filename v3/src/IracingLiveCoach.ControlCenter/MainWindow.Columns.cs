@@ -93,6 +93,7 @@ public partial class MainWindow
         var panel = new StackPanel();
         var ordered = _currentColumns.OrderBy(c => c.Order).ToList();
         ColumnHeaderRow.Visibility = ordered.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        RestoreColumnsButton.Visibility = ordered.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         for (int i = 0; i < ordered.Count; i++)
         {
             var column = ordered[i];
@@ -109,7 +110,8 @@ public partial class MainWindow
             var handle = new TextBlock
             {
                 Text = "", FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 15, Foreground = (Brush)FindResource("MutedBrush"),
-                VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = Center(), Cursor = Cursors.SizeAll, ToolTip = "Arraste para reordenar"
+                VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = Center(), Cursor = Cursors.SizeAll, ToolTip = "Arraste para reordenar",
+                Background = Brushes.Transparent, Padding = new Thickness(7, 8, 7, 8)
             };
             Point? dragStart = null;
             handle.MouseLeftButtonDown += (_, e) => dragStart = e.GetPosition(null);
@@ -122,11 +124,13 @@ public partial class MainWindow
                 dragStart = null;
                 DragDrop.DoDragDrop(handle, key, DragDropEffects.Move);
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(handle, "ColHandle_" + key);
             grid.Children.Add(handle);
 
             var visible = new CheckBox { Style = (Style)FindResource("Switch"), IsChecked = column.Visible, HorizontalAlignment = Center(), VerticalAlignment = VerticalAlignment.Center };
             visible.Checked += (_, _) => { if (!_suppressChangeEvents) UpdateColumn(key, c => c with { Visible = true }); SyncGapBox(); };
             visible.Unchecked += (_, _) => { if (!_suppressChangeEvents) UpdateColumn(key, c => c with { Visible = false }); SyncGapBox(); };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(visible, "ColVisible_" + key);
             Grid.SetColumn(visible, 1);
             grid.Children.Add(visible);
 
@@ -149,6 +153,7 @@ public partial class MainWindow
                 if (float.TryParse(widthBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var w) && w is >= 8 and <= 600)
                     UpdateColumn(key, c => c with { WidthPx = w, MinWidthPx = Math.Min(c.MinWidthPx, w) });
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(widthBox, "ColWidth_" + key);
             Grid.SetColumn(widthBox, 4);
             grid.Children.Add(widthBox);
 
@@ -162,6 +167,7 @@ public partial class MainWindow
                     if (_buildingColumns || formatBox.SelectedIndex < 0) return;
                     onChange(formatBox.SelectedIndex);
                 };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(formatBox, "ColFormat_" + key);
             Grid.SetColumn(formatBox, 5);
             grid.Children.Add(formatBox);
 
@@ -176,6 +182,7 @@ public partial class MainWindow
                 var alignment = alignBox.SelectedIndex switch { 0 => ColumnAlignment.Left, 1 => ColumnAlignment.Center, _ => ColumnAlignment.Right };
                 UpdateColumn(key, c => c with { Alignment = alignment });
             };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(alignBox, "ColAlign_" + key);
             Grid.SetColumn(alignBox, 6);
             grid.Children.Add(alignBox);
 
@@ -420,6 +427,7 @@ public partial class MainWindow
             var toggle = new CheckBox { Style = (Style)FindResource("Switch"), IsChecked = field.Visible, VerticalAlignment = VerticalAlignment.Center };
             toggle.Checked += (_, _) => { _currentHeader[index] = _currentHeader[index] with { Visible = true }; ApplyHeaderNow(); };
             toggle.Unchecked += (_, _) => { _currentHeader[index] = _currentHeader[index] with { Visible = false }; ApplyHeaderNow(); };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "Hdr_" + field.Key);
             Grid.SetColumn(toggle, 2);
             row.Children.Add(toggle);
             panel.Children.Add(row);

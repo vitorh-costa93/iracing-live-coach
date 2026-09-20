@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using IracingLiveCoach.OverlayHost.Layout;
+using IracingLiveCoach.OverlayHost.Persistence;
 
 using LayoutColumn = IracingLiveCoach.OverlayHost.Layout.ColumnDefinition;
 
@@ -15,7 +16,6 @@ namespace IracingLiveCoach.ControlCenter;
 public partial class MainWindow
 {
     private const float DefaultWidthLimit = 480f;
-    private const float TableLeftMargin = 8f;
     private List<MonitorRect> _monitors = [];
 
     private void LoadPlacementIntoControls(string widget)
@@ -30,8 +30,8 @@ public partial class MainWindow
             WidthBox.Text = state.Width.ToString("0", CultureInfo.InvariantCulture);
             HeightBox.Text = state.Height.ToString("0", CultureInfo.InvariantCulture);
             WidthModeBox.SelectedIndex = state.AutoSize ? 0 : 1;
-            WidthBox.IsEnabled = HeightBox.IsEnabled = !state.AutoSize;
             LockedBox.IsChecked = state.Locked;
+            ApplyLockUi(state.Locked, state.AutoSize);
             ClickThroughBox.IsChecked = state.ClickThrough;
             OpacitySlider.Value = state.Opacity;
             ScaleSlider.Value = state.Scale;
@@ -49,7 +49,7 @@ public partial class MainWindow
     private void WidthModeChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_suppressChangeEvents) return;
-        WidthBox.IsEnabled = HeightBox.IsEnabled = WidthModeBox.SelectedIndex == 1;
+        ApplyLockUi(LockedBox.IsChecked == true, WidthModeBox.SelectedIndex != 1);
         ApplyControlsToStateAndSend();
     }
 
@@ -62,10 +62,15 @@ public partial class MainWindow
         if (!float.TryParse(HeightBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var height)) return;
 
         var previous = _state[_selectedWidget];
+        bool locked = LockedBox.IsChecked == true;
         var state = new WidgetUiState(x, y, width, height,
-            previous.Visible, LockedBox.IsChecked == true,
+            previous.Visible, locked,
             (float)OpacitySlider.Value, (float)ScaleSlider.Value, ClickThroughBox.IsChecked == true, WidthModeBox.SelectedIndex != 1);
+        // A locked widget keeps its position, size and scale (the overlay ignores those edits too).
+        if (previous.Locked && locked)
+            state = state with { X = previous.X, Y = previous.Y, Width = previous.Width, Height = previous.Height, Scale = previous.Scale, AutoSize = previous.AutoSize };
         _state[_selectedWidget] = state;
+        ApplyLockUi(locked, state.AutoSize);
         UpdateWidthWarning();
         _ = SendPlacementAsync(_selectedWidget);
     }
@@ -85,6 +90,14 @@ public partial class MainWindow
         Dispatcher.Invoke(() => SetStatus(sent
             ? "Conectado — overlay atualizado ao vivo."
             : "Overlay fechado ou inacessível — as mudanças valem quando ele abrir."));
+    }
+
+    /// <summary>While a widget is locked its position, size, monitor and scale can't change, so those
+    /// fields are disabled instead of accepting edits that would silently do nothing.</summary>
+    private void ApplyLockUi(bool locked, bool autoSize)
+    {
+        XBox.IsEnabled = YBox.IsEnabled = MonitorBox.IsEnabled = WidthModeBox.IsEnabled = ScaleSlider.IsEnabled = !locked;
+        WidthBox.IsEnabled = HeightBox.IsEnabled = !locked && !autoSize;
     }
 
     // --- Monitor ---
@@ -168,15 +181,8 @@ public partial class MainWindow
 
     /// <summary>Width the widget will actually occupy: for table widgets the sum of the visible columns
     /// (plus the class-strip margin) — what auto width follows; for the others the placement width.</summary>
-    private float CurrentWidgetWidth()
-    {
-        if (_currentColumns.Count == 0) return _state[_selectedWidget].Width;
-        float padding = CurrentAppearancePaddingH();
-        return TableLeftMargin + _currentColumns.Where(c => c.Visible).Sum(c => FootprintOf(c, padding));
-    }
-
-    private static float FootprintOf(LayoutColumn column, float paddingH) =>
-        column.WidthPx + column.PaddingLeftPx + (paddingH >= 0 && column.PaddingRightPx > 0 ? paddingH : column.PaddingRightPx);
+    private float CurrentWidgetWidth() =>
+        _currentColumns.Count == 0 ? _state[_selectedWidget].Width : ColumnFitter.TotalWidth(_currentColumns, CurrentAppearancePaddingH());
 
     private void UpdateWidthWarning()
     {
@@ -191,55 +197,20 @@ public partial class MainWindow
         WidthWarning.Text = $"{over} px excedem o limite de {limit:0} px.";
     }
 
-    /// <summary>"Ajustar larguras": first narrows the flexible name column, then trims the other data
-    /// columns proportionally (never below 80% of their default width). Icons (position/flag/brand) keep their size.</summary>
+    /// <summary>"Ajustar larguras": see <see cref="ColumnFitter.Fit"/>.</summary>
     private void FitWidths(object sender, RoutedEventArgs e)
     {
         if (_currentColumns.Count == 0) return;
         float limit = WidthLimitFor(_selectedWidget);
-        float over = CurrentWidgetWidth() - limit;
-        if (over <= 0) return;
+        if (CurrentWidgetWidth() <= limit) return;
 
-        int nameIndex = _currentColumns.FindIndex(c => c.Key == "name" && c.Visible);
-        if (nameIndex >= 0)
-        {
-            var name = _currentColumns[nameIndex];
-            float newWidth = Math.Max(90f, name.WidthPx - over);
-            over -= name.WidthPx - newWidth;
-            _currentColumns[nameIndex] = name with { WidthPx = newWidth, MinWidthPx = Math.Min(name.MinWidthPx, newWidth) };
-        }
-
-        string[] keepSize = ["position", "flag", "brand", "name"];
-        for (int pass = 0; pass < 6 && over > 0.5f; pass++)
-        {
-            var candidates = _currentColumns.Select((c, i) => (c, i)).Where(t => t.c.Visible && !keepSize.Contains(t.c.Key)).ToList();
-            var roomTotal = candidates.Sum(t => Math.Max(0f, t.c.WidthPx - FitFloor * DefaultWidthOf(t.c.Key, t.c.WidthPx)));
-            if (roomTotal < 1f) break;
-            foreach (var (column, index) in candidates)
-            {
-                float room = Math.Max(0f, column.WidthPx - FitFloor * DefaultWidthOf(column.Key, column.WidthPx));
-                float cut = Math.Min(room, over * room / roomTotal);
-                _currentColumns[index] = column with { WidthPx = MathF.Floor(column.WidthPx - cut), MinWidthPx = Math.Min(column.MinWidthPx, MathF.Floor(column.WidthPx - cut)) };
-            }
-            over = CurrentWidgetWidth() - limit;
-        }
-
+        _currentColumns = ColumnFitter.Fit(_currentColumns, DefaultColumnsFor(_selectedWidget), limit, CurrentAppearancePaddingH(), out float remaining);
         RefreshColumnList();
         ApplyColumnsNow();
         UpdateWidthWarning();
-        float remaining = CurrentWidgetWidth() - limit;
         SetStatus(remaining > 0.5f
             ? $"Larguras ajustadas, mas ainda faltam {Math.Ceiling(remaining):0} px para o limite — oculte colunas para caber."
             : "Larguras ajustadas ao limite.");
-    }
-
-    /// <summary>"Ajustar larguras" never trims a data column below this share of its default width.</summary>
-    private const float FitFloor = 0.8f;
-
-    private float DefaultWidthOf(string key, float fallback)
-    {
-        var defaults = DefaultColumnsFor(_selectedWidget);
-        return defaults?.FirstOrDefault(c => c.Key == key)?.WidthPx ?? fallback;
     }
 
     // --- Layout / Aparência tab ---

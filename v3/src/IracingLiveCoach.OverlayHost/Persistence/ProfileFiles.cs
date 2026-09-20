@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace IracingLiveCoach.ControlCenter;
+namespace IracingLiveCoach.OverlayHost.Persistence;
 
 /// <summary>
 /// Named layout profiles: snapshots of the shared profile file (<c>v3-layout.json</c>) kept under
@@ -11,7 +11,8 @@ public static class ProfileFiles
 {
     private const string ReservedPrefix = "_";
 
-    public static string DataDir { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach");
+    /// <summary>Folder holding the live layout file and the profiles (settable so tests can use a temp folder).</summary>
+    public static string DataDir { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach");
     public static string Root => Path.Combine(DataDir, "profiles");
     public static string LiveFile => Path.Combine(DataDir, "v3-layout.json");
     private static string ActiveFile => Path.Combine(Root, "_active.txt");

@@ -89,7 +89,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         new("position", ColumnWidthMode.Fixed, PositionColumnWidthDip, PositionColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
         new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
         new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
-        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
+        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 3),
         new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
         new("iratingDelta", ColumnWidthMode.Fixed, BadgeWidthDip, BadgeWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 6),

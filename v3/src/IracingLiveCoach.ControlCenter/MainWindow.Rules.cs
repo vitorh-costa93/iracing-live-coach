@@ -200,9 +200,11 @@ public partial class MainWindow
             Grid.SetColumn(label, 1);
             row.Children.Add(label);
             var hex = new TextBox { Text = colors[i], Style = (Style)FindResource("NumField"), Margin = new Thickness(0, 0, 8, 0) };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(hex, "RankHex_" + i);
             Grid.SetColumn(hex, 2);
             row.Children.Add(hex);
             var pick = new Button { Content = "", Style = (Style)FindResource("IconButton"), Padding = new Thickness(8, 5, 8, 5), ToolTip = "Escolher cor" };
+            System.Windows.Automation.AutomationProperties.SetAutomationId(pick, "RankPick_" + i);
             Grid.SetColumn(pick, 3);
             row.Children.Add(pick);
 
@@ -334,6 +336,7 @@ public partial class MainWindow
                 var box = new CheckBox { Style = (Style)FindResource("Switch"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 4) };
                 box.Checked += (_, _) => SessionVisibilityChanged();
                 box.Unchecked += (_, _) => SessionVisibilityChanged();
+                System.Windows.Automation.AutomationProperties.SetAutomationId(box, "Sess_" + AllWidgetKeys[r] + "_" + SessionKindNames[c]);
                 Grid.SetRow(box, r + 1);
                 Grid.SetColumn(box, c + 1);
                 grid.Children.Add(box);

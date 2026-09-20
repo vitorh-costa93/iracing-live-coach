@@ -54,12 +54,15 @@ public static unsafe class Program
     private const int VK_ESCAPE = 0x1B;
     private const int VK_SPACE = 0x20;
     private const int VK_T = 0x54;
+    private const int VK_Y = 0x59;
     private const int VK_E = 0x45;
 
     private static bool _clickThrough = true;
     private static bool _editMode;
     private static readonly List<nint> OverlayWindows = [];
     private static bool _simulating;
+    /// <summary>Simulation scenario: false = Spa GT3 multiclass, true = Suzuka SF23 with push-to-pass (Y key).</summary>
+    private static bool _simSf23;
 
     /// <summary>"Os overlays só devem ser renderizados quando estiver na pista. Fora dela só se
     /// estiver editando" -- driven by <see cref="TelemetryReader.OnTrackStateChanged"/> (already a
@@ -461,13 +464,14 @@ public static unsafe class Program
 
             if (_simulating)
             {
-                standings.SetSimulatedRows(SimulationData.StandingsRows());
-                standings.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
-                relative.SetSimulatedRows(SimulationData.RelativeRows());
-                relative.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
+                var simSession = _simSf23 ? SimulationData.Sf23Session() : SimulationData.Session();
+                standings.SetSimulatedRows(_simSf23 ? SimulationData.Sf23StandingsRows() : SimulationData.StandingsRows());
+                standings.SetSimulatedSession(simSession, SimulationData.Player());
+                relative.SetSimulatedRows(_simSf23 ? SimulationData.Sf23RelativeRows() : SimulationData.RelativeRows());
+                relative.SetSimulatedSession(simSession, SimulationData.Player());
                 weather.SetSimulatedStatus(SimulationData.Weather());
                 fuel.SetSimulatedStatus(SimulationData.Fuel());
-                fuel.SetSimulatedSession(SimulationData.Session());
+                fuel.SetSimulatedSession(simSession);
             }
             else
             {
@@ -584,6 +588,18 @@ public static unsafe class Program
     {
         var current = PlacementStore.Get(message.Widget);
         if (current is null) return;
+
+        // "Bloquear posição" freezes position, size and scale only: visibility, opacity and
+        // click-through still follow the Control Center while a widget is locked (the store's own
+        // lock check would otherwise swallow the whole message, e.g. hiding a locked widget).
+        if (current.Locked && message.Locked)
+        {
+            var soft = current with { Visible = message.Visible, Opacity = message.Opacity, ClickThrough = message.ClickThrough };
+            PlacementStore.ReplacePlacements([new KeyValuePair<string, WidgetPlacement>(message.Widget, soft)]);
+            PlacementPersistence.Save(PlacementStore);
+            SyncWindowToPlacement(message.Widget, soft);
+            return;
+        }
 
         var updated = current with
         {
@@ -800,6 +816,11 @@ public static unsafe class Program
                 {
                     _simulating = !_simulating;
                     Console.WriteLine($"Simulation preview: {_simulating}");
+                }
+                else if ((int)wParam == VK_Y)
+                {
+                    _simSf23 = !_simSf23;
+                    Console.WriteLine($"Simulation scenario: {(_simSf23 ? "SF23 (push-to-pass)" : "GT3")}");
                 }
                 else if ((int)wParam == VK_E)
                 {
