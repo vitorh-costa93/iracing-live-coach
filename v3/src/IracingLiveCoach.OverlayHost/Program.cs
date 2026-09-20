@@ -55,6 +55,7 @@ public static unsafe class Program
     private const int VK_SPACE = 0x20;
     private const int VK_T = 0x54;
     private const int VK_Y = 0x59;
+    private const int VK_V = 0x56;
     private const int VK_E = 0x45;
 
     private static bool _clickThrough = true;
@@ -63,6 +64,8 @@ public static unsafe class Program
     private static bool _simulating;
     /// <summary>Simulation scenario: false = Spa GT3 multiclass, true = Suzuka SF23 with push-to-pass (Y key).</summary>
     private static bool _simSf23;
+    /// <summary>Same handler the real chequered-flag event uses (V key simulates a win).</summary>
+    private static Action<IracingLiveCoach.Core.Telemetry.RaceFinish>? _raceFinishHandler;
 
     /// <summary>"Os overlays só devem ser renderizados quando estiver na pista. Fora dela só se
     /// estiver editando" -- driven by <see cref="TelemetryReader.OnTrackStateChanged"/> (already a
@@ -196,6 +199,17 @@ public static unsafe class Program
             _playerClassKey = s.CarClassShortName ?? "";
             _playerCarKey = s.PlayerCarName ?? "";
         };
+        // Victory theme: the player's own chequered flag in a Race, finishing where the configured
+        // rule says "win" (class or overall), plays the user's audio file once.
+        using var victoryPlayer = new IracingLiveCoach.OverlayHost.Audio.VictoryPlayer();
+        _raceFinishHandler = finish =>
+        {
+            var victory = PlacementStore.Victory;
+            bool win = victory is { Enabled: true } && victory.IsWin(finish);
+            Console.WriteLine($"[Race] finished overall P{finish.OverallPosition} class P{finish.ClassPosition} win={win}");
+            if (win) victoryPlayer.Play(victory!.FilePath, victory.VolumePct);
+        };
+        trackStateTelemetry.PlayerFinishedRace += _raceFinishHandler;
         trackStateTelemetry.Start();
 
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
@@ -388,6 +402,17 @@ public static unsafe class Program
                     break;
                 case "reloadFromDisk":
                     ApplyProfileFromDisk();
+                    return;
+                case "setVictory":
+                    // Key carries the VictoryConfig as JSON (one small string, no dedicated channel).
+                    try { PlacementStore.Victory = System.Text.Json.JsonSerializer.Deserialize<VictoryConfig>(m.Key); }
+                    catch (System.Text.Json.JsonException) { return; }
+                    break;
+                case "testVictory":
+                    if (PlacementStore.Victory is { } testConfig) victoryPlayer.Play(testConfig.FilePath, testConfig.VolumePct);
+                    return;
+                case "stopVictory":
+                    victoryPlayer.Stop();
                     return;
                 default: return;
             }
@@ -816,6 +841,10 @@ public static unsafe class Program
                 {
                     _simulating = !_simulating;
                     Console.WriteLine($"Simulation preview: {_simulating}");
+                }
+                else if ((int)wParam == VK_V)
+                {
+                    _raceFinishHandler?.Invoke(new IracingLiveCoach.Core.Telemetry.RaceFinish(1, 1));
                 }
                 else if ((int)wParam == VK_Y)
                 {

@@ -123,6 +123,9 @@ public sealed class WidgetPlacementStore
     /// built-in yellow / light blue / pink / green.</summary>
     public List<string>? ClassRankColors { get; set; }
 
+    /// <summary>Victory-theme settings. Null = disabled (<see cref="VictoryConfig.Default"/>).</summary>
+    public VictoryConfig? Victory { get; set; }
+
     /// <summary>Replaces every configuration section (not placements' undo history) with another
     /// store's -- used when a whole profile is loaded from disk into the running overlay.</summary>
     public void CopyFrom(WidgetPlacementStore other)
@@ -140,6 +143,7 @@ public sealed class WidgetPlacementStore
         NumberFormat = other.NumberFormat;
         SessionVisibility = other.SessionVisibility;
         ClassRankColors = other.ClassRankColors;
+        Victory = other.Victory;
         ClearHistory();
     }
 

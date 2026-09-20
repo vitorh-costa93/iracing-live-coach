@@ -368,6 +368,28 @@ public class TelemetryReader : IDisposable
     /// (Race session + car essentially stationary). See RaceStartStatus's own doc comment.</summary>
     public event Action<RaceStartStatus>? RaceStartUpdated;
 
+    /// <summary>Fires once when the player takes the chequered flag in a Race session, with their
+    /// final overall/class positions (see <see cref="RaceFinishDetector"/>).</summary>
+    public event Action<RaceFinish>? PlayerFinishedRace;
+
+    private readonly RaceFinishDetector _finishDetector = new();
+
+    /// <summary>Called every telemetry tick: feeds the finish detector and, once it reports, reads
+    /// the player's settled positions straight from the SDK.</summary>
+    private void PollRaceFinish()
+    {
+        try
+        {
+            bool chequered = (_sdk.Data.GetInt("SessionFlags") & FlagCheckered) != 0;
+            int laps = _sdk.Data.GetInt("CarIdxLapCompleted", _playerCarIdx);
+            if (!_finishDetector.Update(_isRaceSession, chequered, laps, DateTime.UtcNow)) return;
+            int overall = _sdk.Data.GetInt("CarIdxPosition", _playerCarIdx);
+            int inClass = _sdk.Data.GetInt("CarIdxClassPosition", _playerCarIdx);
+            PlayerFinishedRace?.Invoke(new RaceFinish(overall, inClass));
+        }
+        catch { /* channel momentarily unavailable: try again next tick */ }
+    }
+
     public TelemetryReader()
     {
         _sdk.OnSessionInfo += OnSessionInfo;
@@ -406,6 +428,7 @@ public class TelemetryReader : IDisposable
         _playerCarIdx = -1;
         _sessionDetected = false;
         _isRaceSession = false;
+        _finishDetector.Reset();
         _driverCodesByCarIdx.Clear();
         _pitRoadEnteredUtcByCarIdx.Clear();
         _lastPitStatusByCarIdx.Clear();
@@ -519,6 +542,7 @@ public class TelemetryReader : IDisposable
         if (_playerCarIdx >= 0)
         {
             UpdateOnTrackState();
+            PollRaceFinish();
             // A full-field refresh coincides with the proximity refresh every third tick.  Keep
             // that immutable snapshot for the rest of the tick instead of scanning every CarIdx
             // a second time just to build Standings.

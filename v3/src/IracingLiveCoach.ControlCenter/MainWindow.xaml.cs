@@ -388,6 +388,7 @@ public partial class MainWindow : Window
             "Espaço — alternar click-through global\n" +
             "T — alternar a simulação (dados fictícios)\n" +
             "Y — na simulação, alternar entre GT3 multiclasse e Super Fórmula (com overtake)\n" +
+            "V — simular uma vitória (toca o tema da vitória, se ativado)\n" +
             "Esc — fechar o overlay",
             "Atalhos de teclado", MessageBoxButton.OK, MessageBoxImage.Information);
     }
@@ -564,6 +565,7 @@ public partial class MainWindow : Window
             LoadHeaderForSelectedWidget();
             LoadRulesIntoControls();
             LoadFuelConfigIntoControls();
+            LoadVictoryIntoControls();
             LoadNumberFormatIntoControls();
             RefreshClassColorList();
             BuildRankColorRows();

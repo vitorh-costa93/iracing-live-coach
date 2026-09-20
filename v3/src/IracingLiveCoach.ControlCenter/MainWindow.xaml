@@ -550,6 +550,40 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Vitória -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE735;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Tema da vitória" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="VictoryEnabledBox" Style="{StaticResource Switch}" Content="Tocar ao vencer uma corrida" FontSize="14" Margin="0,0,0,10"
+                                      Checked="VictoryChanged" Unchecked="VictoryChanged"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Border Background="{StaticResource FieldBrush}" BorderBrush="{StaticResource FieldBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,8,0">
+                                    <TextBlock x:Name="VictoryFileText" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" FontSize="14"/>
+                                </Border>
+                                <Button Grid.Column="1" AutomationProperties.AutomationId="VictoryChooseButton" Content="Escolher…" Click="ChooseVictoryFile" Padding="12,6"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="Volume" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <Slider x:Name="VictoryVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" Value="70" ValueChanged="VictoryVolumeChanged"/>
+                            </Grid>
+                            <TextBlock Text="Considerar vitória" Style="{StaticResource SmallLabel}"/>
+                            <ComboBox x:Name="VictoryRuleBox" FontSize="14" MinHeight="34" SelectionChanged="VictoryChanged" Margin="0,0,0,10">
+                                <ComboBoxItem Content="1º na minha classe"/>
+                                <ComboBoxItem Content="1º geral"/>
+                            </ComboBox>
+                            <StackPanel Orientation="Horizontal">
+                                <Button AutomationProperties.AutomationId="VictoryTestButton" Content="Testar" Click="TestVictory" Padding="16,6" Margin="0,0,8,0"/>
+                                <Button Content="Parar" Click="StopVictory" Padding="16,6"/>
+                            </StackPanel>
+                            <TextBlock Text="Toca uma vez, quando você cruza a bandeira quadriculada em primeiro (só em corrida). O arquivo é seu e fica só neste computador." Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Acesso rápido -->
                     <Border Style="{StaticResource Card}" Margin="0,0,0,4">
                         <StackPanel>

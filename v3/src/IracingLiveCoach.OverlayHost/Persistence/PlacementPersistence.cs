@@ -32,7 +32,8 @@ public sealed record PlacementProfile(
     Dictionary<string, Dictionary<string, WidgetPlacement>>? ClassProfiles = null,
     int LayoutRevision = 0,
     RelativeRules? RelativeRules = null,
-    List<string>? ClassRankColors = null)
+    List<string>? ClassRankColors = null,
+    VictoryConfig? Victory = null)
 {
     public const int CurrentSchemaVersion = 1;
 
@@ -142,6 +143,9 @@ public static class PlacementPersistence
         if (profile.ClassRankColors is { Count: > 0 })
             store.ClassRankColors = profile.ClassRankColors;
 
+        if (profile.Victory is not null)
+            store.Victory = profile.Victory;
+
         if (profile.ClassProfiles is not null)
         {
             foreach (var (key, placements) in profile.ClassProfiles)
@@ -189,7 +193,8 @@ public static class PlacementPersistence
                 new Dictionary<string, Dictionary<string, WidgetPlacement>>(store.ClassProfiles, StringComparer.OrdinalIgnoreCase),
                 PlacementProfile.CurrentLayoutRevision,
                 store.RelativeRules,
-                store.ClassRankColors);
+                store.ClassRankColors,
+                store.Victory);
 
             string? directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
