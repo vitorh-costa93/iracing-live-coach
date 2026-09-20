@@ -79,6 +79,25 @@ internal static unsafe class PanelChrome
         finally { layout.Dispose(); }
     }
 
+    /// <summary>Shortens <paramref name="text"/> with a trailing ellipsis until it fits
+    /// <paramref name="maxWidth"/> (a name in a narrow column, or with an enlarged font, must never run
+    /// into its neighbour). Results are cached per (text, width, format) since widgets ask every frame.</summary>
+    public static string Ellipsize(IDWriteFactory* factory, IDWriteTextFormat* format, string text, float maxWidth, Dictionary<(string, int), string> cache)
+    {
+        int key = (int)MathF.Round(maxWidth);
+        if (cache.TryGetValue((text, key), out var cached)) return cached;
+        string result = text;
+        if (text.Length > 1 && MeasureWidth(factory, format, text) > maxWidth)
+        {
+            int length = text.Length - 1;
+            while (length > 1 && MeasureWidth(factory, format, text[..length].TrimEnd() + "\u2026") > maxWidth) length--;
+            result = text[..length].TrimEnd() + "\u2026";
+        }
+        if (cache.Count > 512) cache.Clear();
+        cache[(text, key)] = result;
+        return result;
+    }
+
     /// <summary>Draws one text run inside a box, vertically centred.</summary>
     public static void DrawText(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, IDWriteTextFormat* format, string text, float x, float y, float width, float height, Color4 color, TextAlignment alignment = TextAlignment.Leading)
     {

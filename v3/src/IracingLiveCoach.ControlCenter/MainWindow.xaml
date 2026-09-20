@@ -1,291 +1,583 @@
 <Window x:Class="IracingLiveCoach.ControlCenter.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Live Coach · Overlay Studio" Width="1180" Height="760"
-        Background="#0B1118" Foreground="#F2F5F7">
+        Title="Live Coach · Control Center" Icon="pack://application:,,,/Assets/livecoach.ico" WindowStartupLocation="CenterScreen" Width="1640" Height="990" MinWidth="1380" MinHeight="800"
+        Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="15" UseLayoutRounding="True">
     <Window.Resources>
-        <!-- Foreground is not inherited into ItemsControl-hosted / code-built content, which left
-             checkbox labels dark-on-dark. (Deliberately NOT an implicit TextBlock style: it leaks
-             into ComboBox selection boxes and makes their text near-invisible on the light template.) -->
-        <Style TargetType="CheckBox"><Setter Property="Foreground" Value="#F2F5F7"/></Style>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="SmallLabel" TargetType="TextBlock" BasedOn="{StaticResource FieldLabel}">
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style x:Key="NavRow" TargetType="Border">
+            <Setter Property="Background" Value="#06202F"/>
+            <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Margin" Value="0,0,0,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style x:Key="NumField" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Padding" Value="9,5"/>
+        </Style>
+        <Style x:Key="TableHeader" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="15"/>
+        </Style>
+        <Style x:Key="InfoDot" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+            <Setter Property="Text" Value="&#xE946;"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="6,0,0,0"/>
+        </Style>
     </Window.Resources>
-    <Grid Margin="24">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="180"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Column="0">
-            <TextBlock Text="OVERLAY STUDIO" FontSize="22" FontWeight="Bold"/>
-            <TextBlock Text="Live Coach V3" Margin="0,2,0,20" Foreground="#A6B0BB" FontSize="11"/>
-            <Button Content="Standings" Tag="standings" Click="SelectWidget" Margin="0,0,0,4"/>
-            <Button Content="Relative" Tag="relative" Click="SelectWidget" Margin="0,0,0,4"/>
-            <Button Content="Weather" Tag="weather" Click="SelectWidget" Margin="0,0,0,4"/>
-            <Button Content="Fuel" Tag="fuel" Click="SelectWidget" Margin="0,0,0,4"/>
-            <Button Content="Radar" Tag="radar" Click="SelectWidget" Margin="0,0,0,4"/>
-            <Button Content="Start Helper" Tag="start-helper" Click="SelectWidget"/>
+    <Grid Margin="16,12,16,14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-            <TextBlock Text="MODO DE EDIÇÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,6" FontSize="11"/>
-            <TextBlock Text="Travado: overlays só aparecem na pista. Destravado: aparecem sempre, para você posicionar." Foreground="#73808C" FontSize="9" TextWrapping="Wrap" Margin="0,0,0,8"/>
-            <Button x:Name="EditModeButton" Content="Destravar para editar" Click="ToggleEditMode"/>
-            <TextBlock x:Name="EditModeStatus" Text="" Foreground="#A6B0BB" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
-
-            <TextBlock Text="HISTÓRICO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,20,0,6" FontSize="11"/>
-            <StackPanel Orientation="Horizontal">
-                <Button x:Name="UndoButton" Content="Desfazer" Click="UndoPlacement" Margin="0,0,6,0"/>
-                <Button x:Name="RedoButton" Content="Refazer" Click="RedoPlacement"/>
+        <!-- ================= Top bar ================= -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="236"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Image Source="pack://application:,,,/Assets/livecoach-256.png" Width="44" Height="44" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock Text="LIVE COACH" FontSize="26" FontWeight="Bold" Foreground="{StaticResource CyanBrush}" VerticalAlignment="Center"/>
             </StackPanel>
+            <ComboBox x:Name="ProfileBox" Grid.Column="1" Width="260" Margin="8,0,12,0" VerticalAlignment="Center" FontSize="17" ToolTip="Perfil de layout"/>
+            <ComboBox x:Name="ScopeBox" Grid.Column="2" Width="300" IsEditable="False" VerticalAlignment="Center" FontSize="17"
+                      ToolTip="Escopo: global ou um perfil de classe/carro (aplicado sozinho ao entrar numa sessão com essa classe)"/>
+            <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="UndoTopButton" Click="UndoPlacement" Margin="0,0,10,0" Padding="16,9">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7A7;" FontFamily="{StaticResource IconFont}" Margin="0,0,9,0" VerticalAlignment="Center"/><TextBlock Text="Desfazer"/></StackPanel>
+                </Button>
+                <Button Click="ImportProfile" Margin="0,0,10,0" Padding="16,9">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" Margin="0,0,9,0" VerticalAlignment="Center"/><TextBlock Text="Importar"/></StackPanel>
+                </Button>
+                <Button Click="ExportProfile" Margin="0,0,10,0" Padding="16,9">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE898;" FontFamily="{StaticResource IconFont}" Margin="0,0,9,0" VerticalAlignment="Center"/><TextBlock Text="Exportar"/></StackPanel>
+                </Button>
+                <Button Click="SaveAll" Style="{StaticResource PrimaryButton}" Margin="0,0,10,0" Padding="22,9">
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE74E;" FontFamily="{StaticResource IconFont}" Margin="0,0,9,0" VerticalAlignment="Center"/><TextBlock Text="Salvar"/></StackPanel>
+                </Button>
+                <Button Style="{StaticResource IconButton}" Content="&#xE713;" Click="OpenSettings" ToolTip="Ajustes"/>
+            </StackPanel>
+        </Grid>
 
-            <TextBlock x:Name="ConnectionStatus" Text="" Margin="0,20,0,0" Foreground="#A6B0BB" FontSize="11" TextWrapping="Wrap"/>
-        </StackPanel>
+        <!-- ================= Body ================= -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="236"/>
+                <ColumnDefinition Width="*" MinWidth="700"/>
+                <ColumnDefinition Width="470"/>
+            </Grid.ColumnDefinitions>
 
-        <ScrollViewer x:Name="MainScroll" Grid.Column="1" Margin="28,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="MainScroll_ScrollChanged">
-        <StackPanel>
-            <TextBlock x:Name="WidgetTitle" Text="STANDINGS" FontSize="20" FontWeight="Bold"/>
-            <TextBlock Text="Changes are sent immediately to the running overlay — no restart." Margin="0,6,0,12" Foreground="#A6B0BB"/>
-
-            <TextBlock Text="PREVIEW AO VIVO · 1920×1080" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
-            <TextBlock Text="Esta é uma prévia visual real (mesmo renderer D2D do overlay), com dados fictícios de simulação -- disponível mesmo sem o iRacing aberto." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,6"/>
-            <Border x:Name="PreviewBorder" BorderBrush="#405A6B" BorderThickness="1" Background="#0B1219" Height="260" MaxWidth="640" HorizontalAlignment="Stretch" SizeChanged="PreviewBorder_AspectSizeChanged"/>
-
-            <TabControl Margin="0,20,0,0" Background="Transparent" BorderThickness="0">
-                <TabItem Header="Layout">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="POSITION &amp; SIZE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
-                        <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="X" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="XBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
+            <!-- Sidebar -->
+            <Grid Grid.Column="0" Margin="0,0,14,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="WIDGETS" Style="{StaticResource Caption}" Margin="4,4,0,10"/>
+                    <StackPanel x:Name="WidgetRows"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Margin="0,26,0,0">
+                    <TextBlock Text="PERFIS" Style="{StaticResource Caption}" Margin="4,0,0,10"/>
+                    <Border Style="{StaticResource NavRow}" MouseLeftButtonUp="ManageProfiles">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}" FontSize="20" Foreground="{StaticResource CyanBrush}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Gerenciar perfis" FontSize="16" VerticalAlignment="Center"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                                <TextBlock Text="Y" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="YBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Margin="0,0,6,0">
-                                <TextBlock Text="Width" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="WidthBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="3">
-                                <TextBlock Text="Height" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="HeightBox" TextChanged="PositionChanged" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
+                            <TextBlock Text="&#xE76C;" FontFamily="{StaticResource IconFont}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
                         </Grid>
-
-                        <TextBlock Text="VISIBILITY &amp; LOCK" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,8"/>
-                        <CheckBox x:Name="VisibleBox" Content="Visible" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
-                        <CheckBox x:Name="LockedBox" Content="Lock (prevent drag/resize in-game)" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,4"/>
-                        <CheckBox x:Name="ClickThroughBox" Content="Passar cliques para o jogo (click-through)" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,0,16"/>
-
-                        <TextBlock Text="MONITOR" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ComboBox x:Name="MonitorBox" Width="260" Margin="0,0,8,0"/>
-                            <Button Content="Mover para este monitor" Click="MoveToMonitor"/>
-                        </StackPanel>
-                        <TextBlock x:Name="MonitorStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,0,0,16" TextWrapping="Wrap"/>
-
-                        <TextBlock Text="OPACITY" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-                        <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
-
-                        <TextBlock Text="SCALE" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-                        <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16"/>
-
-                        <TextBlock Text="APARÊNCIA" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock Text="Tamanho de fonte, altura das linhas e espaçamento entre linhas -- aplicado ao vivo. Altura/espaçamento só afetam Standings e Relative (widgets de tabela)." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        <TextBlock Text="Tamanho de fonte" Foreground="#A6B0BB" Margin="0,0,0,4"/>
-                        <Slider x:Name="FontScaleSlider" Minimum="0.7" Maximum="1.6" Value="1" ValueChanged="AppearanceSliderChanged" Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="Altura da linha (px, 0 = padrão)" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="RowHeightBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="Espaçamento entre linhas (px)" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="RowSpacingBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <Button Content="Aplicar" Click="ApplyAppearance" Margin="0,0,8,0"/>
-                            <Button Content="Restaurar padrão" Click="RestoreDefaultAppearance"/>
-                        </StackPanel>
-                        <TextBlock x:Name="AppearanceStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,0,0,16" TextWrapping="Wrap"/>
-
-                        <TextBlock Text="RESTAURAR POSIÇÃO/TAMANHO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock Text="Volta este widget à posição, tamanho, opacidade e escala padrão -- não afeta os demais widgets." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        <Button Content="Restaurar padrão do widget" Click="RestoreDefaultPlacement" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </TabItem>
-
-                <TabItem Header="Colunas">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="COLUNAS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="ColumnsHint" Text="Reordenar (↑/↓), largura, casas decimais, alinhamento e visibilidade -- aplicado ao vivo. Disponível para Standings e Relative." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <ItemsControl x:Name="ColumnList"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button Content="Aplicar" Click="ApplyColumnConfig" Margin="0,0,8,0"/>
-                            <Button Content="Restaurar padrão" Click="RestoreDefaultColumns"/>
-                        </StackPanel>
-                        <TextBlock x:Name="ColumnsStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </TabItem>
-
-                <TabItem Header="Cabeçalho">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="CABEÇALHO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="HeaderHint" Text="Escolha quais campos aparecem na faixa de cabeçalho e em que ordem (↑/↓) -- aplicado ao vivo. Campos sem dado ainda são omitidos, nunca preenchidos com valor falso. Disponível para Standings e Relative." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <ItemsControl x:Name="HeaderList"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button Content="Aplicar" Click="ApplyHeaderConfig" Margin="0,0,8,0"/>
-                            <Button Content="Restaurar padrão" Click="RestoreDefaultHeader"/>
-                        </StackPanel>
-                        <TextBlock x:Name="HeaderStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </TabItem>
-
-                <TabItem Header="Regras">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="REGRAS -- STANDINGS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock Text="Top N fixo por classe, linhas da minha classe, linhas de outras classes, e se mantém a janela em torno do jogador -- sem duplicar pilotos já exibidos." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="Top N por classe" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="TopNBox" Text="1" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                                <TextBlock Text="Linhas da minha classe" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="OwnClassRowsBox" Text="5" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Linhas de outras classes" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="OtherClassRowsBox" Text="1" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                        </Grid>
-                        <CheckBox x:Name="KeepPlayerWindowBox" Content="Manter janela em torno do jogador" IsChecked="True" Margin="0,0,0,12"/>
-                        <Button Content="Aplicar" Click="ApplyRules" HorizontalAlignment="Left"/>
-                        <TextBlock x:Name="RulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-
-                        <TextBlock Text="REGRAS -- COMBUSTÍVEL" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
-                        <TextBlock Text="Qual consumo dita a autonomia/tempo exibidos, margem de reserva em voltas, e se exclui a volta de pit do cálculo (a média/máximo já sempre excluem; isto controla se 'última volta' cai de volta pra média quando a última foi afetada pelo pit)." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="Fonte do consumo" Foreground="#A6B0BB" FontSize="11"/>
-                                <ComboBox x:Name="FuelSourceBox" SelectedIndex="1">
-                                    <ComboBoxItem Content="Última volta"/>
-                                    <ComboBoxItem Content="Média móvel"/>
-                                    <ComboBoxItem Content="Máximo"/>
-                                    <ComboBoxItem Content="Manual"/>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                                <TextBlock Text="Valor manual (L/volta)" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="FuelManualBox" Text="0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Reserva (voltas)" Foreground="#A6B0BB" FontSize="11"/>
-                                <TextBox x:Name="FuelReserveBox" Text="1.0" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4"/>
-                            </StackPanel>
-                        </Grid>
-                        <CheckBox x:Name="FuelExcludePitBox" Content="Excluir volta de pit ao usar 'última volta'" IsChecked="True" Margin="0,0,0,12"/>
-                        <Button Content="Aplicar" Click="ApplyFuelConfig" HorizontalAlignment="Left"/>
-                        <TextBlock x:Name="FuelRulesStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-
-                        <TextBlock Text="REGRAS -- FORMATO DE EXIBIÇÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
-                        <TextBlock Text="Como iRating, Safety Rating e nome do piloto aparecem em Standings e Relative -- global, aplicado aos dois widgets ao mesmo tempo." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Text="iRating" Foreground="#A6B0BB" FontSize="11"/>
-                                <ComboBox x:Name="IRatingFormatBox" SelectedIndex="0">
-                                    <ComboBoxItem Content="Completo (4820)"/>
-                                    <ComboBoxItem Content="Compacto (4.8k)"/>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="0,0,6,0">
-                                <TextBlock Text="Safety Rating" Foreground="#A6B0BB" FontSize="11"/>
-                                <ComboBox x:Name="SafetyRatingFormatBox" SelectedIndex="0">
-                                    <ComboBoxItem Content="Classe + número (A 4.12)"/>
-                                    <ComboBoxItem Content="Somente número (4.12)"/>
-                                    <ComboBoxItem Content="Somente classe (A)"/>
-                                </ComboBox>
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Nome do piloto" Foreground="#A6B0BB" FontSize="11"/>
-                                <ComboBox x:Name="NameFormatBox" SelectedIndex="0">
-                                    <ComboBoxItem Content="Completo (Vitor Costa)"/>
-                                    <ComboBoxItem Content="Abreviado (V. Costa)"/>
-                                </ComboBox>
-                            </StackPanel>
-                        </Grid>
-                        <Button Content="Aplicar" Click="ApplyNumberFormat" HorizontalAlignment="Left"/>
-                        <TextBlock x:Name="NumberFormatStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </TabItem>
-
-                <TabItem Header="Cores">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="CORES POR CLASSE" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock Text="Sobrescreve a cor normativa (spec §16) para uma classe pelo nome curto (ex: GT3, GTP, SF23). Aplica-se à faixa de posição e ao cabeçalho de classe em Standings e Relative, ao vivo." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <ItemsControl x:Name="ClassColorList"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <TextBox x:Name="NewClassNameBox" Width="80" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
-                            <TextBox x:Name="NewClassColorBox" Width="90" Text="#FFD400" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
-                            <Button Content="Adicionar / Atualizar" Click="AddClassColorOverride"/>
-                        </StackPanel>
-                        <TextBlock x:Name="ColorStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </TabItem>
-
-                <TabItem Header="Perfis">
-                    <StackPanel Margin="0,12,0,0">
-                        <TextBlock Text="PERFIS" FontWeight="Bold" Foreground="#69DDEC" Margin="0,0,0,4"/>
-                        <TextBlock Text="Exporta/importa o layout salvo (v3-layout.json): posições, tamanhos, visibilidade e cores de classe de todos os widgets." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                    </Border>
+                    <Border Style="{StaticResource NavRow}" MouseLeftButtonUp="RestoreAllDefaults">
                         <StackPanel Orientation="Horizontal">
-                            <Button Content="Exportar perfil..." Click="ExportProfile" Margin="0,0,8,0"/>
-                            <Button Content="Importar perfil..." Click="ImportProfile" Margin="0,0,8,0"/>
-                            <Button Content="Restaurar cores padrão" Click="RestoreDefaults"/>
+                            <TextBlock Text="&#xE777;" FontFamily="{StaticResource IconFont}" FontSize="20" Foreground="{StaticResource CyanBrush}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Restaurar padrões" FontSize="16" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <TextBlock x:Name="ProfileStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                        <TextBlock Text="VISIBILIDADE POR TIPO DE SESSÃO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
-                        <TextBlock Text="Marque em quais sessões cada widget aparece (além da regra 'só na pista'). Desmarcado = escondido naquele tipo de sessão. Ignorado enquanto o modo de edição está destravado." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        <ItemsControl x:Name="SessionVisibilityList"/>
-                        <Button Content="Aplicar visibilidade" Click="ApplySessionVisibility" HorizontalAlignment="Left" Margin="0,8,0,0"/>
-                        <TextBlock x:Name="SessionVisibilityStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                    </Border>
+                </StackPanel>
+                <StackPanel Grid.Row="3" Margin="4,0,0,2">
+                    <TextBlock x:Name="ConnectionStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                    <TextBlock Text="iRacing Live Coach v3" Style="{StaticResource Muted}" FontSize="12"/>
+                    <TextBlock Text="Feito por pilotos, para pilotos." Style="{StaticResource Muted}" FontSize="12"/>
+                    <TextBlock Text="RACE · ANALYZE · IMPROVE" Foreground="{StaticResource CyanDeepBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                </StackPanel>
+            </Grid>
 
-                        <TextBlock Text="PERFIS POR CLASSE / CARRO" FontWeight="Bold" Foreground="#69DDEC" Margin="0,24,0,4"/>
-                        <TextBlock Text="Salva o layout ATUAL do overlay (posições, opacidade, visibilidade) sob o nome curto da classe (ex: GT3, GTP) ou o nome do carro. Quando você entra numa sessão com essa classe/carro, o layout salvo é aplicado sozinho. Posicione tudo primeiro (modo de edição), depois salve." Foreground="#73808C" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        <ItemsControl x:Name="ClassProfileList"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <TextBox x:Name="NewProfileKeyBox" Width="160" Background="#17232E" Foreground="#F2F5F7" BorderBrush="#405A6B" Padding="4" Margin="0,0,6,0"/>
-                            <Button Content="Salvar layout atual neste perfil" Click="SaveClassProfile"/>
+            <!-- Center -->
+            <Grid Grid.Column="1" Margin="0,0,14,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+                    <RadioButton x:Name="TabBtn0" Content="Layout" Style="{StaticResource TabButton}" GroupName="tabs" Tag="0" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn1" Content="Cabeçalhos" Style="{StaticResource TabButton}" GroupName="tabs" Tag="1" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn2" Content="Colunas" Style="{StaticResource TabButton}" GroupName="tabs" Tag="2" Checked="TabChecked" IsChecked="True"/>
+                    <RadioButton x:Name="TabBtn3" Content="Aparência" Style="{StaticResource TabButton}" GroupName="tabs" Tag="3" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn4" Content="Classes" Style="{StaticResource TabButton}" GroupName="tabs" Tag="4" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn5" Content="Combustível" Style="{StaticResource TabButton}" GroupName="tabs" Tag="5" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn6" Content="Regras" Style="{StaticResource TabButton}" GroupName="tabs" Tag="6" Checked="TabChecked"/>
+                </StackPanel>
+
+                <!-- Live preview -->
+                <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,14" Padding="14,10,14,14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Preview ao vivo" FontSize="21" FontWeight="SemiBold"/>
+                                <TextBlock Text="·  1920 × 1080" Style="{StaticResource Muted}" FontSize="16" Margin="8,4,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="Prévia visual dos widgets com a sua configuração atual" Style="{StaticResource Muted}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Border x:Name="PreviewBorder" Grid.Row="1" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" Background="#0B1219"
+                                Height="300" MaxWidth="640" HorizontalAlignment="Stretch" SizeChanged="PreviewBorder_AspectSizeChanged"/>
+                    </Grid>
+                </Border>
+
+                <!-- Tab content -->
+                <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="16,12,16,12">
+                        <Grid>
+                            <!-- 0 · Layout -->
+                            <StackPanel x:Name="Tab0" Visibility="Collapsed">
+                                <TextBlock x:Name="LayoutTitle" Text="Layout" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Travado: os overlays só aparecem na pista. Destravado: aparecem sempre, para você posicionar (arraste na tela)." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Button x:Name="EditModeButton" Content="Destravar para editar" Click="ToggleEditMode" Padding="16,8" Margin="0,0,10,0"/>
+                                    <Button x:Name="UndoButton" Content="Desfazer" Click="UndoPlacement" Margin="0,0,10,0" Padding="16,8"/>
+                                    <Button x:Name="RedoButton" Content="Refazer" Click="RedoPlacement" Padding="16,8"/>
+                                </StackPanel>
+                                <TextBlock x:Name="EditModeStatus" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+                                <TextBlock Text="Restaurar posição e tamanho" Style="{StaticResource SectionLabel}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Volta este widget à posição, tamanho, opacidade e escala padrão — não afeta os demais." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <Button Content="Restaurar padrão do widget" Click="RestoreDefaultPlacement" HorizontalAlignment="Left" Padding="16,8"/>
+                            </StackPanel>
+
+                            <!-- 1 · Cabeçalhos -->
+                            <StackPanel x:Name="Tab1" Visibility="Collapsed">
+                                <TextBlock x:Name="HeaderTitle" Text="Cabeçalhos" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="HeaderHint" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <ItemsControl x:Name="HeaderList"/>
+                                <Button Content="Restaurar padrão" Click="RestoreDefaultHeader" HorizontalAlignment="Left" Margin="0,12,0,0" Padding="16,8"/>
+                                <TextBlock x:Name="HeaderStatus" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                            </StackPanel>
+
+                            <!-- 2 · Colunas -->
+                            <Grid x:Name="Tab2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <TextBlock x:Name="ColumnsTitle" Text="Colunas – Standings" Style="{StaticResource CardTitle}"/>
+                                        <TextBlock Text="Arraste para reordenar. As larguras são em pixels (px)." Style="{StaticResource Muted}" FontSize="12" Margin="14,7,0,0"/>
+                                    </StackPanel>
+                                    <Grid x:Name="ColumnHeaderRow" Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="30"/>
+                                            <ColumnDefinition Width="58"/>
+                                            <ColumnDefinition Width="50"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="72"/>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="108"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="1" Text="Exibir" Style="{StaticResource TableHeader}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="Ordem" Style="{StaticResource TableHeader}" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="Coluna" Style="{StaticResource TableHeader}" Margin="8,0,0,0"/>
+                                        <TextBlock Grid.Column="4" Text="Largura (px)" Style="{StaticResource TableHeader}" HorizontalAlignment="Center" FontSize="13"/>
+                                        <TextBlock Grid.Column="5" Text="Formato" Style="{StaticResource TableHeader}" Margin="8,0,0,0"/>
+                                        <TextBlock Grid.Column="6" Text="Alinhar" Style="{StaticResource TableHeader}" Margin="8,0,0,0"/>
+                                    </Grid>
+                                    <ItemsControl x:Name="ColumnList"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <Button Content="Restaurar padrão" Click="RestoreDefaultColumns" Padding="14,6"/>
+                                        <TextBlock x:Name="ColumnsStatus" Style="{StaticResource Muted}" FontSize="12" Margin="14,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Width="244" Margin="16,0,0,0">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <TextBlock Text="Avaliação (rating)" Style="{StaticResource SectionLabel}"/>
+                                        <TextBlock Style="{StaticResource InfoDot}" ToolTip="Como iRating e Safety Rating aparecem em Standings e Relative."/>
+                                    </StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <TextBlock Text="iRating + delta no mesmo badge" TextWrapping="Wrap" Margin="0,0,58,0" VerticalAlignment="Center"/>
+                                        <CheckBox x:Name="IRatingDeltaBox" Style="{StaticResource Switch}" HorizontalAlignment="Right" IsChecked="True" Checked="FormatsChanged" Unchecked="FormatsChanged"/>
+                                    </Grid>
+                                    <TextBlock Text="Gap para o líder" Style="{StaticResource SectionLabel}" Margin="0,8,0,8"/>
+                                    <CheckBox x:Name="GapLeaderBox" Content="Mostrar Δ para o líder" Checked="GapLeaderChanged" Unchecked="GapLeaderChanged" Margin="0,0,0,14"/>
+                                    <TextBlock Text="Tipografia" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="86"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="Fonte" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,7" IsEnabled="False" SelectedIndex="0" FontSize="14" MinHeight="32">
+                                            <ComboBoxItem Content="Barlow Semi Condensed"/>
+                                        </ComboBox>
+                                        <TextBlock Grid.Row="1" Text="Tamanho" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="FontSizeBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="AppearanceChanged"/>
+                                        <TextBlock Grid.Row="2" Text="Peso" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="FontWeightBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="AppearanceChanged">
+                                            <ComboBoxItem Content="Padrão do widget"/>
+                                            <ComboBoxItem Content="400 (Regular)"/>
+                                            <ComboBoxItem Content="600 (Semibold)"/>
+                                        </ComboBox>
+                                        <TextBlock Grid.Row="3" Text="Altura da linha" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="RowHeightBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,7" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — 0 usa o padrão do widget"/>
+                                        <TextBlock Grid.Row="4" Text="Padding (H)" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="PaddingHBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — vazio usa o padrão de cada coluna"/>
+                                    </Grid>
+                                    <TextBlock x:Name="AppearanceStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 3 · Aparência -->
+                            <StackPanel x:Name="Tab3" Visibility="Collapsed">
+                                <TextBlock x:Name="AppearanceTitle" Text="Aparência" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Transparência e escala do widget selecionado — aplicadas ao vivo. Fonte, peso, altura da linha e padding ficam na aba Colunas." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,14"/>
+                                <TextBlock Text="Opacidade" Style="{StaticResource FieldLabel}"/>
+                                <Slider x:Name="OpacitySlider" Minimum="0.2" Maximum="1" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16" MaxWidth="420" HorizontalAlignment="Left" Width="420"/>
+                                <TextBlock Text="Escala" Style="{StaticResource FieldLabel}"/>
+                                <Slider x:Name="ScaleSlider" Minimum="0.5" Maximum="1.5" Value="1" ValueChanged="SliderChanged" Margin="0,0,0,16" MaxWidth="420" HorizontalAlignment="Left" Width="420"/>
+                                <Button Content="Restaurar aparência padrão" Click="RestoreDefaultAppearance" HorizontalAlignment="Left" Padding="16,8"/>
+                            </StackPanel>
+
+                            <!-- 4 · Classes -->
+                            <StackPanel x:Name="Tab4" Visibility="Collapsed">
+                                <TextBlock Text="Classes" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Cor por nome de classe (ex.: GT3, GTP, SF23) — vence a cor por ranking. Vale para a faixa de posição e o cabeçalho de classe em Standings e Relative, ao vivo." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <ItemsControl x:Name="ClassColorList"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <StackPanel Margin="0,0,8,0">
+                                        <TextBlock Text="Nome curto da classe" Style="{StaticResource SmallLabel}"/>
+                                        <TextBox x:Name="NewClassNameBox" Width="160" Style="{StaticResource NumField}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,8,0">
+                                        <TextBlock Text="Cor (#RRGGBB)" Style="{StaticResource SmallLabel}"/>
+                                        <TextBox x:Name="NewClassColorBox" Width="120" Text="#FFD400" Style="{StaticResource NumField}"/>
+                                    </StackPanel>
+                                    <Button Content="Adicionar / atualizar" Click="AddClassColorOverride" Padding="14,6" VerticalAlignment="Bottom"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ColorStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+
+                                <TextBlock Text="Perfis por classe / carro" Style="{StaticResource SectionLabel}" Margin="0,22,0,4"/>
+                                <TextBlock Text="Salva o layout ATUAL do overlay (posições, opacidade, visibilidade) sob o nome da classe ou do carro; ao entrar numa sessão com essa classe/carro ele é aplicado sozinho. Posicione tudo primeiro, depois salve." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <ItemsControl x:Name="ClassProfileList"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <StackPanel Margin="0,0,8,0">
+                                        <TextBlock Text="Classe ou carro" Style="{StaticResource SmallLabel}"/>
+                                        <TextBox x:Name="NewProfileKeyBox" Width="220" Style="{StaticResource NumField}"/>
+                                    </StackPanel>
+                                    <Button Content="Salvar layout atual neste perfil" Click="SaveClassProfile" Padding="14,6" VerticalAlignment="Bottom"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ClassProfileStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+
+                            <!-- 5 · Combustível -->
+                            <StackPanel x:Name="Tab5" Visibility="Collapsed">
+                                <TextBlock Text="Combustível" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock Text="A base da margem, a reserva e a exclusão de voltas de pit ficam no cartão Combustível ao lado. Aqui, o consumo manual usado quando a base é “Manual”." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <TextBlock Text="Consumo manual (L/volta)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox x:Name="FuelManualBox" Text="0" Width="160" HorizontalAlignment="Left" Style="{StaticResource NumField}" TextChanged="FuelChanged"/>
+                                <TextBlock x:Name="FuelRulesStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"/>
+                                <TextBlock Text="Bases da margem" Style="{StaticResource SectionLabel}" Margin="0,20,0,6"/>
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" LineHeight="20"
+                                           Text="Última volta — usa o consumo da volta anterior (cai para a média se essa volta foi afetada pelo pit).&#10;Média móvel — média das últimas voltas limpas; é a base padrão.&#10;Máximo — o maior consumo entre as voltas limpas; a leitura mais conservadora.&#10;Manual — usa o valor acima, em litros por volta."/>
+                            </StackPanel>
+
+                            <!-- 6 · Regras -->
+                            <StackPanel x:Name="Tab6" Visibility="Collapsed">
+                                <TextBlock Text="Regras" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <CheckBox x:Name="KeepPlayerWindowBox" Content="Standings: manter janela em torno do jogador" IsChecked="True" Checked="RulesChanged" Unchecked="RulesChanged" Margin="0,8,0,18"/>
+                                <TextBlock Text="Visibilidade por tipo de sessão" Style="{StaticResource SectionLabel}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Marque em quais sessões cada widget aparece (além da regra “só na pista”). Desmarcado = escondido naquele tipo de sessão. Ignorado enquanto o modo de edição está destravado." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                <ItemsControl x:Name="SessionVisibilityList"/>
+                                <TextBlock x:Name="SessionVisibilityStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="RulesStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- Right column -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,4,0">
+                    <!-- Dimensões e posição -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE8A1;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Dimensões e posição" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="1.3*"/><ColumnDefinition Width="1.3*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,7,10">
+                                    <TextBlock Text="Posição X" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="XBox" Style="{StaticResource NumField}" TextChanged="PositionChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Posição Y" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="YBox" Style="{StaticResource NumField}" TextChanged="PositionChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="0,0,7,10">
+                                    <TextBlock Text="Monitor" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="MonitorBox" FontSize="14" MinHeight="34" SelectionChanged="MonitorChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Margin="0,0,0,10">
+                                    <TextBlock Text="Largura" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="WidthModeBox" FontSize="14" MinHeight="34" SelectionChanged="WidthModeChanged">
+                                        <ComboBoxItem Content="Automática"/>
+                                        <ComboBoxItem Content="Manual"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="1*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,7,10">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Limite de largura" Style="{StaticResource SmallLabel}"/>
+                                        <TextBlock Style="{StaticResource InfoDot}" Margin="5,0,0,3" ToolTip="Um widget não deve passar de 25% da largura do monitor (480 px em 1920)."/>
+                                    </StackPanel>
+                                    <Grid>
+                                        <TextBox x:Name="LimitBox" Text="480" Style="{StaticResource NumField}" TextChanged="LimitChanged" Padding="9,5,30,5"/>
+                                        <TextBlock Text="px" Style="{StaticResource Muted}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" IsHitTestVisible="False"/>
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Largura (px)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="WidthBox" Style="{StaticResource NumField}" TextChanged="PositionChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="0,0,0,10">
+                                    <TextBlock Text="Altura (px)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="HeightBox" Style="{StaticResource NumField}" TextChanged="PositionChanged"/>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                                <CheckBox x:Name="LockedBox" Style="{StaticResource Switch}" Content="Bloquear posição" Checked="ToggleChanged" Unchecked="ToggleChanged" Margin="0,0,26,0" FontSize="14"/>
+                                <CheckBox x:Name="ClickThroughBox" Style="{StaticResource Switch}" Content="Click-through" IsChecked="True" Checked="ToggleChanged" Unchecked="ToggleChanged" FontSize="14"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel x:Name="WidthWarningRow" Orientation="Horizontal" Visibility="Collapsed">
+                                    <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource WarnBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="WidthWarning" Foreground="{StaticResource WarnBrush}" FontSize="14" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="220"/>
+                                </StackPanel>
+                                <Button x:Name="FitWidthsButton" Grid.Column="1" Content="Ajustar larguras" Click="FitWidths" Visibility="Collapsed" Padding="14,6"/>
+                                <TextBlock x:Name="WidthOk" Text="Largura dentro do limite." Style="{StaticResource Muted}" FontSize="12" VerticalAlignment="Center"/>
+                            </Grid>
                         </StackPanel>
-                        <TextBlock x:Name="ClassProfileStatus" Text="" Foreground="#A6B0BB" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </TabItem>
-            </TabControl>
-        </StackPanel>
-        </ScrollViewer>
+                    </Border>
+
+                    <!-- Linhas e classificação -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE735;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Linhas e classificação" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.35*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,7,10">
+                                    <TextBlock Text="Minha classe (linhas)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="OwnClassRowsBox" Style="{StaticResource NumField}" TextChanged="RulesTextChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Outras classes" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="OtherClassRowsBox" Style="{StaticResource NumField}" TextChanged="RulesTextChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,10">
+                                    <TextBlock Text="Top N (Standings)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="TopNBox" Style="{StaticResource NumField}" TextChanged="RulesTextChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,7,10">
+                                    <TextBlock Text="Relative (acima)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="RelAheadBox" Style="{StaticResource NumField}" TextChanged="RulesTextChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Relative (abaixo)" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="RelBehindBox" Style="{StaticResource NumField}" TextChanged="RulesTextChanged"/>
+                                </StackPanel>
+                                <CheckBox x:Name="TopNCountsBox" Grid.Row="2" Grid.ColumnSpan="3" Style="{StaticResource Switch}" Content="Top N incluído no total" IsChecked="True"
+                                          Checked="RulesChanged" Unchecked="RulesChanged" FontSize="14" Margin="0,2,0,0"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Formatos -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE8D2;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Formatos" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,7,10">
+                                    <TextBlock Text="iRating" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="IRatingFormatBox" FontSize="14" MinHeight="34" SelectionChanged="FormatsChanged">
+                                        <ComboBoxItem Content="3.694 (padrão)"/>
+                                        <ComboBoxItem Content="3.7k"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Safety Rating" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="SafetyRatingFormatBox" FontSize="14" MinHeight="34" SelectionChanged="FormatsChanged">
+                                        <ComboBoxItem Content="A 3.49"/>
+                                        <ComboBoxItem Content="3.49"/>
+                                        <ComboBoxItem Content="A"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="0,0,0,10">
+                                    <TextBlock Text="Decimais" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="DecimalsBox" FontSize="14" MinHeight="34" SelectionChanged="DecimalsChanged">
+                                        <ComboBoxItem Content="Auto"/>
+                                        <ComboBoxItem Content="0"/>
+                                        <ComboBoxItem Content="1"/>
+                                        <ComboBoxItem Content="2"/>
+                                        <ComboBoxItem Content="3"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,7,0">
+                                    <TextBlock Text="Formato de nomes" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="NameFormatBox" FontSize="14" MinHeight="34" SelectionChanged="FormatsChanged">
+                                        <ComboBoxItem Content="Nome Sobrenome"/>
+                                        <ComboBoxItem Content="N. Sobrenome"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="8,0,0,7">
+                                    <TextBlock Text="Exemplo:" Style="{StaticResource Muted}" FontSize="13"/>
+                                    <TextBlock x:Name="NameExample" Text="Vitor Costa" FontSize="14" Margin="7,0,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock x:Name="NumberFormatStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Cores por classe -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE790;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Cores por classe" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <StackPanel x:Name="RankColorList"/>
+                            <TextBlock Text="A cor segue a velocidade da classe no grid (mais rápida = 1ª). Aplicada à faixa e ao cabeçalho de Standings e Relative." Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Combustível -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE945;" Style="{StaticResource CardIcon}"/>
+                                <TextBlock Text="Combustível" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="0.9*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,7,10">
+                                    <TextBlock Text="Base da margem" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox x:Name="FuelSourceBox" FontSize="14" MinHeight="34" SelectedIndex="1" SelectionChanged="FuelChanged">
+                                        <ComboBoxItem Content="Última volta"/>
+                                        <ComboBoxItem Content="Média móvel"/>
+                                        <ComboBoxItem Content="Máximo"/>
+                                        <ComboBoxItem Content="Manual"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="0,0,7,10">
+                                    <TextBlock Text="Reserva" Style="{StaticResource SmallLabel}"/>
+                                    <TextBox x:Name="FuelReserveBox" Text="1.0" Style="{StaticResource NumField}" TextChanged="FuelChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="0,0,7,10">
+                                    <TextBlock Text="&#160;" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox FontSize="14" MinHeight="34" SelectedIndex="0" IsEnabled="False"><ComboBoxItem Content="volta(s)"/></ComboBox>
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Margin="0,0,0,10">
+                                    <TextBlock Text="Unidade" Style="{StaticResource SmallLabel}"/>
+                                    <ComboBox FontSize="14" MinHeight="34" SelectedIndex="0" IsEnabled="False"><ComboBoxItem Content="Litros"/></ComboBox>
+                                </StackPanel>
+                            </Grid>
+                            <CheckBox x:Name="FuelExcludePitBox" Content="Excluir voltas de pit e outlap" IsChecked="True" Checked="FuelChanged" Unchecked="FuelChanged" FontSize="14"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Acesso rápido -->
+                    <Border Style="{StaticResource Card}" Margin="0,0,0,4">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="&#xE945;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource CyanBrush}" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Acesso rápido" Style="{StaticResource CardTitle}"/>
+                            </StackPanel>
+                            <UniformGrid Columns="3" Rows="2">
+                                <Button Tag="visibility" Click="QuickAccess" Margin="0,0,6,6" Padding="8,9">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B3;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource CyanBrush}" FontSize="17" Margin="0,0,7,0" VerticalAlignment="Center"/><TextBlock Text="Visibilidade&#10;por sessão" FontSize="12" TextAlignment="Left"/></StackPanel>
+                                </Button>
+                                <Button Tag="shortcuts" Click="QuickAccess" Margin="0,0,6,6" Padding="8,9">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE765;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource CyanBrush}" FontSize="17" Margin="0,0,7,0" VerticalAlignment="Center"/><TextBlock Text="Atalhos&#10;de teclado" FontSize="12" TextAlignment="Left"/></StackPanel>
+                                </Button>
+                                <Button Tag="p2p" Click="QuickAccess" Margin="0,0,0,6" Padding="8,9">
+                                    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7F6;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource CyanBrush}" FontSize="17" Margin="0,0,7,0" VerticalAlignment="Center"/><TextBlock Text="P2P&#10;(Overtake)" FontSize="12" TextAlignment="Left"/></StackPanel>
+                                </Button>
+                                <Button Tag="radar" Click="QuickAccess" Margin="0,0,6,0" Padding="8,9">
+                                    <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconRadar}" Stroke="{StaticResource CyanBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeEndLineCap="Round" Stretch="Uniform" Width="20" Height="20" Margin="0,0,7,0" VerticalAlignment="Center"/><TextBlock Text="Radar&#10;lateral" FontSize="12" TextAlignment="Left"/></StackPanel>
+                                </Button>
+                                <Button Tag="start-helper" Click="QuickAccess" Margin="0,0,6,0" Padding="8,9">
+                                    <StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconStartLights}" Fill="{StaticResource CyanBrush}" Stretch="Uniform" Width="18" Height="18" Margin="0,0,7,0" VerticalAlignment="Center"/><TextBlock Text="Start&#10;Helper" FontSize="12" TextAlignment="Left"/></StackPanel>
+                                </Button>
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>

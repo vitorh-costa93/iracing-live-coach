@@ -1,9 +1,14 @@
 using System.Runtime.InteropServices;
+using Vortice.Win32;
+using Vortice.Win32.Graphics.Direct2D;
+using Vortice.Win32.Numerics;
+using static Vortice.Win32.Graphics.Direct2D.Apis;
 using IracingLiveCoach.Core.Telemetry;
 using IracingLiveCoach.OverlayHost;
 using IracingLiveCoach.OverlayHost.Assets;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Persistence;
+using IracingLiveCoach.OverlayHost.Theme;
 using IracingLiveCoach.OverlayHost.Widgets;
 
 namespace IracingLiveCoach.ControlCenter;
@@ -51,7 +56,12 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private FlagBitmapCache? _flags;
     private StandingsWidget? _standings;
     private RelativeWidget? _relative;
+    private WeatherWidget? _weather;
+    private FuelWidget? _fuel;
+    private ComPtr<ID2D1SolidColorBrush> _backdropBrush;
     private readonly WidgetPlacementStore _placements = new();
+    private WidgetPlacementStore? _profile;
+    private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel"];
 
     public OverlayPreviewHost(nint ownerHwnd, int x, int y, int width, int height)
     {
@@ -61,8 +71,10 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         // Same hardcoded starting values as OverlayHost's own Program.cs (necessarily duplicated --
         // separate processes, spec §3) so the preview shows something sane even before
         // OverlayHost.exe has ever run once to create v3-layout.json.
-        _placements.Set("standings", new WidgetPlacement(0, 200, 200, PlacementAnchor.TopLeft, 820, 260, 1f, false, 0));
-        _placements.Set("relative", new WidgetPlacement(0, 200, 470, PlacementAnchor.TopLeft, 760, 200, 1f, false, 1));
+        _placements.Set("standings", new WidgetPlacement(0, 28, 30, PlacementAnchor.TopLeft, 800, 264, 1f, false, 0));
+        _placements.Set("relative", new WidgetPlacement(0, 1440, 740, PlacementAnchor.TopLeft, 470, 262, 1f, false, 1));
+        _placements.Set("weather", new WidgetPlacement(0, 1590, 30, PlacementAnchor.TopLeft, 300, 118, 1f, false, 2));
+        _placements.Set("fuel", new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
         PlacementPersistence.Load(_placements);
 
         _width = Math.Max(1, width);
@@ -85,12 +97,55 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _flags = new FlagBitmapCache(_device.Context);
         _standings = new StandingsWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
         _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
-        _standings.SetSimulatedRows(PreviewData.StandingsRows());
-        _relative.SetSimulatedRows(PreviewData.RelativeRows());
+        _weather = new WeatherWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _fuel = new FuelWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        var black = new Color4(0, 0, 0, 1);
+        ComPtr<ID2D1SolidColorBrush> backdrop = default;
+        if (_device.Context->CreateSolidColorBrush(&black, null, backdrop.GetAddressOf()).Success) _backdropBrush = backdrop;
+        _standings.SetSimulatedRows(SimulationData.StandingsRows());
+        _standings.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
+        _relative.SetSimulatedRows(SimulationData.RelativeRows());
+        _relative.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
+        _weather.SetSimulatedStatus(SimulationData.Weather());
+        _fuel.SetSimulatedStatus(SimulationData.Fuel());
+        _fuel.SetSimulatedSession(SimulationData.Session());
+        if (_profile is not null) ApplyProfile(_profile);
+    }
+
+    /// <summary>Pushes the Control Center's current settings (placements, columns, typography, formats,
+    /// headers, rules, fuel) into the preview's widgets -- the same setters the live overlay uses, so the
+    /// preview always shows what the overlay would draw with this configuration.</summary>
+    public void ApplyProfile(WidgetPlacementStore store)
+    {
+        _profile = store;
+        foreach (var key in PreviewKeys)
+            if (store.Get(key) is { } placement) _placements.Set(key, placement);
+        if (_standings is null || _relative is null || _weather is null || _fuel is null) return;
+
+        WidgetAppearance Appearance(string key) => store.AppearanceOverrides.TryGetValue(key, out var a) ? a : WidgetAppearance.Default;
+        _standings.SetColumns(store.ColumnOverrides.TryGetValue("standings", out var sc) ? sc.ToList() : StandingsWidget.BuildDefaultColumns());
+        _relative.SetColumns(store.ColumnOverrides.TryGetValue("relative", out var rc) ? rc.ToList() : RelativeWidget.BuildDefaultColumns());
+        _standings.SetAppearance(Appearance("standings"));
+        _relative.SetAppearance(Appearance("relative"));
+        _weather.SetAppearance(Appearance("weather"));
+        _fuel.SetAppearance(Appearance("fuel"));
+
+        var format = store.NumberFormat ?? NumberFormatConfig.Default;
+        _standings.SetNumberFormat(format);
+        _relative.SetNumberFormat(format);
+        _standings.SetHeaderFields(store.HeaderOverrides.TryGetValue("standings", out var sh) ? sh : HeaderFields.DefaultStandings());
+        _relative.SetHeaderFields(store.HeaderOverrides.TryGetValue("relative", out var rh) ? rh : HeaderFields.DefaultRelative());
+        _standings.SetPresentationOptions(store.StandingsRules ?? StandingsPresentationOptions.Default);
+        _relative.SetRelativeRules(store.RelativeRules ?? RelativeRules.Default);
+        _fuel.SetConfig(store.FuelConfig ?? FuelConfig.Default);
+        if (store.ClassRankColors is { Count: > 0 }) PaletteTokens.SetRankColors(store.ClassRankColors);
     }
 
     private void DisposeDeviceChain()
     {
+        _backdropBrush.Dispose();
+        _fuel?.Dispose(); _fuel = null;
+        _weather?.Dispose(); _weather = null;
         _relative?.Dispose(); _relative = null;
         _standings?.Dispose(); _standings = null;
         _flags?.Dispose(); _flags = null;
@@ -121,13 +176,14 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     /// decides the cadence -- this class has no timer of its own.</summary>
     public void RenderFrame()
     {
-        if (_device is null || _standings is null || _relative is null) return;
+        if (_device is null || _standings is null || _relative is null || _weather is null || _fuel is null) return;
 
         // 1920x1080-relative preview scaled into whatever size the panel actually granted this
         // surface (spec §12/§17: "Preview inclui modo 1920×1080 em escala real").
         float scale = _width / 1920f;
 
         _device.BeginFrame();
+        DrawBackdrop(scale);
         var standingsPlacement = _placements.Get("standings");
         var relativePlacement = _placements.Get("relative");
         // Scale the whole drawing, not just the positions: widgets are laid out in real 1920x1080
@@ -135,11 +191,32 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         // made neighbouring widgets overlap.
         var transform = System.Numerics.Matrix3x2.CreateScale(scale);
         _device.Context->SetTransform(&transform);
-        if (standingsPlacement is not null) _standings.Draw(_device.Context, standingsPlacement.X, standingsPlacement.Y);
-        if (relativePlacement is not null) _relative.Draw(_device.Context, relativePlacement.X, relativePlacement.Y);
+        var weatherPlacement = _placements.Get("weather");
+        var fuelPlacement = _placements.Get("fuel");
+        if (standingsPlacement is { Visible: true }) _standings.Draw(_device.Context, standingsPlacement.X, standingsPlacement.Y);
+        if (relativePlacement is { Visible: true }) _relative.Draw(_device.Context, relativePlacement.X, relativePlacement.Y);
+        if (weatherPlacement is { Visible: true }) _weather.Draw(_device.Context, weatherPlacement.X, weatherPlacement.Y);
+        if (fuelPlacement is { Visible: true }) _fuel.Draw(_device.Context, fuelPlacement.X, fuelPlacement.Y);
         var identity = System.Numerics.Matrix3x2.Identity;
         _device.Context->SetTransform(&identity);
         _device.EndFrame();
+    }
+
+    /// <summary>A quiet navy gradient (sky to asphalt) so the widgets read as sitting over a game view
+    /// rather than on a flat black box.</summary>
+    private void DrawBackdrop(float scale)
+    {
+        if (_backdropBrush.Get() is null) return;
+        const int bands = 54;
+        float bandHeight = 1080f * scale / bands;
+        for (int i = 0; i < bands; i++)
+        {
+            float t = i / (bands - 1f);
+            var color = new Color4((0x10 + (0x03 - 0x10) * t) / 255f, (0x2A + (0x0C - 0x2A) * t) / 255f, (0x40 + (0x14 - 0x40) * t) / 255f, 1f);
+            _backdropBrush.Get()->SetColor(&color);
+            var rect = new RectF(0, i * bandHeight, _width, (i + 1) * bandHeight + 1f);
+            _device!.Context->FillRectangle(&rect, (ID2D1Brush*)_backdropBrush.Get());
+        }
     }
 
     private static void EnsureClassRegistered()

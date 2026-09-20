@@ -1,51 +1,34 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using Microsoft.Win32;
+using System.Windows.Threading;
 using IracingLiveCoach.OverlayHost.Layout;
 using IracingLiveCoach.OverlayHost.Persistence;
 using IracingLiveCoach.OverlayHost.Theme;
-using IracingLiveCoach.OverlayHost.Widgets;
 using LayoutColumn = IracingLiveCoach.OverlayHost.Layout.ColumnDefinition;
 
 namespace IracingLiveCoach.ControlCenter;
 
 /// <summary>
-/// Layout tab (Phase 5, first real pass -- rewritten 2026-09-18, the prior stub had a
-/// RoutedEventArgs-typed handler wired to Slider.ValueChanged, whose real event type is
-/// RoutedPropertyChangedEventHandler&lt;double&gt;, and used a different pipe name/message shape
-/// than the OverlayHost side actually listens on). Drives <see cref="PlacementIpcClient"/> --
-/// every control change here is sent live to the running overlay, spec §3's "aplicação de
-/// configurações sem reiniciar a corrida".
+/// Control Center (Portuguese UI, matching the mockup): top bar (profiles / scope / undo / import /
+/// export / save), widget sidebar with per-widget switches, tabbed centre with the live preview, and
+/// the right-hand cards (dimensions, rows, formats, class colours, fuel, quick access).
 ///
-/// Still open, honestly: this panel does not yet READ BACK the overlay's current placement (no
-/// query/response leg on the IPC channel yet, only fire-and-forget updates), so the numbers shown
-/// when a widget is selected are this panel's own last-sent values (or its built-in defaults on
-/// first launch), not a live poll of the OverlayHost process. None of spec §12's other tabs
-/// (Cabeçalhos, Colunas, Aparência, Cores, Regras, Perfis) exist yet -- this is Layout only.
+/// Every control applies LIVE: it updates the in-memory profile store, sends its typed IPC message to
+/// the running overlay, refreshes the preview and (debounced) writes the shared profile file. The
+/// overlay owns live placements / class profiles / session visibility, so before every disk write
+/// those are refreshed from the file (<see cref="SaveProfileStore"/>).
+///
+/// Partial classes: this file = shell (preview, sidebar, tabs, top bar, profiles);
+/// Placement / Columns / Rules hold the per-area handlers.
 /// </summary>
 public partial class MainWindow : Window
 {
     private readonly PlacementIpcClient _client = new();
     private readonly EditModeIpcClient _editModeClient = new();
-    private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
-    private string _selectedWidget = "standings";
-    private bool _suppressChangeEvents;
-    private OverlayPreviewHost? _previewHost;
-    private bool _editModeUnlocked;
-
-    /// <summary>Backs the Cores/Perfis tabs -- a separate <see cref="WidgetPlacementStore"/> from
-    /// the Layout tab's own in-memory <see cref="_state"/> dictionary, because these two tabs work
-    /// directly against the on-disk profile (spec §16's palette overrides, spec §12's
-    /// import/export/restore) rather than against the live IPC channel Layout uses.</summary>
-    private readonly WidgetPlacementStore _profileStore = new();
-
-    /// <summary>Working set for the Colunas tab -- whichever widget is selected in the sidebar.
-    /// Reuses OverlayHost's own <see cref="ColumnDefinition"/> type directly instead of a parallel
-    /// UI-only shape, since this project already references that assembly for the preview host.</summary>
-    private List<LayoutColumn> _currentColumns = [];
     private readonly ColumnConfigIpcClient _columnConfigClient = new();
     private readonly RulesIpcClient _rulesClient = new();
     private readonly FuelConfigIpcClient _fuelConfigClient = new();
@@ -54,55 +37,88 @@ public partial class MainWindow : Window
     private readonly NumberFormatIpcClient _numberFormatClient = new();
     private readonly HeaderConfigIpcClient _headerClient = new();
     private readonly ProfilesIpcClient _profilesClient = new();
-    private static readonly string[] SessionKindNames = ["Practice", "Qualify", "Race"];
-    private static readonly string[] SessionKindLabels = ["Treino", "Classificação", "Corrida"];
+    private readonly ClassColorsIpcClient _classColorsClient = new();
+
     private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper"];
-    private readonly Dictionary<(string Widget, string Kind), CheckBox> _sessionBoxes = new();
-    private List<IracingLiveCoach.Core.Telemetry.HeaderFieldConfig> _currentHeader = [];
+
+    private static readonly Dictionary<string, (string Label, string Icon)> WidgetInfo = new()
+    {
+        ["standings"] = ("Standings", ""),
+        ["relative"] = ("Relative", ""),
+        ["weather"] = ("Weather Report", ""),
+        ["fuel"] = ("Fuel Calculator", ""),
+        ["radar"] = ("Radar lateral", ""),
+        ["start-helper"] = ("Start Helper", ""),
+    };
+
+    private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
+    private readonly Dictionary<string, Border> _sidebarRows = new();
+    private readonly Dictionary<string, CheckBox> _sidebarSwitches = new();
+    private string _selectedWidget = "standings";
+    /// <summary>True while controls are being filled programmatically (and until construction finishes),
+    /// so their change events never echo back as user edits.</summary>
+    private bool _suppressChangeEvents = true;
+
+    private void Quiet(Action action)
+    {
+        bool previous = _suppressChangeEvents;
+        _suppressChangeEvents = true;
+        try { action(); }
+        finally { _suppressChangeEvents = previous; }
+    }
+    private OverlayPreviewHost? _previewHost;
+    private bool _editModeUnlocked;
+
+    /// <summary>The on-disk profile as this window sees it (columns, typography, formats, rules, class
+    /// colours...). Placements/class profiles/session visibility inside it are refreshed from the file
+    /// before every write because the running overlay owns them.</summary>
+    private readonly WidgetPlacementStore _profileStore = new();
 
     public MainWindow()
     {
         InitializeComponent();
-        LoadIntoControls(_selectedWidget);
+        // Never taller/wider than the usable screen area (taskbar excluded).
+        Height = Math.Min(Height, SystemParameters.WorkArea.Height - 12);
+        Width = Math.Min(Width, SystemParameters.WorkArea.Width - 12);
         PlacementPersistence.Load(_profileStore);
-        RefreshClassColorList();
-        LoadColumnsForSelectedWidget();
-        LoadRulesIntoControls();
-        LoadFuelConfigIntoControls();
-        LoadAppearanceIntoControls();
-        LoadNumberFormatIntoControls();
-        LoadHeaderForSelectedWidget();
+        SeedStateFromStore();
+        BuildWidgetSidebar();
+        FillFontSizes();
         LoadMonitors();
         BuildSessionVisibilityGrid();
-        RefreshClassProfileList();
+        ReloadAllControlsFromStore();
+        RefreshProfileBoxes();
+        ShowTab(2);
+        _suppressChangeEvents = false;
+
         Loaded += MainWindow_Loaded;
         LocationChanged += (_, _) => RepositionPreview();
+        StateChanged += (_, _) => RepositionPreview();
+        Activated += (_, _) => RefreshLiveStateFromDisk();
         Closed += (_, _) => { CompositionTarget.Rendering -= OnPreviewRenderTick; _previewHost?.Dispose(); };
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        // The preview surface is a real top-level Win32 popup (see OverlayPreviewHost's class doc
-        // comment for why -- a WS_CHILD HwndHost attempt failed DirectComposition's
-        // CreateTargetForHwnd at runtime), owned by this window so it doesn't outlive the panel.
+        // The preview surface is a real top-level Win32 popup (a WS_CHILD HwndHost failed
+        // DirectComposition's CreateTargetForHwnd), owned by this window so it doesn't outlive it.
         nint ownerHwnd = new WindowInteropHelper(this).Handle;
         var (x, y, w, h) = PreviewScreenRect();
         _previewHost = new OverlayPreviewHost(ownerHwnd, x, y, w, h);
+        _previewHost.ApplyProfile(_profileStore);
         CompositionTarget.Rendering += OnPreviewRenderTick;
+        RepositionPreview();
     }
 
     private void OnPreviewRenderTick(object? sender, EventArgs e) => _previewHost?.RenderFrame();
 
-    /// <summary>Keeps the preview box at a true 16:9 ratio -- spec §12/§17's "Preview inclui modo
-    /// 1920×1080 em escala real" only holds if the box's own aspect ratio matches 1920x1080; a
-    /// mismatched box (e.g. a fixed height regardless of width) makes the single X/Y scale factor
-    /// OverlayPreviewHost.RenderFrame computes wrong for one axis, causing widgets positioned lower
-    /// in the 1920x1080 layout to run past the box's bottom edge.</summary>
+    // --- Preview surface (16:9, tracks its WPF anchor) ---
+
     private bool _adjustingAspect;
     private void PreviewBorder_AspectSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_adjustingAspect || e.NewSize.Width <= 0) return;
-        double targetHeight = e.NewSize.Width * 9.0 / 16.0;
+        double targetHeight = Math.Round((e.NewSize.Width - 2) * 9.0 / 16.0) + 2;
         if (Math.Abs(targetHeight - e.NewSize.Height) > 0.5)
         {
             _adjustingAspect = true;
@@ -112,22 +128,10 @@ public partial class MainWindow : Window
         RepositionPreview();
     }
 
-    private void MainScroll_ScrollChanged(object sender, ScrollChangedEventArgs e) => RepositionPreview();
-
-    /// <summary>The preview is a separate top-level popup window, so WPF's ScrollViewer cannot clip
-    /// it: once scrolled out of view it would float over whatever tab content scrolled beneath it.
-    /// Hide it unless the whole preview box is inside the scroll viewport.</summary>
-    private bool PreviewFullyInViewport()
-    {
-        if (!IsLoaded || MainScroll.ViewportHeight <= 0) return true;
-        var bounds = PreviewBorder.TransformToAncestor(MainScroll).TransformBounds(new Rect(0, 0, PreviewBorder.ActualWidth, PreviewBorder.ActualHeight));
-        return bounds.Top >= -0.5 && bounds.Bottom <= MainScroll.ViewportHeight + 0.5;
-    }
-
     private void RepositionPreview()
     {
         if (_previewHost is null) return;
-        bool visible = WindowState != WindowState.Minimized && PreviewFullyInViewport();
+        bool visible = WindowState != WindowState.Minimized && IsVisible;
         _previewHost.SetVisible(visible);
         if (!visible) return;
         var (x, y, w, h) = PreviewScreenRect();
@@ -136,440 +140,72 @@ public partial class MainWindow : Window
 
     private (int X, int Y, int Width, int Height) PreviewScreenRect()
     {
-        var topLeft = PreviewBorder.PointToScreen(new Point(0, 0));
-        return ((int)topLeft.X, (int)topLeft.Y, (int)Math.Max(1, PreviewBorder.ActualWidth), (int)Math.Max(1, PreviewBorder.ActualHeight));
+        // Inside the 1px border.
+        var topLeft = PreviewBorder.PointToScreen(new Point(1, 1));
+        return ((int)topLeft.X, (int)topLeft.Y, (int)Math.Max(1, PreviewBorder.ActualWidth - 2), (int)Math.Max(1, PreviewBorder.ActualHeight - 2));
     }
 
-    /// <summary>Starting values mirror OverlayHost's own <c>Program.cs</c> initial
-    /// <c>WidgetPlacementStore.Set</c> calls -- necessarily duplicated (separate processes, per
-    /// spec §3's decoupled-process architecture), not read from the running host yet.</summary>
+    /// <summary>Mirrors OverlayHost's own default placements (separate processes, spec §3). Used only
+    /// before a profile file exists and for "restore default position".</summary>
     private static Dictionary<string, WidgetUiState> BuildDefaults() => new()
     {
-        ["standings"] = new WidgetUiState(200, 200, 820, 260),
-        ["relative"] = new WidgetUiState(200, 470, 760, 200),
-        ["weather"] = new WidgetUiState(980, 470, 280, 132),
-        ["fuel"] = new WidgetUiState(980, 610, 300, 104),
-        ["radar"] = new WidgetUiState(980, 722, 180, 130),
-        ["start-helper"] = new WidgetUiState(980, 860, 280, 82),
+        ["standings"] = new WidgetUiState(28, 30, 800, 264),
+        ["relative"] = new WidgetUiState(1440, 740, 470, 262),
+        ["weather"] = new WidgetUiState(1590, 30, 300, 118),
+        ["fuel"] = new WidgetUiState(1270, 30, 310, 118),
+        ["radar"] = new WidgetUiState(860, 720, 180, 130),
+        ["start-helper"] = new WidgetUiState(820, 880, 280, 90),
     };
 
-    private void SelectWidget(object sender, RoutedEventArgs e)
+    private void SeedStateFromStore()
     {
-        _selectedWidget = (string)((Button)sender).Tag;
-        WidgetTitle.Text = _selectedWidget.ToUpperInvariant().Replace('-', ' ');
-        LoadIntoControls(_selectedWidget);
-        LoadColumnsForSelectedWidget();
-        LoadAppearanceIntoControls();
-        LoadHeaderForSelectedWidget();
+        foreach (var key in AllWidgetKeys)
+            if (_profileStore.Get(key) is { } p) _state[key] = ToUiState(p);
     }
 
-    private void LoadIntoControls(string widget)
+    private static WidgetUiState ToUiState(WidgetPlacement p) =>
+        new(p.X, p.Y, p.WidthDip, p.HeightDip, p.Visible, p.Locked, p.Opacity, p.Scale, p.ClickThrough, p.AutoSize);
+
+    /// <summary>The overlay owns live placements (in-game drags, auto-sized windows); pull them back
+    /// from the profile file whenever this window is re-activated so the fields never show stale values.</summary>
+    private void RefreshLiveStateFromDisk()
     {
-        _suppressChangeEvents = true;
         try
         {
-            var state = _state[widget];
-            XBox.Text = state.X.ToString(CultureInfo.InvariantCulture);
-            YBox.Text = state.Y.ToString(CultureInfo.InvariantCulture);
-            WidthBox.Text = state.Width.ToString(CultureInfo.InvariantCulture);
-            HeightBox.Text = state.Height.ToString(CultureInfo.InvariantCulture);
-            VisibleBox.IsChecked = state.Visible;
-            LockedBox.IsChecked = state.Locked;
-            ClickThroughBox.IsChecked = state.ClickThrough;
-            OpacitySlider.Value = state.Opacity;
-            ScaleSlider.Value = state.Scale;
+            var disk = new WidgetPlacementStore();
+            PlacementPersistence.Load(disk);
+            _profileStore.ReplacePlacements(disk.All);
+            SeedStateFromStore();
+            foreach (var key in AllWidgetKeys)
+                if (_sidebarSwitches.TryGetValue(key, out var sw)) Quiet(() => sw.IsChecked = _state[key].Visible);
+            LoadPlacementIntoControls(_selectedWidget);
+            _previewHost?.ApplyProfile(_profileStore);
         }
-        finally { _suppressChangeEvents = false; }
+        catch { /* a half-written file or a locked read: keep the current values */ }
     }
 
-    private void PositionChanged(object sender, TextChangedEventArgs e) => ApplyControlsToStateAndSend();
-    private void ToggleChanged(object sender, RoutedEventArgs e) => ApplyControlsToStateAndSend();
-    private void SliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e) => ApplyControlsToStateAndSend();
+    // --- Debounce (live apply without flooding the pipe / the disk) ---
 
-    private void ApplyControlsToStateAndSend()
+    private readonly Dictionary<string, DispatcherTimer> _debounce = new();
+
+    private void Debounce(string key, Action action, int milliseconds = 220)
     {
-        if (_suppressChangeEvents) return;
-        if (!float.TryParse(XBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var x)) return;
-        if (!float.TryParse(YBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var y)) return;
-        if (!float.TryParse(WidthBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var width)) return;
-        if (!float.TryParse(HeightBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var height)) return;
-
-        var state = new WidgetUiState(x, y, width, height,
-            VisibleBox.IsChecked == true, LockedBox.IsChecked == true,
-            (float)OpacitySlider.Value, (float)ScaleSlider.Value, ClickThroughBox.IsChecked == true);
-        _state[_selectedWidget] = state;
-
-        _ = SendAsync(state);
+        if (_debounce.TryGetValue(key, out var existing)) existing.Stop();
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+        timer.Tick += (_, _) => { timer.Stop(); _debounce.Remove(key); action(); };
+        _debounce[key] = timer;
+        timer.Start();
     }
 
-    private async Task SendAsync(WidgetUiState state)
-    {
-        bool sent = await _client.SendAsync(_selectedWidget, state);
-        Dispatcher.Invoke(() => ConnectionStatus.Text = sent
-            ? "Connected — overlay updated live."
-            : "Overlay not running or unreachable — changes will apply once it starts.");
-    }
+    private void SetStatus(string text) => ConnectionStatus.Text = text;
 
-    // --- Cores tab (spec §16: "Permita personalização e restauração por token, paleta de classe") ---
-
-    private void RefreshClassColorList()
-    {
-        var panel = new StackPanel();
-        foreach (var (className, hex) in _profileStore.ClassColorOverrides)
-        {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-            row.Children.Add(new Border
-            {
-                Width = 16, Height = 16, Margin = new Thickness(0, 0, 8, 0),
-                Background = (Brush)new BrushConverter().ConvertFromString(hex)!,
-                BorderBrush = System.Windows.Media.Brushes.Gray, BorderThickness = new Thickness(1)
-            });
-            row.Children.Add(new TextBlock { Text = $"{className}  {hex}", Foreground = System.Windows.Media.Brushes.White, Width = 140, VerticalAlignment = VerticalAlignment.Center });
-            var removeButton = new Button { Content = "Remover", Tag = className };
-            removeButton.Click += RemoveClassColorOverride;
-            row.Children.Add(removeButton);
-            panel.Children.Add(row);
-        }
-        ClassColorList.Items.Clear();
-        ClassColorList.Items.Add(panel);
-    }
-
-    private void AddClassColorOverride(object sender, RoutedEventArgs e)
-    {
-        string className = NewClassNameBox.Text.Trim();
-        string hex = NewClassColorBox.Text.Trim();
-        if (className.Length == 0)
-        {
-            ColorStatus.Text = "Informe o nome curto da classe (ex: GT3).";
-            return;
-        }
-        if (!System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[0-9A-Fa-f]{6}$"))
-        {
-            ColorStatus.Text = "Cor inválida -- use o formato #RRGGBB.";
-            return;
-        }
-        _profileStore.ClassColorOverrides[className] = hex;
-        SaveProfileStore();
-        // Apply immediately to THIS process's PaletteTokens -- Save() only persists to disk, it
-        // doesn't touch live in-memory state, so without this the embedded preview (which shares
-        // this same static PaletteTokens class) wouldn't show the change until relaunched.
-        var mediaColor = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex)!;
-        PaletteTokens.SetNameOverride(className, new Vortice.Win32.Numerics.Color4(
-            mediaColor.R / 255f, mediaColor.G / 255f, mediaColor.B / 255f, 1f));
-        RefreshClassColorList();
-        ColorStatus.Text = "Salvo e aplicado neste preview imediatamente. O OverlayHost.exe em execução real só aplica no próximo carregamento do perfil (reinicie-o para ver na corrida).";
-    }
-
-    private void RemoveClassColorOverride(object sender, RoutedEventArgs e)
-    {
-        string className = (string)((Button)sender).Tag;
-        _profileStore.ClassColorOverrides.Remove(className);
-        SaveProfileStore();
-        PaletteTokens.ClearNameOverride(className);
-        RefreshClassColorList();
-        ColorStatus.Text = $"Override de '{className}' removido.";
-    }
-
-    // --- Perfis tab (spec §12: "duplicar, renomear, importar/exportar, desfazer, restaurar") ---
-
-    private void ExportProfile(object sender, RoutedEventArgs e)
-    {
-        var dialog = new SaveFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json", FileName = "v3-layout-export.json" };
-        if (dialog.ShowDialog() != true) return;
-        bool ok = PlacementPersistence.TryExport(dialog.FileName);
-        ProfileStatus.Text = ok ? $"Exportado para {dialog.FileName}" : "Falha ao exportar -- nenhum perfil salvo ainda?";
-    }
-
-    private void ImportProfile(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json" };
-        if (dialog.ShowDialog() != true) return;
-        bool ok = PlacementPersistence.TryImport(_profileStore, dialog.FileName);
-        if (ok)
-        {
-            RefreshClassColorList();
-            ProfileStatus.Text = "Importado. Reinicie o OverlayHost.exe para aplicar ao overlay ao vivo.";
-        }
-        else
-        {
-            ProfileStatus.Text = "Falha ao importar -- arquivo inválido ou versão de esquema incompatível.";
-        }
-    }
-
-    private void RestoreDefaults(object sender, RoutedEventArgs e)
-    {
-        _profileStore.ClassColorOverrides.Clear();
-        SaveProfileStore();
-        PaletteTokens.ClearAllNameOverrides();
-        RefreshClassColorList();
-        ProfileStatus.Text = "Overrides de cor restaurados para o padrão normativo (spec §16).";
-    }
-
-    // --- Colunas tab (spec §12: reorder/width/decimals/alignment/visibility, ao vivo) ---
-
-    private static List<LayoutColumn>? DefaultColumnsFor(string widget) => widget switch
-    {
-        "standings" => StandingsWidget.BuildDefaultColumns(),
-        "relative" => RelativeWidget.BuildDefaultColumns(),
-        _ => null
-    };
-
-    private void LoadColumnsForSelectedWidget()
-    {
-        var defaults = DefaultColumnsFor(_selectedWidget);
-        if (defaults is null)
-        {
-            _currentColumns = [];
-            ColumnsHint.Text = $"Colunas configuráveis ainda não disponíveis para '{_selectedWidget}' -- apenas Standings e Relative têm o motor de colunas ligado.";
-            RefreshColumnList();
-            return;
-        }
-        ColumnsHint.Text = "Reordenar (↑/↓), largura, casas decimais, alinhamento e visibilidade -- aplicado ao vivo.";
-        _currentColumns = _profileStore.ColumnOverrides.TryGetValue(_selectedWidget, out var saved)
-            ? saved.OrderBy(c => c.Order).ToList()
-            : defaults;
-        RefreshColumnList();
-    }
-
-    private void RefreshColumnList()
-    {
-        var panel = new StackPanel();
-        var ordered = _currentColumns.OrderBy(c => c.Order).ToList();
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            var column = ordered[i];
-            int index = i;
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 4) };
-            for (int c = 0; c < 7; c++) row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition());
-
-            var upDown = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
-            var upButton = new Button { Content = "↑", Padding = new Thickness(4, 0, 4, 0), IsEnabled = index > 0 };
-            upButton.Click += (_, _) => MoveColumn(column.Key, -1);
-            var downButton = new Button { Content = "↓", Padding = new Thickness(4, 0, 4, 0), IsEnabled = index < ordered.Count - 1 };
-            downButton.Click += (_, _) => MoveColumn(column.Key, 1);
-            upDown.Children.Add(upButton);
-            upDown.Children.Add(downButton);
-            Grid.SetColumn(upDown, 0);
-            row.Children.Add(upDown);
-
-            var visibleBox = new CheckBox { IsChecked = column.Visible, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
-            visibleBox.Checked += (_, _) => UpdateColumn(column.Key, c => c with { Visible = true });
-            visibleBox.Unchecked += (_, _) => UpdateColumn(column.Key, c => c with { Visible = false });
-            Grid.SetColumn(visibleBox, 1);
-            row.Children.Add(visibleBox);
-
-            var keyLabel = new TextBlock { Text = column.Key, Foreground = System.Windows.Media.Brushes.White, VerticalAlignment = VerticalAlignment.Center, Width = 90, Margin = new Thickness(6, 0, 0, 0) };
-            Grid.SetColumn(keyLabel, 2);
-            row.Children.Add(keyLabel);
-
-            var widthBox = new TextBox
-            {
-                Text = column.WidthPx.ToString("0", CultureInfo.InvariantCulture), Width = 50,
-                Background = (Brush)new BrushConverter().ConvertFromString("#17232E")!, Foreground = System.Windows.Media.Brushes.White,
-                BorderBrush = (Brush)new BrushConverter().ConvertFromString("#405A6B")!, Margin = new Thickness(6, 0, 0, 0)
-            };
-            widthBox.LostFocus += (_, _) =>
-            {
-                if (float.TryParse(widthBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var w))
-                    UpdateColumn(column.Key, c => c with { WidthPx = w, MinWidthPx = Math.Min(c.MinWidthPx, w) });
-            };
-            Grid.SetColumn(widthBox, 3);
-            row.Children.Add(widthBox);
-
-            var decimalsBox = new TextBox
-            {
-                Text = column.DecimalPlaces?.ToString(CultureInfo.InvariantCulture) ?? "", Width = 30,
-                Background = (Brush)new BrushConverter().ConvertFromString("#17232E")!, Foreground = System.Windows.Media.Brushes.White,
-                BorderBrush = (Brush)new BrushConverter().ConvertFromString("#405A6B")!, Margin = new Thickness(6, 0, 0, 0),
-                IsEnabled = column.DecimalPlaces is not null
-            };
-            decimalsBox.LostFocus += (_, _) =>
-            {
-                if (int.TryParse(decimalsBox.Text, out var d))
-                    UpdateColumn(column.Key, c => c with { DecimalPlaces = Math.Clamp(d, 0, 6) });
-            };
-            Grid.SetColumn(decimalsBox, 4);
-            row.Children.Add(decimalsBox);
-
-            var alignBox = new ComboBox { Width = 70, Margin = new Thickness(6, 0, 0, 0) };
-            alignBox.Items.Add(ColumnAlignment.Left);
-            alignBox.Items.Add(ColumnAlignment.Center);
-            alignBox.Items.Add(ColumnAlignment.Right);
-            alignBox.SelectedItem = column.Alignment;
-            alignBox.SelectionChanged += (_, _) =>
-            {
-                if (alignBox.SelectedItem is ColumnAlignment a) UpdateColumn(column.Key, c => c with { Alignment = a });
-            };
-            Grid.SetColumn(alignBox, 5);
-            row.Children.Add(alignBox);
-
-            panel.Children.Add(row);
-        }
-        ColumnList.Items.Clear();
-        ColumnList.Items.Add(panel);
-    }
-
-    private void UpdateColumn(string key, Func<LayoutColumn, LayoutColumn> update)
-    {
-        int idx = _currentColumns.FindIndex(c => c.Key == key);
-        if (idx < 0) return;
-        _currentColumns[idx] = update(_currentColumns[idx]);
-    }
-
-    private void MoveColumn(string key, int direction)
-    {
-        var ordered = _currentColumns.OrderBy(c => c.Order).ToList();
-        int idx = ordered.FindIndex(c => c.Key == key);
-        int target = idx + direction;
-        if (idx < 0 || target < 0 || target >= ordered.Count) return;
-        (ordered[idx], ordered[target]) = (ordered[target], ordered[idx]);
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            int keyIdx = _currentColumns.FindIndex(c => c.Key == ordered[i].Key);
-            _currentColumns[keyIdx] = _currentColumns[keyIdx] with { Order = i };
-        }
-        RefreshColumnList();
-    }
-
-    private async void ApplyColumnConfig(object sender, RoutedEventArgs e)
-    {
-        if (_currentColumns.Count == 0)
-        {
-            ColumnsStatus.Text = "Nada para aplicar.";
-            return;
-        }
-        var entries = _currentColumns.Select(c => new ColumnConfigEntry(
-            c.Key, c.Visible, c.Order, c.WidthPx, c.MinWidthPx, c.WidthMode.ToString(),
-            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx)).ToList();
-
-        bool sent = await _columnConfigClient.SendAsync(_selectedWidget, entries);
-        _profileStore.ColumnOverrides[_selectedWidget] = _currentColumns;
-        SaveProfileStore();
-        ColumnsStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
-
-    private void RestoreDefaultColumns(object sender, RoutedEventArgs e)
-    {
-        var defaults = DefaultColumnsFor(_selectedWidget);
-        if (defaults is null) return;
-        _currentColumns = defaults;
-        _profileStore.ColumnOverrides.Remove(_selectedWidget);
-        SaveProfileStore();
-        RefreshColumnList();
-        ColumnsStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
-    }
-
-    // --- Regras tab (spec §6/§12: Top N, linhas por classe, janela do jogador) ---
-
-    private void LoadRulesIntoControls()
-    {
-        var rules = _profileStore.StandingsRules ?? IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions.Default;
-        TopNBox.Text = rules.TopNPerClass.ToString(CultureInfo.InvariantCulture);
-        OwnClassRowsBox.Text = rules.OwnClassRows.ToString(CultureInfo.InvariantCulture);
-        OtherClassRowsBox.Text = rules.OtherClassRows.ToString(CultureInfo.InvariantCulture);
-        KeepPlayerWindowBox.IsChecked = rules.KeepPlayerWindow;
-    }
-
-    private async void ApplyRules(object sender, RoutedEventArgs e)
-    {
-        if (!int.TryParse(TopNBox.Text, out var topN) || !int.TryParse(OwnClassRowsBox.Text, out var ownRows) || !int.TryParse(OtherClassRowsBox.Text, out var otherRows))
-        {
-            RulesStatus.Text = "Valores inválidos -- use números inteiros.";
-            return;
-        }
-        bool keepWindow = KeepPlayerWindowBox.IsChecked == true;
-        bool sent = await _rulesClient.SendAsync(topN, ownRows, otherRows, keepWindow);
-        _profileStore.StandingsRules = new IracingLiveCoach.Core.Telemetry.StandingsPresentationOptions(topN, ownRows, otherRows, keepWindow);
-        SaveProfileStore();
-        RulesStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
-
-    // --- Combustível (spec §9: fonte do consumo, reserva, exclusão de volta de pit) ---
-
-    private void LoadFuelConfigIntoControls()
-    {
-        var config = _profileStore.FuelConfig ?? IracingLiveCoach.Core.Telemetry.FuelConfig.Default;
-        FuelSourceBox.SelectedIndex = config.Source switch
-        {
-            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.LastLap => 0,
-            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.Average => 1,
-            IracingLiveCoach.Core.Telemetry.FuelConsumptionSource.Max => 2,
-            _ => 3
-        };
-        FuelManualBox.Text = config.ManualLitersPerLap.ToString(CultureInfo.InvariantCulture);
-        FuelReserveBox.Text = config.ReserveLaps.ToString(CultureInfo.InvariantCulture);
-        FuelExcludePitBox.IsChecked = config.ExcludePitLaps;
-    }
-
-    private async void ApplyFuelConfig(object sender, RoutedEventArgs e)
-    {
-        string source = FuelSourceBox.SelectedIndex switch
-        {
-            0 => "LastLap",
-            1 => "Average",
-            2 => "Max",
-            _ => "Manual"
-        };
-        if (!double.TryParse(FuelManualBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var manual) ||
-            !double.TryParse(FuelReserveBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var reserve))
-        {
-            FuelRulesStatus.Text = "Valores inválidos.";
-            return;
-        }
-        bool excludePit = FuelExcludePitBox.IsChecked == true;
-        bool sent = await _fuelConfigClient.SendAsync(source, manual, reserve, excludePit);
-        _profileStore.FuelConfig = new IracingLiveCoach.Core.Telemetry.FuelConfig(
-            Enum.Parse<IracingLiveCoach.Core.Telemetry.FuelConsumptionSource>(source), manual, reserve, excludePit);
-        SaveProfileStore();
-        FuelRulesStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
-
-    // --- Formato de números (spec §12: iRating/Safety Rating) ---
-
-    private void LoadNumberFormatIntoControls()
-    {
-        var config = _profileStore.NumberFormat ?? IracingLiveCoach.Core.Telemetry.NumberFormatConfig.Default;
-        IRatingFormatBox.SelectedIndex = config.IRating == IracingLiveCoach.Core.Telemetry.IRatingFormat.Thousands ? 1 : 0;
-        SafetyRatingFormatBox.SelectedIndex = config.SafetyRating switch
-        {
-            IracingLiveCoach.Core.Telemetry.SafetyRatingFormat.NumberOnly => 1,
-            IracingLiveCoach.Core.Telemetry.SafetyRatingFormat.LetterOnly => 2,
-            _ => 0
-        };
-        NameFormatBox.SelectedIndex = config.NameFormat == IracingLiveCoach.Core.Telemetry.NameDisplayFormat.Abbreviated ? 1 : 0;
-    }
-
-    private async void ApplyNumberFormat(object sender, RoutedEventArgs e)
-    {
-        string iRatingFormat = IRatingFormatBox.SelectedIndex == 1 ? "Thousands" : "Full";
-        string safetyRatingFormat = SafetyRatingFormatBox.SelectedIndex switch
-        {
-            1 => "NumberOnly",
-            2 => "LetterOnly",
-            _ => "LetterAndNumber"
-        };
-        string nameFormat = NameFormatBox.SelectedIndex == 1 ? "Abbreviated" : "Full";
-        bool sent = await _numberFormatClient.SendAsync(iRatingFormat, safetyRatingFormat, nameFormat);
-        _profileStore.NumberFormat = new IracingLiveCoach.Core.Telemetry.NumberFormatConfig(
-            Enum.Parse<IracingLiveCoach.Core.Telemetry.IRatingFormat>(iRatingFormat),
-            Enum.Parse<IracingLiveCoach.Core.Telemetry.SafetyRatingFormat>(safetyRatingFormat),
-            Enum.Parse<IracingLiveCoach.Core.Telemetry.NameDisplayFormat>(nameFormat));
-        SaveProfileStore();
-        NumberFormatStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
+    private void ReportSent(bool sent, string what)
+        => SetStatus(sent ? $"{what} — aplicado ao overlay." : $"{what} — salvo (overlay fechado; vale no próximo início).");
 
     /// <summary>The running overlay owns live placements, class profiles and session visibility (it
-    /// persists them itself on every change); this Control Center's copies were only loaded at
-    /// startup. Before writing the shared profile file, refresh those three from disk so a save from
-    /// here never rolls the overlay's newer drags/profiles back.</summary>
+    /// persists them itself on every change); this window's copies were only loaded earlier. Before
+    /// writing the shared profile file, refresh those from disk so a save from here never rolls back
+    /// the overlay's newer drags/profiles.</summary>
     private void SaveProfileStore()
     {
         var disk = new WidgetPlacementStore();
@@ -579,215 +215,322 @@ public partial class MainWindow : Window
         _profileStore.ClassProfiles.Clear();
         foreach (var (key, placements) in disk.ClassProfiles) _profileStore.ClassProfiles[key] = placements;
         PlacementPersistence.Save(_profileStore);
+        _previewHost?.ApplyProfile(_profileStore);
     }
 
-    // --- Visibilidade por tipo de sessão + perfis por classe/carro (spec §12) ---
+    // --- Widget sidebar ---
 
-    private void BuildSessionVisibilityGrid()
+    private void BuildWidgetSidebar()
     {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(140) });
-        for (int c = 0; c < SessionKindNames.Length; c++) grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(110) });
-        grid.RowDefinitions.Add(new RowDefinition());
-        for (int c = 0; c < SessionKindNames.Length; c++)
+        WidgetRows.Children.Clear();
+        _sidebarRows.Clear();
+        _sidebarSwitches.Clear();
+        foreach (var key in AllWidgetKeys)
         {
-            var head = new TextBlock { Text = SessionKindLabels[c], Foreground = (Brush)new BrushConverter().ConvertFromString("#A6B0BB")!, FontSize = 11 };
-            Grid.SetColumn(head, c + 1);
-            grid.Children.Add(head);
-        }
-        var config = _profileStore.SessionVisibility ?? IracingLiveCoach.Core.Telemetry.SessionVisibilityConfig.Default;
-        for (int r = 0; r < AllWidgetKeys.Length; r++)
-        {
-            grid.RowDefinitions.Add(new RowDefinition());
-            var label = new TextBlock { Text = AllWidgetKeys[r], Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(0, 2, 0, 2) };
-            Grid.SetRow(label, r + 1);
-            grid.Children.Add(label);
-            for (int c = 0; c < SessionKindNames.Length; c++)
+            var (label, icon) = WidgetInfo[key];
+            var row = new Border { Style = (Style)FindResource("NavRow"), Tag = key };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(34) });
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
+            if (icon.StartsWith("geo:"))
             {
-                bool hidden = config.HiddenIn.TryGetValue(AllWidgetKeys[r], out var list) && list.Contains(SessionKindNames[c]);
-                var box = new CheckBox { IsChecked = !hidden, Margin = new Thickness(0, 2, 0, 2) };
-                Grid.SetRow(box, r + 1);
-                Grid.SetColumn(box, c + 1);
-                grid.Children.Add(box);
-                _sessionBoxes[(AllWidgetKeys[r], SessionKindNames[c])] = box;
+                bool filled = icon == "geo:IconStartLights";
+                grid.Children.Add(new System.Windows.Shapes.Path
+                {
+                    Data = (Geometry)FindResource(icon[4..]), Stretch = Stretch.Uniform, Width = 22, Height = 22,
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center,
+                    Stroke = filled ? null : (Brush)FindResource("CyanBrush"), StrokeThickness = 1.8,
+                    StrokeLineJoin = PenLineJoin.Round, StrokeEndLineCap = PenLineCap.Round,
+                    Fill = filled ? (Brush)FindResource("CyanBrush") : null
+                });
             }
-        }
-        SessionVisibilityList.ItemsSource = new[] { grid };
-    }
-
-    private async void ApplySessionVisibility(object sender, RoutedEventArgs e)
-    {
-        var hiddenIn = new Dictionary<string, List<string>>();
-        foreach (var widget in AllWidgetKeys)
-        {
-            var hidden = SessionKindNames.Where(k => _sessionBoxes[(widget, k)].IsChecked != true).ToList();
-            if (hidden.Count > 0) hiddenIn[widget] = hidden;
-        }
-        bool sent = await _profilesClient.SendAsync("setSessionVisibility", "", hiddenIn);
-        _profileStore.SessionVisibility = new IracingLiveCoach.Core.Telemetry.SessionVisibilityConfig(hiddenIn);
-        SaveProfileStore();
-        SessionVisibilityStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
-
-    private void RefreshClassProfileList()
-    {
-        var panel = new StackPanel();
-        foreach (var key in _profileStore.ClassProfiles.Keys.OrderBy(k => k))
-        {
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-            row.Children.Add(new TextBlock { Text = key, Foreground = System.Windows.Media.Brushes.White, Width = 180, VerticalAlignment = VerticalAlignment.Center });
-            var remove = new Button { Content = "Remover", Padding = new Thickness(6, 0, 6, 0) };
-            string captured = key;
-            remove.Click += async (_, _) =>
+            else
             {
-                bool sent = await _profilesClient.SendAsync("deleteClassProfile", captured, null);
-                _profileStore.ClassProfiles.Remove(captured);
-                SaveProfileStore();
-                RefreshClassProfileList();
-                ClassProfileStatus.Text = sent ? $"Perfil '{captured}' removido." : $"Perfil '{captured}' removido do arquivo -- overlay não está rodando.";
-            };
-            row.Children.Add(remove);
-            panel.Children.Add(row);
+                grid.Children.Add(new TextBlock
+                {
+                    Text = icon, FontFamily = (FontFamily)FindResource("IconFont"), FontSize = 21,
+                    Foreground = (Brush)FindResource("CyanBrush"), VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+            var name = new TextBlock { Text = label, FontSize = 15, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            Grid.SetColumn(name, 1);
+            grid.Children.Add(name);
+            var toggle = new CheckBox { Style = (Style)FindResource("Switch"), IsChecked = _state[key].Visible, VerticalAlignment = VerticalAlignment.Center };
+            string captured = key;
+            toggle.Checked += (_, _) => SetWidgetVisible(captured, true);
+            toggle.Unchecked += (_, _) => SetWidgetVisible(captured, false);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "Switch_" + key);
+            System.Windows.Automation.AutomationProperties.SetName(toggle, label);
+            Grid.SetColumn(toggle, 2);
+            grid.Children.Add(toggle);
+            row.Child = grid;
+            row.MouseLeftButtonUp += (_, _) => SelectWidget(captured);
+            WidgetRows.Children.Add(row);
+            _sidebarRows[key] = row;
+            _sidebarSwitches[key] = toggle;
         }
-        ClassProfileList.ItemsSource = new[] { panel };
+        HighlightSelectedRow();
     }
 
-    private async void SaveClassProfile(object sender, RoutedEventArgs e)
+    private void HighlightSelectedRow()
     {
-        string key = NewProfileKeyBox.Text.Trim();
-        if (key.Length == 0) { ClassProfileStatus.Text = "Informe o nome da classe ou do carro."; return; }
-        bool sent = await _profilesClient.SendAsync("saveClassProfile", key, null);
-        if (!sent)
+        foreach (var (key, row) in _sidebarRows)
         {
-            ClassProfileStatus.Text = "O overlay precisa estar rodando para salvar o layout atual como perfil (ele é quem conhece o layout ao vivo).";
+            bool selected = key == _selectedWidget;
+            row.BorderBrush = selected ? (Brush)FindResource("CyanBrush") : (Brush)FindResource("CardBorderBrush");
+            row.Background = selected ? (Brush)new BrushConverter().ConvertFromString("#0A3550")! : (Brush)new BrushConverter().ConvertFromString("#06202F")!;
+            row.Effect = selected ? (System.Windows.Media.Effects.Effect)FindResource("CyanGlow") : null;
+        }
+    }
+
+    private void SelectWidget(string key)
+    {
+        if (key == _selectedWidget) return;
+        _selectedWidget = key;
+        HighlightSelectedRow();
+        ReloadAllControlsFromStore();
+    }
+
+    private void SetWidgetVisible(string key, bool visible)
+    {
+        if (_suppressChangeEvents) return;
+        _state[key] = _state[key] with { Visible = visible };
+        if (key == _selectedWidget) LoadPlacementIntoControls(key);
+        _ = SendPlacementAsync(key);
+    }
+
+    // --- Tabs ---
+
+    private void TabChecked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressChangeEvents) return;
+        if (sender is RadioButton { Tag: string tag } && int.TryParse(tag, out int index)) ShowTab(index);
+    }
+
+    private void ShowTab(int index)
+    {
+        UIElement[] panels = [Tab0, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6];
+        for (int i = 0; i < panels.Length; i++)
+            panels[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+        var buttons = new[] { TabBtn0, TabBtn1, TabBtn2, TabBtn3, TabBtn4, TabBtn5, TabBtn6 };
+        if (buttons[index].IsChecked != true) buttons[index].IsChecked = true;
+    }
+
+    // --- Top bar: save / import / export / settings ---
+
+    private async void SaveAll(object sender, RoutedEventArgs e)
+    {
+        SaveProfileStore();
+        string message = "Layout salvo";
+        if (ProfileBox.SelectedItem is ComboBoxItem { Tag: string profileName })
+        {
+            ProfileFiles.Save(profileName);
+            message += $" no perfil “{profileName}”";
+        }
+        if (ScopeBox.SelectedItem is ComboBoxItem { Tag: string scopeKey } && scopeKey.Length > 0)
+        {
+            bool sent = await _profilesClient.SendAsync("saveClassProfile", scopeKey, null);
+            message += sent ? $" e como layout da classe/carro “{scopeKey}”" : " (o layout da classe precisa do overlay aberto)";
+            await Task.Delay(250);
+            var disk = new WidgetPlacementStore();
+            PlacementPersistence.Load(disk);
+            foreach (var (k, placements) in disk.ClassProfiles) _profileStore.ClassProfiles[k] = placements;
+            RefreshClassProfileList();
+        }
+        SetStatus(message + ".");
+    }
+
+    private void ExportProfile(object sender, RoutedEventArgs e)
+    {
+        SaveProfileStore();
+        var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json", FileName = "v3-layout-export.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        SetStatus(PlacementPersistence.TryExport(dialog.FileName) ? $"Exportado para {dialog.FileName}" : "Falha ao exportar.");
+    }
+
+    private async void ImportProfile(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Perfil Live Coach V3 (*.json)|*.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        ProfileFiles.BackupCurrent();
+        if (!PlacementPersistence.TryImport(_profileStore, dialog.FileName))
+        {
+            SetStatus("Falha ao importar — arquivo inválido ou versão de esquema incompatível.");
             return;
         }
-        await Task.Delay(300); // the overlay persists on receipt; re-read so the list shows it
-        var disk = new WidgetPlacementStore();
-        PlacementPersistence.Load(disk);
-        foreach (var (k, placements) in disk.ClassProfiles) _profileStore.ClassProfiles[k] = placements;
-        RefreshClassProfileList();
-        ClassProfileStatus.Text = $"Layout atual salvo como perfil '{key}'.";
+        PlacementPersistence.Save(_profileStore);
+        bool sent = await _profilesClient.SendAsync("reloadFromDisk", "", null);
+        SeedStateFromStore();
+        ReloadAllControlsFromStore();
+        SetStatus(sent ? "Perfil importado e aplicado ao overlay." : "Perfil importado (overlay fechado; vale no próximo início).");
     }
 
-    // --- Monitor (spec §4/§12: posição livre em qualquer monitor) ---
-
-    private List<MonitorRect> _monitors = [];
-
-    private void LoadMonitors()
+    private void OpenSettings(object sender, RoutedEventArgs e)
     {
-        _monitors = MonitorEnumerator.GetMonitors();
-        MonitorBox.ItemsSource = _monitors.Select((m, i) => $"Monitor {i + 1}{(m.Primary ? " (principal)" : "")} -- {m.Width}x{m.Height} @ {m.Left},{m.Top}").ToList();
-        if (_monitors.Count > 0) MonitorBox.SelectedIndex = 0;
+        var menu = new ContextMenu { PlacementTarget = (UIElement)sender, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        var shortcuts = new MenuItem { Header = "Atalhos de teclado" };
+        shortcuts.Click += (_, _) => ShowShortcuts();
+        var folder = new MenuItem { Header = "Abrir pasta de configurações" };
+        folder.Click += (_, _) => System.Diagnostics.Process.Start("explorer.exe", ProfileFiles.Root);
+        menu.Items.Add(shortcuts);
+        menu.Items.Add(folder);
+        menu.IsOpen = true;
     }
 
-    private async void MoveToMonitor(object sender, RoutedEventArgs e)
+    private void ShowShortcuts()
     {
-        if (MonitorBox.SelectedIndex < 0 || MonitorBox.SelectedIndex >= _monitors.Count) return;
-        var target = _monitors[MonitorBox.SelectedIndex];
-        var state = _state[_selectedWidget];
-        var current = _monitors.FirstOrDefault(m => state.X >= m.Left && state.X < m.Left + m.Width && state.Y >= m.Top && state.Y < m.Top + m.Height) ?? _monitors[0];
-        float newX = target.Left + Math.Clamp(state.X - current.Left, 0, Math.Max(0, target.Width - 40));
-        float newY = target.Top + Math.Clamp(state.Y - current.Top, 0, Math.Max(0, target.Height - 40));
-        _state[_selectedWidget] = state with { X = newX, Y = newY };
-        LoadIntoControls(_selectedWidget);
-        await SendAsync(_state[_selectedWidget]);
-        MonitorStatus.Text = $"Movido para o monitor {MonitorBox.SelectedIndex + 1} (X={newX:0}, Y={newY:0}).";
+        MessageBox.Show(this,
+            "Na janela do overlay (OverlayHost):\n\n" +
+            "E — alternar modo de edição (mostrar/arrastar os widgets)\n" +
+            "Espaço — alternar click-through global\n" +
+            "T — alternar a simulação (dados fictícios)\n" +
+            "Esc — fechar o overlay",
+            "Atalhos de teclado", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
-    // --- Cabeçalho (spec §12: campos configuráveis e reordenáveis) ---
-
-    private static readonly Dictionary<string, string> HeaderLabels = new()
+    private async void QuickAccess(object sender, RoutedEventArgs e)
     {
-        ["type"] = "Tipo de sessão (RACE)", ["class"] = "Classe", ["lap"] = "Volta atual/total",
-        ["sof"] = "SOF", ["drivers"] = "Nº de pilotos", ["bb"] = "Brake bias", ["track"] = "Temp. da pista",
-        ["rubber"] = "Emborrachamento", ["best"] = "Melhor volta", ["last"] = "Última volta", ["local"] = "Hora local",
-    };
-
-    private static List<IracingLiveCoach.Core.Telemetry.HeaderFieldConfig>? DefaultHeaderFor(string widget) => widget switch
-    {
-        "standings" => IracingLiveCoach.Core.Telemetry.HeaderFields.DefaultStandings(),
-        "relative" => IracingLiveCoach.Core.Telemetry.HeaderFields.DefaultRelative(),
-        _ => null
-    };
-
-    private void LoadHeaderForSelectedWidget()
-    {
-        var defaults = DefaultHeaderFor(_selectedWidget);
-        if (defaults is null)
+        switch ((string)((Button)sender).Tag)
         {
-            _currentHeader = [];
-            HeaderHint.Text = $"Cabeçalho configurável não se aplica a '{_selectedWidget}' -- apenas Standings e Relative têm faixa de cabeçalho.";
+            case "visibility": ShowTab(6); break;
+            case "shortcuts": ShowShortcuts(); break;
+            case "p2p": SelectWidget("relative"); ShowTab(2); SetStatus("Coluna Overtake: ative-a na tabela de colunas (aparece só em sessões com push-to-pass)."); break;
+            case "radar": SelectWidget("radar"); ShowTab(0); break;
+            case "start-helper": SelectWidget("start-helper"); ShowTab(0); break;
         }
-        else
+        await Task.CompletedTask;
+    }
+
+    // --- Named profiles (top bar + "Gerenciar perfis") ---
+
+    /// <summary>Fills the top-bar profile / scope boxes. Selection handlers are attached only after
+    /// the initial fill so populating them never triggers a load.</summary>
+    private void RefreshProfileBoxes()
+    {
+        ProfileBox.SelectionChanged -= ProfileBox_SelectionChanged;
+        ScopeBox.SelectionChanged -= ScopeBox_SelectionChanged;
+
+        ProfileBox.Items.Clear();
+        ProfileBox.Items.Add(new ComboBoxItem { Content = "Layout atual (sem perfil)", Tag = null });
+        foreach (var name in ProfileFiles.List()) ProfileBox.Items.Add(new ComboBoxItem { Content = "Perfil: " + name, Tag = name });
+        string? active = ProfileFiles.ActiveName;
+        ProfileBox.SelectedIndex = active is null ? 0 : Math.Max(0, ProfileBox.Items.Cast<ComboBoxItem>().ToList().FindIndex(i => (string?)i.Tag == active));
+
+        string? scope = (ScopeBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        ScopeBox.Items.Clear();
+        ScopeBox.Items.Add(new ComboBoxItem { Content = "Global (todas as classes)", Tag = "" });
+        foreach (var key in _profileStore.ClassProfiles.Keys.OrderBy(k => k))
+            ScopeBox.Items.Add(new ComboBoxItem { Content = "Classe/carro: " + key, Tag = key });
+        int scopeIndex = scope is null ? 0 : ScopeBox.Items.Cast<ComboBoxItem>().ToList().FindIndex(i => (string?)i.Tag == scope);
+        ScopeBox.SelectedIndex = Math.Max(0, scopeIndex);
+
+        ProfileBox.SelectionChanged += ProfileBox_SelectionChanged;
+        ScopeBox.SelectionChanged += ScopeBox_SelectionChanged;
+    }
+
+    private async void ProfileBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ProfileBox.SelectedItem is not ComboBoxItem item) return;
+        if (item.Tag is not string name)
         {
-            _currentHeader = _profileStore.HeaderOverrides.TryGetValue(_selectedWidget, out var saved)
-                ? IracingLiveCoach.Core.Telemetry.HeaderFields.Complete(saved)
-                : defaults;
-            HeaderHint.Text = "Escolha quais campos aparecem na faixa de cabeçalho e em que ordem (↑/↓) -- aplicado ao vivo. Campos sem dado ainda são omitidos, nunca preenchidos com valor falso.";
+            ProfileFiles.ActiveName = null;
+            return;
         }
-        RefreshHeaderList();
+        await LoadNamedProfile(name);
     }
 
-    private void RefreshHeaderList()
+    private void ScopeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        var panel = new StackPanel();
-        for (int i = 0; i < _currentHeader.Count; i++)
-        {
-            var field = _currentHeader[i];
-            int index = i;
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-            var up = new Button { Content = "↑", Padding = new Thickness(6, 0, 6, 0), IsEnabled = index > 0, Margin = new Thickness(0, 0, 2, 0) };
-            up.Click += (_, _) => MoveHeaderField(index, -1);
-            var down = new Button { Content = "↓", Padding = new Thickness(6, 0, 6, 0), IsEnabled = index < _currentHeader.Count - 1, Margin = new Thickness(0, 0, 8, 0) };
-            down.Click += (_, _) => MoveHeaderField(index, 1);
-            var visible = new CheckBox
-            {
-                IsChecked = field.Visible, VerticalAlignment = VerticalAlignment.Center,
-                Content = HeaderLabels.GetValueOrDefault(field.Key, field.Key)
-            };
-            visible.Checked += (_, _) => _currentHeader[index] = _currentHeader[index] with { Visible = true };
-            visible.Unchecked += (_, _) => _currentHeader[index] = _currentHeader[index] with { Visible = false };
-            row.Children.Add(up);
-            row.Children.Add(down);
-            row.Children.Add(visible);
-            panel.Children.Add(row);
-        }
-        HeaderList.ItemsSource = new[] { panel };
+        if (ScopeBox.SelectedItem is ComboBoxItem { Tag: string key })
+            SetStatus(key.Length == 0
+                ? "Escopo global: “Salvar” grava o layout para todas as classes."
+                : $"Escopo “{key}”: “Salvar” também grava este layout como perfil dessa classe/carro (aplicado sozinho ao entrar numa sessão com ela).");
     }
 
-    private void MoveHeaderField(int index, int direction)
+    private async Task LoadNamedProfile(string name)
     {
-        int target = index + direction;
-        if (target < 0 || target >= _currentHeader.Count) return;
-        (_currentHeader[index], _currentHeader[target]) = (_currentHeader[target], _currentHeader[index]);
-        RefreshHeaderList();
-    }
-
-    private async void ApplyHeaderConfig(object sender, RoutedEventArgs e)
-    {
-        if (DefaultHeaderFor(_selectedWidget) is null) { HeaderStatus.Text = "Este widget não tem cabeçalho configurável."; return; }
-        bool sent = await _headerClient.SendAsync(_selectedWidget, _currentHeader.Select(f => new HeaderFieldWire(f.Key, f.Visible)).ToList());
-        _profileStore.HeaderOverrides[_selectedWidget] = _currentHeader.ToList();
         SaveProfileStore();
-        HeaderStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
+        ProfileFiles.BackupCurrent();
+        if (!ProfileFiles.Activate(name))
+        {
+            SetStatus($"Perfil “{name}” não encontrado.");
+            RefreshProfileBoxes();
+            return;
+        }
+        _profileStore.ColumnOverrides.Clear();
+        _profileStore.AppearanceOverrides.Clear();
+        _profileStore.HeaderOverrides.Clear();
+        _profileStore.ClassColorOverrides.Clear();
+        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null; _profileStore.FuelConfig = null;
+        _profileStore.NumberFormat = null; _profileStore.ClassRankColors = null;
+        PaletteTokens.ClearAllNameOverrides();
+        PlacementPersistence.Load(_profileStore);
+        bool sent = await _profilesClient.SendAsync("reloadFromDisk", "", null);
+        SeedStateFromStore();
+        ReloadAllControlsFromStore();
+        SetStatus(sent ? $"Perfil “{name}” carregado e aplicado ao overlay (layout anterior guardado como “_anterior”)." : $"Perfil “{name}” carregado (overlay fechado).");
     }
 
-    private void RestoreDefaultHeader(object sender, RoutedEventArgs e)
+    private async void ManageProfiles(object sender, MouseButtonEventArgs e)
     {
-        var defaults = DefaultHeaderFor(_selectedWidget);
-        if (defaults is null) return;
-        _currentHeader = defaults;
-        _profileStore.HeaderOverrides.Remove(_selectedWidget);
-        RefreshHeaderList();
-        HeaderStatus.Text = "Restaurado para o padrão -- clique Aplicar para enviar ao overlay ao vivo.";
+        var dialog = new ProfilesDialog(_profileStore) { Owner = this };
+        dialog.ShowDialog();
+        if (dialog.LoadRequested is { } toLoad) await LoadNamedProfile(toLoad);
+        RefreshProfileBoxes();
     }
 
-    // --- Modo de edição global (spec §4: overlays só visíveis na pista, exceto durante edição) ---
+    private async void RestoreAllDefaults(object sender, MouseButtonEventArgs e)
+    {
+        var answer = MessageBox.Show(this,
+            "Restaurar TODAS as configurações (posições, colunas, tipografia, formatos, regras, cores e combustível) para o padrão?\n\nO layout atual é guardado em profiles\\_anterior.json.",
+            "Restaurar padrões", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes) return;
+        SaveProfileStore();
+        ProfileFiles.BackupCurrent();
+
+        var fresh = new WidgetPlacementStore();
+        foreach (var (key, state) in BuildDefaults())
+        {
+            int z = Array.IndexOf(AllWidgetKeys, key);
+            fresh.Set(key, new WidgetPlacement(0, state.X, state.Y, PlacementAnchor.TopLeft, state.Width, state.Height, 1f, false, z));
+        }
+        PlacementPersistence.Save(fresh);
+        _profileStore.ColumnOverrides.Clear();
+        _profileStore.AppearanceOverrides.Clear();
+        _profileStore.HeaderOverrides.Clear();
+        _profileStore.ClassColorOverrides.Clear();
+        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null; _profileStore.FuelConfig = null;
+        _profileStore.NumberFormat = null; _profileStore.ClassRankColors = null; _profileStore.SessionVisibility = null;
+        _profileStore.ClassProfiles.Clear();
+        PaletteTokens.ClearAllNameOverrides();
+        PaletteTokens.SetRankColors(DefaultRankColors);
+        ProfileFiles.ActiveName = null;
+        PlacementPersistence.Load(_profileStore);
+        bool sent = await _profilesClient.SendAsync("reloadFromDisk", "", null);
+        foreach (var (key, state) in BuildDefaults()) _state[key] = state;
+        ReloadAllControlsFromStore();
+        RefreshProfileBoxes();
+        SetStatus(sent ? "Padrões restaurados e aplicados ao overlay." : "Padrões restaurados (overlay fechado).");
+    }
+
+    // --- History (top bar + Layout tab) ---
+
+    private async void UndoPlacement(object sender, RoutedEventArgs e)
+    {
+        bool sent = await _undoRedoClient.SendAsync("undo");
+        SetStatus(sent ? "Desfeito." : "Overlay fechado ou inacessível — nada foi aplicado.");
+        await Task.Delay(250);
+        RefreshLiveStateFromDisk();
+    }
+
+    private async void RedoPlacement(object sender, RoutedEventArgs e)
+    {
+        bool sent = await _undoRedoClient.SendAsync("redo");
+        SetStatus(sent ? "Refeito." : "Overlay fechado ou inacessível — nada foi aplicado.");
+        await Task.Delay(250);
+        RefreshLiveStateFromDisk();
+    }
 
     private async void ToggleEditMode(object sender, RoutedEventArgs e)
     {
@@ -795,82 +538,44 @@ public partial class MainWindow : Window
         bool sent = await _editModeClient.SendAsync(_editModeUnlocked);
         EditModeButton.Content = _editModeUnlocked ? "Travar (mostrar só na pista)" : "Destravar para editar";
         EditModeStatus.Text = sent
-            ? (_editModeUnlocked ? "Destravado -- overlays visíveis agora, em qualquer tela." : "Travado -- overlays só aparecem quando você estiver na pista.")
-            : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
+            ? (_editModeUnlocked ? "Destravado — os overlays aparecem agora, em qualquer tela." : "Travado — os overlays só aparecem na pista.")
+            : "Overlay fechado ou inacessível — nada foi aplicado.";
+        if (!_editModeUnlocked) { await Task.Delay(250); RefreshLiveStateFromDisk(); }
     }
 
-    // --- Aparência (spec §12: tamanho de fonte, altura das linhas e espaçamento, por widget) ---
-
-    private void LoadAppearanceIntoControls()
+    /// <summary>Reloads every per-widget / global control from <see cref="_profileStore"/> for the selected widget.</summary>
+    private void ReloadAllControlsFromStore()
     {
+        bool previousSuppress = _suppressChangeEvents;
         _suppressChangeEvents = true;
         try
         {
-            var appearance = _profileStore.AppearanceOverrides.TryGetValue(_selectedWidget, out var saved) ? saved : WidgetAppearance.Default;
-            FontScaleSlider.Value = appearance.FontScale;
-            RowHeightBox.Text = appearance.RowHeightDip.ToString(CultureInfo.InvariantCulture);
-            RowSpacingBox.Text = appearance.RowSpacingDip.ToString(CultureInfo.InvariantCulture);
+            string label = WidgetInfo[_selectedWidget].Label;
+            LayoutTitle.Text = "Layout – " + label;
+            HeaderTitle.Text = "Cabeçalhos – " + label;
+            AppearanceTitle.Text = "Aparência – " + label;
+            ColumnsTitle.Text = "Colunas – " + label;
+            LoadPlacementIntoControls(_selectedWidget);
+            LoadColumnsForSelectedWidget();
+            LoadAppearanceIntoControls();
+            LoadHeaderForSelectedWidget();
+            LoadRulesIntoControls();
+            LoadFuelConfigIntoControls();
+            LoadNumberFormatIntoControls();
+            RefreshClassColorList();
+            BuildRankColorRows();
+            RefreshClassProfileList();
+            RefreshSessionVisibilityGrid();
+            foreach (var key in AllWidgetKeys)
+                if (_sidebarSwitches.TryGetValue(key, out var sw)) sw.IsChecked = _state[key].Visible;
         }
-        finally { _suppressChangeEvents = false; }
-    }
-
-    private void AppearanceSliderChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { /* only sent on Aplicar -- a live font rebuild per drag tick would be wasteful */ }
-
-    private async void ApplyAppearance(object sender, RoutedEventArgs e)
-    {
-        if (!float.TryParse(RowHeightBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var rowHeight) ||
-            !float.TryParse(RowSpacingBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var rowSpacing))
-        {
-            AppearanceStatus.Text = "Valores inválidos.";
-            return;
-        }
-        float fontScale = (float)FontScaleSlider.Value;
-        bool sent = await _appearanceClient.SendAsync(_selectedWidget, fontScale, rowHeight, rowSpacing);
-        _profileStore.AppearanceOverrides[_selectedWidget] = new WidgetAppearance(fontScale, rowHeight, rowSpacing);
-        SaveProfileStore();
-        AppearanceStatus.Text = sent
-            ? "Aplicado ao overlay ao vivo e salvo."
-            : "Salvo -- overlay não está rodando ou inacessível agora, mas será aplicado no próximo carregamento do perfil.";
-    }
-
-    private async void RestoreDefaultAppearance(object sender, RoutedEventArgs e)
-    {
-        _profileStore.AppearanceOverrides.Remove(_selectedWidget);
-        SaveProfileStore();
-        LoadAppearanceIntoControls();
-        bool sent = await _appearanceClient.SendAsync(_selectedWidget, WidgetAppearance.Default.FontScale, WidgetAppearance.Default.RowHeightDip, WidgetAppearance.Default.RowSpacingDip);
-        AppearanceStatus.Text = sent
-            ? "Restaurado ao padrão e aplicado ao overlay ao vivo."
-            : "Restaurado ao padrão -- overlay não está rodando ou inacessível agora.";
-    }
-
-    // --- Restaurar posição/tamanho por widget (spec §4/§12: "restaurar padrões por widget") ---
-
-    private async void RestoreDefaultPlacement(object sender, RoutedEventArgs e)
-    {
-        var defaults = BuildDefaults();
-        if (!defaults.TryGetValue(_selectedWidget, out var defaultState)) return;
-        _state[_selectedWidget] = defaultState;
-        LoadIntoControls(_selectedWidget);
-        await SendAsync(defaultState);
-    }
-
-    // --- Histórico (spec §4: "desfazer/refazer mudanças de layout") ---
-
-    private async void UndoPlacement(object sender, RoutedEventArgs e)
-    {
-        bool sent = await _undoRedoClient.SendAsync("undo");
-        ConnectionStatus.Text = sent ? "Desfeito." : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
-    }
-
-    private async void RedoPlacement(object sender, RoutedEventArgs e)
-    {
-        bool sent = await _undoRedoClient.SendAsync("redo");
-        ConnectionStatus.Text = sent ? "Refeito." : "Overlay não está rodando ou inacessível -- nada foi aplicado.";
+        finally { _suppressChangeEvents = previousSuppress; }
+        UpdateWidthWarning();
+        _previewHost?.ApplyProfile(_profileStore);
     }
 }
 
 /// <param name="X">Virtual-desktop DIPs, top-left anchored (spec §4).</param>
 public readonly record struct WidgetUiState(
     float X, float Y, float Width, float Height,
-    bool Visible = true, bool Locked = false, float Opacity = 1f, float Scale = 1f, bool ClickThrough = true);
+    bool Visible = true, bool Locked = false, float Opacity = 1f, float Scale = 1f, bool ClickThrough = true, bool AutoSize = true);

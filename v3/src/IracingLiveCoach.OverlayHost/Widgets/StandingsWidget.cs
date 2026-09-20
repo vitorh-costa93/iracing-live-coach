@@ -123,6 +123,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         }).ToList();
 
     private bool _hasP2P;
+    private readonly Dictionary<(string, int), string> _nameFit = new();
 
     /// <summary>Tracks whether any car in the data publishes push-to-pass; re-lays the columns out
     /// when that changes (render thread, before the frame's widths are read).</summary>
@@ -189,6 +190,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// mutating them.</summary>
     private void CreateTextFormats()
     {
+        _nameFit.Clear();
         _nameFormat.Dispose();
         _statusFormat.Dispose();
         _numericFormat.Dispose();
@@ -478,7 +480,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Full name is expected to already be in DriverCode per spec §5 -- this widget
                     // does not truncate or abbreviate on its own.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    DrawCell(dc, NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellX, y, cellWidth, ColumnAlignment.Left);
+                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _statusFormat.Get(), NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellWidth, _nameFit), cellX, y, cellWidth, ColumnAlignment.Left);
                     break;
                 case "license":
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
