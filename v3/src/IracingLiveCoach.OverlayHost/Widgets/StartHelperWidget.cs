@@ -26,6 +26,10 @@ public sealed unsafe class StartHelperWidget : IDisposable
     private readonly TelemetryReader _telemetry;
     private readonly object _lock = new();
     private RaceStartStatus? _status;
+    private RaceStartStatus? _simulated;
+
+    /// <summary>Non-null while showing fictitious data (simulation mode / Control Center preview).</summary>
+    public void SetSimulatedStatus(RaceStartStatus? status) => _simulated = status;
 
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<ID2D1SolidColorBrush> _brush;
@@ -91,8 +95,8 @@ public sealed unsafe class StartHelperWidget : IDisposable
     /// hidden otherwise -- <see cref="RaceStartStatus.ShouldShow"/> already encodes that rule.</summary>
     public void Draw(ID2D1DeviceContext* dc, float x, float y, float width = WidthDip)
     {
-        RaceStartStatus? status;
-        lock (_lock) { status = _status; }
+        RaceStartStatus? status = _simulated;
+        if (status is null) { lock (_lock) { status = _status; } }
         if (status?.ShouldShow != true) return;
 
         float panelHeight = RowHeightDip * 3 + RowGapDip * 2 + 8f;

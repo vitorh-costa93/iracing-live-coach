@@ -62,7 +62,10 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private (int X, int Y, int Width, int Height) _lastRect;
     private readonly WidgetPlacementStore _placements = new();
     private WidgetPlacementStore? _profile;
-    private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel"];
+    private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper"];
+    private RadarWidget? _radar;
+    private StartHelperWidget? _start;
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
 
     public OverlayPreviewHost(nint ownerHwnd, int x, int y, int width, int height)
     {
@@ -76,6 +79,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _placements.Set("relative", new WidgetPlacement(0, 1440, 740, PlacementAnchor.TopLeft, 470, 262, 1f, false, 1));
         _placements.Set("weather", new WidgetPlacement(0, 1590, 30, PlacementAnchor.TopLeft, 300, 118, 1f, false, 2));
         _placements.Set("fuel", new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
+        _placements.Set("radar", new WidgetPlacement(0, 860, 720, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
+        _placements.Set("start-helper", new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
         PlacementPersistence.Load(_placements);
 
         _width = Math.Max(1, width);
@@ -100,6 +105,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
         _weather = new WeatherWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
         _fuel = new FuelWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _radar = new RadarWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _start = new StartHelperWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
         var black = new Color4(0, 0, 0, 1);
         ComPtr<ID2D1SolidColorBrush> backdrop = default;
         if (_device.Context->CreateSolidColorBrush(&black, null, backdrop.GetAddressOf()).Success) _backdropBrush = backdrop;
@@ -108,7 +115,7 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _relative.SetSimulatedRows(SimulationData.RelativeRows());
         _relative.SetSimulatedSession(SimulationData.Session(), SimulationData.Player());
         _weather.SetSimulatedStatus(SimulationData.Weather());
-        _fuel.SetSimulatedStatus(SimulationData.Fuel());
+        _fuel.SetSimulatedStatus(SimulationData.Fuel(0));
         _fuel.SetSimulatedSession(SimulationData.Session());
         if (_profile is not null) ApplyProfile(_profile);
     }
@@ -121,7 +128,7 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _profile = store;
         foreach (var key in PreviewKeys)
             if (store.Get(key) is { } placement) _placements.Set(key, placement);
-        if (_standings is null || _relative is null || _weather is null || _fuel is null) return;
+        if (_standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null) return;
 
         WidgetAppearance Appearance(string key) => store.AppearanceOverrides.TryGetValue(key, out var a) ? a : WidgetAppearance.Default;
         _standings.SetColumns(store.ColumnOverrides.TryGetValue("standings", out var sc) ? sc.ToList() : StandingsWidget.BuildDefaultColumns());
@@ -130,6 +137,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _relative.SetAppearance(Appearance("relative"));
         _weather.SetAppearance(Appearance("weather"));
         _fuel.SetAppearance(Appearance("fuel"));
+        _radar.SetAppearance(Appearance("radar"));
+        _start.SetAppearance(Appearance("start-helper"));
 
         var format = store.NumberFormat ?? NumberFormatConfig.Default;
         _standings.SetNumberFormat(format);
@@ -145,6 +154,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private void DisposeDeviceChain()
     {
         _backdropBrush.Dispose();
+        _start?.Dispose(); _start = null;
+        _radar?.Dispose(); _radar = null;
         _fuel?.Dispose(); _fuel = null;
         _weather?.Dispose(); _weather = null;
         _relative?.Dispose(); _relative = null;
@@ -179,7 +190,7 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     /// decides the cadence -- this class has no timer of its own.</summary>
     public void RenderFrame()
     {
-        if (_device is null || _standings is null || _relative is null || _weather is null || _fuel is null) return;
+        if (_device is null || _standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null) return;
 
         // 1920x1080-relative preview scaled into whatever size the panel actually granted this
         // surface (spec §12/§17: "Preview inclui modo 1920×1080 em escala real").
@@ -187,6 +198,12 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
 
         _device.BeginFrame();
         DrawBackdrop(scale);
+        // Time-driven fictitious data: a car passing alongside (radar), a standing start
+        // (clutch / throttle / RPM) and fuel being burned, so those widgets can be judged in the preview.
+        double t = _clock.Elapsed.TotalSeconds;
+        _radar.SetSimulatedStatus(SimulationData.Radar(t));
+        _start.SetSimulatedStatus(SimulationData.StartHelper(t));
+        _fuel.SetSimulatedStatus(SimulationData.Fuel(t));
         var standingsPlacement = _placements.Get("standings");
         var relativePlacement = _placements.Get("relative");
         // Scale the whole drawing, not just the positions: widgets are laid out in real 1920x1080
@@ -198,6 +215,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         DrawWidget(relativePlacement, scale, (x, y) => _relative.Draw(_device.Context, x, y));
         DrawWidget(weatherPlacement, scale, (x, y) => _weather.Draw(_device.Context, x, y));
         DrawWidget(fuelPlacement, scale, (x, y) => _fuel.Draw(_device.Context, x, y));
+        DrawWidget(_placements.Get("radar"), scale, (x, y) => _radar.Draw(_device.Context, x, y));
+        DrawWidget(_placements.Get("start-helper"), scale, (x, y) => _start.Draw(_device.Context, x, y));
         var identity = System.Numerics.Matrix3x2.Identity;
         _device.Context->SetTransform(&identity);
         _device.EndFrame();

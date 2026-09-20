@@ -386,8 +386,7 @@ public partial class MainWindow : Window
             "Na janela do overlay (OverlayHost):\n\n" +
             "E — alternar modo de edição (mostrar/arrastar os widgets)\n" +
             "Espaço — alternar click-through global\n" +
-            "T — alternar a simulação (dados fictícios)\n" +
-            "Y — na simulação, alternar entre GT3 multiclasse e Super Fórmula (com overtake)\n" +
+            "T — alternar a simulação (dados fictícios: multiclasse, overtake, radar, largada e combustível)\n" +
             "V — simular uma vitória (toca o tema da vitória, se ativado)\n" +
             "Esc — fechar o overlay",
             "Atalhos de teclado", MessageBoxButton.OK, MessageBoxImage.Information);

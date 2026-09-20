@@ -26,6 +26,10 @@ public sealed unsafe class RadarWidget : IDisposable
     private readonly TelemetryReader _telemetry;
     private readonly object _lock = new();
     private RadarStatus? _status;
+    private RadarStatus? _simulated;
+
+    /// <summary>Non-null while showing fictitious data (simulation mode / Control Center preview).</summary>
+    public void SetSimulatedStatus(RadarStatus? status) => _simulated = status;
 
     private ComPtr<IDWriteTextFormat> _labelFormat;
     private ComPtr<ID2D1SolidColorBrush> _brush;
@@ -87,8 +91,9 @@ public sealed unsafe class RadarWidget : IDisposable
     /// <see cref="DeviceResources.EndFrame"/>.</summary>
     public void Draw(ID2D1DeviceContext* dc, float x, float y, float width = WidthDip)
     {
-        RadarStatus? status;
-        lock (_lock) { status = _status; }
+        RadarStatus? status = _simulated;
+        bool simulated = status is not null;
+        if (!simulated) { lock (_lock) { status = _status; } }
 
         var panel = new RectF(x, y, x + width, y + HeightDip);
         PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
@@ -97,7 +102,7 @@ public sealed unsafe class RadarWidget : IDisposable
         // Spec §10: "diferencie pista livre de telemetria desconectada/desconhecida" -- these are
         // two genuinely different states and must never look the same. No telemetry at all (or the
         // sim hasn't confirmed a usable track length yet) is shown explicitly, not left blank.
-        if (!_telemetry.HasRecentTelemetry || status is null || !status.HasTrackLength)
+        if ((!simulated && !_telemetry.HasRecentTelemetry) || status is null || !status.HasTrackLength)
         {
             SetBrushColor(PaletteTokens.TextDisabled);
             const string text = "RADAR —";

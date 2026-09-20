@@ -54,7 +54,6 @@ public static unsafe class Program
     private const int VK_ESCAPE = 0x1B;
     private const int VK_SPACE = 0x20;
     private const int VK_T = 0x54;
-    private const int VK_Y = 0x59;
     private const int VK_V = 0x56;
     private const int VK_E = 0x45;
 
@@ -62,8 +61,6 @@ public static unsafe class Program
     private static bool _editMode;
     private static readonly List<nint> OverlayWindows = [];
     private static bool _simulating;
-    /// <summary>Simulation scenario: false = Spa GT3 multiclass, true = Suzuka SF23 with push-to-pass (Y key).</summary>
-    private static bool _simSf23;
     /// <summary>Same handler the real chequered-flag event uses (V key simulates a win).</summary>
     private static Action<IracingLiveCoach.Core.Telemetry.RaceFinish>? _raceFinishHandler;
 
@@ -489,14 +486,17 @@ public static unsafe class Program
 
             if (_simulating)
             {
-                var simSession = _simSf23 ? SimulationData.Sf23Session() : SimulationData.Session();
-                standings.SetSimulatedRows(_simSf23 ? SimulationData.Sf23StandingsRows() : SimulationData.StandingsRows());
+                var simSession = SimulationData.Session();
+                standings.SetSimulatedRows(SimulationData.StandingsRows());
                 standings.SetSimulatedSession(simSession, SimulationData.Player());
-                relative.SetSimulatedRows(_simSf23 ? SimulationData.Sf23RelativeRows() : SimulationData.RelativeRows());
+                relative.SetSimulatedRows(SimulationData.RelativeRows());
                 relative.SetSimulatedSession(simSession, SimulationData.Player());
                 weather.SetSimulatedStatus(SimulationData.Weather());
-                fuel.SetSimulatedStatus(SimulationData.Fuel());
+                double simTime = sw.Elapsed.TotalSeconds;
+                fuel.SetSimulatedStatus(SimulationData.Fuel(simTime));
                 fuel.SetSimulatedSession(simSession);
+                radar.SetSimulatedStatus(SimulationData.Radar(simTime));
+                start.SetSimulatedStatus(SimulationData.StartHelper(simTime));
             }
             else
             {
@@ -507,6 +507,8 @@ public static unsafe class Program
                 weather.SetSimulatedStatus(null);
                 fuel.SetSimulatedStatus(null);
                 fuel.SetSimulatedSession(null);
+                radar.SetSimulatedStatus(null);
+                start.SetSimulatedStatus(null);
             }
 
             AutoFit(StandingsKey, standings.LastDrawnSize);
@@ -845,11 +847,6 @@ public static unsafe class Program
                 else if ((int)wParam == VK_V)
                 {
                     _raceFinishHandler?.Invoke(new IracingLiveCoach.Core.Telemetry.RaceFinish(1, 1));
-                }
-                else if ((int)wParam == VK_Y)
-                {
-                    _simSf23 = !_simSf23;
-                    Console.WriteLine($"Simulation scenario: {(_simSf23 ? "SF23 (push-to-pass)" : "GT3")}");
                 }
                 else if ((int)wParam == VK_E)
                 {
