@@ -40,4 +40,13 @@
     </Content>
   </ItemGroup>
 
+  <!-- A single-file publish left Assets\Fonts out of the publish folder, so the published overlay
+       silently fell back to a system font. Copy the two Barlow files next to the exe explicitly. -->
+  <Target Name="CopyFontsToPublishDir" AfterTargets="Publish">
+    <ItemGroup>
+      <BarlowFontFiles Include="$(MSBuildThisFileDirectory)..\IracingLiveCoach.OverlayHost\Assets\Fonts\*.ttf" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BarlowFontFiles)" DestinationFolder="$(PublishDir)Assets\Fonts" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>
