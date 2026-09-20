@@ -159,6 +159,14 @@ public sealed class WidgetPlacementStore
             _placements[widgetKey] = p with { WidthDip = widthDip, HeightDip = heightDip };
     }
 
+    /// <summary>Moves only a widget's X, with no undo entry and no lock check -- keeps an auto-sized
+    /// widget that grew (e.g. the Overtake column appearing) fully on screen; not a user edit.</summary>
+    public void SetXQuiet(string widgetKey, float x)
+    {
+        if (_placements.TryGetValue(widgetKey, out var p))
+            _placements[widgetKey] = p with { X = x };
+    }
+
     /// <summary>Replaces placements wholesale without undo history or the per-widget lock check --
     /// for switching to a stored profile, not for an individual user edit.</summary>
     public void ReplacePlacements(IEnumerable<KeyValuePair<string, WidgetPlacement>> placements)

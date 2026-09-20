@@ -54,11 +54,11 @@ public sealed unsafe class RelativeWidget : IDisposable
     private const float CarNumberColumnWidthDip = 44f;
     private const float FlagColumnWidthDip = 30f;
     private const float BrandColumnWidthDip = 34f;
-    private const float NameColumnWidthDip = 132f;
+    private const float NameColumnWidthDip = 124f;
     private const float LicenseColumnWidthDip = 56f;
     private const float IRatingColumnWidthDip = 64f;
     private const float GapColumnWidthDip = 70f;
-    private const float OvertakeColumnWidthDip = 96f;
+    private const float OvertakeColumnWidthDip = 62f;
     private const float ColumnGapDip = 6f;
 
     private const float ColumnsLeftMarginDip = ClassStripWidthDip + 4f;
@@ -77,7 +77,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
         new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 3),
         new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 7),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, false, 8),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 8),
     ];
 
     public void SetColumns(List<ColumnDefinition> columns)
@@ -91,9 +91,22 @@ public sealed unsafe class RelativeWidget : IDisposable
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
 
     private void RebuildEffectiveColumns() =>
-        _effectiveColumns = _appearance.PaddingHDip < 0
-            ? _columns
-            : _columns.Select(c => c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        _effectiveColumns = _columns.Select(c =>
+        {
+            // See StandingsWidget: the Overtake column collapses when nobody has push-to-pass.
+            if (c.Key == "overtake" && !_hasP2P) return c with { Visible = false };
+            return _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c;
+        }).ToList();
+
+    private bool _hasP2P;
+
+    private void SyncP2PColumn(IEnumerable<RelativeRow> rows)
+    {
+        bool has = rows.Any(r => r.P2PActive is not null);
+        if (has == _hasP2P) return;
+        _hasP2P = has;
+        RebuildEffectiveColumns();
+    }
 
     /// <summary>The weight to use for a text format: the widget's own choice unless the appearance
     /// forces Regular (400) or SemiBold (600) -- the two bundled cuts.</summary>
@@ -116,6 +129,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     {
         _flags = flags;
         _dwriteFactory = dwriteFactory;
+        RebuildEffectiveColumns();
         _fontCollection = fontCollection;
         CreateTextFormats();
 
@@ -245,6 +259,7 @@ public sealed unsafe class RelativeWidget : IDisposable
 
     private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
+        SyncP2PColumn(rows);
         float height = HeaderHeightDip + rows.Count * RowHeightDip;
         LastDrawnSize = (TableWidthDip, height);
         var panel = new RectF(x, y, x + TableWidthDip, y + height);

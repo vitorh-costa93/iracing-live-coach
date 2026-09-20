@@ -68,7 +68,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
     private const float LapDeltaColumnWidthDip = 68f;
-    private const float OvertakeColumnWidthDip = 88f;
+    private const float OvertakeColumnWidthDip = 64f;
     private const float PitColumnWidthDip = 68f;
     private const float ColumnGapDip = 6f;
     private const float PanelRadiusDip = PanelChrome.CornerRadius;
@@ -98,7 +98,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
         new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 10),
         new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 11, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, false, 12),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 12),
     ];
 
     /// <summary>Spec §12: every column-config change (reorder/width/visibility/decimals/alignment)
@@ -114,9 +114,25 @@ public sealed unsafe class StandingsWidget : IDisposable
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
 
     private void RebuildEffectiveColumns() =>
-        _effectiveColumns = _appearance.PaddingHDip < 0
-            ? _columns
-            : _columns.Select(c => c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        _effectiveColumns = _columns.Select(c =>
+        {
+            // The Overtake column only exists where the session has push-to-pass (SF23 etc.): in a
+            // GT3 race it would be a column of dashes, so it collapses instead of reserving width.
+            if (c.Key == "overtake" && !_hasP2P) return c with { Visible = false };
+            return _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c;
+        }).ToList();
+
+    private bool _hasP2P;
+
+    /// <summary>Tracks whether any car in the data publishes push-to-pass; re-lays the columns out
+    /// when that changes (render thread, before the frame's widths are read).</summary>
+    private void SyncP2PColumn(IEnumerable<StandingsRow> rows)
+    {
+        bool has = rows.Any(r => r.P2PActive is not null);
+        if (has == _hasP2P) return;
+        _hasP2P = has;
+        RebuildEffectiveColumns();
+    }
 
     /// <summary>The weight to use for a text format: the widget's own choice unless the appearance
     /// forces Regular (400) or SemiBold (600) -- the two bundled cuts.</summary>
@@ -150,6 +166,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     {
         _flags = flags;
         _dwriteFactory = dwriteFactory;
+        RebuildEffectiveColumns();
         _fontCollection = fontCollection;
         CreateTextFormats();
 
@@ -282,6 +299,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// its own header -- class label, lap, that class's own SOF, clock -- then its rows.</summary>
     private void DrawPanels(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
+        SyncP2PColumn(rows);
         var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);
         float cursorY = y;
         foreach (var group in groups)
@@ -581,8 +599,10 @@ public sealed unsafe class StandingsWidget : IDisposable
         DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _numericFormat.Get(), _brush.Get());
     }
 
-    /// <summary>Push-to-pass bank as in the Suzuka mockup: a rounded bar filled in proportion to the
-    /// bank, colour-coded by state, with the seconds ("124s") to its right.</summary>
+    /// <summary>Push-to-pass cell: the remaining bank in seconds ("124s") on top, in the same colour as
+    /// the bar, with the thin bank bar right under it -- one compact column instead of a bar column
+    /// plus a number column (the widget stays inside its width budget). Colours follow the mockup:
+    /// green = active, yellow = recharging, light blue = available, grey = empty/unknown.</summary>
     internal static void DrawTimeBarPill(ID2D1DeviceContext* dc, float x, float y, float width, float rowHeight, bool? active, double? seconds, bool cooldown, IDWriteTextFormat* numeric, ID2D1SolidColorBrush* brush)
     {
         Color4 color = active is null ? PaletteTokens.OvertakeUnknown
@@ -590,27 +610,26 @@ public sealed unsafe class StandingsWidget : IDisposable
             : cooldown ? PaletteTokens.OvertakeCooldown
             : seconds is <= 0 ? PaletteTokens.OvertakeDepleted
             : PaletteTokens.OvertakeAvailable;
-        float barTop = y + rowHeight / 2f - 4f;
-        var track = new RectF(x + 2f, barTop, x + width - 34f, barTop + 8f);
-        PanelChrome.FillPanel(dc, brush, track, PaletteTokens.BarTrackEmpty, 4f);
+
+        const float barHeight = 5f, barInset = 8f;
+        float textHeight = rowHeight * 0.53f;
+        float barTop = y + rowHeight * 0.66f;
+        var track = new RectF(x + barInset, barTop, x + width - barInset, barTop + barHeight);
+        PanelChrome.FillPanel(dc, brush, track, PaletteTokens.BarTrackEmpty, 2.5f);
         if (seconds is double bank)
         {
             float fraction = Math.Clamp((float)(bank / TelemetryReader.P2PMaxSeconds), 0f, 1f);
             if (fraction > 0f)
             {
                 var fill = new RectF(track.Left, track.Top, track.Left + (track.Right - track.Left) * fraction, track.Bottom);
-                PanelChrome.FillPanel(dc, brush, fill, color, 4f);
+                PanelChrome.FillPanel(dc, brush, fill, color, 2.5f);
             }
         }
+
         string text = seconds is double s ? $"{Math.Clamp((int)Math.Round(s), 0, TelemetryReader.P2PMaxSeconds)}s" : "—";
-        var textColor = seconds is null ? PaletteTokens.TextDisabled : PaletteTokens.TextPrimary;
-        brush->SetColor(&textColor);
+        var textColor = seconds is null ? PaletteTokens.TextDisabled : color;
+        PanelChrome.DrawText(dc, brush, numeric, text, x, y + 2f, width, textHeight, textColor, TextAlignment.Center);
         numeric->SetTextAlignment(TextAlignment.Trailing);
-        fixed (char* p = text)
-        {
-            var rect = new RectF(x + width - 38f, y, x + width, y + rowHeight);
-            dc->DrawText(p, (uint)text.Length, numeric, &rect, (ID2D1Brush*)brush, DrawTextOptions.None, MeasuringMode.Natural);
-        }
     }
 
     private void DrawIRatingBadge(ID2D1DeviceContext* dc, Rect2D bounds, int iRating, double? estimatedDelta)

@@ -711,6 +711,16 @@ public static unsafe class Program
         if (MathF.Abs(placement.WidthDip - w) < 1f && MathF.Abs(placement.HeightDip - h) < 1f) return;
         PlacementStore.SetSizeQuiet(key, w, h);
         PendingSizes[key] = ((int)w, (int)h);
+
+        // A widget that grew past the right edge slides left so its content is never cut off.
+        int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        if (placement is { Locked: false, MonitorIndex: 0 } && screenWidth > 0 && placement.X + w > screenWidth)
+        {
+            float x = MathF.Max(0f, screenWidth - w - 12f);
+            PlacementStore.SetXQuiet(key, x);
+            if (WidgetWindows.TryGetValue(key, out var hwnd))
+                SetWindowPos(hwnd, 0, (int)x, (int)placement.Y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        }
     }
 
     /// <summary>Spec §12 "perfis por carro/classe": when the player's class (or, failing that, car)
