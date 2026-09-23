@@ -127,6 +127,8 @@ public class TelemetryReader : IDisposable
     // Push-to-pass: iRacing publishes CarIdxP2P_* in every session (also for classes without it,
     // as zeros), so the session only "has" P2P once a car actually shows a bank or an activation.
     private DateTime _lastP2PEvidenceUtc = DateTime.MinValue;
+    private readonly P2PCooldownTracker _p2pCooldown = new();
+    private int _leaderLap;
     private bool SessionHasP2P => (DateTime.UtcNow - _lastP2PEvidenceUtc).TotalSeconds < 30;
 
     // 13/09/2026: WeatherUpdated is throttled to ~10Hz (every 6th telemetry tick, 60Hz/6=10) --
@@ -426,6 +428,7 @@ public class TelemetryReader : IDisposable
         _pitRoadEnteredUtcByCarIdx.Clear();
         _lastPitStatusByCarIdx.Clear();
         _lastP2PEvidenceUtc = DateTime.MinValue;
+        _p2pCooldown.Reset();
         _lastP2PAnomalyLogByCarIdx.Clear();
         _raceEstimate = null;
         // Always notify: closing can happen between telemetry frames, while the last known
@@ -684,9 +687,11 @@ public class TelemetryReader : IDisposable
         }
         catch { /* the count can be omitted independently of the status */ }
 
-        if (active == true || seconds > 0) _lastP2PEvidenceUtc = DateTime.UtcNow;
+        var now = DateTime.UtcNow;
+        if (active == true || seconds > 0) _lastP2PEvidenceUtc = now;
         if (!SessionHasP2P) return (null, null, false); // class without push-to-pass: no column at all
-        return (active, seconds, false);
+        bool lockedOut = _p2pCooldown.Update(carIdx, active, now);
+        return (active, seconds, lockedOut);
     }
 
     private void RefreshRaceSessionFlag()
@@ -1066,7 +1071,8 @@ public class TelemetryReader : IDisposable
             var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
             sessionTypeText = session?.SessionType?.ToUpperInvariant() ?? "";
 
-            var lap = _sdk.Data.GetInt("Lap");
+            // In a race the header shows the RACE lap (the leader's), like Kapps' "R 14/30".
+            var lap = _isRaceSession && _leaderLap > 0 ? _leaderLap : _sdk.Data.GetInt("Lap");
             if (lap > 0) currentLap = lap;
             if (_raceEstimate is { } estimate) { totalLaps = estimate.TotalLaps; totalEstimated = estimate.IsEstimate; }
             else if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
@@ -1232,14 +1238,16 @@ public class TelemetryReader : IDisposable
                 try { lapsLimit = _sdk.Data.GetInt("SessionLapsTotal"); } catch { }
                 try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t >= 0) timeLeft = t; } catch { }
                 double leader = 0, player = 0;
+                int leaderIdx = -1;
                 for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
                 {
                     float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
                     if (pct < 0) continue;
                     double progress = Math.Max(0, _sdk.Data.GetInt("CarIdxLapCompleted", idx)) + pct;
                     if (idx == _playerCarIdx) player = progress;
-                    if (progress > leader && !IsPaceCar(idx)) leader = progress;
+                    if (progress > leader && !IsPaceCar(idx)) { leader = progress; leaderIdx = idx; }
                 }
+                _leaderLap = leaderIdx >= 0 ? _sdk.Data.GetInt("CarIdxLap", leaderIdx) : 0;
                 _raceEstimate = RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, avgLapTime);
             }
 

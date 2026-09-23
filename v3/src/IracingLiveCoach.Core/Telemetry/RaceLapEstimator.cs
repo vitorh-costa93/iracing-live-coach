@@ -13,7 +13,8 @@ public sealed record RaceLapEstimate(int TotalLaps, double PlayerLapsRemaining, 
 /// Lap-limited race: the leader finishes after <c>lapsLimit</c> laps. Time-limited race: the leader
 /// finishes the lap in progress when the clock reaches zero, so their final lap count is
 /// ceil(leaderProgress + timeRemaining / lapTime). A race with both limits ends at whichever comes
-/// first. The player's remaining laps are that total minus their own progress (Kapps' rule).
+/// first. The player takes the flag at their first line crossing after the leader has finished, so a
+/// lapped player drives fewer laps than the total.
 /// </summary>
 public static class RaceLapEstimator
 {
@@ -46,8 +47,10 @@ public static class RaceLapEstimator
         else return null;
 
         leaderFinal = Math.Max(leaderFinal, Math.Ceiling(leaderProgress - 1e-9)); // never "finished" before the current lap ends
-        // Same rule as Kapps: the player's remaining laps are the race total minus the player's own
-        // progress. A lapped car really gets the flag earlier, so this errs on the safe (more fuel) side.
-        return new RaceLapEstimate((int)leaderFinal, Math.Max(0, leaderFinal - playerProgress), estimate);
+        // The player takes the flag at their first line crossing after the leader has finished, so a
+        // lapped car drives fewer laps than the total -- verified against Kapps' "Fuel at End" live.
+        double playerAtLeaderFinish = playerProgress + (leaderFinal - leaderProgress);
+        double playerFinal = Math.Ceiling(playerAtLeaderFinish - 1e-9);
+        return new RaceLapEstimate((int)leaderFinal, Math.Max(0, playerFinal - playerProgress), estimate);
     }
 }

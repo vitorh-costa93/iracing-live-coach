@@ -25,12 +25,21 @@ public class RaceLapEstimatorTests
     }
 
     [Fact]
-    public void A_lapped_player_still_plans_on_the_race_total_like_Kapps()
+    public void A_player_behind_on_track_finishes_at_the_first_crossing_after_the_leader()
     {
-        // Leader at 10.2, player a lap down at 9.4 in a 20-lap race: Kapps plans 20 - 9.4 = 10.6.
+        // Leader at 10.2, player at 9.4 in a 20-lap race: player is at 19.2 when the leader finishes -> flag at 20.
         var e = RaceLapEstimator.Estimate(20, null, 10.2, 9.4, null)!;
         Assert.Equal(20, e.TotalLaps);
         Assert.Equal(10.6, e.PlayerLapsRemaining, 3);
+    }
+
+    [Fact]
+    public void Kapps_live_case_ten_laps_down()
+    {
+        // Live SF23 session: player completed lap 4 (4.0) with the leader at ~11.2 of 30.
+        // Player is at 22.8 when the leader finishes -> flag at 23 -> 19 laps; Kapps: 46.66 - 13.98 = 32.68 L = 19 x 1.72.
+        var e = RaceLapEstimator.Estimate(30, 86000, 11.2, 4.0, 76)!;
+        Assert.Equal(19, e.PlayerLapsRemaining, 3);
     }
 
     [Fact]
