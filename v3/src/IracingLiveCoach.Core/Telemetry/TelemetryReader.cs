@@ -49,7 +49,7 @@ public record SessionStatus(string CarClassShortName, string SessionTypeText, in
 /// (see UpdatePlayerCarStatus's own try/catch per field). BestLapTimeSeconds is the minimum
 /// LapLastLapTime observed so far this session -- null until the player has completed one lap.
 /// TrackTempC reuses the same real "TrackTemp" channel the Weather widget already reads.</summary>
-public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds, double? LastLapTimeSeconds, double? TrackTempC);
+public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, double? BestLapTimeSeconds, double? LastLapTimeSeconds, double? TrackTempC, int? Incidents = null, int? IncidentLimit = null);
 
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
@@ -128,6 +128,7 @@ public class TelemetryReader : IDisposable
     // as zeros), so the session only "has" P2P once a car actually shows a bank or an activation.
     private DateTime _lastP2PEvidenceUtc = DateTime.MinValue;
     private readonly P2PCooldownTracker _p2pCooldown = new();
+    private int? _incidentLimit;
     private int _leaderLap;
     private bool SessionHasP2P => (DateTime.UtcNow - _lastP2PEvidenceUtc).TotalSeconds < 30;
 
@@ -1127,6 +1128,9 @@ public class TelemetryReader : IDisposable
                 var sessionInfo = _sdk.Data.SessionInfo;
                 var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
                 rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
+                // "17" or "unlimited"; only a real number is a limit.
+                var limitText = sessionInfo?.WeekendInfo?.WeekendOptions?.IncidentLimit?.ToString();
+                _incidentLimit = int.TryParse(limitText, out var limit) && limit > 0 ? limit : null;
             }
             catch { /* session info momentarily incomplete -- skip this tick's rubber read */ }
 
@@ -1138,7 +1142,10 @@ public class TelemetryReader : IDisposable
             if (lastLap > 0 && (_bestLapTimeSeconds is not double best || lastLap < best))
                 _bestLapTimeSeconds = lastLap;
 
-            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds, lastLapSeconds, trackTemp));
+            int? incidents = null;
+            try { var n = _sdk.Data.GetInt("PlayerCarMyIncidentCount"); if (n >= 0) incidents = n; } catch { /* not published */ }
+
+            PlayerCarStatusUpdated?.Invoke(new PlayerCarStatus(brakeBias, rubberState, _bestLapTimeSeconds, lastLapSeconds, trackTemp, incidents, _incidentLimit));
         }
         catch
         {

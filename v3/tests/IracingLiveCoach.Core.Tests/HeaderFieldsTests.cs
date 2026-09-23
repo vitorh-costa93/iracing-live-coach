@@ -37,6 +37,14 @@ public class HeaderFieldsTests
     }
 
     [Fact]
+    public void Incidents_show_the_count_and_the_session_limit_when_there_is_one()
+    {
+        Assert.Equal("INC 4x/17x", HeaderFields.Text("incidents", null, new PlayerCarStatus(null, null, null, null, null, 4, 17), Now));
+        Assert.Equal("INC 0x", HeaderFields.Text("incidents", null, new PlayerCarStatus(null, null, null, null, null, 0, null), Now));
+        Assert.Null(HeaderFields.Text("incidents", null, new PlayerCarStatus(null, null, null, null, null), Now));
+    }
+
+    [Fact]
     public void Complete_appends_missing_keys_hidden_and_drops_unknown()
     {
         var completed = HeaderFields.Complete([new("local", true), new("bogus", true)]);

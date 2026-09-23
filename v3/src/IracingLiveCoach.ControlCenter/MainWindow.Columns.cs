@@ -373,6 +373,7 @@ public partial class MainWindow
         ["type"] = "Tipo de sessão (RACE)", ["class"] = "Classe", ["lap"] = "Volta atual/total",
         ["sof"] = "SOF", ["drivers"] = "Nº de pilotos", ["clock"] = "Relógio", ["bb"] = "Brake bias", ["track"] = "Temperatura da pista",
         ["rubber"] = "Emborrachamento", ["best"] = "Melhor volta", ["last"] = "Última volta", ["local"] = "Hora local",
+        ["incidents"] = "Incidentes",
     };
 
     private static List<HeaderFieldConfig>? DefaultHeaderFor(string widget) => widget switch

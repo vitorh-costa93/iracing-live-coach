@@ -259,10 +259,17 @@ public sealed unsafe class RelativeWidget : IDisposable
         _simulatedPlayer = player;
     }
 
+    /// <summary>Fixed-size table: always the configured number of rows ahead and behind (Control
+    /// Center "Relative acima / abaixo"), so the widget never resizes when fewer cars are near --
+    /// a slot with no car is drawn as an empty row.</summary>
     private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
         SyncP2PColumn(rows);
-        float height = HeaderHeightDip + rows.Count * RowHeightDip;
+        var slots = new List<RelativeRow?>();
+        for (int offset = -_relativeRules.Ahead; offset <= _relativeRules.Behind; offset++)
+            slots.Add(offset == 0 ? rows.FirstOrDefault(r => r.IsPlayer) : rows.FirstOrDefault(r => !r.IsPlayer && r.PositionOffset == offset));
+
+        float height = HeaderHeightDip + slots.Count * RowHeightDip;
         LastDrawnSize = (TableWidthDip, height);
         var panel = new RectF(x, y, x + TableWidthDip, y + height);
         PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
@@ -270,16 +277,16 @@ public sealed unsafe class RelativeWidget : IDisposable
         {
             DrawHeader(dc, x, y, session, player);
             float rowY = y + HeaderHeightDip;
-            for (int i = 0; i < rows.Count; i++)
+            for (int i = 0; i < slots.Count; i++)
             {
-                var row = rows[i];
-                if (i > 0 && !row.IsPlayer && !rows[i - 1].IsPlayer)
+                var row = slots[i];
+                if (i > 0 && row is not { IsPlayer: true } && slots[i - 1] is not { IsPlayer: true })
                 {
                     SetBrushColor(PaletteTokens.PanelDivider);
                     var separator = new RectF(x + ClassStripWidthDip, rowY, x + TableWidthDip, rowY + 1f);
                     dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
                 }
-                DrawRow(dc, x, rowY, row);
+                if (row is not null) DrawRow(dc, x, rowY, row);
                 rowY += RowHeightDip;
             }
         }

@@ -12,7 +12,7 @@ public sealed record HeaderFieldConfig(string Key, bool Visible);
 public static class HeaderFields
 {
     public static readonly IReadOnlyList<string> AllKeys =
-        ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local"];
+        ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local", "incidents"];
 
     public static List<HeaderFieldConfig> DefaultStandings() =>
         Complete([new("class", true), new("lap", true), new("sof", true), new("clock", true)]);
@@ -47,6 +47,7 @@ public static class HeaderFields
             "last" => player?.LastLapTimeSeconds is double ll ? "LAST " + LapTimeFormatting.Format(ll) : null,
             "clock" => now.ToString("HH:mm", CultureInfo.InvariantCulture),
             "local" => "LOCAL " + now.ToString("HH:mm", CultureInfo.InvariantCulture),
+            "incidents" => player?.Incidents is int inc ? $"INC {inc}x" + (player.IncidentLimit is int lim ? $"/{lim}x" : "") : null,
             _ => null,
         };
     }
