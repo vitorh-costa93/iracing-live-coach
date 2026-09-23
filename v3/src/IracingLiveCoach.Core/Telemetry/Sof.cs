@@ -9,7 +9,7 @@ public static class Sof
     /// <summary>Null when there is no positive iRating to work from (never a fabricated 0).</summary>
     public static double? Compute(IEnumerable<int> iRatings)
     {
-        var valid = iRatings.Where(r => r > 0).ToList();
+        var valid = iRatings.Where(r => r > 1).ToList(); // AI / unrated drivers report 0 or 1
         if (valid.Count == 0) return null;
         double sumExp = valid.Sum(r => Math.Exp(-r / Br1));
         return sumExp > 0 ? Br1 * Math.Log(valid.Count / sumExp) : null;

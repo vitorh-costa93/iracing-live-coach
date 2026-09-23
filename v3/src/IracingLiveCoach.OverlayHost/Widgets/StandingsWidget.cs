@@ -119,10 +119,13 @@ public sealed unsafe class StandingsWidget : IDisposable
             // The Overtake column only exists where the session has push-to-pass (SF23 etc.): in a
             // GT3 race it would be a column of dashes, so it collapses instead of reserving width.
             if (c.Key == "overtake" && !_hasP2P) return c with { Visible = false };
+            // Pit: only once a car has actually been on pit road -- before that it would be a column of blanks.
+            if (c.Key == "pit" && !_hasPit) return c with { Visible = false };
             return _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c;
         }).ToList();
 
     private bool _hasP2P;
+    private bool _hasPit;
     private readonly Dictionary<(string, int), string> _nameFit = new();
 
     /// <summary>Tracks whether any car in the data publishes push-to-pass; re-lays the columns out
@@ -130,8 +133,10 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void SyncP2PColumn(IEnumerable<StandingsRow> rows)
     {
         bool has = rows.Any(r => r.P2PActive is not null);
-        if (has == _hasP2P) return;
+        bool pit = rows.Any(r => !string.IsNullOrEmpty(r.PitStatus));
+        if (has == _hasP2P && pit == _hasPit) return;
         _hasP2P = has;
+        _hasPit = pit;
         RebuildEffectiveColumns();
     }
 
@@ -643,9 +648,9 @@ public sealed unsafe class StandingsWidget : IDisposable
         PanelChrome.FillPanel(dc, _brush.Get(), pill, PaletteTokens.PillFill, 5f);
         PanelChrome.StrokePanel(dc, _brush.Get(), pill, PaletteTokens.PillBorder, 1f, 5f);
 
-        if (iRating <= 0) estimatedDelta = null; // unknown rating: never a delta on top of a dash
-        SetBrushColor(iRating > 0 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled);
-        string iratingText = iRating > 0 ? _numberFormatConfig.FormatIRating(iRating) : "—";
+        if (iRating <= 1) estimatedDelta = null; // unknown rating: never a delta on top of a dash
+        SetBrushColor(iRating > 1 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled);
+        string iratingText = iRating > 1 ? _numberFormatConfig.FormatIRating(iRating) : "—";
         ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(estimatedDelta is null ? TextAlignment.Center : TextAlignment.Leading));
         fixed (char* p = iratingText)
         {

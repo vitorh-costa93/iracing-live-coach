@@ -79,7 +79,7 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _placements.Set("relative", new WidgetPlacement(0, 1440, 740, PlacementAnchor.TopLeft, 470, 262, 1f, false, 1));
         _placements.Set("weather", new WidgetPlacement(0, 1590, 30, PlacementAnchor.TopLeft, 300, 118, 1f, false, 2));
         _placements.Set("fuel", new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
-        _placements.Set("radar", new WidgetPlacement(0, 860, 720, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
+        _placements.Set("radar", new WidgetPlacement(0, 900, 640, PlacementAnchor.TopLeft, 120, 190, 1f, false, 4));
         _placements.Set("start-helper", new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
         PlacementPersistence.Load(_placements);
 

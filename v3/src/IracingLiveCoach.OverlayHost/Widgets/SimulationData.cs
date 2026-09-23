@@ -48,9 +48,15 @@ public static class SimulationData
         double u = seconds % 14.0;
         bool left = u < 7.0;
         double phase = (left ? u : u - 7.0) / 7.0;          // 0..1 across the pass
-        double distance = -60.0 + phase * 120.0;            // -60 m (behind) .. +60 m (ahead)
-        bool alongside = Math.Abs(distance) < 6.0;
-        var blips = new List<RadarBlip> { new(distance, left ? "HIR" : "MIY") };
+        double distance = -18.0 + phase * 36.0;             // -18 m (behind) .. +18 m (ahead)
+        bool alongside = Math.Abs(distance) <= RadarSideAssigner.OverlapMeters;
+        // Behind and approaching: in the player's lane; alongside and pulling away: on its side.
+        var side = distance < -RadarSideAssigner.OverlapMeters ? RadarSide.Center : left ? RadarSide.Left : RadarSide.Right;
+        var blips = new List<RadarBlip>
+        {
+            new(distance, left ? "HIR" : "MIY", side),
+            new(-11.0 + 1.5 * Math.Sin(seconds * 0.7), "IWA", RadarSide.Center), // a car sitting in the slipstream
+        };
         return new RadarStatus(left && alongside, !left && alongside, blips, true);
     }
 
@@ -78,7 +84,8 @@ public static class SimulationData
         double level = 38.5 - perLap * laps;
         return new FuelStatus(FuelLevelLiters: level, FuelUsePerHourLiters: 62.0, AverageFuelPerLapLiters: perLap,
             LapsRemaining: level / perLap, TimeRemainingSeconds: level / perLap * 138, FuelNeededForFinishLiters: needed - level,
-            FuelAtFinishLiters: level - needed, LastLapFuelUsedLiters: 2.21, MaxFuelPerLapLiters: 2.30, AverageLapTimeSeconds: 138);
+            FuelAtFinishLiters: level - needed, LastLapFuelUsedLiters: 2.21, MaxFuelPerLapLiters: 2.30, AverageLapTimeSeconds: 138,
+            RaceLapsRemaining: needed / perLap - laps, RaceTotalLaps: 28);
     }
 
     public static SessionStatus Session() =>

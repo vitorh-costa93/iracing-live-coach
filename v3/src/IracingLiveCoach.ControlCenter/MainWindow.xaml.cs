@@ -155,7 +155,7 @@ public partial class MainWindow : Window
         ["relative"] = new WidgetUiState(1440, 740, 470, 262),
         ["weather"] = new WidgetUiState(1590, 30, 300, 118),
         ["fuel"] = new WidgetUiState(1270, 30, 310, 118),
-        ["radar"] = new WidgetUiState(860, 720, 180, 130),
+        ["radar"] = new WidgetUiState(900, 640, 120, 190),
         ["start-helper"] = new WidgetUiState(820, 880, 280, 90),
     };
 

@@ -152,7 +152,7 @@ public sealed unsafe class FuelWidget : IDisposable
         double? litersPerLap = ResolveLitersPerLap(status!);
         double? rawLapsRemaining = litersPerLap is double perLap and > 0 ? status!.FuelLevelLiters / perLap : null;
         double? fuelLaps = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
-        int? raceLapsLeft = session is { TotalLaps: int total, CurrentLap: int current } && total > 0 ? Math.Max(0, total - current) : null;
+        double? raceLapsLeft = status!.RaceLapsRemaining;
 
         float rowTop = y + 4f;
         const float topRowHeight = 54f;
@@ -169,7 +169,7 @@ public sealed unsafe class FuelWidget : IDisposable
         PanelChrome.VerticalDivider(dc, _brush.Get(), divA, rowTop + 8f, rowTop + topRowHeight - 4f);
         PanelChrome.VerticalDivider(dc, _brush.Get(), divB, rowTop + 8f, rowTop + topRowHeight - 4f);
         DrawStacked(dc, divA, divB, rowTop, fuelLaps is double laps ? $"{laps:0.0}" : "—", "laps");
-        DrawStacked(dc, divB, x + width, rowTop, raceLapsLeft is int left ? $"{left}" : "—", "left");
+        DrawStacked(dc, divB, x + width, rowTop, raceLapsLeft is double left ? left.ToString("0.0", CultureInfo.InvariantCulture) : "—", status.RaceLapsEstimated ? "≈ left" : "left");
 
         // Row 2: last / average / max consumption per lap.
         float row2 = rowTop + topRowHeight + 4f;
@@ -185,10 +185,13 @@ public sealed unsafe class FuelWidget : IDisposable
         float row3 = row2 + 26f;
         if (status.FuelNeededForFinishLiters is double needed)
         {
+            // Short of fuel: how much to add (Kapps' "Refuel"); enough: the surplus at the flag.
             double margin = -needed;
+            var last = margin >= 0
+                ? ("Margin", $"+{margin:0.0} L", PaletteTokens.PositiveDelta)
+                : ("Refuel", $"{-margin:0.0} L", PaletteTokens.NegativeDelta);
             DrawFooterRow(dc, x, width, row3,
-                [("To finish", $"{status.FuelLevelLiters + needed:0.0} L", PaletteTokens.TextPrimary),
-                 ("Margin", $"{(margin >= 0 ? "+" : "-")}{Math.Abs(margin):0.0} L", margin >= 0 ? PaletteTokens.PositiveDelta : PaletteTokens.NegativeDelta)]);
+                [("To finish", $"{status.FuelLevelLiters + needed:0.0} L", PaletteTokens.TextPrimary), last]);
         }
         else
         {

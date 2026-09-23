@@ -40,7 +40,7 @@ public sealed record PlacementProfile(
     /// <summary>Bumped whenever the widgets' default content sizes change (2 = the mockup redesign).
     /// A profile saved under an older revision keeps its positions but takes the new default sizes,
     /// otherwise the taller/wider redesigned content would be clipped by the old window sizes.</summary>
-    public const int CurrentLayoutRevision = 2;
+    public const int CurrentLayoutRevision = 3;
 }
 
 public static class PlacementPersistence
@@ -83,9 +83,13 @@ public static class PlacementPersistence
         foreach (var (key, placement) in profile.Widgets)
         {
             var existing = store.Get(key);
-            store.Set(key, !sizesAreCurrent && existing is not null
+            var migrated = !sizesAreCurrent && existing is not null
                 ? placement with { WidthDip = existing.WidthDip, HeightDip = existing.HeightDip }
-                : placement);
+                : placement;
+            // Revision 3: the radar became a tall Kapps-style panel -- grow it upward (same bottom edge).
+            if (profile.LayoutRevision < 3 && key == "radar" && existing is not null)
+                migrated = migrated with { Y = placement.Y + placement.HeightDip - existing.HeightDip };
+            store.Set(key, migrated);
         }
         store.FuelRelativeLink = new FuelRelativeLink(profile.FuelRelativeLinkEnabled, profile.FuelRelativeLinkSpacingDip);
 
@@ -107,7 +111,7 @@ public static class PlacementPersistence
         // Column widths/order encode the OLD default layout; keeping them would override the
         // redesigned defaults, so overrides saved under an older revision are dropped (the user can
         // re-customise -- the Colunas tab always starts from the current defaults).
-        if (profile.ColumnOverrides is not null && sizesAreCurrent)
+        if (profile.ColumnOverrides is not null && profile.LayoutRevision >= 2)
         {
             foreach (var (widgetKey, columns) in profile.ColumnOverrides)
                 store.ColumnOverrides[widgetKey] = columns;

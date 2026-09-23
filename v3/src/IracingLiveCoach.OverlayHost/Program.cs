@@ -51,6 +51,14 @@ public static unsafe class Program
     private const uint WM_LBUTTONDOWN = 0x0201;
     private const uint WM_LBUTTONUP = 0x0202;
     private const uint WM_MOUSEMOVE = 0x0200;
+    private const uint WM_NCLBUTTONDOWN = 0x00A1;
+    private const uint WM_NCHITTEST = 0x0084;
+    private const uint WM_SETCURSOR = 0x0020;
+    private const uint WM_EXITSIZEMOVE = 0x0232;
+    private const nint HTCAPTION = 2;
+    private const nint HTCLIENT = 1;
+    private const uint WM_NCLBUTTONDBLCLK = 0x00A3;
+    private const nint IDC_SIZEALL = 32646;
     private const int VK_ESCAPE = 0x1B;
     private const int VK_SPACE = 0x20;
     private const int VK_T = 0x54;
@@ -95,8 +103,6 @@ public static unsafe class Program
     // Drag state belongs to the HWND under the cursor. Each widget has its own native window,
     // so movement never carries unrelated overlay content or transparent padding with it.
     private static nint _draggingWindow;
-    private static (int X, int Y) _dragStartMouse;
-    private static (int X, int Y) _dragStartWindow;
 
     public static int Main()
     {
@@ -116,7 +122,7 @@ public static unsafe class Program
         // is now 3 rows including the RPM readout the earlier pass omitted).
         PlacementStore.Set(WeatherKey, new WidgetPlacement(0, 1590, 30, PlacementAnchor.TopLeft, 300, 118, 1f, false, 2));
         PlacementStore.Set(FuelKey, new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
-        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 860, 720, PlacementAnchor.TopLeft, 180, 130, 1f, false, 4));
+        PlacementStore.Set(RadarKey, new WidgetPlacement(0, 900, 640, PlacementAnchor.TopLeft, 120, 190, 1f, false, 4));
         PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
 
         // Spec §3/§12: a saved layout from a previous session overrides the defaults above --
@@ -484,7 +490,9 @@ public static unsafe class Program
                 startPlacement = PlacementStore.Get(StartHelperKey)!;
             }
 
-            if (_simulating)
+            // Unlocked for editing: every widget shows the full simulated situation, so it can be
+            // positioned at its real size (live data would leave Radar/Start Helper empty).
+            if (_simulating || _editMode)
             {
                 var simSession = SimulationData.Session();
                 standings.SetSimulatedRows(SimulationData.StandingsRows());
@@ -513,6 +521,7 @@ public static unsafe class Program
 
             AutoFit(StandingsKey, standings.LastDrawnSize);
             AutoFit(RelativeKey, relative.LastDrawnSize);
+            AutoFit(RadarKey, radar.LastDrawnSize);
 
             standingsResources.BeginFrame();
             standings.Draw(standingsResources.Context, 0, 0);
@@ -539,8 +548,12 @@ public static unsafe class Program
             fuel.Draw(fuelResources.Context, 0, 0, fuelPlacement.WidthDip);
             if (_editMode) DrawEditModeOutlines(fuelResources.Context, (0, 0, fuelPlacement.WidthDip, fuelPlacement.HeightDip));
             if (!fuelResources.EndFrame()) Console.WriteLine("Device lost detected -- recovered without restart.");
-            radarResources.BeginFrame(); radar.Draw(radarResources.Context, 0, 0, radarPlacement.WidthDip); radarResources.EndFrame();
-            startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip); startResources.EndFrame();
+            radarResources.BeginFrame(); radar.Draw(radarResources.Context, 0, 0, radarPlacement.WidthDip);
+            if (_editMode) DrawEditModeOutlines(radarResources.Context, (0, 0, radarPlacement.WidthDip, radarPlacement.HeightDip));
+            radarResources.EndFrame();
+            startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip);
+            if (_editMode) DrawEditModeOutlines(startResources.Context, (0, 0, startPlacement.WidthDip, startPlacement.HeightDip));
+            startResources.EndFrame();
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush
             {
@@ -568,8 +581,9 @@ public static unsafe class Program
         {
             foreach (var r in rects)
             {
-                var rect = new Vortice.Win32.Numerics.RectF(r.Left - 2, r.Top - 2, r.Left + r.Width + 2, r.Top + r.Height + 2);
-                dc->DrawRectangle(&rect, (ID2D1Brush*)brush.Get(), 1.5f, null);
+                var rect = new Vortice.Win32.Numerics.RectF(r.Left + 1, r.Top + 1, r.Left + r.Width - 1, r.Top + r.Height - 1);
+                var rounded = new RoundedRect { rect = rect, radiusX = 7, radiusY = 7 };
+                dc->DrawRoundedRectangle(&rounded, (ID2D1Brush*)brush.Get(), 2f, null);
             }
         }
         finally { brush.Dispose(); }
@@ -855,39 +869,34 @@ public static unsafe class Program
                 }
                 return 0;
             case WM_LBUTTONDOWN:
-                if (_editMode)
+                if (_editMode && WidgetKeysByHandle.TryGetValue(hwnd, out var pressedKey)
+                    && PlacementStore.Get(pressedKey) is not { Locked: true })
                 {
-                    int mx = unchecked((short)(lParam & 0xFFFF));
-                    int my = unchecked((short)((lParam >> 16) & 0xFFFF));
-                    GetWindowRect(hwnd, out var rect);
+                    // Windows' native move loop: the window follows the cursor exactly, even when the
+                    // mouse leaves it, and WM_EXITSIZEMOVE arrives when the button is released.
                     _draggingWindow = hwnd;
-                    _dragStartMouse = (mx, my);
-                    _dragStartWindow = (rect.Left, rect.Top);
+                    ReleaseCapture();
+                    SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
                 }
                 return 0;
-            case WM_MOUSEMOVE:
-                if (_editMode && _draggingWindow == hwnd)
-                {
-                    int mx = unchecked((short)(lParam & 0xFFFF));
-                    int my = unchecked((short)((lParam >> 16) & 0xFFFF));
-                    float dx = mx - _dragStartMouse.X;
-                    float dy = my - _dragStartMouse.Y;
-                    SetWindowPos(hwnd, 0, _dragStartWindow.X + (int)dx, _dragStartWindow.Y + (int)dy, 0, 0,
-                        SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-                }
-                return 0;
-            case WM_LBUTTONUP:
-                // In-game drags (as opposed to Control Center edits) only moved the HWND itself
-                // until now -- PlacementStore and the on-disk profile never learned about them, so
-                // a drag performed directly on the overlay silently reverted on next launch and
-                // left the Control Center showing stale numbers. Persist the final position here,
-                // on drag-end, the same way ApplyPlacementMessage does for IPC-driven changes.
-                if (_editMode && _draggingWindow == hwnd && _draggingWindow != 0
-                    && WidgetKeysByHandle.TryGetValue(hwnd, out var draggedKey))
+            case WM_NCHITTEST:
+                // In edit mode the whole widget is a drag handle (a locked one stays put).
+                if (_editMode)
+                    return WidgetKeysByHandle.TryGetValue(hwnd, out var hitKey) && PlacementStore.Get(hitKey) is { Locked: true } ? HTCLIENT : HTCAPTION;
+                break;
+            case WM_NCLBUTTONDBLCLK:
+                return 0; // a double-click on the "caption" must never maximize the widget
+            case WM_SETCURSOR:
+                if (_editMode) { SetCursor(LoadCursorW(0, IDC_SIZEALL)); return 1; }
+                break;
+            case WM_EXITSIZEMOVE:
+                // Drag finished: store the new position (PlacementStore + profile file) so it survives
+                // a restart and the Control Center shows it.
+                if (WidgetKeysByHandle.TryGetValue(hwnd, out var draggedKey))
                 {
                     GetWindowRect(hwnd, out var finalRect);
                     var current = PlacementStore.Get(draggedKey);
-                    if (current is not null)
+                    if (current is not null && (current.X != finalRect.Left || current.Y != finalRect.Top))
                     {
                         PlacementStore.Set(draggedKey, current with { X = finalRect.Left, Y = finalRect.Top });
                         PlacementPersistence.Save(PlacementStore);
@@ -964,6 +973,9 @@ public static unsafe class Program
     [DllImport("user32.dll")] private static extern nint DispatchMessageW(ref MSG lpMsg);
     [DllImport("user32.dll")] private static extern nint LoadCursorW(nint hInstance, nint lpCursorName);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hWnd, out RECT rect);
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern nint SendMessageW(nint hWnd, uint msg, nint wParam, nint lParam);
+    [DllImport("user32.dll")] private static extern nint SetCursor(nint hCursor);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(nint hWnd, uint crKey, byte bAlpha, uint dwFlags);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int nIndex);

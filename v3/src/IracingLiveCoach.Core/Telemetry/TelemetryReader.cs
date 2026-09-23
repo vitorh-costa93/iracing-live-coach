@@ -42,7 +42,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
 /// formula (BR1 = 1600/ln(2), SoF = BR1 * ln(N / Σ e^(-iRating_i / BR1))) over the current field's
 /// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
-public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "");
+public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false);
 
 /// <summary>The player's own current car status for the Relative/Standings widgets' footer.
 /// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
@@ -54,7 +54,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null, double? RaceLapsRemaining = null, int? RaceTotalLaps = null, bool RaceLapsEstimated = false, bool AverageFromHistory = false);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -68,7 +68,7 @@ public record WeatherStatus(double AirTempC, double TrackTempC, double Precipita
 /// positive = ahead), converted from CarIdxLapDistPct using the track's own length. Deliberately
 /// carries NO lateral position -- the SDK does not expose one for cars outside the immediate
 /// blind-spot window (see CarLeftRight's own doc comment on RadarStatus).</summary>
-public record RadarBlip(double DistanceMeters, string DriverCode);
+public record RadarBlip(double DistanceMeters, string DriverCode, RadarSide Side = RadarSide.Center);
 
 /// <summary>One (throttled, ~10Hz) radar snapshot. BlindSpotLeft/Right come from CarLeftRight, a
 /// coarse, NON-per-car signal -- true means "something is right next to you on that side", not
@@ -115,24 +115,19 @@ public class TelemetryReader : IDisposable
     private int _playerCarIdx = -1;
     private Dictionary<int, string> _driverCodesByCarIdx = new();
 
-    // 13/09/2026: rolling-average fuel calculator state -- see UpdateFuel's own doc comment for
-    // why a per-lap rolling average is used instead of the SDK's own instantaneous FuelUsePerHour.
-    private const int FuelWindowSize = 5;
-    private double? _lastFuelLevel;
-    private int _lastLapCompleted = -1;
-    private readonly Queue<double> _fuelPerLapWindow = new();
-    private readonly Queue<double> _lapTimeWindow = new();
+    // Fuel: per-lap measurement lives in the pure, unit-tested FuelTracker (clean green-flag laps
+    // only); history per car+track seeds the average the way Kapps shows one from lap 1.
+    private FuelTracker _fuelTracker = new();
+    private static readonly Lazy<FuelHistoryStore> FuelHistory = new(() => new FuelHistoryStore());
+    private int _carId;
+    private int _trackId;
+    private double? _estimatedLapTime;
+    private RaceLapEstimate? _raceEstimate;
 
-    /// <summary>Spec §9's fuel-source options ("última volta, média móvel, máximo... exclusão de
-    /// voltas de pit"): the rolling average/max window only ever receives a lap sample that was NOT
-    /// pit-affected (tracked across the whole lap, not just at the crossing tick, since an out-lap's
-    /// pit-road flag clears well before the S/F line). The single most recent lap's raw consumption
-    /// is exposed separately (<see cref="FuelStatus.LastLapFuelUsedLiters"/>) regardless of purity,
-    /// with <see cref="FuelStatus.LastLapAffectedByPit"/> alongside it so a widget/config layer can
-    /// decide whether to trust it as-is or fall back to the average.</summary>
-    private bool _currentLapOnPitRoad;
-    private double? _lastLapFuelUsed;
-    private bool _lastLapWasAffectedByPit;
+    // Push-to-pass: iRacing publishes CarIdxP2P_* in every session (also for classes without it,
+    // as zeros), so the session only "has" P2P once a car actually shows a bank or an activation.
+    private DateTime _lastP2PEvidenceUtc = DateTime.MinValue;
+    private bool SessionHasP2P => (DateTime.UtcNow - _lastP2PEvidenceUtc).TotalSeconds < 30;
 
     // 13/09/2026: WeatherUpdated is throttled to ~10Hz (every 6th telemetry tick, 60Hz/6=10) --
     // see this plan's own Global Constraints for why a full-MaxNumCars scan doesn't need 60Hz here.
@@ -150,7 +145,7 @@ public class TelemetryReader : IDisposable
     // all-car distance scan is still deferred until that signal says a car is actually alongside.
     private const int RadarTickInterval = 1;
     private int _radarTickCounter;
-    private const double RadarMaxRangeMeters = 100.0;
+    private const double RadarMaxRangeMeters = 30.0;
 
     // 16/09/2026: previously 10 Hz / 2 Hz -- with the WPF side now updating rows in place instead
     // of rebuilding the whole collection every tick (see MainWindow's ApplyRows), that render cost
@@ -198,8 +193,6 @@ public class TelemetryReader : IDisposable
     // Multiplying by 4 again made every car past CarIdx 15 read 16 bytes per slot instead of 4,
     // walking past the real 64-int array into unrelated telemetry memory -- reintroducing the
     // exact garbage-number bug it was meant to fix, just for a different, wider set of cars.
-    private readonly Dictionary<int, int> _lastP2PCountByCarIdx = new();
-    private readonly Dictionary<int, DateTime> _p2pChargingUntilByCarIdx = new();
 
     private double? _bestLapTimeSeconds;
 
@@ -432,9 +425,9 @@ public class TelemetryReader : IDisposable
         _driverCodesByCarIdx.Clear();
         _pitRoadEnteredUtcByCarIdx.Clear();
         _lastPitStatusByCarIdx.Clear();
-        _lastP2PCountByCarIdx.Clear();
-        _p2pChargingUntilByCarIdx.Clear();
+        _lastP2PEvidenceUtc = DateTime.MinValue;
         _lastP2PAnomalyLogByCarIdx.Clear();
+        _raceEstimate = null;
         // Always notify: closing can happen between telemetry frames, while the last known
         // in-car state is still true. The V2 window then hides every locked widget immediately.
         OnTrackStateChanged?.Invoke(false);
@@ -494,6 +487,16 @@ public class TelemetryReader : IDisposable
             // this build) to call SetTrackLength -- reading WeekendInfo.TrackLength directly here
             // means the radar's real distance blips work standalone, without that dependency.
             _trackLengthMeters ??= ParseTrackLengthMeters(sessionInfo?.WeekendInfo?.TrackLength);
+            _carId = carId;
+            _trackId = trackId;
+            try
+            {
+                var estLap = sessionInfo?.DriverInfo?.DriverCarEstLapTime ?? 0;
+                _estimatedLapTime = estLap > 1 ? estLap : null;
+            }
+            catch { _estimatedLapTime = null; }
+            _fuelTracker = new FuelTracker();
+            if (FuelHistory.Value.Get(carId, trackId) is { } history) _fuelTracker.Seed(history.FuelPerLap, history.LapTime);
             _sessionDetected = true;
             SessionDetected?.Invoke(carId, trackId);
         }
@@ -657,48 +660,33 @@ public class TelemetryReader : IDisposable
         catch { /* diagnostics must never break the real read path */ }
     }
 
-    // The two per-car P2P arrays are independently optional in iRacing.  Reading them in one
-    // try block made a missing Count on an opponent hide an otherwise valid Status (and vice
-    // versa).  Keep every usable part of the telemetry for every CarIdx, as Kapps does.
+    // CarIdxP2P_Count is declared as an int, but iRacing fills the player's slot with the bank in
+    // seconds (200 -> 0) and every other car's slot with a FLOAT in tens of seconds (20.0 -> 0.0),
+    // verified live (SF23, Interlagos). Decode the raw 32 bits both ways and keep whichever is in
+    // range. There is no "recharging" state in this system: the bank only goes down as it is used,
+    // so a car is ACTIVE (status on), AVAILABLE (bank > 0) or EMPTY.
     private (bool? Active, int? Seconds, bool IsCharging) ReadP2P(int carIdx)
     {
         bool? active = null;
         int? seconds = null;
-        var isPlayer = carIdx == _playerCarIdx;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
-        catch { /* OTS status is not published for this car/session. */ }
+        catch { /* not published for this car/session */ }
         try
         {
-            if (isPlayer)
-            {
-                // The driver's own row reads correctly as a genuine Int32, already on the real
-                // 0..200 scale (a smooth 200 -> 196 -> 193 -> ... countdown) -- no scaling needed.
-                var rawInt = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
-                seconds = rawInt is >= 0 && rawInt <= P2PMaxSeconds ? rawInt : null;
-            }
+            int bits = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
+            if (bits is >= 0 and <= P2PMaxSeconds) seconds = bits;
             else
             {
-                var raw = _sdk.Data.GetFloat("CarIdxP2P_Count", carIdx);
-                LogP2PTrace(carIdx, active, raw);
-                seconds = ReadP2PCount(raw);
-                if (seconds is null) LogP2PAnomaly(carIdx, raw);
+                float asFloat = BitConverter.Int32BitsToSingle(bits);
+                seconds = ReadP2PCount(asFloat);
+                if (seconds is null) LogP2PAnomaly(carIdx, asFloat);
             }
         }
-        catch { /* The count can be omitted independently of status. */ }
-        var now = DateTime.UtcNow;
-        if (seconds is int current)
-        {
-            if (active != true && _lastP2PCountByCarIdx.TryGetValue(carIdx, out var previous) && current > previous)
-                _p2pChargingUntilByCarIdx[carIdx] = now.AddSeconds(1.5);
-            _lastP2PCountByCarIdx[carIdx] = current;
-        }
-        // The remaining bank itself is the useful state for this system.  A non-active car below
-        // the full 200 s bank is replenishing and must be yellow; a full inactive bank is available
-        // and remains gray.  The short rising-edge window also covers a telemetry frame where the
-        // bank crosses the full value.
-        var charging = active == false && (seconds is int remaining && remaining < P2PMaxSeconds ||
-            _p2pChargingUntilByCarIdx.TryGetValue(carIdx, out var until) && until > now);
-        return (active, seconds, charging);
+        catch { /* the count can be omitted independently of the status */ }
+
+        if (active == true || seconds > 0) _lastP2PEvidenceUtc = DateTime.UtcNow;
+        if (!SessionHasP2P) return (null, null, false); // class without push-to-pass: no column at all
+        return (active, seconds, false);
     }
 
     private void RefreshRaceSessionFlag()
@@ -806,30 +794,33 @@ public class TelemetryReader : IDisposable
     {
         try
         {
-            if (!positions.Overall.TryGetValue(_playerCarIdx, out var myPosition)) return;
-            var myEstTime = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
+            // The Relative shows who is physically around the player on track -- any class, any
+            // lap -- ordered by distance along the lap, NOT the running order the Standings use.
+            // Each row still carries the car's position inside its own class.
+            float myPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
+            if (myPct < 0) return;
+            float myEst = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
+            double lapTime = _fuelTracker.AverageLapTime ?? _estimatedLapTime ?? 0;
 
-            var rows = new List<RelativeRow>();
-            foreach (var (idx, position) in positions.Overall)
+            var around = new List<(int Idx, double Delta)>();
+            for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
             {
-                if (IsPaceCar(idx)) continue;
-                var offset = position - myPosition;
-                if (Math.Abs(offset) > RelativeCarsMax) continue;
-
-                var theirEstTime = _sdk.Data.GetFloat("CarIdxEstTime", idx);
-                // Simple same-lap gap estimate -- does not correct for a lap-count difference
-                // between the two cars, a known, disclosed simplification for this first version
-                // (see this task's own plan text / the spec's Phase 1 scope).
-                double gap = theirEstTime - myEstTime;
-                var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                var (p2p, p2pSeconds, p2pCharging) = ReadP2P(idx);
-
-                var identity = GetIdentity(idx);
-                var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
-
-                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                rows.Add(new RelativeRow(offset, code, idx == _playerCarIdx ? 0 : gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge, idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber, position, identity.ClassRank));
+                if (idx == _playerCarIdx) continue;
+                float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                if (pct < 0 || IsPaceCar(idx)) continue;
+                double delta = pct - myPct;
+                if (delta > 0.5) delta -= 1;
+                else if (delta < -0.5) delta += 1;
+                around.Add((idx, delta)); // > 0 = ahead of the player on track
             }
+            var ahead = around.Where(c => c.Delta > 0).OrderBy(c => c.Delta).Take(RelativeCarsMax).ToList();
+            var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
+
+            var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
+            for (int i = 0; i < ahead.Count; i++)
+                rows.Add(BuildRelativeRow(ahead[i].Idx, -(i + 1), -TimeGap(ahead[i].Idx, myEst, lapTime, ahead: true), positions));
+            for (int i = 0; i < behind.Count; i++)
+                rows.Add(BuildRelativeRow(behind[i].Idx, i + 1, TimeGap(behind[i].Idx, myEst, lapTime, ahead: false), positions));
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
         }
@@ -837,6 +828,30 @@ public class TelemetryReader : IDisposable
         {
             // Skip this tick -- same defensive posture as every other telemetry read in this class.
         }
+    }
+
+    /// <summary>Seconds between the player and a nearby car (always >= 0), from CarIdxEstTime (the
+    /// estimated time for each car to reach its current spot from the line), corrected across the
+    /// start/finish line with a lap time.</summary>
+    private double TimeGap(int idx, float myEst, double lapTime, bool ahead)
+    {
+        double diff = _sdk.Data.GetFloat("CarIdxEstTime", idx) - myEst;
+        if (!ahead) diff = -diff;
+        if (diff < 0 && lapTime > 0) diff += lapTime;
+        return Math.Max(0, diff);
+    }
+
+    private RelativeRow BuildRelativeRow(int idx, int offset, double gap, LivePositions positions)
+    {
+        var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
+        var (p2p, p2pSeconds, p2pCharging) = ReadP2P(idx);
+        var identity = GetIdentity(idx);
+        var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
+        var overall = positions.Overall.TryGetValue(idx, out var op) ? op : 0;
+        var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+        return new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging,
+            identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge,
+            idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber, overall, identity.ClassRank);
     }
 
     // 14/09/2026: mirrors UpdateFullRelative's shape but ranks by the live class position within
@@ -956,7 +971,7 @@ public class TelemetryReader : IDisposable
             // iRating approximation (real SoF formula above, applied to real per-driver iRatings),
             // shown only behind its own asterisk disclosure -- the driver explicitly chose an
             // approximate value over omitting the column entirely (14/09/2026).
-            var classified = ordered.Where(r => r.IRating > 0).ToList();
+            var classified = ordered.Where(r => r.IRating > 1).ToList();
             double? sof = null;
             if (classified.Count > 0)
             {
@@ -1026,7 +1041,7 @@ public class TelemetryReader : IDisposable
             var duration = Math.Max(0, (now - pitEntry).TotalSeconds);
             _lastPitStatusByCarIdx[carIdx] = $"L{Math.Max(0, lap)} {duration:0}s";
         }
-        return _lastPitStatusByCarIdx.TryGetValue(carIdx, out var last) ? last : "--";
+        return _lastPitStatusByCarIdx.TryGetValue(carIdx, out var last) ? last : "";
     }
 
     // Header block shared by Standings and Relative -- class/session type/lap count/flag are all
@@ -1039,6 +1054,7 @@ public class TelemetryReader : IDisposable
         var playerCarName = "";
         int? currentLap = null;
         int? totalLaps = null;
+        bool totalEstimated = false;
         try
         {
             var sessionInfo = _sdk.Data.SessionInfo;
@@ -1052,12 +1068,13 @@ public class TelemetryReader : IDisposable
 
             var lap = _sdk.Data.GetInt("Lap");
             if (lap > 0) currentLap = lap;
-            if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
+            if (_raceEstimate is { } estimate) { totalLaps = estimate.TotalLaps; totalEstimated = estimate.IsEstimate; }
+            else if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
         }
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
         var (flagText, flagColorHex) = DecodeSessionFlag();
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName);
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),
@@ -1169,21 +1186,13 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // 13/09/2026: a rolling average over the last FuelWindowSize completed laps, not the SDK's own
-    // instantaneous FuelUsePerHour -- an instantaneous rate swings with throttle/braking on any
-    // single sample, while the rolling average is what every established fuel calculator actually
-    // uses for a stable "laps remaining" estimate. LapCompleted (not Lap) is the correct edge to
-    // watch: it increments exactly once per finished lap, where Lap reports the currently-STARTED
-    // lap and would double-count the boundary tick (see LapCompleted's own confirmed SDK doc).
-    //
-    // 14/09/2026 fix: "1.37/volta" vs the car's real ~2.7 L/lap (McLaren, Road Atlanta) -- the bug
-    // was using the fuel level captured at APP ATTACH time as if it were a lap-start sample. If the
-    // app attaches mid-lap (the normal case -- the driver is already out when they open the app),
-    // that first "previousFuel" is really "fuel at some random mid-lap point", so the first delta
-    // measures only a fraction of a lap's burn, not a full lap's. _lastFuelLevel is now only ever
-    // set at a CONFIRMED LapCompleted edge (a real start/finish crossing), and the very first such
-    // edge only establishes that baseline -- no "used" sample is recorded until the SECOND crossing,
-    // once both ends of the delta are real S/F-line boundaries.
+    private const int SessionStateRacing = 4;
+
+    /// <summary>Fuel calculator, Kapps-style: consumption from clean green-flag laps only (see
+    /// <see cref="FuelTracker"/>), laps left in the race from <see cref="RaceLapEstimator"/> (lap- and
+    /// time-limited), fuel to finish = laps left x average, margin = level - fuel to finish. Every input
+    /// is a telemetry channel read each tick -- never the SessionInfo YAML, whose occasional failed
+    /// parse used to blank the last row every few frames (the "flicker").</summary>
     private void UpdateFuel()
     {
         try
@@ -1192,136 +1201,74 @@ public class TelemetryReader : IDisposable
             var fuelUsePerHour = _sdk.Data.GetFloat("FuelUsePerHour");
             var lapCompleted = _sdk.Data.GetInt("LapCompleted");
 
-            // Accumulated across every tick of the CURRENT lap (not just read at the crossing) --
-            // an out-lap's pit-road flag clears well before the car reaches the S/F line, so a
-            // single-tick check at the crossing would miss it.
-            try { if (_sdk.Data.GetBool("OnPitRoad")) _currentLapOnPitRoad = true; }
-            catch { /* channel not published in this session -- treat as never on pit road */ }
-
-            if (_lastLapCompleted < 0)
+            bool onPitRoad = false, notGreen = false, towed = false;
+            try { onPitRoad = _sdk.Data.GetBool("OnPitRoad"); } catch { }
+            try
             {
-                // First tick ever seen -- we don't know whether "now" lands on a lap boundary, so
-                // no fuel baseline is established here (see fix note above). Only LapCompleted is
-                // tracked, so the next real crossing can be detected.
-                _lastLapCompleted = lapCompleted;
+                var state = _sdk.Data.GetInt("SessionState");
+                var flags = _sdk.Data.GetInt("SessionFlags");
+                notGreen = state != SessionStateRacing || (flags & (FlagCaution | FlagCautionWaving)) != 0;
             }
-            else if (lapCompleted < _lastLapCompleted)
-            {
-                // Session segment changed (practice -> qualy -> race), or the session was reset --
-                // LapCompleted restarts at 0, so the prior segment's samples no longer describe
-                // this stint. Clear the rolling windows so the estimate starts fresh rather than
-                // silently freezing on stale samples from a different session segment. The fuel
-                // baseline is also invalidated -- the next crossing in the new segment establishes
-                // a fresh one, same as at app attach.
-                _fuelPerLapWindow.Clear();
-                _lapTimeWindow.Clear();
-                _lastLapCompleted = lapCompleted;
-                _lastFuelLevel = null;
-                _currentLapOnPitRoad = false;
-                _lastLapFuelUsed = null;
-                _lastLapWasAffectedByPit = false;
-            }
-            else if (lapCompleted > _lastLapCompleted)
-            {
-                bool lapAffectedByPit = _currentLapOnPitRoad;
-                if (_lastFuelLevel is double previousFuel)
-                {
-                    var used = previousFuel - fuelLevel;
-                    // Only a positive, plausible consumption sample is trusted -- a pit stop refuel
-                    // between ticks would otherwise register as a large negative "used" value and
-                    // corrupt the rolling average with a nonsense sample.
-                    if (used > 0)
-                    {
-                        // Spec §9: "exclusão de voltas de pit" -- an in-lap or out-lap's consumption
-                        // is real but not representative of green-flag racing pace, so it never
-                        // enters the average/max window. The raw value is still exposed as
-                        // LastLapFuelUsedLiters (with LastLapAffectedByPit alongside it) so a widget
-                        // can choose to show/ignore it explicitly rather than have it silently
-                        // vanish or silently corrupt the "clean" figures.
-                        _lastLapFuelUsed = used;
-                        _lastLapWasAffectedByPit = lapAffectedByPit;
+            catch { }
+            try { towed = _sdk.Data.GetInt("PlayerTrackSurface") == -1; } catch { }
+            double lastLapTime = 0;
+            try { lastLapTime = _sdk.Data.GetFloat("LapLastLapTime"); } catch { }
 
-                        if (!lapAffectedByPit)
-                        {
-                            _fuelPerLapWindow.Enqueue(used);
-                            if (_fuelPerLapWindow.Count > FuelWindowSize) _fuelPerLapWindow.Dequeue();
+            bool addedLap = _fuelTracker.Update(fuelLevel, lapCompleted, onPitRoad || notGreen || towed, lastLapTime);
+            if (addedLap && FuelUpdated is not null && _carId > 0 && _fuelTracker.AverageFuel is double learned)
+                FuelHistory.Value.Put(_carId, _trackId, learned, _fuelTracker.AverageLapTime);
 
-                            var lapTime = _sdk.Data.GetFloat("LapLastLapTime");
-                            if (lapTime > 0)
-                            {
-                                _lapTimeWindow.Enqueue(lapTime);
-                                if (_lapTimeWindow.Count > FuelWindowSize) _lapTimeWindow.Dequeue();
-                            }
-                        }
-                    }
-                }
-                // This crossing is a real start/finish-line boundary regardless of whether a
-                // baseline existed before it -- always safe to use as the baseline for the NEXT lap.
-                _lastLapCompleted = lapCompleted;
-                _lastFuelLevel = fuelLevel;
-                _currentLapOnPitRoad = false; // the lap starting now hasn't touched pit road yet
-            }
-
-            double? avgFuelPerLap = _fuelPerLapWindow.Count > 0 ? _fuelPerLapWindow.Average() : null;
-            double? maxFuelPerLap = _fuelPerLapWindow.Count > 0 ? _fuelPerLapWindow.Max() : null;
-            double? avgLapTime = _lapTimeWindow.Count > 0 ? _lapTimeWindow.Average() : null;
+            double? avgFuelPerLap = _fuelTracker.AverageFuel;
+            double? avgLapTime = _fuelTracker.AverageLapTime ?? (lastLapTime > 0 ? lastLapTime : _estimatedLapTime);
             double? lapsRemaining = avgFuelPerLap is double perLap && perLap > 0 ? fuelLevel / perLap : null;
             double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
 
+            // Race length (lap- or time-limited) from live channels.
+            _raceEstimate = null;
+            if (_isRaceSession)
+            {
+                int? lapsLimit = null;
+                double? timeLeft = null;
+                try { lapsLimit = _sdk.Data.GetInt("SessionLapsTotal"); } catch { }
+                try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t >= 0) timeLeft = t; } catch { }
+                double leader = 0, player = 0;
+                for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+                {
+                    float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                    if (pct < 0) continue;
+                    double progress = Math.Max(0, _sdk.Data.GetInt("CarIdxLapCompleted", idx)) + pct;
+                    if (idx == _playerCarIdx) player = progress;
+                    if (progress > leader && !IsPaceCar(idx)) leader = progress;
+                }
+                _raceEstimate = RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, avgLapTime);
+            }
+
             double? refuelToFull = null;
             double? plannedPitFuel = null;
-            double? fuelNeededForFinish = null;
-            double? fuelBurnToFinish = null;
             try
             {
                 var fuelPct = _sdk.Data.GetFloat("FuelLevelPct");
                 if (fuelPct is > 0.001f and <= 1.0f)
                     refuelToFull = Math.Max(0, fuelLevel / fuelPct - fuelLevel);
             }
-            catch { /* optional channel; calculators remain useful without tank capacity */ }
+            catch { /* optional channel */ }
             try
             {
-                // PitSvFuel is the live amount currently selected in iRacing's Black Box, in L.
-                // Kapps subscribes to this exact channel for its fuel calculator.
                 var blackBoxFuel = _sdk.Data.GetFloat("PitSvFuel");
                 if (blackBoxFuel >= 0) plannedPitFuel = blackBoxFuel;
             }
             catch { /* no pit service field in this session */ }
-            try
-            {
-                var sessionInfo = _sdk.Data.SessionInfo;
-                var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
-                var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
-                var lap = _sdk.Data.GetInt("LapCompleted");
-                var isRace = string.Equals(session?.SessionType, "Race", StringComparison.OrdinalIgnoreCase);
-                if (avgFuelPerLap is double lapFuel && lapFuel > 0 && isRace && int.TryParse(session?.SessionLaps, out var totalLaps) && totalLaps > 0)
-                {
-                    // Lap-limited race: SessionLaps is authoritative.  LapCompleted is the number
-                    // already crossed, therefore the current in-progress lap remains in the burn.
-                    fuelBurnToFinish = Math.Max(0, (totalLaps - Math.Max(0, lap)) * lapFuel);
-                    fuelNeededForFinish = Math.Max(0, fuelBurnToFinish.Value - fuelLevel);
-                }
-                else if (avgFuelPerLap is double timedLapFuel && timedLapFuel > 0 && avgLapTime is double timedLapSeconds && timedLapSeconds > 0 && isRace)
-                {
-                    // Timed races expose no useful SessionLaps.  Estimate the remaining fuel from
-                    // the live SDK clock instead of leaving a stale/full-tank recommendation.
-                    // The small partial-lap fraction is intentionally retained: fuel is consumed
-                    // during the lap that will be completed after the timer reaches zero.
-                    var sessionSecondsRemaining = _sdk.Data.GetFloat("SessionTimeRemain");
-                    if (sessionSecondsRemaining >= 0)
-                    {
-                        var lapsToFinish = sessionSecondsRemaining / timedLapSeconds;
-                        fuelBurnToFinish = Math.Max(0, lapsToFinish * timedLapFuel);
-                        fuelNeededForFinish = Math.Max(0, fuelBurnToFinish.Value - fuelLevel);
-                    }
-                }
-            }
-            catch { /* time-limited sessions do not have a fixed lap target */ }
+
+            // Signed: positive = fuel still to add, negative = surplus (the widget shows the margin).
+            double? fuelBurnToFinish = _raceEstimate is { } race && avgFuelPerLap is double lapFuel && lapFuel > 0 ? race.PlayerLapsRemaining * lapFuel : null;
+            double? fuelNeededForFinish = fuelBurnToFinish is double burnAll ? burnAll - fuelLevel : null;
             double? fuelAfterPit = plannedPitFuel is double planned ? fuelLevel + planned : null;
-            // "Fuel at end" is based on the actual amount currently selected in the Black Box,
-            // then subtracts the projected race burn.  It is not merely tank level after pitting.
-            double? fuelAtFinish = fuelAfterPit is double afterPit && fuelBurnToFinish is double burn ? Math.Max(0, afterPit - burn) : null;
-            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull, fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _lastLapFuelUsed, _lastLapWasAffectedByPit, maxFuelPerLap, avgLapTime));
+            double? fuelAtFinish = fuelAfterPit is double afterPit && fuelBurnToFinish is double burn ? afterPit - burn : null;
+
+            FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull,
+                fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _fuelTracker.LastLapUsed, _fuelTracker.LastLapDirty,
+                _fuelTracker.MaxFuel, avgLapTime, _raceEstimate?.PlayerLapsRemaining, _raceEstimate?.TotalLaps, _raceEstimate?.IsEstimate ?? false,
+                _fuelTracker.AverageIsFromHistory));
         }
         catch
         {
@@ -1375,6 +1322,11 @@ public class TelemetryReader : IDisposable
         }
     }
 
+    private readonly RadarSideAssigner _radarSides = new();
+
+    /// <summary>Kapps-style radar: every car within <see cref="RadarMaxRangeMeters"/> along the lap,
+    /// at its real longitudinal distance, placed in a lane by <see cref="RadarSideAssigner"/> from the
+    /// player's CarLeftRight flag (iRacing's only lateral information).</summary>
     private void UpdateRadar()
     {
         try
@@ -1386,32 +1338,37 @@ public class TelemetryReader : IDisposable
 
             var blips = new List<RadarBlip>();
             var hasTrackLength = _trackLengthMeters is double trackLength0 && trackLength0 > 0;
-            // Do not turn a general "nearby cars" list into a side-by-side warning.  CarLeftRight
-            // is the exact iRacing SDK condition for that UI.  Avoiding the field scan when clear
-            // also keeps the 60 Hz path extremely cheap for the normal case.
-            if (hasTrackLength && (blindLeft || blindRight))
+            if (hasTrackLength)
             {
                 var trackLength = _trackLengthMeters!.Value;
                 var myDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
-                var maxCars = IRacingSdkConst.MaxNumCars;
-                for (var idx = 0; idx < maxCars; idx++)
+                bool iAmOnPitRoad = false;
+                try { iAmOnPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", _playerCarIdx); } catch { }
+                var near = new List<(int Idx, double DistanceMeters)>();
+                if (myDistPct >= 0)
                 {
-                    if (idx == _playerCarIdx) continue;
-                    var theirDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                    if (theirDistPct < 0) continue; // car not currently on track / not in this session
-                    if (_sdk.Data.GetBool("CarIdxOnPitRoad", idx)) continue; // pit-lane cars aren't a real proximity signal
+                    for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+                    {
+                        if (idx == _playerCarIdx) continue;
+                        var theirDistPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                        if (theirDistPct < 0) continue; // not on track / not in this session
+                        // A car in the pit lane is only a neighbour when the player is in the pit lane too.
+                        if (_sdk.Data.GetBool("CarIdxOnPitRoad", idx) != iAmOnPitRoad) continue;
 
-                    // Shortest signed distance around the lap, wrapping at the start/finish line so
-                    // a car just ahead across the line doesn't register as almost a full lap behind.
-                    double delta = theirDistPct - myDistPct;
-                    if (delta > 0.5) delta -= 1.0;
-                    if (delta < -0.5) delta += 1.0;
+                        double delta = theirDistPct - myDistPct;
+                        if (delta > 0.5) delta -= 1.0;
+                        if (delta < -0.5) delta += 1.0;
+                        var distanceMeters = delta * trackLength;
+                        if (Math.Abs(distanceMeters) > RadarMaxRangeMeters || IsPaceCar(idx)) continue;
+                        near.Add((idx, distanceMeters));
+                    }
+                }
 
-                    var distanceMeters = delta * trackLength;
-                    if (Math.Abs(distanceMeters) > RadarMaxRangeMeters) continue;
-
+                var sides = _radarSides.Assign(near, leftRight);
+                foreach (var (idx, distance) in near)
+                {
                     var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
-                    blips.Add(new RadarBlip(distanceMeters, code));
+                    blips.Add(new RadarBlip(distance, code, sides.TryGetValue(idx, out var side) ? side : RadarSide.Center));
                 }
             }
 

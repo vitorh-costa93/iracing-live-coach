@@ -326,8 +326,8 @@ public static class PaletteTokens
     /// <summary>Borda das barras — grade externa continua uniforme.</summary>
     public static readonly Color4 BarBorder = Hex("#536777");
 
-    /// <summary>OT disponível — saldo em segundos + barra azul-clara (mockup Suzuka).</summary>
-    public static readonly Color4 OvertakeAvailable = Hex("#9AD3FE");
+    /// <summary>OT disponível — saldo em segundos + barra cinza (regra do usuário: disponível = cinza).</summary>
+    public static readonly Color4 OvertakeAvailable = Hex("#B8C4D0");
 
     /// <summary>OT acionado — saldo em segundos + barra verde.</summary>
     public static readonly Color4 OvertakeActive = Hex("#00E600");
@@ -336,7 +336,7 @@ public static class PaletteTokens
     public static readonly Color4 OvertakeCooldown = Hex("#FBCD08");
 
     /// <summary>OT esgotado — 0 s, trilho vazio.</summary>
-    public static readonly Color4 OvertakeDepleted = Hex("#73808C");
+    public static readonly Color4 OvertakeDepleted = Hex("#4E5A66");
 
     /// <summary>OT desconhecido/não suportado — travessão, sem saldo fictício.</summary>
     public static readonly Color4 OvertakeUnknown = Hex("#73808C");

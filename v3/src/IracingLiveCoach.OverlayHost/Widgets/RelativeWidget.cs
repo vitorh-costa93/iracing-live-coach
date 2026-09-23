@@ -340,7 +340,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     // Mockups: the real running position (overall), not an offset. Falls back to the
                     // class position when the overall one isn't known.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    int position = row.OverallPosition > 0 ? row.OverallPosition : row.ClassPosition;
+                    int position = row.ClassPosition > 0 ? row.ClassPosition : row.OverallPosition;
                     DrawCell(dc, position > 0 ? position.ToString(CultureInfo.InvariantCulture) : "—", cellX, y, cellWidth, ColumnAlignment.Center);
                     break;
                 case "offset":

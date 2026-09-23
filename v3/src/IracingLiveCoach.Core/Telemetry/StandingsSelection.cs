@@ -24,9 +24,11 @@ public static class StandingsSelection
         StandingsPresentationOptions? options = null)
     {
         var settings = options ?? StandingsPresentationOptions.Default;
-        var rows = source.Where(r => r.CarClassId > 0).OrderBy(r => r.Position).ToList();
+        // Single-class sessions (AI races, many official series) report CarClassID 0 for every car --
+        // that is a real class, not a missing one. The pace car is already excluded by the reader.
+        var rows = source.OrderBy(r => r.Position).ToList();
         var playerClassId = rows.FirstOrDefault(r => r.IsPlayer)?.CarClassId;
-        bool hasPlayer = playerClassId is > 0;
+        bool hasPlayer = playerClassId is not null;
 
         return rows
             .GroupBy(r => r.CarClassId)

@@ -10,16 +10,12 @@ using static Vortice.Win32.Apis;
 namespace IracingLiveCoach.OverlayHost.Widgets;
 
 /// <summary>
-/// Radar widget (Phase 4, rewritten 2026-09-18 -- the original pass drew only the two blind-spot
-/// boxes and silently showed nothing for both "clear track" and "telemetry unknown/disconnected",
-/// which spec §10 explicitly forbids conflating). No decorative title, per spec §5/§15.
-///
-/// Renders two independent things the SDK actually publishes, kept visually distinct on purpose
-/// (see the plan's Global Constraints): <see cref="RadarStatus.BlindSpotLeft"/>/<see cref="RadarStatus.BlindSpotRight"/>
-/// (a coarse "something is right next to you" signal, not a per-car position) as side boxes, and
-/// <see cref="RadarStatus.Blips"/> (real per-car signed distance along the track) as a vertical
-/// scale with one marker per car. Never draws a fabricated XY position or lateral distance --
-/// spec §10: "não desenhe carros em coordenadas XY precisas... a partir de dados insuficientes."
+/// Kapps-style proximity radar. The player's car sits in the middle; every car within
+/// <see cref="RangeMeters"/> along the lap is drawn as a car shape at its REAL longitudinal distance
+/// (iRacing's per-car lap distance), in the lane <see cref="RadarSideAssigner"/> gives it from the
+/// CarLeftRight flag -- iRacing publishes no lateral position, so the side is inferred, the vertical
+/// position is exact. A red bar along the edge marks a side iRacing reports as occupied. Nothing is
+/// drawn while the track around the player is clear (the widget stays out of the way).
 /// </summary>
 public sealed unsafe class RadarWidget : IDisposable
 {
@@ -38,10 +34,16 @@ public sealed unsafe class RadarWidget : IDisposable
     private readonly IDWriteFontCollection1* _fontCollection;
     private WidgetAppearance _appearance = WidgetAppearance.Default;
 
-    private const float WidthDip = 180f;
-    private const float HeightDip = 130f;
-    private const float BlindSpotBoxHeightDip = 28f;
-    private const float ScaleRangeMeters = 60f; // +/- this many meters of track distance fits the vertical scale
+    private const float WidthDip = 120f;
+    private const float HeightDip = 190f;
+    /// <summary>+/- this many metres of track fit the height of the radar.</summary>
+    public const float RangeMeters = 15f;
+    private const float CarLengthMeters = 4.8f;
+    private const float CarWidthDip = 16f;
+    private const float LaneOffsetDip = 30f;
+
+    /// <summary>Size the radar draws at (the overlay fits its window to it).</summary>
+    public (float Width, float Height) LastDrawnSize => (WidthDip * _appearance.FontScale, HeightDip * _appearance.FontScale);
 
     public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
     {
@@ -94,83 +96,68 @@ public sealed unsafe class RadarWidget : IDisposable
         RadarStatus? status = _simulated;
         bool simulated = status is not null;
         if (!simulated) { lock (_lock) { status = _status; } }
+        if (status is null || !status.HasTrackLength || (!simulated && !_telemetry.HasRecentTelemetry)) return;
+        bool anySide = status.BlindSpotLeft || status.BlindSpotRight;
+        if (status.Blips.Count == 0 && !anySide) return; // clear: nothing to show
 
-        var panel = new RectF(x, y, x + width, y + HeightDip);
+        float scale = _appearance.FontScale;
+        float w = WidthDip * scale, h = HeightDip * scale;
+        float cx = x + w / 2f, cy = y + h / 2f;
+        float pxPerMeter = (h / 2f - 10f * scale) / RangeMeters;
+        float carHeight = CarLengthMeters * pxPerMeter;
+        float carWidth = CarWidthDip * scale;
+        float lane = LaneOffsetDip * scale;
+
+        var panel = new RectF(x, y, x + w, y + h);
         PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+
+        // Distance guides every 10 m.
+        SetBrushColor(PaletteTokens.PanelDivider);
+        for (int m = -10; m <= 10; m += 5)
+        {
+            if (m == 0) continue;
+            float gy = cy - m * pxPerMeter;
+            var guide = new RectF(x + 10f, gy, x + w - 10f, gy + 1f);
+            dc->FillRectangle(&guide, (ID2D1Brush*)_brush.Get());
+        }
+
+        // Occupied sides (iRacing's own flag): red bars along the edges.
+        if (status.BlindSpotLeft) DrawSideBar(dc, x + 3f, y + 8f, y + h - 8f);
+        if (status.BlindSpotRight) DrawSideBar(dc, x + w - 7f, y + 8f, y + h - 8f);
+
+        // The player.
+        DrawCar(dc, cx, cy, carWidth, carHeight, PaletteTokens.PlayerHighlight, filled: true);
+
+        foreach (var blip in status.Blips)
+        {
+            float laneX = blip.Side switch { RadarSide.Left => cx - lane, RadarSide.Right => cx + lane, _ => cx };
+            float carY = cy - (float)Math.Clamp(blip.DistanceMeters, -RangeMeters, RangeMeters) * pxPerMeter;
+            double gap = Math.Abs(blip.DistanceMeters);
+            var color = gap <= RadarSideAssigner.OverlapMeters && blip.Side != RadarSide.Center ? PaletteTokens.Critical
+                : gap <= 12 ? PaletteTokens.Warning
+                : PaletteTokens.TextSecondary;
+            DrawCar(dc, laneX, carY, carWidth, carHeight, color, filled: blip.Side != RadarSide.Center || gap <= 12);
+        }
         PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
-
-        // Spec §10: "diferencie pista livre de telemetria desconectada/desconhecida" -- these are
-        // two genuinely different states and must never look the same. No telemetry at all (or the
-        // sim hasn't confirmed a usable track length yet) is shown explicitly, not left blank.
-        if ((!simulated && !_telemetry.HasRecentTelemetry) || status is null || !status.HasTrackLength)
-        {
-            SetBrushColor(PaletteTokens.TextDisabled);
-            const string text = "RADAR —";
-            fixed (char* p = text)
-            {
-                var rect = new RectF(x, y, x + width, y + BlindSpotBoxHeightDip);
-                dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-            return;
-        }
-
-        // Blind-spot boxes: a coarse per-side signal, never a per-car position (spec §10).
-        if (status.BlindSpotLeft) DrawBlindSpotBox(dc, "LEFT", x, y, width * 0.48f);
-        if (status.BlindSpotRight) DrawBlindSpotBox(dc, "RIGHT", x + width * 0.52f, y, width * 0.48f);
-        if (!status.BlindSpotLeft && !status.BlindSpotRight && status.Blips.Count == 0)
-        {
-            // Genuinely clear track -- an explicit, deliberate state, not the same rendering as
-            // "unknown" above.
-            SetBrushColor(PaletteTokens.TextSecondary);
-            const string clear = "CLEAR";
-            fixed (char* p = clear)
-            {
-                var rect = new RectF(x, y, x + width, y + BlindSpotBoxHeightDip);
-                dc->DrawText(p, (uint)clear.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-        }
-
-        DrawBlipScale(dc, status.Blips, x, y + BlindSpotBoxHeightDip + 6f, width);
     }
 
-    private void DrawBlindSpotBox(ID2D1DeviceContext* dc, string label, float x, float y, float width)
+    private void DrawCar(ID2D1DeviceContext* dc, float centerX, float centerY, float width, float height, Color4 color, bool filled)
     {
-        SetBrushColor(PaletteTokens.Warning);
-        var box = new RectF(x, y, x + width, y + BlindSpotBoxHeightDip);
-        dc->FillRectangle(&box, (ID2D1Brush*)_brush.Get());
-        SetBrushColor(PaletteTokens.TextOnLight);
-        fixed (char* p = label)
-        {
-            dc->DrawText(p, (uint)label.Length, _labelFormat.Get(), &box, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-        }
+        var body = new RectF(centerX - width / 2f, centerY - height / 2f, centerX + width / 2f, centerY + height / 2f);
+        var rounded = new RoundedRect { rect = body, radiusX = width * 0.3f, radiusY = width * 0.3f };
+        var c = color;
+        if (!filled) c = new Color4(color.R, color.G, color.B, 0.55f);
+        _brush.Get()->SetColor(&c);
+        if (filled) dc->FillRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get());
+        else dc->DrawRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get(), 1.6f, null);
     }
 
-    /// <summary>Real per-car signed track distance (spec §10's <see cref="RadarBlip"/>), drawn as a
-    /// vertical scale centered on the player -- never a fabricated 2D lane position.</summary>
-    private void DrawBlipScale(ID2D1DeviceContext* dc, List<RadarBlip> blips, float x, float y, float width)
+    private void DrawSideBar(ID2D1DeviceContext* dc, float x, float top, float bottom)
     {
-        float scaleHeight = HeightDip - BlindSpotBoxHeightDip - 6f;
-        SetBrushColor(PaletteTokens.Grid);
-        var centerLine = new RectF(x, y + scaleHeight / 2 - 1f, x + width, y + scaleHeight / 2 + 1f);
-        dc->FillRectangle(&centerLine, (ID2D1Brush*)_brush.Get());
-
-        foreach (var blip in blips)
-        {
-            float clamped = (float)Math.Clamp(blip.DistanceMeters, -ScaleRangeMeters, ScaleRangeMeters);
-            float normalized = clamped / ScaleRangeMeters; // -1 (behind) .. +1 (ahead)
-            float markerY = y + scaleHeight / 2 - normalized * (scaleHeight / 2 - 10f);
-
-            SetBrushColor(Math.Abs(blip.DistanceMeters) < 10 ? PaletteTokens.Critical : PaletteTokens.Warning);
-            var marker = new RectF(x + width / 2 - 20f, markerY - 6f, x + width / 2 + 20f, markerY + 6f);
-            dc->FillRectangle(&marker, (ID2D1Brush*)_brush.Get());
-
-            SetBrushColor(PaletteTokens.TextOnLight);
-            string label = $"{blip.DriverCode} {blip.DistanceMeters:+0;-0}m";
-            fixed (char* p = label)
-            {
-                dc->DrawText(p, (uint)label.Length, _labelFormat.Get(), &marker, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
-            }
-        }
+        var bar = new RectF(x, top, x + 4f, bottom);
+        var rounded = new RoundedRect { rect = bar, radiusX = 2f, radiusY = 2f };
+        SetBrushColor(PaletteTokens.Critical);
+        dc->FillRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get());
     }
 
     public void Dispose()

@@ -37,7 +37,7 @@ public static class HeaderFields
         {
             "type" => session is { SessionTypeText.Length: > 0 } ? session.SessionTypeText : null,
             "class" => session is { CarClassShortName.Length: > 0 } ? session.CarClassShortName : null,
-            "lap" => session is null ? null : $"LAP {Int(session.CurrentLap)}/{Int(session.TotalLaps)}",
+            "lap" => session is null ? null : $"LAP {Int(session.CurrentLap)}/{(session.TotalLapsEstimated ? "≈" : "")}{Int(session.TotalLaps)}",
             "sof" => session?.StrengthOfField is double s ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(s)) : null,
             "drivers" => session is null ? null : $"{session.DriverCount} DRIVERS",
             "bb" => player?.BrakeBiasPct is double b ? "BB " + b.ToString("0.0", CultureInfo.InvariantCulture) + "%" : null,
