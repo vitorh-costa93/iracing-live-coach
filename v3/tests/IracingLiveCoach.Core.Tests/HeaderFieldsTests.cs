@@ -75,4 +75,15 @@ public class HeaderFieldsTests
         Assert.Equal("3/7", session.DriverCountText(20));
         Assert.Equal("16", (session with { ClassCounts = null }).DriverCountText(20)); // no driver list: whole field
     }
+
+    [Fact]
+    public void Class_panels_show_their_own_leader_lap_and_projection()
+    {
+        var laps = new Dictionary<int, ClassLapInfo> { [1] = new(16, 35.226), [2] = new(15, 33.046), [3] = new(1, null) };
+        var session = new SessionStatus("GTP", "RACE", 16, 36, "", "", null, 40, TotalLapsEstimated: true, TotalLapsProjected: 35.226, ClassLaps: laps);
+        Assert.Equal("LAP 16/≈35.23", HeaderFields.ClassLapText(session, 1, true));
+        Assert.Equal("LAP 15/≈33.05", HeaderFields.ClassLapText(session, 2, false));
+        Assert.Equal("LAP 1", HeaderFields.ClassLapText(session, 3, false));             // no projection yet: Kapps "Lap 1"
+        Assert.Equal("LAP 16/≈35.23", HeaderFields.ClassLapText(session with { ClassLaps = null }, 1, true));
+    }
 }

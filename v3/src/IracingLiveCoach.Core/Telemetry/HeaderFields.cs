@@ -40,6 +40,20 @@ public static class HeaderFields
         return (session.TotalLapsEstimated ? "≈" : "") + (session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—");
     }
 
+    /// <summary>Lap field of one class's Standings panel (Kapps, live 24/09/2026): "LAP 15/≈33.05" with that
+    /// class's own projection (ClassRaceProjection); before one exists the overall leader's class shows the
+    /// session projection ("R 0/≈34.53") and every other class just its leader's lap ("Lap 1").</summary>
+    public static string? ClassLapText(SessionStatus? session, int classId, bool isOverallLeaderClass)
+    {
+        if (session?.ClassLaps is { } laps && laps.TryGetValue(classId, out var info))
+        {
+            if (info.Projected is double p)
+                return $"LAP {info.Lap.ToString(CultureInfo.InvariantCulture)}/≈" + Math.Round(p, 2, MidpointRounding.AwayFromZero).ToString("0.00", CultureInfo.InvariantCulture);
+            if (!isOverallLeaderClass) return $"LAP {info.Lap.ToString(CultureInfo.InvariantCulture)}";
+        }
+        return Text("lap", session, null, DateTime.Now);
+    }
+
     public static string? Text(string key, SessionStatus? session, PlayerCarStatus? player, DateTime now)
     {
         string Int(int? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "—";

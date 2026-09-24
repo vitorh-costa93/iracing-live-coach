@@ -50,8 +50,12 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
 /// formula (BR1 = 1600/ln(2), SoF = BR1 * ln(N / Σ e^(-iRating_i / BR1))) over the current field's
 /// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
+/// <summary>A class's lap counter for its Standings panel: the class leader's lap and Kapps' projected total
+/// (null before the leader has race laps -- Kapps then shows just "Lap 1").</summary>
+public readonly record struct ClassLapInfo(int Lap, double? Projected);
+
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
-    IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1)
+    IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null)
 {
     /// <summary>Kapps' per-class count ("14", "2/14") for a class; the whole-field count only when the
     /// session's driver list was not available.</summary>
@@ -489,6 +493,11 @@ public class TelemetryReader : IDisposable
     /// <summary>Lone qualifying: no other car is really around the player (SessionKinds.IsSolo).</summary>
     private bool _soloSession;
 
+    /// <summary>Race lap times per car (ClassRaceProjection's last-5 average), reset per session.</summary>
+    private readonly LapHistory _lapHistory = new();
+    /// <summary>Class id -> (class leader's lap, Kapps' projected total) from the last Standings pass.</summary>
+    private Dictionary<int, ClassLapInfo> _classLaps = new();
+
     private void RefreshClassRanks()
     {
         try
@@ -805,6 +814,8 @@ public class TelemetryReader : IDisposable
         _gridBestLap = new();
         _bestLapTimeSeconds = null;
         _finishDetector.Reset();
+        _lapHistory.Clear();
+        _classLaps = new();
     }
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
@@ -1199,10 +1210,33 @@ public class TelemetryReader : IDisposable
                     start, change, interval.Laps, r.BestLap, r.OnPitRoad, timed));
             }
 
-            // Per-class driver counts (Kapps: "14" / "13" / "13", or "2/14" while only some have a time).
-            // Entrants = the session's driver list minus pace car/spectators; "with a time" = best lap in
-            // practice/qualifying, a live race lap in a race (the grid's qualifying laps do not count: Kapps
-            // showed "14", not "4/14", on the grid).
+            // Race: lap history + Kapps' per-class lap projection (ClassRaceProjection).
+            var classLaps = new Dictionary<int, ClassLapInfo>();
+            if (_isRaceSession && !preGreenGrid && _finalResults.Count == 0)
+            {
+                foreach (var r in ordered)
+                {
+                    try { _lapHistory.Update(r.Idx, _sdk.Data.GetInt("CarIdxLapCompleted", r.Idx), _sdk.Data.GetFloat("CarIdxLastLapTime", r.Idx)); } catch { }
+                }
+                var classLeaders = ordered.GroupBy(r => r.ClassId)
+                    .Select(g => g.OrderBy(r => r.ClassPosition > 0 ? r.ClassPosition : int.MaxValue).ThenBy(r => r.Position).First())
+                    .ToList();
+                double remainNow = -1;
+                try { remainNow = _sdk.Data.GetDouble("SessionTimeRemain"); } catch { }
+                var projections = ordered.Count > 0 && sessionState == SessionStateRacingState
+                    ? ClassRaceProjection.Compute(classLeaders.Select(l => new ClassLeader(l.ClassId, l.Progress ?? 0, _lapHistory.RecentAverage(l.Idx))).ToList(), ordered[0].ClassId, remainNow)
+                    : new Dictionary<int, double>();
+                foreach (var l in classLeaders)
+                {
+                    int lap = 0;
+                    try { lap = _sdk.Data.GetInt("CarIdxLap", l.Idx); } catch { }
+                    classLaps[l.ClassId] = new ClassLapInfo(lap, projections.TryGetValue(l.ClassId, out var pr) ? pr : null);
+                }
+            }
+            _classLaps = classLaps;
+
+            // Per-class driver counts (Kapps: the class total, or "2/14" in practice/qualifying while only some
+            // have a time). Entrants = the session's driver list minus pace car/spectators.
             var entrants = new List<(int CarIdx, int ClassId)>();
             try
             {
@@ -1210,21 +1244,15 @@ public class TelemetryReader : IDisposable
                     if (d.CarIsPaceCar == 0 && d.IsSpectator == 0) entrants.Add((d.CarIdx, d.CarClassID));
             }
             catch { entrants.Clear(); }
-            var withTime = new List<int>();
-            foreach (var r in ordered)
-            {
-                if (timed && !preGreenGrid) { if (r.BestLap is > 0) withTime.Add(r.Idx); }
-                else
-                {
-                    try { if (_sdk.Data.GetFloat("CarIdxBestLapTime", r.Idx) > 0) withTime.Add(r.Idx); } catch { }
-                }
-            }
+            // Race: Kapps shows the plain class total the whole race (live 24/09/2026: "14"/"13"/"13" on the grid
+            // and mid-race with a towed player who had no lap time), so only practice/qualifying count times.
+            var withTime = timed && !preGreenGrid ? ordered.Where(r => r.BestLap is > 0).Select(r => r.Idx).ToList() : new List<int>();
             var classCounts = entrants.Count > 0 ? ClassDriverCounts.Compute(entrants, withTime) : null;
             int playerClassId = ordered.FirstOrDefault(r => r.IsPlayer).ClassId;
             if (!ordered.Any(r => r.IsPlayer)) playerClassId = -1;
 
             StandingsUpdated?.Invoke(rows);
-            SessionStatusUpdated?.Invoke(BuildSessionStatus(ordered.Count, sof) with { ClassCounts = classCounts, PlayerClassId = playerClassId });
+            SessionStatusUpdated?.Invoke(BuildSessionStatus(ordered.Count, sof) with { ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null });
         }
         catch
         {
@@ -1481,8 +1509,10 @@ public class TelemetryReader : IDisposable
                 try { var tt = _sdk.Data.GetDouble("SessionTimeTotal"); if (tt > 0) sessionTotal = tt; } catch { }
                 bool leaderHasRaceLap = leaderIdx >= 0 && _sdk.Data.GetFloat("CarIdxLastLapTime", leaderIdx) > 1;
                 double? pole = RaceLapEstimator.PoleLapTime(_grid, _gridBestLap);
-                // Own pace for the projection: laps actually driven, never the history seed.
-                double? ownPace = _fuelTracker.MeasuredAverageLapTime ?? (lastLapTime > 1 ? lastLapTime : pole ?? _estimatedLapTime);
+                // Own pace for the projection: laps actually driven, never the history seed. The race length
+                // itself follows the overall leader's last-5 average (ClassRaceProjection, Kapps).
+                double? ownPace = _lapHistory.RecentAverage(_playerCarIdx) ?? _fuelTracker.MeasuredAverageLapTime ?? (lastLapTime > 1 ? lastLapTime : pole ?? _estimatedLapTime);
+                if (leaderIdx >= 0 && _lapHistory.RecentAverage(leaderIdx) is double leaderAvg) leaderLapTime = leaderAvg;
                 _raceEstimate = pole is double poleLap && sessionTotal is double sessionLength && (raceState < SessionStateRacingState || !leaderHasRaceLap)
                     ? RaceLapEstimator.EstimateFromPole(lapsLimit, sessionLength, poleLap, player)
                     : RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, ownPace, leaderLapTime);

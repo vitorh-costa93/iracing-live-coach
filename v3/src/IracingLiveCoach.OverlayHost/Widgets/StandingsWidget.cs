@@ -391,6 +391,8 @@ public sealed unsafe class StandingsWidget : IDisposable
                 "sof" => classSof is double sof ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(sof)) : null,
                 // Each class panel shows ITS class's driver count (Kapps), never the whole field.
                 "drivers" => session is null ? null : $"{session.DriverCountText(group.ClassId)} DRIVERS",
+                // Each class panel shows ITS leader's lap and projection (Kapps "15/≈33.05").
+                "lap" => HeaderFields.ClassLapText(session, group.ClassId, group.Rows.Any(r => r.Position == 1)),
                 _ => HeaderFields.Text(field.Key, session, player, DateTime.Now),
             };
             if (text is not null) cells.Add((text, PaletteTokens.TextPrimary, false));
@@ -647,7 +649,9 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, float width, string license, string? colorHex)
     {
         // Mockups: a solid blue rounded pill with bold white "A 4.12".
-        var color = ParseHexOrFallback(colorHex, PaletteTokens.SrPillBlue);
+        // Kapps colours the pill by the licence letter (LicenseStyle); the SDK's LicColor is a decimal
+        // number, not "#RRGGBB", and rendered the AI's "R" blue.
+        var color = ParseHexOrFallback(LicenseStyle.ColorHex(license) ?? colorHex, PaletteTokens.SrPillBlue);
         var pill = new RectF(x, y + (RowHeightDip - BadgeHeightDip) / 2, x + width, y + (RowHeightDip + BadgeHeightDip) / 2);
         PanelChrome.FillPanel(dc, _brush.Get(), pill, color, 5f);
         SetBrushColor(PaletteTokens.TextPrimary);
@@ -712,9 +716,10 @@ public sealed unsafe class StandingsWidget : IDisposable
     internal static void DrawIRatingPillOnly(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, IDWriteTextFormat* statusFormat, RectF pill, int iRating, NumberFormatConfig format)
     {
         DrawIRatingPillBackground(dc, brush, pill);
-        Color4 textColor = iRating > 1 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled;
+        // Kapps prints the AI's 0 as "0.0k" (no dash).
+        Color4 textColor = PaletteTokens.TextPrimary;
         brush->SetColor(&textColor);
-        string text = iRating > 1 ? format.FormatIRating(iRating) : "—";
+        string text = format.FormatIRating(Math.Max(0, iRating));
         ThrowIfFailed(statusFormat->SetTextAlignment(TextAlignment.Center));
         fixed (char* p = text)
         {
@@ -732,8 +737,8 @@ public sealed unsafe class StandingsWidget : IDisposable
         DrawIRatingPillBackground(dc, _brush.Get(), pill);
 
         if (iRating <= 1) estimatedDelta = null; // unknown rating: never a delta on top of a dash
-        SetBrushColor(iRating > 1 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled);
-        string iratingText = iRating > 1 ? _numberFormatConfig.FormatIRating(iRating) : "—";
+        SetBrushColor(PaletteTokens.TextPrimary);
+        string iratingText = _numberFormatConfig.FormatIRating(Math.Max(0, iRating)); // Kapps: AI "0.0k"
         ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(estimatedDelta is null ? TextAlignment.Center : TextAlignment.Leading));
         fixed (char* p = iratingText)
         {
