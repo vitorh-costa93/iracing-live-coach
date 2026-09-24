@@ -93,13 +93,12 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// column ("Padding (H)"); what layout and width actually use.</summary>
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
 
-    private void RebuildEffectiveColumns() =>
-        _effectiveColumns = _columns.Select(c =>
-        {
-            // See StandingsWidget: the Overtake column collapses when nobody has push-to-pass.
-            if (c.Key == "overtake" && !_hasP2P) return c with { Visible = false };
-            return _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c;
-        }).ToList();
+    private void RebuildEffectiveColumns()
+    {
+        var padded = _columns.Select(c => _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        // No push-to-pass in this session: Overtake hides but the widget keeps its width -- the name takes the space.
+        _effectiveColumns = _hasP2P ? padded : WidgetLayoutEngine.HideKeepingWidth(padded, "overtake");
+    }
 
     private bool _hasP2P;
     private readonly Dictionary<(string, int), string> _nameFit = new();

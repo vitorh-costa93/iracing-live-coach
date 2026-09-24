@@ -140,4 +140,22 @@ public class WidgetLayoutEngineGeometryTests
         Assert.False(result.FitsWithinBudget);
         Assert.True(result.MissingPx > 0);
     }
+
+    [Fact]
+    public void Hiding_a_contextual_column_keeps_the_width_and_gives_it_to_the_name()
+    {
+        var cols = new List<ColumnDefinition>
+        {
+            new("name", ColumnWidthMode.Flexible, 118, 60, ColumnAlignment.Left, 0, 6, true, 0),
+            new("gap", ColumnWidthMode.Fixed, 70, 70, ColumnAlignment.Right, 0, 6, true, 1),
+            new("overtake", ColumnWidthMode.Fixed, 62, 62, ColumnAlignment.Center, 0, 0, true, 2),
+        };
+        var fitted = WidgetLayoutEngine.HideKeepingWidth(cols, "overtake");
+        Assert.Equal(WidgetLayoutEngine.SumVisibleColumnFootprints(cols), WidgetLayoutEngine.SumVisibleColumnFootprints(fitted));
+        Assert.False(fitted.Single(c => c.Key == "overtake").Visible);
+        Assert.Equal(118 + 62, fitted.Single(c => c.Key == "name").WidthPx);
+        // A column the user already hid is left alone (no width to hand over).
+        var userHidden = cols.Select(c => c.Key == "overtake" ? c with { Visible = false } : c).ToList();
+        Assert.Equal(118, WidgetLayoutEngine.HideKeepingWidth(userHidden, "overtake").Single(c => c.Key == "name").WidthPx);
+    }
 }

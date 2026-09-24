@@ -42,6 +42,20 @@ public static class WidgetLayoutEngine
     public static float SumVisibleColumnFootprints(IEnumerable<ColumnDefinition> columns) =>
         columns.Where(c => c.Visible).Sum(c => c.FootprintPx);
 
+    /// <summary>Hides a CONTEXTUAL column (e.g. Overtake in a class without push-to-pass) without shrinking the
+    /// widget: its footprint goes to <paramref name="growKey"/> (the name, so it shows more of it). The user's
+    /// own hidden columns are untouched. Driver's rule, 24/09/2026: "a largura do widget é fixa".</summary>
+    public static List<ColumnDefinition> HideKeepingWidth(IReadOnlyList<ColumnDefinition> columns, string hiddenKey, string growKey = "name")
+    {
+        var hidden = columns.FirstOrDefault(c => c.Key == hiddenKey && c.Visible);
+        if (hidden is null) return columns.ToList();
+        bool hasGrow = columns.Any(c => c.Key == growKey && c.Visible);
+        return columns.Select(c =>
+            c.Key == hiddenKey ? c with { Visible = false }
+            : c.Key == growKey && hasGrow ? c with { WidthPx = c.WidthPx + hidden.FootprintPx }
+            : c).ToList();
+    }
+
     /// <summary>
     /// Lays out one table: resolves left-to-right column offsets, computes total width/height,
     /// and — if the result exceeds <paramref name="maxWidthPx"/> — shrinks Flexible columns toward
