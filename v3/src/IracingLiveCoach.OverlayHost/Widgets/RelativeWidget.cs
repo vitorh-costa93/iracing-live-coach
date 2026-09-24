@@ -78,7 +78,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 3),
         new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
-        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 3),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 1),
         new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 7),
         new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 8),
     ];
@@ -418,10 +418,11 @@ public sealed unsafe class RelativeWidget : IDisposable
                     break;
                 }
                 case "gap":
-                    // Player's own row always shows a neutral 0.000, never a computed value.
+                    // Player's own row always shows a neutral 0.0, never a computed value. Kapps prints the gap
+                    // WITHOUT a sign (ahead/behind is the row's place), 1 decimal by default.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.TextSecondary : PaletteTokens.TextPrimary);
                     string gapText = row.IsPlayer ? "0" + DecimalSuffix(placement.Column.DecimalPlaces)
-                        : row.GapSeconds is double gap ? gap.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture) : "—";
+                        : row.GapSeconds is double gap ? Math.Abs(gap).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture) : "—";
                     DrawCell(dc, gapText, cellX, y, cellWidth, placement.Column.Alignment);
                     break;
                 case "overtake":
