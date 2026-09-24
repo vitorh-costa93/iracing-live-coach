@@ -18,6 +18,12 @@ public static class SessionKinds
         if (t.Contains("PRACTICE") || t.Contains("WARMUP") || t.Contains("TESTING")) return SessionKind.Practice;
         return null;
     }
+
+    /// <summary>"Lone Qualify": the player drives alone -- the other cars iRacing still reports on track are
+    /// ghosts parked in a clump. Kapps' Relative then shows only the player and its radar nothing (live
+    /// 24/09/2026, AI session).</summary>
+    public static bool IsSolo(string? sessionTypeText) =>
+        !string.IsNullOrWhiteSpace(sessionTypeText) && sessionTypeText.Trim().ToUpperInvariant().Contains("LONE");
 }
 
 /// <summary>Per-widget list of session kinds in which the widget is HIDDEN. Absent widget or

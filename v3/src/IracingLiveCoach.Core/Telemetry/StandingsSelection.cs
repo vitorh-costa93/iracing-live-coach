@@ -69,6 +69,13 @@ public static class StandingsSelection
                 return new StandingsClassGroup(group.Key, first?.ClassShortName ?? "", first?.ClassColorHex, visible, first?.ClassRank ?? 0);
             })
             .Where(group => group.Rows.Count > 0)
+            // Kapps keeps the class panels in a FIXED order, fastest class first (ClassRank 1 = fastest,
+            // from CarClassRelSpeed/CarClassEstLapTime) -- never by who leads overall or by the player's
+            // class. Unranked classes (single-class sessions report rank 0) keep their running order.
+            .Select((group, index) => (group, index))
+            .OrderBy(t => t.group.ClassRank > 0 ? t.group.ClassRank : int.MaxValue)
+            .ThenBy(t => t.index)
+            .Select(t => t.group)
             .ToList();
     }
 }

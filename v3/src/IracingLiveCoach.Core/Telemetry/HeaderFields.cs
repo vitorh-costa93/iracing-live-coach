@@ -30,12 +30,13 @@ public static class HeaderFields
         return result;
     }
 
-    /// <summary>Lap-limited: "30". Time-limited: Kapps' "≈11.57" -- the unrounded projection, TRUNCATED to two
-    /// decimals (Kapps truncates its other times too); the integer "≈12" only when no projection is known.</summary>
+    /// <summary>Lap-limited: "30". Time-limited: Kapps' "≈34.53" -- the projection ROUNDED to two decimals (live
+    /// 24/09/2026: 2700 / 78.1975 = 34.5279 shown as "34.53"; the earlier truncation had no numeric evidence);
+    /// the integer "≈12" only when no projection is known.</summary>
     public static string TotalLapsText(SessionStatus session)
     {
         if (session.TotalLapsEstimated && session.TotalLapsProjected is double p && p > 0)
-            return "≈" + (Math.Floor(p * 100 + 1e-6) / 100).ToString("0.00", CultureInfo.InvariantCulture);
+            return "≈" + Math.Round(p, 2, MidpointRounding.AwayFromZero).ToString("0.00", CultureInfo.InvariantCulture);
         return (session.TotalLapsEstimated ? "≈" : "") + (session.TotalLaps?.ToString(CultureInfo.InvariantCulture) ?? "—");
     }
 
@@ -48,7 +49,7 @@ public static class HeaderFields
             "class" => session is { CarClassShortName.Length: > 0 } ? session.CarClassShortName : null,
             "lap" => session is null ? null : $"LAP {Int(session.CurrentLap)}/{TotalLapsText(session)}",
             "sof" => session?.StrengthOfField is double s ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(s)) : null,
-            "drivers" => session is null ? null : $"{session.DriverCount} DRIVERS",
+            "drivers" => session is null ? null : $"{session.DriverCountText(session.PlayerClassId)} DRIVERS",
             "bb" => player?.BrakeBiasPct is double b ? "BB " + b.ToString("0.0", CultureInfo.InvariantCulture) + "%" : null,
             "track" => player?.TrackTempC is double t ? "TRACK " + t.ToString("0", CultureInfo.InvariantCulture) + "°C" : null,
             "rubber" => player?.TrackRubberState is { Length: > 0 } r ? "RUBBER " + r.ToUpperInvariant() : null,

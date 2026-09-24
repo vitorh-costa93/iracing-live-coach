@@ -386,9 +386,13 @@ public sealed unsafe class StandingsWidget : IDisposable
                     cells.Add((group.ClassShortName.Replace(" CLASS", ""), classColor, true));
                 continue;
             }
-            string? text = field.Key == "sof"
-                ? (classSof is double sof ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(sof)) : null)
-                : HeaderFields.Text(field.Key, session, player, DateTime.Now);
+            string? text = field.Key switch
+            {
+                "sof" => classSof is double sof ? "SOF " + NumberFormatConfig.GroupThousands((int)Math.Round(sof)) : null,
+                // Each class panel shows ITS class's driver count (Kapps), never the whole field.
+                "drivers" => session is null ? null : $"{session.DriverCountText(group.ClassId)} DRIVERS",
+                _ => HeaderFields.Text(field.Key, session, player, DateTime.Now),
+            };
             if (text is not null) cells.Add((text, PaletteTokens.TextPrimary, false));
         }
         if (cells.Count == 0) return;

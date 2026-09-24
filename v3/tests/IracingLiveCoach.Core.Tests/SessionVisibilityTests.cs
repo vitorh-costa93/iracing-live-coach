@@ -31,4 +31,13 @@ public class SessionVisibilityTests
         Assert.True(config.IsVisible("radar", null));
         Assert.True(config.IsVisible("fuel", SessionKind.Practice));
     }
+
+    [Theory]
+    [InlineData("Lone Qualify", true)]
+    [InlineData("LONE QUALIFY", true)]
+    [InlineData("Open Qualify", false)]
+    [InlineData("Race", false)]
+    [InlineData(null, false)]
+    public void Only_lone_qualifying_is_a_solo_session(string? type, bool solo) =>
+        Assert.Equal(solo, SessionKinds.IsSolo(type));
 }

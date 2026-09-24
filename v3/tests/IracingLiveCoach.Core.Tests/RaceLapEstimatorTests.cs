@@ -123,4 +123,26 @@ public class RaceLapEstimatorTests
         Assert.Equal(12, e.TotalLaps);
         Assert.Null(RaceLapEstimator.Estimate(30, 86000, 2.0, 2.0, 76)!.ProjectedTotalLaps);
     }
+
+    [Fact]
+    public void Pole_lap_is_the_grid_p1_best_lap_else_the_fastest_on_the_grid()
+    {
+        var grid = new Dictionary<int, int> { [35] = 1, [32] = 2, [0] = 6 };
+        var best = new Dictionary<int, double> { [35] = 78.1975, [32] = 79.932, [0] = 85.045 };
+        Assert.Equal(78.1975, RaceLapEstimator.PoleLapTime(grid, best));
+        best.Remove(35);
+        Assert.Equal(79.932, RaceLapEstimator.PoleLapTime(grid, best));
+        Assert.Null(RaceLapEstimator.PoleLapTime(grid, new Dictionary<int, double>()));
+    }
+
+    [Fact]
+    public void Before_the_leaders_first_race_lap_kapps_projects_session_length_on_the_pole()
+    {
+        // 24/09/2026, 45-min AI race: Kapps "R 0/≈34.53" on the grid and "R 1/≈34.53" at 44:19 after the green.
+        var e = RaceLapEstimator.EstimateFromPole(RaceLapEstimator.UnlimitedLaps, 2700, 78.1975, 0.42)!;
+        Assert.Equal(34.53, Math.Round(e.ProjectedTotalLaps!.Value, 2), 2);
+        Assert.Equal(35, e.TotalLaps);
+        Assert.True(e.IsEstimate);
+        Assert.Equal(35 - 0.42, e.PlayerLapsRemaining, 6);
+    }
 }

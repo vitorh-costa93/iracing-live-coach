@@ -39,6 +39,10 @@ public sealed class FuelTracker
     public double? AverageFuel => _fuel.Count > 0 ? _fuel.Average() : _seedFuel;
     public double? MaxFuel => _fuel.Count > 0 ? _fuel.Max() : _seedFuel;
     public double? AverageLapTime => _lapTimes.Count > 0 ? _lapTimes.Average() : _seedLapTime;
+    /// <summary>Average of laps actually driven this connection (no history seed) -- the only lap time
+    /// allowed into the race-length projection (a seeded 204.9 s history lap gave "≈13.17" where Kapps
+    /// showed 34.53, 24/09/2026).</summary>
+    public double? MeasuredAverageLapTime => _lapTimes.Count > 0 ? _lapTimes.Average() : null;
     public bool AverageIsFromHistory => _fuel.Count == 0 && _seedFuel is not null;
 
     /// <summary>One telemetry tick.</summary>

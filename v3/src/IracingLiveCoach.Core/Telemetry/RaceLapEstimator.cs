@@ -43,6 +43,27 @@ public static class RaceLapEstimator
         return sessionTimeRemain is >= 0 ? sessionTimeRemain : null;
     }
 
+    /// <summary>The pole lap: best qualifying lap of the car starting P1 overall (the fastest lap on the grid
+    /// when P1 has no time). Kapps projects a time-limited race on it until the leader has a race lap --
+    /// verified live 24/09/2026, 45-min multiclass AI race: "≈34.53" = 2700 s / 78.1975 s (pole, #00) on the
+    /// grid, during the parade AND at 44:19 after the green (leader 0.46 laps in: still 34.53, not 34.46).
+    /// Also Watkins Glen: 1200 / 103.074 = 11.64. Null when no grid time is known.</summary>
+    public static double? PoleLapTime(IReadOnlyDictionary<int, int> gridPositionByCar, IReadOnlyDictionary<int, double> bestLapByCar)
+    {
+        var pole = gridPositionByCar.Where(kv => kv.Value > 0).OrderBy(kv => kv.Value).Select(kv => kv.Key).FirstOrDefault(-1);
+        if (pole >= 0 && bestLapByCar.TryGetValue(pole, out var lap) && lap > 1) return lap;
+        var valid = bestLapByCar.Values.Where(v => v > 1).ToList();
+        return valid.Count > 0 ? valid.Min() : null;
+    }
+
+    /// <summary>Before the leader has completed a race lap: the whole session length on the pole lap, from
+    /// zero progress (Kapps' "≈34.53"); the player's remaining laps are what is left after their progress.</summary>
+    public static RaceLapEstimate? EstimateFromPole(int? lapsLimit, double sessionTimeTotalSeconds, double poleLapSeconds, double playerProgress)
+    {
+        var e = Estimate(lapsLimit, sessionTimeTotalSeconds, 0, 0, poleLapSeconds);
+        return e is null ? null : e with { PlayerLapsRemaining = Math.Max(0, e.PlayerLapsRemaining - Math.Max(0, playerProgress)) };
+    }
+
     /// <param name="lapsLimit">SessionLapsTotal (UnlimitedLaps or &lt;= 0 = no lap limit).</param>
     /// <param name="timeRemainingSeconds">SessionTimeRemain (null/negative = no time limit).</param>
     /// <param name="leaderProgress">Leader's completed laps + fraction of the current lap.</param>
