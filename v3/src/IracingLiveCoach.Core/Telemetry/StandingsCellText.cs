@@ -22,8 +22,12 @@ public static class StandingsCellText
         int classPos = row.ClassPosition > 0 ? row.ClassPosition : row.Position;
         if (classPos == 1) return "INT";
         if (row.IntervalLaps is int laps and > 0) return $"{laps}L";
+        // Race: truncated, not rounded -- Kapps showed 0.6 for 0.667 and 5.7 for 5.798 (Watkins Glen
+        // 24/09/2026, final classification).
         if (row.IntervalSeconds is double s)
-            return s.ToString(row.TimedOrder ? "0.000" : "0.0", CultureInfo.InvariantCulture);
+            return row.TimedOrder
+                ? s.ToString("0.000", CultureInfo.InvariantCulture)
+                : (Math.Floor(s * 10 + 1e-6) / 10).ToString("0.0", CultureInfo.InvariantCulture);
         return "—";
     }
 

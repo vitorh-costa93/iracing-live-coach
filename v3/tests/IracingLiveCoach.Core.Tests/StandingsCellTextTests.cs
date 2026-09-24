@@ -13,7 +13,10 @@ public class StandingsCellTextTests
     public void Kapps_race_interval_format()
     {
         Assert.Equal("INT", StandingsCellText.Interval(Row(1)));
-        Assert.Equal("1.5", StandingsCellText.Interval(Row(2, 1.46)));
+        Assert.Equal("1.4", StandingsCellText.Interval(Row(2, 1.46)));
+        // Watkins Glen final classification: 8.5129 - 7.8478 -> Kapps "0.6"; 14.3266 - 8.5282 -> "5.7" (truncated).
+        Assert.Equal("0.6", StandingsCellText.Interval(Row(5, 8.5129 - 7.8478)));
+        Assert.Equal("5.7", StandingsCellText.Interval(Row(7, 14.3266 - 8.5282)));
         Assert.Equal("0.0", StandingsCellText.Interval(Row(3, 0.02)));
         Assert.Equal("1L", StandingsCellText.Interval(Row(26, laps: 1)));
         Assert.Equal("—", StandingsCellText.Interval(Row(4)));

@@ -815,8 +815,34 @@ public class TelemetryReader : IDisposable
     /// CarIdxPosition is 0 for everyone during the parade lap, so the live order would be meaningless.</summary>
     private bool IsPreGreenGrid => _isRaceSession && _sessionState is > 0 and < SessionStateRacingState && _grid.Count > 0;
 
+    /// <summary>Race after the chequered flag: the official classification (see FinalResults), refreshed
+    /// from SessionInfo every tick; empty when it is not published yet.</summary>
+    private Dictionary<int, FinalResultEntry> _finalResults = new();
+
+    private bool RefreshFinalResults()
+    {
+        _finalResults = new();
+        if (!FinalResults.Applies(_isRaceSession, _sessionState)) return false;
+        try
+        {
+            var info = _sdk.Data.SessionInfo?.SessionInfo;
+            var num = info?.CurrentSessionNum ?? -1;
+            var results = info?.Sessions?.FirstOrDefault(s => s.SessionNum == num)?.ResultsPositions;
+            if (results is not { Count: > 0 }) return false;
+            foreach (var r in results)
+                _finalResults[r.CarIdx] = new FinalResultEntry(r.CarIdx, r.Position, r.ClassPosition, r.Time, r.LastTime, r.LapsComplete);
+        }
+        catch { _finalResults = new(); }
+        return _finalResults.Count > 0;
+    }
+
     private LivePositions ComputePositions()
     {
+        if (RefreshFinalResults())
+        {
+            var (finalOverall, finalByClass) = FinalResults.Positions(_finalResults.Values);
+            return new LivePositions(finalOverall, finalByClass);
+        }
         bool preGreen = IsPreGreenGrid;
         if (!IsTimedSession && !preGreen) return ComputeLivePositions();
         var cars = new List<TimedCar>();
@@ -1091,6 +1117,16 @@ public class TelemetryReader : IDisposable
                 // a timed lap.
                 bool hasValidLap = _sdk.Data.GetInt("CarIdxPosition", idx) > 0 && (best is not null || f2 is > 0);
 
+                // After the flag: the official classification (finished cars have left the world).
+                if (_finalResults.TryGetValue(idx, out var final))
+                {
+                    if (lastLap <= 0 && final.LastTime > 0) lastLap = (float)final.LastTime;
+                    progress = final.LapsComplete;
+                    estTime = null;
+                    f2 = final.Time >= 0 ? final.Time : null;
+                    lapsCompleted = final.LapsComplete;
+                }
+
                 raw.Add((idx, position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
                     identity.CarClassId, identity.ManufacturerBadge, identity.CarNumber, timed ? null : f2, identity.ClassShortName, identity.ClassColorHex, classPosition,
@@ -1200,6 +1236,9 @@ public class TelemetryReader : IDisposable
             if (lap > 0) currentLap = lap;
             if (_raceEstimate is { } estimate) { totalLaps = estimate.TotalLaps; totalEstimated = estimate.IsEstimate; totalProjected = estimate.ProjectedTotalLaps; }
             else if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
+            // Race over: the real length (Kapps "R 13/12" in the cool-down), no projection.
+            if (_finalResults.Count > 0 && FinalResults.TotalLaps(_finalResults.Values) is int finalLaps)
+            { totalLaps = finalLaps; totalEstimated = false; totalProjected = null; }
         }
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
