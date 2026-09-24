@@ -1542,6 +1542,7 @@ public class TelemetryReader : IDisposable
 
             // Race length (lap- or time-limited) from live channels.
             _raceEstimate = null;
+            double? playerProgressNow = null;
             if (_isRaceSession)
             {
                 int? lapsLimit = null;
@@ -1560,7 +1561,7 @@ public class TelemetryReader : IDisposable
                 for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
                 {
                     if (RaceLapEstimator.Progress(_sdk.Data.GetInt("CarIdxLapCompleted", idx), _sdk.Data.GetFloat("CarIdxLapDistPct", idx)) is not double progress) continue;
-                    if (idx == _playerCarIdx) player = progress;
+                    if (idx == _playerCarIdx) { player = progress; playerProgressNow = progress; }
                     if (progress > leader && !IsPaceCar(idx)) { leader = progress; leaderIdx = idx; }
                 }
                 _leaderLap = leaderIdx >= 0 ? _sdk.Data.GetInt("CarIdxLap", leaderIdx) : 0;
@@ -1626,7 +1627,8 @@ public class TelemetryReader : IDisposable
             try { if ((_sdk.Data.GetInt("PitSvFlags") & PitSvFuelFill) != 0 && plannedPitFuel is double pf) plannedAdd = pf; } catch { }
             double? lapsInRace = _isRaceSession ? _raceEstimate?.ProjectedTotalLaps ?? _raceEstimate?.TotalLaps : null;
             double? qualifyRate = _qualifyFuelLaps.Count > 0 ? _qualifyFuelLaps.Average() : null;
-            var kapps = _kappsFuel.Update(lapCompleted, fuelLevel, lapsInRace, avgFuelPerLap, qualifyRate, _fuelTracker.LastLapUsed, plannedAdd);
+            int? playerFinal = _isRaceSession && _raceEstimate is { } raceEst && playerProgressNow is double pp ? (int)Math.Round(pp + raceEst.PlayerLapsRemaining) : null;
+            var kapps = _kappsFuel.Update(lapCompleted, fuelLevel, lapsInRace, avgFuelPerLap, qualifyRate, _fuelTracker.LastLapUsed, plannedAdd, playerFinal);
 
             FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull,
                 fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _fuelTracker.LastLapUsed, _fuelTracker.LastLapDirty,

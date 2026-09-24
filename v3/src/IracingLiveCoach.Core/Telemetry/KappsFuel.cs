@@ -24,8 +24,13 @@ public static class KappsFuel
     /// <summary>Empirical: Kapps budgets 0.24 lap beyond the last full lap (39.24 vs ceil 39, four laps, both rows).</summary>
     public const double FinishExtraLaps = 0.24;
 
-    public static double? LapsToGo(double? lapsInRace, int lapCompleted) =>
-        lapsInRace is double l && l > 0 ? Math.Max(0, Math.Ceiling(l - 1e-9) + FinishExtraLaps - Math.Max(0, lapCompleted)) : null;
+    /// <param name="playerFinalLaps">Whole laps the PLAYER will have completed at the flag (lapped-aware, RaceLapEstimator);
+    /// null = on the lead lap, i.e. ceil(Laps in Race). Kapps after a pit stop that cost laps: 27.24 to go, not ceil - lc.</param>
+    public static double? LapsToGo(double? lapsInRace, int lapCompleted, int? playerFinalLaps = null)
+    {
+        double? final = playerFinalLaps is int f && f > 0 ? f : lapsInRace is double l && l > 0 ? Math.Ceiling(l - 1e-9) : null;
+        return final is double fin ? Math.Max(0, fin + FinishExtraLaps - Math.Max(0, lapCompleted)) : null;
+    }
 
     public static KappsFuelRow Row(string label, double? perLap, double fuelAtLapStart, double? lapsToGo, double plannedAdd)
     {
@@ -46,21 +51,27 @@ public sealed class KappsFuelLatch
     private int _lap = int.MinValue;
     private double _fuelAtStart;
     private double? _lapsInRace;
+    private int? _playerFinal;
+    private double _lastFuel = double.NaN;
     private double? _avg, _qualify, _last;
 
     /// <param name="lapCompleted">Player's LapCompleted.</param>
     /// <param name="lapsInRace">Current race-length projection (only read when the lap changes, or while none is latched).</param>
     /// <param name="plannedAdd">PitSvFuel when the black box fuel fill is on, else 0.</param>
-    public KappsFuelPanel Update(int lapCompleted, double fuelLevel, double? lapsInRace, double? averagePerLap, double? qualifyPerLap, double? lastPerLap, double plannedAdd)
+    public KappsFuelPanel Update(int lapCompleted, double fuelLevel, double? lapsInRace, double? averagePerLap, double? qualifyPerLap, double? lastPerLap, double plannedAdd, int? playerFinalLaps = null)
     {
-        if (lapCompleted != _lap)
+        // A new lap -- or fuel going UP (refuelled in the pits: Kapps showed 57.84 / 2.199 = 26.30 right after the stop).
+        bool refuelled = !double.IsNaN(_lastFuel) && fuelLevel > _lastFuel + 0.3;
+        _lastFuel = fuelLevel;
+        if (lapCompleted != _lap || refuelled)
         {
-            _lap = lapCompleted; _fuelAtStart = fuelLevel; _lapsInRace = lapsInRace;
+            _lap = lapCompleted; _fuelAtStart = fuelLevel; _lapsInRace = lapsInRace; _playerFinal = playerFinalLaps;
             _avg = averagePerLap; _qualify = qualifyPerLap; _last = lastPerLap;
         }
+        _playerFinal ??= playerFinalLaps;
         // Values that were not known at the crossing are taken as soon as they appear.
         _lapsInRace ??= lapsInRace; _avg ??= averagePerLap; _qualify ??= qualifyPerLap; _last ??= lastPerLap;
-        var togo = KappsFuel.LapsToGo(_lapsInRace, _lap);
+        var togo = KappsFuel.LapsToGo(_lapsInRace, _lap, _playerFinal);
         return new KappsFuelPanel(fuelLevel, _lapsInRace,
         [
             KappsFuel.Row("Average", _avg, _fuelAtStart, togo, plannedAdd),
@@ -69,5 +80,5 @@ public sealed class KappsFuelLatch
         ]);
     }
 
-    public void Reset() { _lap = int.MinValue; _lapsInRace = null; _avg = _qualify = _last = null; }
+    public void Reset() { _lap = int.MinValue; _lapsInRace = null; _playerFinal = null; _lastFuel = double.NaN; _avg = _qualify = _last = null; }
 }

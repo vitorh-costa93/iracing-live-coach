@@ -57,4 +57,21 @@ public sealed class KappsFuelTests
         var n = KappsFuel.Row("Average", 2.2, 50, null, 0);
         Assert.NotNull(n.LapsRemain); Assert.Null(n.Refuel);
     }
+
+    [Fact]
+    public void Lapped_player_budgets_only_the_laps_they_will_really_drive()
+    {
+        Assert.Equal(39.24 - 9, KappsFuel.LapsToGo(38.25, 9)!.Value, 6);          // lead lap: ceil(LIR)
+        Assert.Equal(36.24 - 9, KappsFuel.LapsToGo(38.25, 9, playerFinalLaps: 36)!.Value, 6); // 3 laps down (Kapps 27.24)
+    }
+
+    [Fact]
+    public void Refuelling_in_the_pits_relatches_with_the_new_fuel()
+    {
+        var latch = new KappsFuelLatch();
+        latch.Update(9, 39.46, 38.25, 2.1992, 2.1866, 2.2, 0);
+        var after = latch.Update(9, 57.84, 38.25, 2.1992, 2.1866, 2.2, 0, playerFinalLaps: 36);
+        Assert.Equal(26.30, after.Rows[0].LapsRemain!.Value, 2);                 // Kapps 26.30
+        Assert.InRange(after.Rows[0].Refuel!.Value, 2.0, 2.1);                    // Kapps 2.06
+    }
 }
