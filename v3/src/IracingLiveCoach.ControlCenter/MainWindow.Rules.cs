@@ -80,11 +80,11 @@ public partial class MainWindow
     private void LoadNumberFormatIntoControls()
     {
         var config = _profileStore.NumberFormat ?? NumberFormatConfig.Default;
-        IRatingFormatBox.SelectedIndex = config.IRating == IRatingFormat.Thousands ? 1 : 0;
+        IRatingFormatBox.SelectedIndex = config.IRating switch { IRatingFormat.Plain => 1, IRatingFormat.Thousands => 2, _ => 0 };
         SafetyRatingFormatBox.SelectedIndex = config.SafetyRating switch { SafetyRatingFormat.NumberOnly => 1, SafetyRatingFormat.LetterOnly => 2, _ => 0 };
-        NameFormatBox.SelectedIndex = config.NameFormat == NameDisplayFormat.Abbreviated ? 1 : 0;
+        NameFormatBox.SelectedIndex = config.NameFormat switch { NameDisplayFormat.Abbreviated => 1, NameDisplayFormat.FirstLast => 2, _ => 0 };
         IRatingDeltaBox.IsChecked = config.ShowIRatingDelta;
-        NameExample.Text = NameFormatBox.SelectedIndex == 1 ? "V. Costa" : "Vitor Costa";
+        NameExample.Text = NameExampleTextFor(NameFormatBox.SelectedIndex);
         SyncDecimalsBox();
     }
 
@@ -100,16 +100,18 @@ public partial class MainWindow
     private void FormatsChanged(object sender, RoutedEventArgs e)
     {
         if (_suppressChangeEvents || !IsLoaded) return;
-        NameExample.Text = NameFormatBox.SelectedIndex == 1 ? "V. Costa" : "Vitor Costa";
+        NameExample.Text = NameExampleTextFor(NameFormatBox.SelectedIndex);
         Debounce("formats", ApplyNumberFormat, 100);
     }
+
+    private static string NameExampleTextFor(int selectedIndex) => selectedIndex switch { 1 => "V. Costa", 2 => "Vitor Costa", _ => "Vitor Hugo Da Costa" };
 
     private async void ApplyNumberFormat()
     {
         var config = new NumberFormatConfig(
-            IRatingFormatBox.SelectedIndex == 1 ? IRatingFormat.Thousands : IRatingFormat.Full,
+            IRatingFormatBox.SelectedIndex switch { 1 => IRatingFormat.Plain, 2 => IRatingFormat.Thousands, _ => IRatingFormat.Full },
             SafetyRatingFormatBox.SelectedIndex switch { 1 => SafetyRatingFormat.NumberOnly, 2 => SafetyRatingFormat.LetterOnly, _ => SafetyRatingFormat.LetterAndNumber },
-            NameFormatBox.SelectedIndex == 1 ? NameDisplayFormat.Abbreviated : NameDisplayFormat.Full,
+            NameFormatBox.SelectedIndex switch { 1 => NameDisplayFormat.Abbreviated, 2 => NameDisplayFormat.FirstLast, _ => NameDisplayFormat.Full },
             IRatingDeltaBox.IsChecked == true);
         _profileStore.NumberFormat = config;
         _previewHost?.ApplyProfile(_profileStore);

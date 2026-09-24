@@ -136,16 +136,24 @@ public sealed unsafe class StandingsWidget : IDisposable
     private bool _hasPit;
     private readonly Dictionary<(string, int), string> _nameFit = new();
 
-    /// <summary>Tracks whether any car in the data publishes push-to-pass; re-lays the columns out
-    /// when that changes (render thread, before the frame's widths are read).</summary>
+    /// <summary>Item 9: same one-way latch as RelativeWidget's own SyncP2PColumn -- once any row in
+    /// this frame's FULL field (this method always receives the whole selectable set, never a
+    /// windowed subset) publishes push-to-pass data, the Overtake column stays reserved for the
+    /// rest of the session; it is a per-session decision, never re-evaluated downward per frame.
+    /// Pit keeps its own, separate (two-way) rule -- only the Overtake column has the "must never
+    /// collapse mid-session" requirement.</summary>
     private void SyncP2PColumn(IEnumerable<StandingsRow> rows)
     {
-        bool has = rows.Any(r => r.P2PActive is not null);
-        bool pit = rows.Any(r => !string.IsNullOrEmpty(r.PitStatus));
-        if (has == _hasP2P && pit == _hasPit) return;
-        _hasP2P = has;
+        var list = rows as IReadOnlyCollection<StandingsRow> ?? rows.ToList();
+        bool pit = list.Any(r => !string.IsNullOrEmpty(r.PitStatus));
+        bool changed = pit != _hasPit;
         _hasPit = pit;
-        RebuildEffectiveColumns();
+        if (!_hasP2P && list.Any(r => r.P2PActive is not null))
+        {
+            _hasP2P = true;
+            changed = true;
+        }
+        if (changed) RebuildEffectiveColumns();
     }
 
     /// <summary>The weight to use for a text format: the widget's own choice unless the appearance
@@ -531,12 +539,15 @@ public sealed unsafe class StandingsWidget : IDisposable
                 }
                 case "lapDelta":
                 {
-                    // Negative = this driver faster than the player (spec §6's sign convention),
-                    // colored green/red; player's own row always shows a neutral 0.000.
-                    var deltaColor = PaletteTokens.TextPrimary; // mockups: plain white, sign carries the meaning
+                    // Item 8: no explicit +/- sign -- the magnitude is shown, colour carries the
+                    // direction. Negative = this driver was faster than the player last lap (green);
+                    // positive = slower (red); zero, unknown, or the player's own row stays neutral.
                     double? deltaValue = row.IsPlayer ? 0.0 : row.LapDeltaVsPlayerSeconds;
+                    var deltaColor = !row.IsPlayer && deltaValue is double d && d != 0.0
+                        ? (d < 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)
+                        : PaletteTokens.NeutralDeltaOrGap;
                     DrawNumericOrDash(dc, cellX, y, cellWidth, deltaValue,
-                        v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture),
+                        v => Math.Abs(v).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture),
                         deltaColor, placement.Column.Alignment);
                     break;
                 }
@@ -682,14 +693,39 @@ public sealed unsafe class StandingsWidget : IDisposable
         numeric->SetTextAlignment(TextAlignment.Trailing);
     }
 
+    /// <summary>The iRating pill's shared fill/border chrome (spec §6: dark, outlined, rounded) --
+    /// item 13 reuses exactly this so the Relative widget's own iRating column never redraws its
+    /// own copy of the pill background.</summary>
+    internal static void DrawIRatingPillBackground(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, RectF pill)
+    {
+        PanelChrome.FillPanel(dc, brush, pill, PaletteTokens.PillFill, 5f);
+        PanelChrome.StrokePanel(dc, brush, pill, PaletteTokens.PillBorder, 1f, 5f);
+    }
+
+    /// <summary>Item 13: the Standings' own iRating pill, WITHOUT the projected-delta half -- used by
+    /// the Relative widget's narrower iRating column (no ΔiRating there, spec §7). Centered text,
+    /// "—" for an unknown rating (&lt;=1), same fill/border/rounding as <see cref="DrawIRatingBadge"/>.</summary>
+    internal static void DrawIRatingPillOnly(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, IDWriteTextFormat* statusFormat, RectF pill, int iRating, NumberFormatConfig format)
+    {
+        DrawIRatingPillBackground(dc, brush, pill);
+        Color4 textColor = iRating > 1 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled;
+        brush->SetColor(&textColor);
+        string text = iRating > 1 ? format.FormatIRating(iRating) : "—";
+        ThrowIfFailed(statusFormat->SetTextAlignment(TextAlignment.Center));
+        fixed (char* p = text)
+        {
+            var rect = pill;
+            dc->DrawText(p, (uint)text.Length, statusFormat, &rect, (ID2D1Brush*)brush, DrawTextOptions.None, MeasuringMode.Natural);
+        }
+    }
+
     private void DrawIRatingBadge(ID2D1DeviceContext* dc, Rect2D bounds, int iRating, double? estimatedDelta)
     {
         // Mockups: a dark, outlined pill -- "4.390" in white, the projected delta in green/red
         // inside the SAME pill (spec §6: never stacked).
         if (!_numberFormatConfig.ShowIRatingDelta) estimatedDelta = null;
         var pill = new RectF(bounds.X, bounds.Y, bounds.X + bounds.Width, bounds.Y + bounds.Height);
-        PanelChrome.FillPanel(dc, _brush.Get(), pill, PaletteTokens.PillFill, 5f);
-        PanelChrome.StrokePanel(dc, _brush.Get(), pill, PaletteTokens.PillBorder, 1f, 5f);
+        DrawIRatingPillBackground(dc, _brush.Get(), pill);
 
         if (iRating <= 1) estimatedDelta = null; // unknown rating: never a delta on top of a dash
         SetBrushColor(iRating > 1 ? PaletteTokens.TextPrimary : PaletteTokens.TextDisabled);

@@ -1,8 +1,11 @@
 namespace IracingLiveCoach.Core.Telemetry;
 
-/// <summary>iRating display format (spec §12: "formato de número para iRating"). Full is the exact
-/// SDK value ("4820"); Thousands is a compact "4.8k" reading, useful at small font scales.</summary>
-public enum IRatingFormat { Full, Thousands }
+/// <summary>iRating display format (spec §12: "formato de número para iRating"). Full is the SDK
+/// value grouped with a "." thousands separator ("4.390"); Thousands is a compact "4.4k" reading,
+/// useful at small font scales; Plain is the same raw value with NO separator ("4390"), added later
+/// (item 12) -- Full=0/Thousands=1 keep their existing numeric values so saved profiles never change
+/// meaning.</summary>
+public enum IRatingFormat { Full, Thousands, Plain }
 
 /// <summary>Safety Rating display format (spec §12: "formato de número para... Safety Rating").
 /// iRacing's own SDK reports SR as a combined "letter class + number" string (e.g. "A 4.12");
@@ -20,6 +23,7 @@ public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingForma
     public string FormatIRating(int iRating) => IRating switch
     {
         IRatingFormat.Thousands => (iRating / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k",
+        IRatingFormat.Plain => iRating.ToString(System.Globalization.CultureInfo.InvariantCulture),
         _ => GroupThousands(iRating),
     };
 

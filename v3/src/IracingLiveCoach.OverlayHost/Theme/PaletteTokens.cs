@@ -89,6 +89,19 @@ public static class PaletteTokens
     /// <summary>Panel body behind the rows.</summary>
     public static readonly Color4 PanelBackground = Hex("#0A1520", 0.90f);
 
+    /// <summary>Radar-only background -- more translucent than <see cref="PanelBackground"/> (item
+    /// 11); never used by any other widget, so this can't change their look.</summary>
+    public static readonly Color4 RadarPanelBackground = Hex("#0A1520", 0.45f);
+
+    /// <summary>Radar side-bar track (item 11 / report_backend's radar section) -- represents the
+    /// player's own car length; dark, independent of the amber fill inside it.</summary>
+    public static readonly Color4 RadarSideBarTrack = Hex("#2A3440");
+
+    /// <summary>Radar side-bar fill -- the stretch of the player's car the side car covers, per
+    /// Core's <c>RadarSideOffsets.Fill</c>. Fixed amber, per the Kapps evidence print (no
+    /// proximity-based colour confirmed).</summary>
+    public static readonly Color4 RadarSideBarFill = Hex("#FFB624");
+
     /// <summary>Panel header band (a shade lighter than the body).</summary>
     public static readonly Color4 PanelHeaderBand = Hex("#10202F", 0.96f);
 

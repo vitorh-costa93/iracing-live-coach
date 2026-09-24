@@ -11,6 +11,8 @@ public class NumberFormatConfigTests
     [InlineData(IRatingFormat.Thousands, 4820, "4.8k")]
     [InlineData(IRatingFormat.Thousands, 1000, "1k")]
     [InlineData(IRatingFormat.Thousands, 940, "0.9k")]
+    [InlineData(IRatingFormat.Plain, 4820, "4820")]
+    [InlineData(IRatingFormat.Plain, 950, "950")]
     public void FormatIRating_follows_config(IRatingFormat format, int value, string expected)
     {
         var config = new NumberFormatConfig(format, SafetyRatingFormat.LetterAndNumber);
@@ -34,6 +36,9 @@ public class NumberFormatConfigTests
     [InlineData(NameDisplayFormat.Abbreviated, "Vitor Hugo Da Costa", "V. Costa")]
     [InlineData(NameDisplayFormat.Abbreviated, "Pace Car", "P. Car")]
     [InlineData(NameDisplayFormat.Abbreviated, "Madonna", "Madonna")]
+    [InlineData(NameDisplayFormat.FirstLast, "Vitor Hugo Da Costa", "Vitor Costa")]
+    [InlineData(NameDisplayFormat.FirstLast, "Pace Car", "Pace Car")]
+    [InlineData(NameDisplayFormat.FirstLast, "Madonna", "Madonna")]
     public void NameDisplay_formats_full_name(NameDisplayFormat format, string name, string expected)
     {
         Assert.Equal(expected, NameDisplay.Format(name, format));

@@ -56,7 +56,10 @@ public sealed unsafe class RelativeWidget : IDisposable
     private const float BrandColumnWidthDip = 34f;
     private const float NameColumnWidthDip = 118f;
     private const float LicenseColumnWidthDip = 56f;
-    private const float IRatingColumnWidthDip = 64f;
+    // Item 13: the Standings-style iRating pill, narrower than Standings' own combined iRating+Δ
+    // badge since this widget never shows a delta.
+    private const float IRatingColumnWidthDip = 54f;
+    private const float IRatingPillHeightDip = 24f;
     private const float GapColumnWidthDip = 70f;
     private const float OvertakeColumnWidthDip = 62f;
     private const float ColumnGapDip = 6f;
@@ -76,7 +79,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
         new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
         new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 6, DecimalPlaces: 3),
-        new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 7),
+        new("irating", ColumnWidthMode.Fixed, IRatingColumnWidthDip, IRatingColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 7),
         new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 8),
     ];
 
@@ -101,11 +104,18 @@ public sealed unsafe class RelativeWidget : IDisposable
     private bool _hasP2P;
     private readonly Dictionary<(string, int), string> _nameFit = new();
 
+    /// <summary>Item 9: the Overtake column's visibility is a per-SESSION decision, never a
+    /// per-frame one -- once any row (across the FULL field this widget received from
+    /// <see cref="TelemetryReader.FullRelativeUpdated"/>, not just the currently-windowed
+    /// ahead/behind subset) is seen publishing push-to-pass data, the column stays reserved for the
+    /// rest of the session. This is a one-way latch on purpose: a session that has push-to-pass
+    /// never "blinks off" because one frame's windowed rows happened to omit every car that reports
+    /// it, and a missing value on a single row never collapses the layout either.</summary>
     private void SyncP2PColumn(IEnumerable<RelativeRow> rows)
     {
-        bool has = rows.Any(r => r.P2PActive is not null);
-        if (has == _hasP2P) return;
-        _hasP2P = has;
+        if (_hasP2P) return;
+        if (!rows.Any(r => r.P2PActive is not null)) return;
+        _hasP2P = true;
         RebuildEffectiveColumns();
     }
 
@@ -217,12 +227,16 @@ public sealed unsafe class RelativeWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
+            SyncP2PColumn(simulated);
             DrawPanel(dc, x, y, simulated.Where(r => _relativeRules.Includes(r.PositionOffset)).ToList(), _simulatedSession, _simulatedPlayer);
             return;
         }
 
         List<RelativeRow> rows;
         lock (_lock) { rows = _rows; }
+        // Item 9: decide on the FULL field received this tick, before it gets windowed down to the
+        // configured ahead/behind rows below -- see SyncP2PColumn's own doc comment.
+        SyncP2PColumn(rows);
 
         if (!_telemetry.HasRecentTelemetry || rows.Count == 0)
         {
@@ -264,7 +278,8 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// a slot with no car is drawn as an empty row.</summary>
     private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
-        SyncP2PColumn(rows);
+        // P2P column visibility is already decided in Draw() from the full (unwindowed) field -- see
+        // SyncP2PColumn's doc comment for why that must not be redone here from this already-windowed subset.
         var slots = new List<RelativeRow?>();
         for (int offset = -_relativeRules.Ahead; offset <= _relativeRules.Behind; offset++)
             slots.Add(offset == 0 ? rows.FirstOrDefault(r => r.IsPlayer) : rows.FirstOrDefault(r => !r.IsPlayer && r.PositionOffset == offset));
@@ -395,10 +410,13 @@ public sealed unsafe class RelativeWidget : IDisposable
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
                     break;
                 case "irating":
-                    // iRating only -- no delta here (spec §7: "Não inclua ΔiRating neste widget").
-                    SetBrushColor(PaletteTokens.TextSecondary);
-                    DrawCell(dc, _numberFormatConfig.FormatIRating(row.IRating), cellX, y, cellWidth, placement.Column.Alignment);
+                {
+                    // Item 13: the same Standings-style pill, without the ΔiRating half (spec §7:
+                    // "Não inclua ΔiRating neste widget") and at this widget's narrower column width.
+                    var pill = new RectF(cellX, y + (RowHeightDip - IRatingPillHeightDip) / 2, cellX + cellWidth, y + (RowHeightDip + IRatingPillHeightDip) / 2);
+                    StandingsWidget.DrawIRatingPillOnly(dc, _brush.Get(), _statusFormat.Get(), pill, row.IRating, _numberFormatConfig);
                     break;
+                }
                 case "gap":
                     // Player's own row always shows a neutral 0.000, never a computed value.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.TextSecondary : PaletteTokens.TextPrimary);

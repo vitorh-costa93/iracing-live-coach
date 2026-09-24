@@ -461,6 +461,7 @@
                                     <TextBlock Text="iRating" Style="{StaticResource SmallLabel}"/>
                                     <ComboBox x:Name="IRatingFormatBox" FontSize="14" MinHeight="34" SelectionChanged="FormatsChanged">
                                         <ComboBoxItem Content="3.694 (padrão)"/>
+                                        <ComboBoxItem Content="3694"/>
                                         <ComboBoxItem Content="3.7k"/>
                                     </ComboBox>
                                 </StackPanel>
@@ -488,8 +489,9 @@
                                 <StackPanel Margin="0,0,7,0">
                                     <TextBlock Text="Formato de nomes" Style="{StaticResource SmallLabel}"/>
                                     <ComboBox x:Name="NameFormatBox" FontSize="14" MinHeight="34" SelectionChanged="FormatsChanged">
-                                        <ComboBoxItem Content="Nome Sobrenome"/>
+                                        <ComboBoxItem Content="Nome completo"/>
                                         <ComboBoxItem Content="N. Sobrenome"/>
+                                        <ComboBoxItem Content="Nome + Sobrenome"/>
                                     </ComboBox>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom" Margin="8,0,0,7">

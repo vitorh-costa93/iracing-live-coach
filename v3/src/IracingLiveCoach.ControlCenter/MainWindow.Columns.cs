@@ -67,12 +67,12 @@ public partial class MainWindow
         switch (column.Key)
         {
             case "name":
-                return (["Nome Sobrenome", "N. Sobrenome"], NameFormatBox.SelectedIndex, i => NameFormatBox.SelectedIndex = i);
+                return (["Nome completo", "N. Sobrenome", "Nome + Sobrenome"], NameFormatBox.SelectedIndex, i => NameFormatBox.SelectedIndex = i);
             case "license":
                 return (["A 3.49", "3.49", "A"], SafetyRatingFormatBox.SelectedIndex, i => SafetyRatingFormatBox.SelectedIndex = i);
             case "iratingDelta":
             case "irating":
-                return (["3.694", "3.7k"], IRatingFormatBox.SelectedIndex, i => IRatingFormatBox.SelectedIndex = i);
+                return (["3.694", "3694", "3.7k"], IRatingFormatBox.SelectedIndex, i => IRatingFormatBox.SelectedIndex = i);
             case "interval": case "gap": case "lapDelta":
                 return (["+0.000", "+0.00", "+0.0", "+0"], 3 - Math.Clamp(column.DecimalPlaces ?? 3, 0, 3), i => SetDecimals(column.Key, 3 - i));
             case "lastLap":
