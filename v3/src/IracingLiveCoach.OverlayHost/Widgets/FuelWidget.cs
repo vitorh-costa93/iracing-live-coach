@@ -191,8 +191,8 @@ public sealed unsafe class FuelWidget : IDisposable
         PanelChrome.StrokePanel(dc, _brush.Get(), outline, PaletteTokens.PanelBorder);
     }
 
-    /// <summary>Kapps prints every fuel figure with two decimals ("25.92", "0.00"); "—" when unknown.</summary>
-    private static string Two(double? value) => value is double v ? v.ToString("0.00", CultureInfo.InvariantCulture) : "—";
+    /// <summary>Kapps prints every fuel figure with two decimals ("25.92", "0.00"); "--.--" when unknown (an invalid last lap).</summary>
+    private static string Two(double? value) => value is double v ? v.ToString("0.00", CultureInfo.InvariantCulture) : "--.--";
 
     /// <summary>Size of the last frame (the overlay auto-fits the window to it).</summary>
     public (float Width, float Height) LastDrawnSize { get; private set; } = (WidthDip, PanelHeightDip);
