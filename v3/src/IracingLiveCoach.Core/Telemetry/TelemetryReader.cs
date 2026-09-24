@@ -62,7 +62,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null, double? RaceLapsRemaining = null, int? RaceTotalLaps = null, bool RaceLapsEstimated = false, bool AverageFromHistory = false);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null, double? RaceLapsRemaining = null, int? RaceTotalLaps = null, bool RaceLapsEstimated = false, bool AverageFromHistory = false, double? PlayerLapDistPct = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -1359,6 +1359,8 @@ public class TelemetryReader : IDisposable
                 FuelHistory.Value.Put(_carId, _trackId, learned, _fuelTracker.AverageLapTime);
 
             double? avgFuelPerLap = _fuelTracker.AverageFuel;
+            double? playerLapDistPct = null;
+            try { var pct = _sdk.Data.GetFloat("LapDistPct"); if (pct >= 0) playerLapDistPct = pct; } catch { }
             double? avgLapTime = _fuelTracker.AverageLapTime ?? (lastLapTime > 0 ? lastLapTime : _estimatedLapTime);
             double? lapsRemaining = avgFuelPerLap is double perLap && perLap > 0 ? fuelLevel / perLap : null;
             double? timeRemaining = lapsRemaining is double laps && avgLapTime is double lapTime2 ? laps * lapTime2 : null;
@@ -1427,7 +1429,7 @@ public class TelemetryReader : IDisposable
             FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull,
                 fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _fuelTracker.LastLapUsed, _fuelTracker.LastLapDirty,
                 _fuelTracker.MaxFuel, avgLapTime, _raceEstimate?.PlayerLapsRemaining, _raceEstimate?.TotalLaps, _raceEstimate?.IsEstimate ?? false,
-                _fuelTracker.AverageIsFromHistory));
+                _fuelTracker.AverageIsFromHistory, playerLapDistPct));
         }
         catch
         {

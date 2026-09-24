@@ -150,7 +150,8 @@ public sealed unsafe class FuelWidget : IDisposable
         // reserve subtracted from the displayed autonomy (never negative: a driver already below the
         // reserve needs "0.0 laps", not a confusing negative number).
         double? litersPerLap = ResolveLitersPerLap(status!);
-        double? rawLapsRemaining = litersPerLap is double perLap and > 0 ? status!.FuelLevelLiters / perLap : null;
+        // Kapps' "Laps Remain": counted from the start of the lap in progress (FuelLapsRemain).
+        double? rawLapsRemaining = FuelLapsRemain.Compute(status!.FuelLevelLiters, litersPerLap, status.PlayerLapDistPct);
         double? fuelLaps = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
         double? raceLapsLeft = status!.RaceLapsRemaining;
 
