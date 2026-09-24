@@ -22,7 +22,7 @@ public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingForma
     /// <summary>Formats a raw iRating value per this config.</summary>
     public string FormatIRating(int iRating) => IRating switch
     {
-        IRatingFormat.Thousands => (iRating / 1000.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k",
+        IRatingFormat.Thousands => LicenseStyle.KappsIRating(iRating), // Kapps: "3.4k" truncated, "0.0k"
         IRatingFormat.Plain => iRating.ToString(System.Globalization.CultureInfo.InvariantCulture),
         _ => GroupThousands(iRating),
     };
@@ -44,11 +44,13 @@ public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingForma
         int spaceIdx = sdkLicString.IndexOf(' ');
         string letter = spaceIdx < 0 ? sdkLicString : sdkLicString[..spaceIdx];
         string number = spaceIdx < 0 ? "" : sdkLicString[(spaceIdx + 1)..];
+        // Kapps: letter + SR truncated to one decimal, no space ("A1.4"); number-only keeps the same rule.
+        var (_, sr) = LicenseStyle.Split(sdkLicString);
         return SafetyRating switch
         {
-            SafetyRatingFormat.NumberOnly => number.Length > 0 ? number : sdkLicString,
+            SafetyRatingFormat.NumberOnly => sr is double v ? LicenseStyle.TruncatedOneDecimal(v) : (number.Length > 0 ? number : sdkLicString),
             SafetyRatingFormat.LetterOnly => letter,
-            _ => sdkLicString,
+            _ => LicenseStyle.KappsLicense(sdkLicString),
         };
     }
 }

@@ -467,7 +467,9 @@ public sealed unsafe class RelativeWidget : IDisposable
     private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, float width, string license, string? colorHex)
     {
         // Mockups: a solid blue rounded pill with bold white "A 4.12".
-        var color = ParseHexOrFallback(colorHex, PaletteTokens.SrPillBlue);
+        // Kapps colours the pill by the licence letter (LicenseStyle); the SDK's LicColor is a decimal
+        // number, not "#RRGGBB", and rendered the AI's "R" blue.
+        var color = ParseHexOrFallback(LicenseStyle.ColorHex(license) ?? colorHex, PaletteTokens.SrPillBlue);
         const float pillHeight = 24f;
         var pill = new RectF(x, y + (RowHeightDip - pillHeight) / 2, x + width, y + (RowHeightDip + pillHeight) / 2);
         PanelChrome.FillPanel(dc, _brush.Get(), pill, color, 5f);
