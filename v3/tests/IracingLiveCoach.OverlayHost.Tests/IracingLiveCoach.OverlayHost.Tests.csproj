@@ -31,6 +31,7 @@
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetPlacement.cs" Link="Layout\WidgetPlacement.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\EditModeHitTester.cs" Link="Layout\EditModeHitTester.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\ColumnFitter.cs" Link="Layout\ColumnFitter.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\ColumnDefaults.cs" Link="Layout\ColumnDefaults.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Persistence\ProfileFiles.cs" Link="Persistence\ProfileFiles.cs" />
   </ItemGroup>
 

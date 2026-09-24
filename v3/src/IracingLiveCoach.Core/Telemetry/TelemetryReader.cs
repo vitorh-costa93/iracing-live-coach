@@ -37,12 +37,14 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
 public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, string CarNumber = "", int ClassRank = 0,
-    int? StartPosition = null, int? PositionChange = null, int? IntervalLaps = null, double? BestLapTime = null, bool InPitLane = false);
+    int? StartPosition = null, int? PositionChange = null, int? IntervalLaps = null, double? BestLapTime = null, bool InPitLane = false, bool TimedOrder = false);
 // StartPosition/PositionChange: class grid slot and places gained (+) / lost (-) since the start -- race
 // only, see StartingGrid. IntervalLaps: the car ahead in class is this many whole laps up the road
 // (IntervalSeconds is then null) -- Kapps' "1L". BestLapTime: the car's best lap (practice/qualifying
 // order). InPitLane: live CarIdxOnPitRoad (Kapps tags such a row "PIT"), independent of PitStatus,
-// which only reports real stops during a green race (see PitStopTracker).
+// which only reports real stops during a green race (see PitStopTracker). TimedOrder: the rows are ordered by
+// best lap (practice/qualifying, or a race's pre-green grid) -- intervals are best-lap differences and the lap
+// column shows the best lap (see StandingsCellText).
 
 /// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
@@ -195,6 +197,10 @@ public class TelemetryReader : IDisposable
     /// <summary>CarIdx -> 1-based overall grid slot of the current race (see StartingGrid).</summary>
     private Dictionary<int, int> _grid = new();
     private string _gridSource = "";
+    /// <summary>CarIdx -> qualifying best lap of the grid source (Kapps shows these before the green).</summary>
+    private Dictionary<int, double> _gridBestLap = new();
+    /// <summary>Live SessionState, refreshed every tick by CheckSessionChange.</summary>
+    private int _sessionState;
     private readonly Dictionary<int, int> _preGreenGrid = new();
     /// <summary>Class id -> CarClassEstLapTime, the reference lap CarIdxEstTime is measured on.</summary>
     private Dictionary<int, double> _classLapTimeById = new();
@@ -739,13 +745,14 @@ public class TelemetryReader : IDisposable
     /// pre-green CarIdxPosition sample is the last resort, used by UpdateStandings.</summary>
     private void RefreshStartingGrid(IRacingSdkSessionInfo? sessionInfo, IRacingSdkSessionInfo.SessionInfoModel.SessionModel? session)
     {
-        if (!_isRaceSession) { _grid = new(); _gridSource = ""; return; }
+        if (!_isRaceSession) { _grid = new(); _gridSource = ""; _gridBestLap = new(); return; }
         try
         {
             var fromRace = session?.QualifyPositions;
             if (fromRace is { Count: > 0 })
             {
                 _grid = StartingGrid.Normalize(fromRace.Select(q => (q.CarIdx, q.Position)));
+                _gridBestLap = fromRace.Where(q => q.FastestTime > 0).GroupBy(q => q.CarIdx).ToDictionary(g => g.Key, g => (double)g.First().FastestTime);
                 _gridSource = "race.QualifyPositions";
                 return;
             }
@@ -753,6 +760,7 @@ public class TelemetryReader : IDisposable
             if (fromQualify is { Count: > 0 })
             {
                 _grid = StartingGrid.Normalize(fromQualify.Select(q => (q.CarIdx, q.Position)));
+                _gridBestLap = fromQualify.Where(q => q.FastestTime > 0).GroupBy(q => q.CarIdx).ToDictionary(g => g.Key, g => (double)g.First().FastestTime);
                 _gridSource = "QualifyResultsInfo";
                 return;
             }
@@ -766,6 +774,7 @@ public class TelemetryReader : IDisposable
     {
         try
         {
+            try { _sessionState = _sdk.Data.GetInt("SessionState"); } catch { }
             var key = new SessionKey(_sdk.Data.GetInt("SessionUniqueID"), _sdk.Data.GetInt("SessionNum"));
             if (_sessionKey == key) return;
             bool first = _sessionKey is null;
@@ -782,6 +791,7 @@ public class TelemetryReader : IDisposable
         _preGreenGrid.Clear();
         _grid = new();
         _gridSource = "";
+        _gridBestLap = new();
         _bestLapTimeSeconds = null;
         _finishDetector.Reset();
     }
@@ -799,17 +809,25 @@ public class TelemetryReader : IDisposable
     /// unknown session: the live order on track (ComputeLivePositions).</summary>
     private bool IsTimedSession => _sessionKind is SessionKind.Practice or SessionKind.Qualify;
 
+    /// <summary>A race before the green (get in car / warm-up / parade laps) with a known grid. Kapps then
+    /// lists the GRID order with the qualifying laps (verified live, Watkins Glen 24/09/2026: order, best
+    /// laps and intervals were the qualifying classification while the pace car led the field), and
+    /// CarIdxPosition is 0 for everyone during the parade lap, so the live order would be meaningless.</summary>
+    private bool IsPreGreenGrid => _isRaceSession && _sessionState is > 0 and < SessionStateRacingState && _grid.Count > 0;
+
     private LivePositions ComputePositions()
     {
-        if (!IsTimedSession) return ComputeLivePositions();
+        bool preGreen = IsPreGreenGrid;
+        if (!IsTimedSession && !preGreen) return ComputeLivePositions();
         var cars = new List<TimedCar>();
         for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
         {
-            var position = _sdk.Data.GetInt("CarIdxPosition", idx);
+            var position = preGreen ? (_grid.TryGetValue(idx, out var slot) ? slot : 0) : _sdk.Data.GetInt("CarIdxPosition", idx);
             var inWorld = _sdk.Data.GetFloat("CarIdxLapDistPct", idx) >= 0;
             if (position <= 0 && !inWorld) continue;
             if (IsPaceCar(idx)) continue;
-            cars.Add(new TimedCar(idx, _sdk.Data.GetInt("CarIdxClass", idx), position, _sdk.Data.GetInt("CarIdxClassPosition", idx), inWorld));
+            // Pre-green: class slots are ranked from the overall grid inside TimedSessionOrder (ClassPosition 0).
+            cars.Add(new TimedCar(idx, _sdk.Data.GetInt("CarIdxClass", idx), position, preGreen ? 0 : _sdk.Data.GetInt("CarIdxClassPosition", idx), inWorld));
         }
         var (overall, byClass) = TimedSessionOrder.Compute(cars);
         return new LivePositions(overall, byClass);
@@ -1032,7 +1050,8 @@ public class TelemetryReader : IDisposable
 
             var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
             double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
-            bool timed = IsTimedSession;
+            bool preGreenGrid = IsPreGreenGrid;
+            bool timed = IsTimedSession || preGreenGrid;
             int sessionState = 0;
             try { sessionState = _sdk.Data.GetInt("SessionState"); } catch { }
             bool stopsCount = _isRaceSession && sessionState == SessionStateRacingState;
@@ -1055,11 +1074,12 @@ public class TelemetryReader : IDisposable
                 double? best = null;
                 try { var b = _sdk.Data.GetFloat("CarIdxBestLapTime", idx); if (b > 0) best = b; } catch { }
                 if (timed && f2 is > 0) best = f2;
+                if (preGreenGrid) best = _gridBestLap.TryGetValue(idx, out var qualifyLap) ? qualifyLap : null;
 
                 double? estTime = null;
                 try { var e = _sdk.Data.GetFloat("CarIdxEstTime", idx); if (e >= 0) estTime = e; } catch { }
                 var pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                double? progress = pct >= 0 ? Math.Max(0, _sdk.Data.GetInt("CarIdxLapCompleted", idx)) + pct : null;
+                double? progress = RaceLapEstimator.Progress(_sdk.Data.GetInt("CarIdxLapCompleted", idx), pct);
 
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
                 var onPitRoad = false;
@@ -1140,7 +1160,7 @@ public class TelemetryReader : IDisposable
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
                     r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval.Seconds,
                     r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus, r.CarNumber, r.ClassRank,
-                    start, change, interval.Laps, r.BestLap, r.OnPitRoad));
+                    start, change, interval.Laps, r.BestLap, r.OnPitRoad, timed));
             }
 
             StandingsUpdated?.Invoke(rows);
@@ -1350,14 +1370,19 @@ public class TelemetryReader : IDisposable
                 int? lapsLimit = null;
                 double? timeLeft = null;
                 try { lapsLimit = _sdk.Data.GetInt("SessionLapsTotal"); } catch { }
-                try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t >= 0) timeLeft = t; } catch { }
+                try
+                {
+                    double? remain = _sdk.Data.GetDouble("SessionTimeRemain");
+                    double? total = null;
+                    try { total = _sdk.Data.GetDouble("SessionTimeTotal"); } catch { }
+                    timeLeft = RaceLapEstimator.RaceTimeRemaining(_sdk.Data.GetInt("SessionState"), remain, total);
+                }
+                catch { }
                 double leader = 0, player = 0;
                 int leaderIdx = -1;
                 for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
                 {
-                    float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                    if (pct < 0) continue;
-                    double progress = Math.Max(0, _sdk.Data.GetInt("CarIdxLapCompleted", idx)) + pct;
+                    if (RaceLapEstimator.Progress(_sdk.Data.GetInt("CarIdxLapCompleted", idx), _sdk.Data.GetFloat("CarIdxLapDistPct", idx)) is not double progress) continue;
                     if (idx == _playerCarIdx) player = progress;
                     if (progress > leader && !IsPaceCar(idx)) { leader = progress; leaderIdx = idx; }
                 }

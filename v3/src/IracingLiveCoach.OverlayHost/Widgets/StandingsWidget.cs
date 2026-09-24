@@ -58,6 +58,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float ClassStripWidthDip = 4f;
     private const float PositionColumnWidthDip = 30f;
     private const float CarNumberColumnWidthDip = 44f;
+    private const float PositionChangeColumnWidthDip = 40f;
     private const float NameColumnWidthDip = 152f;
     private const float LicenseColumnWidthDip = 56f;
     private const float FlagColumnWidthDip = 30f;
@@ -87,25 +88,32 @@ public sealed unsafe class StandingsWidget : IDisposable
     public static List<ColumnDefinition> BuildDefaultColumns() =>
     [
         new("position", ColumnWidthMode.Fixed, PositionColumnWidthDip, PositionColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 0),
-        new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
-        new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
-        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 3),
-        new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 4),
-        new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 5),
-        new("iratingDelta", ColumnWidthMode.Fixed, BadgeWidthDip, BadgeWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 6),
-        new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 7, DecimalPlaces: 3),
-        new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
-        new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
-        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 10),
-        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 11, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 12),
+        // Kapps: chevron + places gained/lost since the start, right after the position (race only; blank
+        // when unchanged or outside a race).
+        new("posChange", ColumnWidthMode.Fixed, PositionChangeColumnWidthDip, PositionChangeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 1),
+        new("carNumber", ColumnWidthMode.Fixed, CarNumberColumnWidthDip, CarNumberColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 2),
+        new("brand", ColumnWidthMode.Fixed, BrandColumnWidthDip, BrandColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 3),
+        new("flag", ColumnWidthMode.Fixed, FlagColumnWidthDip, FlagColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 4),
+        new("name", ColumnWidthMode.Flexible, NameColumnWidthDip, 60f, ColumnAlignment.Left, 0, ColumnGapDip, true, 5),
+        new("license", ColumnWidthMode.Fixed, LicenseColumnWidthDip, LicenseColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 6),
+        new("iratingDelta", ColumnWidthMode.Fixed, BadgeWidthDip, BadgeWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 7),
+        new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
+        new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
+        new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 10, DecimalPlaces: 3),
+        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 11),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 12, DecimalPlaces: 3),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 13),
     ];
+
+    /// <summary>Old saved profiles gain columns added later (posChange) -- see ColumnDefaults.</summary>
+    public static List<ColumnDefinition> WithMissingDefaults(List<ColumnDefinition> columns) =>
+        ColumnDefaults.MergeMissing(columns, BuildDefaultColumns());
 
     /// <summary>Spec §12: every column-config change (reorder/width/visibility/decimals/alignment)
     /// applies live, no restart. Called from the Control Center's IPC handler.</summary>
     public void SetColumns(List<ColumnDefinition> columns)
     {
-        _columns = columns;
+        _columns = WithMissingDefaults(columns);
         RebuildEffectiveColumns();
     }
 
@@ -447,6 +455,9 @@ public sealed unsafe class StandingsWidget : IDisposable
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
                     DrawCell(dc, (row.ClassPosition > 0 ? row.ClassPosition : row.Position).ToString(CultureInfo.InvariantCulture), cellX, y, cellWidth, ColumnAlignment.Center);
                     break;
+                case "posChange":
+                    DrawPositionChange(dc, cellX, y, cellWidth, row.PositionChange);
+                    break;
                 case "carNumber":
                     // Car number is the real SDK DriverInfo.CarNumber, kept separate from CarIdx and
                     // from the rendered row index. Preserve source leading zeroes; explicit # prefix.
@@ -503,16 +514,21 @@ public sealed unsafe class StandingsWidget : IDisposable
                         PaletteTokens.TextSecondary, placement.Column.Alignment);
                     break;
                 case "interval":
-                    // Never derived from gap-to-leader; a missing SDK value stays an explicit dash.
-                    DrawNumericOrDash(dc, cellX, y, cellWidth, row.IntervalSeconds,
-                        v => v.ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: true), CultureInfo.InvariantCulture),
-                        PaletteTokens.TextPrimary, placement.Column.Alignment);
+                {
+                    // Kapps format (StandingsCellText): "INT" on the class leader, "1L", "1.5" in a race,
+                    // "0.161" by best lap; a missing value stays an explicit dash.
+                    string text = StandingsCellText.Interval(row);
+                    DrawTextCell(dc, cellX, y, cellWidth, text, text == "—" ? PaletteTokens.TextDisabled : PaletteTokens.TextPrimary, placement.Column.Alignment);
                     break;
+                }
                 case "lastLap":
-                    DrawNumericOrDash(dc, cellX, y, cellWidth, row.LastLapTime,
-                        v => LapTimeFormatting.Format(v, placement.Column.DecimalPlaces ?? 3),
-                        PaletteTokens.TextPrimary, placement.Column.Alignment);
+                {
+                    // Kapps (StandingsCellText.LapText): last lap in a race with 1 decimal, best lap with 3
+                    // when ordered by best lap; truncated.
+                    string lapText = StandingsCellText.LapText(row);
+                    DrawTextCell(dc, cellX, y, cellWidth, lapText, lapText == "—" ? PaletteTokens.TextDisabled : PaletteTokens.TextPrimary, placement.Column.Alignment);
                     break;
+                }
                 case "lapDelta":
                 {
                     // Negative = this driver faster than the player (spec §6's sign convention),
@@ -582,6 +598,33 @@ public sealed unsafe class StandingsWidget : IDisposable
             dc->DrawText(p, (uint)text.Length, _numericFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
         ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing)); // restore this format's default for the next call
+    }
+
+    private void DrawTextCell(ID2D1DeviceContext* dc, float x, float y, float widthDip, string text, Color4 color, ColumnAlignment alignment)
+    {
+        SetBrushColor(color);
+        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        fixed (char* p = text)
+        {
+            var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
+            dc->DrawText(p, (uint)text.Length, _numericFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+        }
+        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+    }
+
+    /// <summary>Kapps' positions gained/lost: a chevron (green up / red down) followed by the number in the
+    /// same colour; nothing when unchanged or unknown. The chevron is drawn as two strokes (no glyph
+    /// dependency on the bundled font).</summary>
+    private void DrawPositionChange(ID2D1DeviceContext* dc, float x, float y, float width, int? change)
+    {
+        var (trend, number) = StandingsCellText.PositionChange(change);
+        if (trend == PositionTrend.None) return;
+        var color = trend == PositionTrend.Up ? PaletteTokens.PositiveDelta : PaletteTokens.NegativeDelta;
+        SetBrushColor(color);
+        float cx = x + 9f, cy = y + RowHeightDip / 2f, half = 5f, rise = trend == PositionTrend.Up ? -3f : 3f;
+        dc->DrawLine(new System.Numerics.Vector2(cx - half, cy - rise), new System.Numerics.Vector2(cx, cy + rise), (ID2D1Brush*)_brush.Get(), 2.4f, null);
+        dc->DrawLine(new System.Numerics.Vector2(cx, cy + rise), new System.Numerics.Vector2(cx + half, cy - rise), (ID2D1Brush*)_brush.Get(), 2.4f, null);
+        DrawTextCell(dc, x + 16f, y, width - 16f, number, color, ColumnAlignment.Center);
     }
 
     private readonly record struct Rect2D(float X, float Y, float Width, float Height);

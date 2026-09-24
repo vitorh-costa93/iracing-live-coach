@@ -21,6 +21,25 @@ public static class RaceLapEstimator
     /// <summary>iRacing reports 32767 laps for a session with no lap limit.</summary>
     public const int UnlimitedLaps = 32767;
 
+    /// <summary>Race distance covered by a car: CarIdxLapCompleted + CarIdxLapDistPct, never negative. On
+    /// the grid iRacing reports LapCompleted = -1 with the car just short of the line (pct ~0.99), which is
+    /// -0.01 laps, i.e. 0 -- not the ~1 lap that max(0, LapCompleted) + pct would give (verified live on the
+    /// Watkins Glen grid, 24/09/2026). Null when the car is not in the world (pct &lt; 0).</summary>
+    public static double? Progress(int lapCompleted, double lapDistPct) =>
+        lapDistPct < 0 ? null : Math.Max(0, lapCompleted + lapDistPct);
+
+    /// <summary>The race clock to project on. Before the green (SessionState &lt; Racing: get in car, warm-up,
+    /// parade laps) SessionTimeRemain is the COUNTDOWN to the start -- verified live, Watkins Glen 20-min race
+    /// 24/09/2026: SessionState 1, SessionTimeRemain 48 s, SessionTimeTotal 1200 s -- so the whole race
+    /// length (SessionTimeTotal) is used instead. From the green on, SessionTimeRemain. Null/negative = none.</summary>
+    public static double? RaceTimeRemaining(int sessionState, double? sessionTimeRemain, double? sessionTimeTotal)
+    {
+        const int racing = 4;
+        if (sessionState is > 0 and < racing)
+            return sessionTimeTotal is > 0 ? sessionTimeTotal : null;
+        return sessionTimeRemain is >= 0 ? sessionTimeRemain : null;
+    }
+
     /// <param name="lapsLimit">SessionLapsTotal (UnlimitedLaps or &lt;= 0 = no lap limit).</param>
     /// <param name="timeRemainingSeconds">SessionTimeRemain (null/negative = no time limit).</param>
     /// <param name="leaderProgress">Leader's completed laps + fraction of the current lap.</param>

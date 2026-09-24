@@ -23,7 +23,7 @@ public partial class MainWindow
 
     private static readonly Dictionary<string, string> ColumnNames = new()
     {
-        ["position"] = "Posição", ["offset"] = "Offset", ["carNumber"] = "Número", ["brand"] = "Emblema", ["flag"] = "Bandeira",
+        ["position"] = "Posição", ["posChange"] = "Posições +/-", ["offset"] = "Offset", ["carNumber"] = "Número", ["brand"] = "Emblema", ["flag"] = "Bandeira",
         ["name"] = "Piloto", ["license"] = "Carteira (SR)", ["iratingDelta"] = "iRating + Δ", ["irating"] = "iRating",
         ["interval"] = "Interval", ["lastLap"] = "Última volta", ["lapDelta"] = "Δ volta", ["pit"] = "Pit",
         ["gap"] = "Gap", ["overtake"] = "Overtake (P2P)",
@@ -52,10 +52,10 @@ public partial class MainWindow
         if (saved is null) _currentColumns = defaults;
         else
         {
-            // A profile saved before a column existed keeps working: missing columns join at the end, hidden as saved-default.
-            foreach (var column in defaults.Where(d => saved.All(c => c.Key != d.Key)))
-                saved.Add(column with { Order = saved.Count });
-            _currentColumns = saved.Where(c => defaults.Any(d => d.Key == c.Key)).ToList();
+            // A profile saved before a column existed keeps working: missing columns join where the defaults
+            // put them (same rule the overlay applies in StandingsWidget.SetColumns).
+            _currentColumns = IracingLiveCoach.OverlayHost.Layout.ColumnDefaults.MergeMissing(saved, defaults)
+                .Where(c => defaults.Any(d => d.Key == c.Key)).ToList();
         }
         GapLeaderBox.IsEnabled = _selectedWidget == "standings";
         Quiet(() => GapLeaderBox.IsChecked = _selectedWidget == "standings" && _currentColumns.Any(c => c.Key == "gap" && c.Visible));

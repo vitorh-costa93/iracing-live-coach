@@ -90,4 +90,27 @@ public class RaceLapEstimatorTests
         var b = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, 600, 10.0, 9.5, 60, null)!;
         Assert.Equal(a, b);
     }
+
+    [Fact]
+    public void Before_the_green_the_whole_race_length_is_used_not_the_grid_countdown()
+    {
+        // Live Watkins Glen 20-min race, SessionState 1 (get in car): remain 48 s, total 1200 s.
+        Assert.Equal(1200, RaceLapEstimator.RaceTimeRemaining(1, 48, 1200));
+        Assert.Equal(1200, RaceLapEstimator.RaceTimeRemaining(3, 5, 1200)); // parade laps
+        Assert.Equal(611.5, RaceLapEstimator.RaceTimeRemaining(4, 611.5, 1200));
+        Assert.Null(RaceLapEstimator.RaceTimeRemaining(4, -1, 1200));
+        Assert.Null(RaceLapEstimator.RaceTimeRemaining(1, 48, null));
+    }
+
+    [Fact]
+    public void Grid_position_behind_the_line_is_zero_progress()
+    {
+        Assert.Equal(0, RaceLapEstimator.Progress(-1, 0.995)!.Value, 6);
+        Assert.Equal(3.25, RaceLapEstimator.Progress(3, 0.25)!.Value, 6);
+        Assert.Null(RaceLapEstimator.Progress(3, -1));
+        // 20-min race on the grid, 103 s laps: 12 laps, not 13.
+        var e = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, RaceLapEstimator.RaceTimeRemaining(1, 48, 1200),
+            RaceLapEstimator.Progress(-1, 0.995)!.Value, RaceLapEstimator.Progress(-1, 0.99)!.Value, 103)!;
+        Assert.Equal(12, e.TotalLaps);
+    }
 }
