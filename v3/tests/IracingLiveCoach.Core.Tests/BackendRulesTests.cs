@@ -60,6 +60,24 @@ public class IRatingProjectionTests
 
 public class PitStopTrackerTests
 {
+    [Theory]
+    [InlineData(58.83, "58.8")]
+    [InlineData(55.9, "55.9")]
+    [InlineData(86.4, "1:26")]
+    [InlineData(125, "2:05")]
+    public void Finished_stop_duration_is_formatted_like_kapps(double seconds, string text) =>
+        Assert.Equal(text, PitStopTracker.StopDuration(seconds));
+
+    [Fact]
+    public void The_players_tow_shows_tow_and_minutes_like_kapps()
+    {
+        var t = new PitStopTracker();
+        t.Update(0, false, 1, true, T0);
+        Assert.Equal("TOW 0", t.Update(0, false, 1, true, T0.AddSeconds(0.5), towed: true));   // tow starts on track
+        Assert.Equal("TOW 28m", t.Update(0, true, 1, true, T0.AddMinutes(28.2)));             // still in the stall
+        Assert.Equal("L1 29:00", t.Update(0, false, 1, true, T0.AddMinutes(29).AddSeconds(0.5)));
+    }
+
     private static readonly DateTime T0 = new(2026, 9, 24, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
@@ -85,10 +103,10 @@ public class PitStopTrackerTests
     {
         var t = new PitStopTracker();
         t.Update(3, false, 7, true, T0);
-        Assert.Equal("PIT 0s", t.Update(3, true, 7, true, T0.AddSeconds(0.2)));
-        Assert.Equal("PIT 12s", t.Update(3, true, 7, true, T0.AddSeconds(12.2)));
-        Assert.Equal("L8 24s", t.Update(3, false, 8, true, T0.AddSeconds(24.2)));
-        Assert.Equal("L8 24s", t.Update(3, false, 12, true, T0.AddSeconds(400)));
+        Assert.Equal("PIT 0", t.Update(3, true, 7, true, T0.AddSeconds(0.2)));
+        Assert.Equal("PIT 12", t.Update(3, true, 7, true, T0.AddSeconds(12.2)));
+        Assert.Equal("L8 24.0", t.Update(3, false, 8, true, T0.AddSeconds(24.2)));
+        Assert.Equal("L8 24.0", t.Update(3, false, 12, true, T0.AddSeconds(400)));
     }
 
     [Fact]
