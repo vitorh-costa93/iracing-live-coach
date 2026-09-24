@@ -23,3 +23,58 @@ public static class RelativeGap
     public static double Seconds(double otherPct, double myPct, double myReferenceLapSeconds) =>
         myReferenceLapSeconds > 0 ? Math.Abs(WrappedDelta(otherPct, myPct)) * myReferenceLapSeconds : 0;
 }
+
+/// <summary>
+/// Each class's reference EstTime curve (CarIdxEstTime as a function of CarIdxLapDistPct), learned live from
+/// every car of the class: the same curve for all cars of a class, so a handful of ticks fills it. Pure.
+/// </summary>
+public sealed class EstTimeCurves
+{
+    public const int Bins = 1000;
+    private readonly Dictionary<int, double[]> _curves = new();
+
+    public void Add(int classId, double pct, double estTime)
+    {
+        if (pct < 0 || pct >= 1 || estTime <= 0) return;
+        if (!_curves.TryGetValue(classId, out var c)) _curves[classId] = c = Enumerable.Repeat(double.NaN, Bins).ToArray();
+        c[(int)(pct * Bins)] = estTime; // latest sample per bin
+    }
+
+    /// <summary>EstTime of the class at <paramref name="pct"/>, interpolated between the nearest learned bins; null
+    /// when the class has no bin within 2 % of the lap.</summary>
+    public double? At(int classId, double pct)
+    {
+        if (!_curves.TryGetValue(classId, out var c) || pct < 0 || pct >= 1) return null;
+        int b = (int)(pct * Bins);
+        if (!double.IsNaN(c[b])) return c[b];
+        int lo = b, hi = b;
+        for (int k = 1; k <= Bins / 50; k++)
+        {
+            if (double.IsNaN(c[lo]) && b - k >= 0) lo = b - k;
+            if (double.IsNaN(c[hi]) && b + k < Bins) hi = b + k;
+        }
+        if (double.IsNaN(c[lo]) || double.IsNaN(c[hi])) return !double.IsNaN(c[lo]) ? c[lo] : !double.IsNaN(c[hi]) ? c[hi] : null;
+        return hi == lo ? c[lo] : c[lo] + (c[hi] - c[lo]) * (b - lo) / (double)(hi - lo);
+    }
+
+    public void Clear() => _curves.Clear();
+}
+
+public static class RelativeGapKapps
+{
+    /// <summary>
+    /// Kapps' Relative gap (fitted on 28 cars over 7 synchronized print+SDK samples, 24/09/2026, multiclass AI
+    /// race): the time the OTHER car's class reference needs between the player's spot and the other car's
+    /// spot -- EstTime_theirClass(theirPct) - EstTime_theirClass(myPct), wrapped to half a lap of that class.
+    /// Mean error 0.15 s (ahead) / 0.28 s (behind, mostly samples with the player crawling out of the pits),
+    /// against 0.37 / 0.32 for distance x the player's lap. Same class = the plain EstTime difference; a slower
+    /// class through a slow corner reads bigger (the "Greg Hill 2.4" case). Null when the curve is unknown.
+    /// </summary>
+    public static double? Seconds(double? theirCurveAtThem, double? theirCurveAtMe, double theirClassLap)
+    {
+        if (theirCurveAtThem is not double a || theirCurveAtMe is not double b || theirClassLap <= 0) return null;
+        double d = Math.Abs(a - b) % theirClassLap;
+        return Math.Min(d, theirClassLap - d);
+    }
+}
+
