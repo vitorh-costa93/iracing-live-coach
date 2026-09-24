@@ -62,10 +62,13 @@ public static class ClassIntervals
         {
             double diff = theirs - mine;
             if (diff >= 1.0) return new IntervalValue(null, (int)Math.Floor(diff + 1e-9));
+            // Kapps: the distance between the two cars x the class reference lap (CarClassEstLapTime).
+            // Live start 24/09/2026: Sean 0.021 laps behind Ben -> 1.42, Kapps "1.4" (EstTime gave 1.22);
+            // Josh 0.005 behind Jonas -> 0.34, Kapps "0.3" (EstTime was negative there: not monotonic).
+            if (diff >= 0 && classLapTime is double lap) return new IntervalValue(diff * lap, null);
             if (diff >= 0 && me.EstTime is double myEst && ahead.EstTime is double theirEst)
             {
                 double t = theirEst - myEst;
-                if (t < 0 && classLapTime is double lap) t += lap; // the car ahead is already past the line
                 if (t >= 0) return new IntervalValue(t, null);
             }
         }

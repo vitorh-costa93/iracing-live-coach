@@ -37,7 +37,7 @@ public class ClassIntervalsTests
         var me = Car(1, 2, 2, 5.994, 91.8, gap: -0.5);
         var v = ClassIntervals.RaceInterval(me, ahead, 92.5);
         Assert.Null(v.Laps);
-        Assert.Equal(1.0, v.Seconds!.Value, 3);
+        Assert.Equal(0.009 * 92.5, v.Seconds!.Value, 2); // distance x class lap, continuous across the line
     }
 
     [Fact]
@@ -85,6 +85,15 @@ public class ClassIntervalsTests
     {
         var drivers = new[] { Car(7, 1, 1, 6.003, 0.3), Car(7, 2, 2, 5.994, 91.8) };
         var r = ClassIntervals.Compute(drivers, raceMode: true, new Dictionary<int, double> { [7] = 92.5 });
-        Assert.Equal(1.0, r[1].Seconds!.Value, 3);
+        Assert.Equal(0.009 * 92.5, r[1].Seconds!.Value, 2);
+    }
+
+    [Fact]
+    public void Same_lap_with_non_monotonic_est_time_uses_distance_not_a_whole_lap()
+    {
+        // Live start, 24/09/2026: Josh (0.429) 0.005 laps behind Jonas (0.434) but with the higher EstTime.
+        // Kapps showed 0.3; adding a class lap gave 66.9.
+        var v = ClassIntervals.RaceInterval(Car(1, 4, 4, 0.429, 28.025), Car(1, 3, 3, 0.434, 27.879), 67.4669);
+        Assert.Equal(0.005 * 67.4669, v.Seconds!.Value, 3);
     }
 }
