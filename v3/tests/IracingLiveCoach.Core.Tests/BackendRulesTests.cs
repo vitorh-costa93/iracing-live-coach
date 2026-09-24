@@ -228,3 +228,31 @@ public class RadarSideOffsetsTests
         Assert.Equal((null, null), RadarSideOffsets.Nearest([], true, true)); // reported, unresolved -> full bar
     }
 }
+
+public class RadarSideFillTests
+{
+    [Fact]
+    public void Kapps_print_car_one_point_eight_metres_behind_fills_the_lower_part()
+    {
+        var (from, to) = RadarSideOffsets.Fill(-1.8);
+        Assert.Equal(0, from, 6);
+        Assert.Equal(0.625, to, 6);
+    }
+
+    [Fact]
+    public void Level_car_fills_everything_car_ahead_fills_the_top()
+    {
+        Assert.Equal((0.0, 1.0), RadarSideOffsets.Fill(0));
+        var (from, to) = RadarSideOffsets.Fill(2.4);
+        Assert.Equal(0.5, from, 6);
+        Assert.Equal(1.0, to, 6);
+        Assert.Equal((0.0, 1.0), RadarSideOffsets.Fill(null));
+    }
+
+    [Fact]
+    public void No_overlap_keeps_a_sliver_at_the_nearer_end()
+    {
+        Assert.Equal((0.92, 1.0), RadarSideOffsets.Fill(6));
+        Assert.Equal((0.0, 0.08), RadarSideOffsets.Fill(-6));
+    }
+}
