@@ -5,7 +5,10 @@ namespace IracingLiveCoach.Core.Telemetry;
 /// <param name="PlayerLapsRemaining">Fractional laps the player still drives until their own
 /// chequered flag (includes what is left of the lap in progress) -- the figure fuel is planned on.</param>
 /// <param name="IsEstimate">True for a time-limited race, where the total is projected from lap time.</param>
-public sealed record RaceLapEstimate(int TotalLaps, double PlayerLapsRemaining, bool IsEstimate);
+/// <param name="ProjectedTotalLaps">Time-limited race only: the UNROUNDED projection leaderProgress +
+/// timeRemaining / lapTime -- what Kapps prints in its header ("R GT3 9/≈11.57"); null when the lap limit
+/// decides the length.</param>
+public sealed record RaceLapEstimate(int TotalLaps, double PlayerLapsRemaining, bool IsEstimate, double? ProjectedTotalLaps = null);
 
 /// <summary>
 /// Pure race-length projection shared by the header ("LAP 1/≈30") and the fuel calculator.
@@ -57,9 +60,12 @@ public static class RaceLapEstimator
         leaderProgress = Math.Max(leaderProgress, playerProgress); // the player can never be ahead of the leader
         bool hasLapLimit = lapsLimit is > 0 and < UnlimitedLaps;
 
-        double? byTime = null;
+        double? byTime = null, projected = null;
         if (timeRemainingSeconds is double remaining && remaining >= 0 && leaderLap is double lapTime && lapTime > 1)
-            byTime = Math.Ceiling(leaderProgress + remaining / lapTime - 1e-9);
+        {
+            projected = leaderProgress + remaining / lapTime;
+            byTime = Math.Ceiling(projected.Value - 1e-9);
+        }
 
         double leaderFinal;
         bool estimate;
@@ -77,6 +83,6 @@ public static class RaceLapEstimator
         // lapped car drives fewer laps than the total -- verified against Kapps' "Fuel at End" live.
         double playerAtLeaderFinish = playerProgress + (leaderFinal - leaderProgress) * paceRatio;
         double playerFinal = Math.Ceiling(playerAtLeaderFinish - 1e-9);
-        return new RaceLapEstimate((int)leaderFinal, Math.Max(0, playerFinal - playerProgress), estimate);
+        return new RaceLapEstimate((int)leaderFinal, Math.Max(0, playerFinal - playerProgress), estimate, estimate ? projected : null);
     }
 }

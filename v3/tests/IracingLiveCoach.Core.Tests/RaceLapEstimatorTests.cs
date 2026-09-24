@@ -113,4 +113,14 @@ public class RaceLapEstimatorTests
             RaceLapEstimator.Progress(-1, 0.995)!.Value, RaceLapEstimator.Progress(-1, 0.99)!.Value, 103)!;
         Assert.Equal(12, e.TotalLaps);
     }
+
+    [Fact]
+    public void Time_limited_race_exposes_the_unrounded_projection()
+    {
+        // Kapps print lap 9: leader at 8.988 with 268.35 s left.
+        var e = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, 268.35, 8.988, 8.912, 103.5)!;
+        Assert.Equal(8.988 + 268.35 / 103.5, e.ProjectedTotalLaps!.Value, 6);
+        Assert.Equal(12, e.TotalLaps);
+        Assert.Null(RaceLapEstimator.Estimate(30, 86000, 2.0, 2.0, 76)!.ProjectedTotalLaps);
+    }
 }

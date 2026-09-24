@@ -50,7 +50,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
 /// formula (BR1 = 1600/ln(2), SoF = BR1 * ln(N / Σ e^(-iRating_i / BR1))) over the current field's
 /// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
-public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false);
+public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null);
 
 /// <summary>The player's own current car status for the Relative/Standings widgets' footer.
 /// BrakeBiasPct/TrackRubberState are null if the current car/session doesn't publish that channel
@@ -1183,6 +1183,7 @@ public class TelemetryReader : IDisposable
         int? currentLap = null;
         int? totalLaps = null;
         bool totalEstimated = false;
+        double? totalProjected = null;
         try
         {
             var sessionInfo = _sdk.Data.SessionInfo;
@@ -1197,13 +1198,13 @@ public class TelemetryReader : IDisposable
             // In a race the header shows the RACE lap (the leader's), like Kapps' "R 14/30".
             var lap = _isRaceSession && _leaderLap > 0 ? _leaderLap : _sdk.Data.GetInt("Lap");
             if (lap > 0) currentLap = lap;
-            if (_raceEstimate is { } estimate) { totalLaps = estimate.TotalLaps; totalEstimated = estimate.IsEstimate; }
+            if (_raceEstimate is { } estimate) { totalLaps = estimate.TotalLaps; totalEstimated = estimate.IsEstimate; totalProjected = estimate.ProjectedTotalLaps; }
             else if (session?.SessionLaps is string lapsText && int.TryParse(lapsText, out var parsedLaps)) totalLaps = parsedLaps;
         }
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
         var (flagText, flagColorHex) = DecodeSessionFlag();
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated);
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),

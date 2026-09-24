@@ -53,4 +53,15 @@ public class HeaderFieldsTests
         Assert.Equal(HeaderFields.AllKeys.Count, completed.Count);
         Assert.All(completed.Skip(1), f => Assert.False(f.Visible));
     }
+
+    [Fact]
+    public void Timed_race_total_is_the_kapps_fractional_projection_truncated()
+    {
+        var timed = new SessionStatus("GT3", "RACE", 9, 12, "", "", 3000, 15, TotalLapsEstimated: true, TotalLapsProjected: 11.5779);
+        Assert.Equal("LAP 9/≈11.57", HeaderFields.Text("lap", timed, null, DateTime.Now));
+        var noProjection = timed with { TotalLapsProjected = null };
+        Assert.Equal("LAP 9/≈12", HeaderFields.Text("lap", noProjection, null, DateTime.Now));
+        var lapLimited = timed with { TotalLapsEstimated = false, TotalLaps = 30 };
+        Assert.Equal("LAP 9/30", HeaderFields.Text("lap", lapLimited, null, DateTime.Now));
+    }
 }
