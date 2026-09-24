@@ -5,12 +5,14 @@ namespace IracingLiveCoach.Core.Telemetry;
 /// positions; this class merely selects which already-ranked rows are visible. It deliberately
 /// keeps Top N and the player window separate, then de-duplicates by car/driver identity.
 /// </summary>
+/// Defaults = Kapps (live 24/09/2026): the class's top 2 PLUS a 5-row window around the player (player P6 ->
+/// P1 P2 P4..P8; player P14 of 14 -> P1 P2 P10..P14) and 1 row for every other class.
 public sealed record StandingsPresentationOptions(
-    int TopNPerClass = 1,
+    int TopNPerClass = 2,
     int OwnClassRows = 5,
     int OtherClassRows = 1,
     bool KeepPlayerWindow = true,
-    bool TopNCountsTowardTotal = true)
+    bool TopNCountsTowardTotal = false)
 {
     public static StandingsPresentationOptions Default { get; } = new();
 }

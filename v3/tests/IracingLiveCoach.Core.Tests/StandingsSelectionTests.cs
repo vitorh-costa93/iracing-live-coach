@@ -19,7 +19,7 @@ public sealed class StandingsSelectionTests
         };
 
         var groups = StandingsSelection.GroupAndSelect(rows,
-            new StandingsPresentationOptions(TopNPerClass: 1, OwnClassRows: 5, OtherClassRows: 1));
+            new StandingsPresentationOptions(TopNPerClass: 1, OwnClassRows: 5, OtherClassRows: 1, TopNCountsTowardTotal: true));
 
         Assert.Equal(2, groups.Count);
         Assert.Equal(new[] { 1, 2, 3, 4, 5 }, groups.Single(g => g.ClassId == 1).Rows.Select(r => r.ClassPosition));
@@ -80,6 +80,16 @@ public sealed class StandingsSelectionTests
         Assert.Equal("2/14", counts[4029].Text);
         Assert.Equal("13", counts[2523].Text);
         Assert.Equal("3/13", counts[4011].Text);
+    }
+
+    [Theory]
+    [InlineData(6, new[] { 1, 2, 4, 5, 6, 7, 8 })]
+    [InlineData(14, new[] { 1, 2, 10, 11, 12, 13, 14 })]
+    public void Default_options_are_kapps_top_two_plus_five_around_the_player(int player, int[] expected)
+    {
+        var rows = Enumerable.Range(1, 14).Select(p => Row(p, 1, p, p == player));
+        var group = Assert.Single(StandingsSelection.GroupAndSelect(rows));
+        Assert.Equal(expected, group.Rows.Select(r => r.ClassPosition));
     }
 
     private static StandingsRow Row(int position, int classId, int classPosition, bool player) =>
