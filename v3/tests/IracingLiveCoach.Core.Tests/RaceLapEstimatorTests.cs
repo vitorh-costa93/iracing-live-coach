@@ -72,4 +72,22 @@ public class RaceLapEstimatorTests
         Assert.Equal(26, e.TotalLaps);
         Assert.Equal(0.6, e.PlayerLapsRemaining, 3);
     }
+
+    [Fact]
+    public void Multiclass_faster_leader_ends_the_timed_race_and_the_slower_player_covers_fewer_laps()
+    {
+        // 10 min left, leader laps in 60 s -> finishes at 20.0 (10 more laps). The player (90 s laps) covers
+        // 10 x 60/90 = 6.67 laps meanwhile: 10.0 -> 16.67 -> flag at 17 -> 7 laps to go.
+        var e = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, 600, 10.0, 10.0, 90, 60)!;
+        Assert.Equal(20, e.TotalLaps);
+        Assert.Equal(7, e.PlayerLapsRemaining, 3);
+    }
+
+    [Fact]
+    public void Leader_lap_time_null_keeps_the_single_class_behaviour()
+    {
+        var a = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, 600, 10.0, 9.5, 60)!;
+        var b = RaceLapEstimator.Estimate(RaceLapEstimator.UnlimitedLaps, 600, 10.0, 9.5, 60, null)!;
+        Assert.Equal(a, b);
+    }
 }

@@ -26,13 +26,20 @@ public static class RaceLapEstimator
     /// <param name="leaderProgress">Leader's completed laps + fraction of the current lap.</param>
     /// <param name="playerProgress">Player's completed laps + fraction of the current lap.</param>
     /// <param name="lapTimeSeconds">Representative race lap time; needed only for a time limit.</param>
-    public static RaceLapEstimate? Estimate(int? lapsLimit, double? timeRemainingSeconds, double leaderProgress, double playerProgress, double? lapTimeSeconds)
+    /// <param name="leaderLapTimeSeconds">The overall leader's lap time when it differs from the player's
+    /// (multiclass: a faster class leads). Null = same pace as <paramref name="lapTimeSeconds"/>, which is
+    /// the single-class case already verified against Kapps. Used to project when the leader finishes
+    /// (time-limited) and how far the player gets in that time.</param>
+    public static RaceLapEstimate? Estimate(int? lapsLimit, double? timeRemainingSeconds, double leaderProgress, double playerProgress, double? lapTimeSeconds, double? leaderLapTimeSeconds = null)
     {
+        double? leaderLap = leaderLapTimeSeconds is > 1 ? leaderLapTimeSeconds : lapTimeSeconds;
+        // How many of the player's laps fit in one of the leader's (1 = same pace).
+        double paceRatio = leaderLap is double ll && lapTimeSeconds is double pl && pl > 1 && ll > 1 ? ll / pl : 1.0;
         leaderProgress = Math.Max(leaderProgress, playerProgress); // the player can never be ahead of the leader
         bool hasLapLimit = lapsLimit is > 0 and < UnlimitedLaps;
 
         double? byTime = null;
-        if (timeRemainingSeconds is double remaining && remaining >= 0 && lapTimeSeconds is double lapTime && lapTime > 1)
+        if (timeRemainingSeconds is double remaining && remaining >= 0 && leaderLap is double lapTime && lapTime > 1)
             byTime = Math.Ceiling(leaderProgress + remaining / lapTime - 1e-9);
 
         double leaderFinal;
@@ -49,7 +56,7 @@ public static class RaceLapEstimator
         leaderFinal = Math.Max(leaderFinal, Math.Ceiling(leaderProgress - 1e-9)); // never "finished" before the current lap ends
         // The player takes the flag at their first line crossing after the leader has finished, so a
         // lapped car drives fewer laps than the total -- verified against Kapps' "Fuel at End" live.
-        double playerAtLeaderFinish = playerProgress + (leaderFinal - leaderProgress);
+        double playerAtLeaderFinish = playerProgress + (leaderFinal - leaderProgress) * paceRatio;
         double playerFinal = Math.Ceiling(playerAtLeaderFinish - 1e-9);
         return new RaceLapEstimate((int)leaderFinal, Math.Max(0, playerFinal - playerProgress), estimate);
     }

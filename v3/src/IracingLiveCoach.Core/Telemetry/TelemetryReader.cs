@@ -36,7 +36,13 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// rather than omit the column. LapDeltaVsPlayerSeconds is real (this driver's own CarIdxLastLapTime
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
-public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, string CarNumber = "", int ClassRank = 0);
+public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, string CarNumber = "", int ClassRank = 0,
+    int? StartPosition = null, int? PositionChange = null, int? IntervalLaps = null, double? BestLapTime = null, bool InPitLane = false);
+// StartPosition/PositionChange: class grid slot and places gained (+) / lost (-) since the start -- race
+// only, see StartingGrid. IntervalLaps: the car ahead in class is this many whole laps up the road
+// (IntervalSeconds is then null) -- Kapps' "1L". BestLapTime: the car's best lap (practice/qualifying
+// order). InPitLane: live CarIdxOnPitRoad (Kapps tags such a row "PIT"), independent of PitStatus,
+// which only reports real stops during a green race (see PitStopTracker).
 
 /// <summary>One full-field-tick session summary for the Standings/Relative widgets' header block --
 /// class/session/lap/flag are all real SDK fields; StrengthOfField uses iRacing's own published SoF
@@ -74,8 +80,10 @@ public record RadarBlip(double DistanceMeters, string DriverCode, RadarSide Side
 /// coarse, NON-per-car signal -- true means "something is right next to you on that side", not
 /// "car X is on that side". Blips are the separate far-field distance list (see RadarBlip); the
 /// two are rendered differently on purpose (see this plan's own Global Constraints) so a driver
-/// never mistakes a far blip's centered position for "directly in my lane".</summary>
-public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips, bool HasTrackLength);
+/// never mistakes a far blip's centered position for "directly in my lane".
+/// LeftCarOffsetMeters/RightCarOffsetMeters: signed longitudinal offset (+ = ahead) of the nearest car on
+/// that side while CarLeftRight reports it -- see RadarSideOffsets; null = draw the full-length bar.</summary>
+public record RadarStatus(bool BlindSpotLeft, bool BlindSpotRight, List<RadarBlip> Blips, bool HasTrackLength, double? LeftCarOffsetMeters = null, double? RightCarOffsetMeters = null);
 
 /// <summary>Race-start clutch/throttle bars -- confirmed real via Clutch/Throttle/Speed telemetry.
 /// ShouldShow is true only while the current session is a Race AND the car is essentially
@@ -174,8 +182,22 @@ public class TelemetryReader : IDisposable
     // CarIdxOnPitRoad is published per car.  The SDK does not expose a formatted pit timer, so
     // retain the real transition locally and present its elapsed duration.  Once a car exits, the
     // last completed pit (lap + duration) remains available as useful race context.
-    private readonly Dictionary<int, DateTime> _pitRoadEnteredUtcByCarIdx = new();
-    private readonly Dictionary<int, string> _lastPitStatusByCarIdx = new();
+    private readonly PitStopTracker _pitStops = new();
+
+    // Per-session state. A session = telemetry (SessionUniqueID, SessionNum); practice -> qualifying ->
+    // race of one event are different sessions of one connection, so everything tied to "this session"
+    // is reset here, not only on disconnect.
+    private SessionKey? _sessionKey;
+    private SessionKind? _sessionKind;
+    /// <summary>Track rubber, captured on the first read of each session and then fixed (driver's own
+    /// rule, not Kapps'). Static: every widget's reader shows the same captured value.</summary>
+    private static readonly SessionLatch<string> RubberLatch = new();
+    /// <summary>CarIdx -> 1-based overall grid slot of the current race (see StartingGrid).</summary>
+    private Dictionary<int, int> _grid = new();
+    private string _gridSource = "";
+    private readonly Dictionary<int, int> _preGreenGrid = new();
+    /// <summary>Class id -> CarClassEstLapTime, the reference lap CarIdxEstTime is measured on.</summary>
+    private Dictionary<int, double> _classLapTimeById = new();
     // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
     // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
     // last valid bank per car and mark a short recharge window only when the real bank rises.
@@ -426,8 +448,9 @@ public class TelemetryReader : IDisposable
         _isRaceSession = false;
         _finishDetector.Reset();
         _driverCodesByCarIdx.Clear();
-        _pitRoadEnteredUtcByCarIdx.Clear();
-        _lastPitStatusByCarIdx.Clear();
+        ResetPerSessionState();
+        _sessionKey = null;
+        RubberLatch.Reset();
         _lastP2PEvidenceUtc = DateTime.MinValue;
         _p2pCooldown.Reset();
         _lastP2PAnomalyLogByCarIdx.Clear();
@@ -457,6 +480,8 @@ public class TelemetryReader : IDisposable
             var drivers = _sdk.Data.SessionInfo?.DriverInfo?.Drivers;
             if (drivers is null) return;
             _classRankById = ClassRanks.Compute(drivers.Select(d => new ClassSpeedInfo(d.CarClassID, d.CarClassRelSpeed, d.CarClassEstLapTime)));
+            _classLapTimeById = drivers.Where(d => d.CarClassEstLapTime > 1).GroupBy(d => d.CarClassID)
+                .ToDictionary(g => g.Key, g => (double)g.First().CarClassEstLapTime);
         }
         catch { /* session info momentarily incomplete -- keep the previous ranks */ }
     }
@@ -548,6 +573,7 @@ public class TelemetryReader : IDisposable
         // half below needs that.
         if (_playerCarIdx >= 0)
         {
+            CheckSessionChange();
             UpdateOnTrackState();
             PollRaceFinish();
             // A full-field refresh coincides with the proximity refresh every third tick.  Keep
@@ -559,7 +585,7 @@ public class TelemetryReader : IDisposable
             if (_proximityTickCounter >= ProximityTickInterval)
             {
                 _proximityTickCounter = 0;
-                var positions = ComputeLivePositions();
+                var positions = ComputePositions();
                 positionsThisTick = positions;
                 UpdateRelative(positions);
                 UpdateFullRelative(positions);
@@ -572,7 +598,7 @@ public class TelemetryReader : IDisposable
             if (_fullFieldTickCounter >= FullFieldTickInterval)
             {
                 _fullFieldTickCounter = 0;
-                UpdateStandings(positionsThisTick ?? ComputeLivePositions());
+                UpdateStandings(positionsThisTick ?? ComputePositions());
                 UpdateFuel();
             }
 
@@ -703,8 +729,61 @@ public class TelemetryReader : IDisposable
             var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
             var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
             _isRaceSession = string.Equals(session?.SessionType, "Race", StringComparison.OrdinalIgnoreCase);
+            _sessionKind = SessionKinds.Classify(session?.SessionType);
+            RefreshStartingGrid(sessionInfo, session);
         }
         catch { _isRaceSession = false; }
+    }
+
+    /// <summary>Grid of the current race from SessionInfo (see StartingGrid for the source order). The
+    /// pre-green CarIdxPosition sample is the last resort, used by UpdateStandings.</summary>
+    private void RefreshStartingGrid(IRacingSdkSessionInfo? sessionInfo, IRacingSdkSessionInfo.SessionInfoModel.SessionModel? session)
+    {
+        if (!_isRaceSession) { _grid = new(); _gridSource = ""; return; }
+        try
+        {
+            var fromRace = session?.QualifyPositions;
+            if (fromRace is { Count: > 0 })
+            {
+                _grid = StartingGrid.Normalize(fromRace.Select(q => (q.CarIdx, q.Position)));
+                _gridSource = "race.QualifyPositions";
+                return;
+            }
+            var fromQualify = sessionInfo?.QualifyResultsInfo?.Results;
+            if (fromQualify is { Count: > 0 })
+            {
+                _grid = StartingGrid.Normalize(fromQualify.Select(q => (q.CarIdx, q.Position)));
+                _gridSource = "QualifyResultsInfo";
+                return;
+            }
+        }
+        catch { /* YAML momentarily incomplete -- keep what we had */ }
+    }
+
+    /// <summary>Detects a session change from the live SessionUniqueID/SessionNum channels (cheap ints,
+    /// read every tick) and resets every per-session value.</summary>
+    private void CheckSessionChange()
+    {
+        try
+        {
+            var key = new SessionKey(_sdk.Data.GetInt("SessionUniqueID"), _sdk.Data.GetInt("SessionNum"));
+            if (_sessionKey == key) return;
+            bool first = _sessionKey is null;
+            _sessionKey = key;
+            if (!first) ResetPerSessionState();
+            RefreshRaceSessionFlag();
+        }
+        catch { /* channels momentarily unavailable */ }
+    }
+
+    private void ResetPerSessionState()
+    {
+        _pitStops.Reset();
+        _preGreenGrid.Clear();
+        _grid = new();
+        _gridSource = "";
+        _bestLapTimeSeconds = null;
+        _finishDetector.Reset();
     }
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
@@ -716,6 +795,26 @@ public class TelemetryReader : IDisposable
     // instead derive position from the physical CarIdxLapCompleted+CarIdxLapDistPct -- more laps
     // completed ranks higher, ties broken by how far around the current lap. Computed once per
     // tick group and shared by every consumer below so they can never disagree with each other.
+    /// <summary>Practice/qualifying/test: iRacing's best-lap classification (TimedSessionOrder). Race or
+    /// unknown session: the live order on track (ComputeLivePositions).</summary>
+    private bool IsTimedSession => _sessionKind is SessionKind.Practice or SessionKind.Qualify;
+
+    private LivePositions ComputePositions()
+    {
+        if (!IsTimedSession) return ComputeLivePositions();
+        var cars = new List<TimedCar>();
+        for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+        {
+            var position = _sdk.Data.GetInt("CarIdxPosition", idx);
+            var inWorld = _sdk.Data.GetFloat("CarIdxLapDistPct", idx) >= 0;
+            if (position <= 0 && !inWorld) continue;
+            if (IsPaceCar(idx)) continue;
+            cars.Add(new TimedCar(idx, _sdk.Data.GetInt("CarIdxClass", idx), position, _sdk.Data.GetInt("CarIdxClassPosition", idx), inWorld));
+        }
+        var (overall, byClass) = TimedSessionOrder.Compute(cars);
+        return new LivePositions(overall, byClass);
+    }
+
     private LivePositions ComputeLivePositions()
     {
         var maxCars = IRacingSdkConst.MaxNumCars;
@@ -920,17 +1019,24 @@ public class TelemetryReader : IDisposable
     // BR1 = 1600 / ln(2). SoF = BR1 * ln(N / Sum(e^(-iRating_i / BR1))).
     private const double SofBr1 = 1600.0 / 0.69314718055994530942;
 
+    private const int SessionStateRacingState = 4;
+
     private void UpdateStandings(LivePositions positions)
     {
         try
         {
-            var raw = new List<(int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
+            var raw = new List<(int Idx, int Position, string Code, int Laps, double? LastLap, int? Tire, bool IsPlayer,
                 string Flag, string Lic, string? LicHex, int IRating, int ClassId, string Manufacturer, string CarNumber, double? Gap,
-                string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, int ClassRank)>();
-            var estimatedTimeByPosition = new Dictionary<int, double>();
+                string ClassShortName, string? ClassColorHex, int ClassPosition, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown,
+                string PitStatus, int ClassRank, double? Progress, double? EstTime, double? BestLap, bool OnPitRoad, bool HasValidLap)>();
 
             var playerLastLapRaw = _sdk.Data.GetFloat("LapLastLapTime");
             double? playerLastLap = playerLastLapRaw > 0 ? playerLastLapRaw : null;
+            bool timed = IsTimedSession;
+            int sessionState = 0;
+            try { sessionState = _sdk.Data.GetInt("SessionState"); } catch { }
+            bool stopsCount = _isRaceSession && sessionState == SessionStateRacingState;
+            var now = DateTime.UtcNow;
 
             foreach (var (idx, position) in positions.Overall)
             {
@@ -941,83 +1047,100 @@ public class TelemetryReader : IDisposable
                 var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
                 var identity = GetIdentity(idx);
 
-                double? gap = null;
-                try
-                {
-                    // CarIdxF2Time: "race time behind leader or fastest lap time otherwise, s"
-                    // (confirmed real -- sajax.github.io/irsdkdocs). The leader's own value is ~0
-                    // and shown as "LEADER" by the view model instead of "+0.0".
-                    var f2 = _sdk.Data.GetFloat("CarIdxF2Time", idx);
-                    if (f2 >= 0) gap = f2;
-                }
-                catch { /* not published this session type -- leave gap null */ }
-                try
-                {
-                    var estimatedTime = _sdk.Data.GetFloat("CarIdxEstTime", idx);
-                    if (estimatedTime >= 0) estimatedTimeByPosition[position] = estimatedTime;
-                }
-                catch { /* optional live timing channel */ }
+                // CarIdxF2Time: "race time behind leader or fastest lap time otherwise" -- verified live
+                // in practice: there it IS each car's own best lap (== ResultsPositions FastestTime).
+                double? f2 = null;
+                try { var v = _sdk.Data.GetFloat("CarIdxF2Time", idx); if (v >= 0) f2 = v; }
+                catch { /* not published this session type */ }
+                double? best = null;
+                try { var b = _sdk.Data.GetFloat("CarIdxBestLapTime", idx); if (b > 0) best = b; } catch { }
+                if (timed && f2 is > 0) best = f2;
+
+                double? estTime = null;
+                try { var e = _sdk.Data.GetFloat("CarIdxEstTime", idx); if (e >= 0) estTime = e; } catch { }
+                var pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                double? progress = pct >= 0 ? Math.Max(0, _sdk.Data.GetInt("CarIdxLapCompleted", idx)) + pct : null;
 
                 var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
                 var onPitRoad = false;
                 try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
                 catch { /* channel absent outside an active driving session */ }
-                var pitStatus = UpdatePitStatus(idx, onPitRoad, lapsCompleted);
+                var pitStatus = _pitStops.Update(idx, onPitRoad, lapsCompleted, stopsCount, now);
                 var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
+                // "Valid lap" (qualifying gate): iRacing only classifies (CarIdxPosition > 0) a car that has
+                // a timed lap.
+                bool hasValidLap = _sdk.Data.GetInt("CarIdxPosition", idx) > 0 && (best is not null || f2 is > 0);
 
-                raw.Add((position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
+                raw.Add((idx, position, code, lapsCompleted, lastLap > 0 ? lastLap : null, tireCompound >= 0 ? tireCompound : null,
                     idx == _playerCarIdx, identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating,
-                    identity.CarClassId, identity.ManufacturerBadge, identity.CarNumber, gap, identity.ClassShortName, identity.ClassColorHex, classPosition,
-                    p2pActive, p2pSeconds, p2pSeconds, p2pCharging, pitStatus, identity.ClassRank));
+                    identity.CarClassId, identity.ManufacturerBadge, identity.CarNumber, timed ? null : f2, identity.ClassShortName, identity.ClassColorHex, classPosition,
+                    p2pActive, p2pSeconds, p2pSeconds, p2pCharging, pitStatus, identity.ClassRank, progress, estTime, best, onPitRoad, hasValidLap));
             }
 
             var ordered = raw.OrderBy(r => r.Position).ToList();
 
-            // ΔiR*: NOT a real SDK field -- iRacing exposes no such projection. This is a rank-vs-
-            // iRating approximation (real SoF formula above, applied to real per-driver iRatings),
-            // shown only behind its own asterisk disclosure -- the driver explicitly chose an
-            // approximate value over omitting the column entirely (14/09/2026).
+            // Starting grid (race): SessionInfo first (RefreshStartingGrid); otherwise the order iRacing
+            // shows before the green, sampled here while SessionState < Racing.
+            if (_isRaceSession && sessionState is > 0 and < SessionStateRacingState)
+                for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+                {
+                    var gridPos = _sdk.Data.GetInt("CarIdxPosition", idx);
+                    if (gridPos > 0) _preGreenGrid[idx] = gridPos;
+                }
+            var overallGrid = _grid.Count > 0 ? _grid : _preGreenGrid;
+            var classOfIdx = ordered.ToDictionary(r => r.Idx, r => r.ClassId);
+            var classGrid = _isRaceSession && overallGrid.Count > 0
+                ? StartingGrid.ByClass(overallGrid.Where(kv => classOfIdx.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value), i => classOfIdx[i])
+                : new Dictionary<int, int>();
+
             var classified = ordered.Where(r => r.IRating > 1).ToList();
-            double? sof = null;
-            if (classified.Count > 0)
-            {
-                sof = Sof.Compute(classified.Select(r => r.IRating));
-            }
-            var expectedRankByPosition = classified
-                .OrderByDescending(r => r.IRating)
-                .Select((r, i) => (r.Position, Rank: i + 1))
-                .ToDictionary(x => x.Position, x => x.Rank);
+            double? sof = classified.Count > 0 ? Sof.Compute(classified.Select(r => r.IRating)) : null;
+
+            // ΔiR: projected iRating change in the current order, per class (IRatingProjection -- the
+            // community-standard iRacing formula), gated by session: never in practice, in qualifying only
+            // once the player has a valid lap (and only for cars with one), in a race always.
+            bool playerHasValidLap = ordered.Any(r => r.IsPlayer && r.HasValidLap);
+            var deltaByIdx = new Dictionary<int, double>();
+            if (_sessionKind is SessionKind.Race or SessionKind.Qualify)
+                foreach (var cls in ordered.GroupBy(r => r.ClassId))
+                    foreach (var kv in IRatingProjection.Compute(cls.Select(r => new IRatingEntry(r.Idx, r.IRating, r.ClassPosition > 0 ? r.ClassPosition : r.Position))))
+                        deltaByIdx[kv.Key] = kv.Value;
+
+            var intervals = ClassIntervals.Compute(
+                ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Progress, o.EstTime, o.Gap, o.BestLap)).ToList(),
+                raceMode: !timed, _classLapTimeById);
+
+            // Practice/qualifying gap: best lap minus the class's best lap.
+            var classBest = ordered.Where(r => r.BestLap is not null).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => g.Min(r => r.BestLap!.Value));
 
             var rows = new List<StandingsRow>();
             var leader = ordered.FirstOrDefault();
-            var intervals = ClassIntervals.Compute(
-                ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Laps, o.Gap)).ToList(),
-                estimatedTimeByPosition);
             for (var i = 0; i < ordered.Count; i++)
             {
                 var r = ordered[i];
-                double? deltaIR = null;
-                if (sof is double sofValue && expectedRankByPosition.TryGetValue(r.Position, out var expectedRank))
-                    deltaIR = Math.Round((expectedRank - r.Position) * sofValue / 500.0);
-
+                double? deltaIR = deltaByIdx.TryGetValue(r.Idx, out var d) && IRatingProjection.ShowFor(_sessionKind, playerHasValidLap, r.HasValidLap) ? Math.Round(d) : null;
                 double? lapDelta = r.LastLap is double own && playerLastLap is double mine ? own - mine : null;
 
-                // CarIdxF2Time is authoritative across different laps, but it often advances only
-                // at a timing line.  On the same lap, CarIdxEstTime gives the continuously moving
-                // separation used by Relative, so the Standings Gap/Interval no longer freeze
-                // until a lap is completed.
-                var gapToLeader = r.Gap;
-                if (r.Position != leader.Position && r.Laps == leader.Laps &&
-                    estimatedTimeByPosition.TryGetValue(r.Position, out var currentEstimate) &&
-                    estimatedTimeByPosition.TryGetValue(leader.Position, out var leaderEstimate))
-                    gapToLeader = Math.Max(0, currentEstimate - leaderEstimate);
+                double? gapToLeader;
+                if (timed)
+                    gapToLeader = r.BestLap is double b && classBest.TryGetValue(r.ClassId, out var cb) ? b - cb : null;
+                else
+                {
+                    // CarIdxF2Time is authoritative across different laps but only advances at timing
+                    // lines; on the same lap CarIdxEstTime moves continuously.
+                    gapToLeader = r.Gap;
+                    if (r.Position != leader.Position && r.Laps == leader.Laps && r.EstTime is double ce && leader.EstTime is double le)
+                        gapToLeader = Math.Max(0, ce - le);
+                }
 
-                // INTERVAL: to the car directly ahead IN THE SAME CLASS (see ClassIntervals).
-                double? interval = intervals[i];
+                var interval = intervals[i];
+                int? start = classGrid.TryGetValue(r.Idx, out var g) ? g : null;
+                int? change = _isRaceSession ? StartingGrid.Change(start, r.ClassPosition) : null;
 
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
-                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval,
-                    r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus, r.CarNumber, r.ClassRank));
+                    r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval.Seconds,
+                    r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus, r.CarNumber, r.ClassRank,
+                    start, change, interval.Laps, r.BestLap, r.OnPitRoad));
             }
 
             StandingsUpdated?.Invoke(rows);
@@ -1027,27 +1150,6 @@ public class TelemetryReader : IDisposable
         {
             // Skip this tick.
         }
-    }
-
-    private string UpdatePitStatus(int carIdx, bool onPitRoad, int lap)
-    {
-        var now = DateTime.UtcNow;
-        if (onPitRoad)
-        {
-            if (!_pitRoadEnteredUtcByCarIdx.TryGetValue(carIdx, out var entered))
-            {
-                entered = now;
-                _pitRoadEnteredUtcByCarIdx[carIdx] = entered;
-            }
-            return $"PIT {(now - entered).TotalSeconds:0}s";
-        }
-
-        if (_pitRoadEnteredUtcByCarIdx.Remove(carIdx, out var pitEntry))
-        {
-            var duration = Math.Max(0, (now - pitEntry).TotalSeconds);
-            _lastPitStatusByCarIdx[carIdx] = $"L{Math.Max(0, lap)} {duration:0}s";
-        }
-        return _lastPitStatusByCarIdx.TryGetValue(carIdx, out var last) ? last : "";
     }
 
     // Header block shared by Standings and Relative -- class/session type/lap count/flag are all
@@ -1127,7 +1229,7 @@ public class TelemetryReader : IDisposable
             {
                 var sessionInfo = _sdk.Data.SessionInfo;
                 var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
-                rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
+                rubberState = LatchedRubber(sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState);
                 // "17" or "unlimited"; only a real number is a limit.
                 var limitText = sessionInfo?.WeekendInfo?.WeekendOptions?.IncidentLimit?.ToString();
                 _incidentLimit = int.TryParse(limitText, out var limit) && limit > 0 ? limit : null;
@@ -1152,6 +1254,11 @@ public class TelemetryReader : IDisposable
             // Skip this tick.
         }
     }
+
+    /// <summary>Track rubber as captured on the first read of this session (driver's rule: fixed for the
+    /// whole session, no carry-over; a new session captures again). Before the session key is known the
+    /// live value passes through.</summary>
+    private string? LatchedRubber(string? live) => _sessionKey is SessionKey key ? RubberLatch.Get(key, live) : live;
 
     private void UpdateOnTrackState()
     {
@@ -1255,7 +1362,19 @@ public class TelemetryReader : IDisposable
                     if (progress > leader && !IsPaceCar(idx)) { leader = progress; leaderIdx = idx; }
                 }
                 _leaderLap = leaderIdx >= 0 ? _sdk.Data.GetInt("CarIdxLap", leaderIdx) : 0;
-                _raceEstimate = RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, avgLapTime);
+                // Single class: the player's own pace (verified against Kapps). Multiclass with a faster
+                // class leading: that leader's last lap, else its class reference lap.
+                double? leaderLapTime = null;
+                if (leaderIdx >= 0 && leaderIdx != _playerCarIdx)
+                {
+                    int leaderClass = _sdk.Data.GetInt("CarIdxClass", leaderIdx);
+                    if (leaderClass != _sdk.Data.GetInt("CarIdxClass", _playerCarIdx))
+                    {
+                        var leaderLast = _sdk.Data.GetFloat("CarIdxLastLapTime", leaderIdx);
+                        leaderLapTime = leaderLast > 1 ? leaderLast : _classLapTimeById.TryGetValue(leaderClass, out var est) ? est : (double?)null;
+                    }
+                }
+                _raceEstimate = RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, avgLapTime, leaderLapTime);
             }
 
             double? refuelToFull = null;
@@ -1326,7 +1445,7 @@ public class TelemetryReader : IDisposable
             {
                 var sessionInfo = _sdk.Data.SessionInfo;
                 var currentSessionNum = sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1;
-                rubberState = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState;
+                rubberState = LatchedRubber(sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum)?.SessionTrackRubberState);
             }
             catch { /* optional session metadata */ }
             WeatherUpdated?.Invoke(new WeatherStatus(airTemp, trackTemp, precipitation, trackWetness, declaredWet, rubberState, positions, windSpeed, windDirectionDeg, humidityPct));
@@ -1387,7 +1506,8 @@ public class TelemetryReader : IDisposable
                 }
             }
 
-            RadarUpdated?.Invoke(new RadarStatus(blindLeft, blindRight, blips, hasTrackLength));
+            var (leftOffset, rightOffset) = RadarSideOffsets.Nearest(blips, blindLeft, blindRight);
+            RadarUpdated?.Invoke(new RadarStatus(blindLeft, blindRight, blips, hasTrackLength, leftOffset, rightOffset));
         }
         catch
         {
