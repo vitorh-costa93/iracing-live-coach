@@ -493,7 +493,9 @@ public class TelemetryReader : IDisposable
     /// <summary>Lone qualifying: no other car is really around the player (SessionKinds.IsSolo).</summary>
     private bool _soloSession;
 
-    /// <summary>Per-class EstTime curves learned from every car (Kapps' Relative gap, RelativeGapKapps).</summary>
+    /// <summary>The player's best-lap distance -> time trace: Kapps' Relative gap (OwnLapTrace).</summary>
+    private readonly OwnLapTrace _ownTrace = new();
+    /// <summary>Per-class EstTime curves learned from every car (fallback for the Relative gap before a clean lap).</summary>
     private readonly EstTimeCurves _estCurves = new();
     /// <summary>Race lap times per car (ClassRaceProjection's last-5 average), reset per session.</summary>
     private readonly LapHistory _lapHistory = new();
@@ -983,7 +985,9 @@ public class TelemetryReader : IDisposable
             {
                 if (idx == _playerCarIdx) continue;
                 float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                if (pct < 0 || _soloSession) continue; // the pace car too: Kapps lists "Pace Car" in its Relative
+                if (pct < 0 || _soloSession) continue;
+                // The pace car only while it is out on track (Kapps listed "Pace Car" after the flag, never while parked in the pits).
+                if (IsPaceCar(idx)) { bool pacePit = true; try { pacePit = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); } catch { } if (pacePit) continue; }
                 around.Add((idx, RelativeGap.WrappedDelta(pct, myPct))); // > 0 = ahead of the player on track
             }
             // Learn every class's EstTime curve from this tick (cheap: one point per car).
@@ -993,8 +997,18 @@ public class TelemetryReader : IDisposable
                 if (pct < 0 || IsPaceCar(idx)) continue;
                 _estCurves.Add(_sdk.Data.GetInt("CarIdxClass", idx), pct, _sdk.Data.GetFloat("CarIdxEstTime", idx));
             }
+            try
+            {
+                bool myPit = false;
+                try { myPit = _sdk.Data.GetBool("CarIdxOnPitRoad", _playerCarIdx); } catch { }
+                _ownTrace.Update(_sdk.Data.GetInt("CarIdxLapCompleted", _playerCarIdx), myPct, _sdk.Data.GetDouble("SessionTime"), myPit);
+            }
+            catch { }
             double GapTo(int idx, double delta)
             {
+                // Kapps: the player's own best-lap time between the rear car's spot and the front car's spot.
+                float theirPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                if ((delta > 0 ? _ownTrace.Seconds(myPct, theirPct) : _ownTrace.Seconds(theirPct, myPct)) is double own) return own;
                 // Kapps: the OTHER car's class curve between my spot and theirs (RelativeGapKapps); until that curve
                 // is known, the distance on the player's reference lap.
                 int cls = _sdk.Data.GetInt("CarIdxClass", idx);
