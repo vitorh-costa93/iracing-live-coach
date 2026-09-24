@@ -96,4 +96,12 @@ public class ClassIntervalsTests
         var v = ClassIntervals.RaceInterval(Car(1, 4, 4, 0.429, 28.025), Car(1, 3, 3, 0.434, 27.879), 67.4669);
         Assert.Equal(0.005 * 67.4669, v.Seconds!.Value, 3);
     }
+
+    [Fact]
+    public void After_the_flag_same_lap_cars_use_the_final_time_difference()
+    {
+        // 24/09/2026 official results: winner Time 0, P2 Time 17.5409, both 35 laps -> Kapps "17.5".
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 35, null, gap: 17.5409), Car(1, 1, 1, 35, null, gap: 0), 67.47);
+        Assert.Equal(17.5409, v.Seconds!.Value, 3);
+    }
 }

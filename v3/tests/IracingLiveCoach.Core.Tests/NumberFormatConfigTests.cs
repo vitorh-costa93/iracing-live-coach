@@ -58,4 +58,13 @@ public class NumberFormatConfigTests
     [InlineData("", null)]
     public void License_pill_colour_follows_the_letter_like_kapps(string lic, string? hex) =>
         Assert.Equal(hex, LicenseStyle.ColorHex(lic));
+
+    [Fact]
+    public void Defaults_are_first_last_names_and_kapps_numbers()
+    {
+        Assert.Equal(NameDisplayFormat.FirstLast, NumberFormatConfig.Default.NameFormat);
+        Assert.Equal("Vitor Costa", NameDisplay.Format("Vitor Hugo Da Costa", NumberFormatConfig.Default.NameFormat));
+        Assert.Equal("3.4k", NumberFormatConfig.Default.FormatIRating(3469));
+        Assert.Equal(NameDisplayFormat.FirstLast, new NumberFormatConfig(IRatingFormat.Full, SafetyRatingFormat.LetterAndNumber).NameFormat);
+    }
 }

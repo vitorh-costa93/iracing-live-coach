@@ -62,6 +62,10 @@ public static class ClassIntervals
         {
             double diff = theirs - mine;
             if (diff >= 1.0) return new IntervalValue(null, (int)Math.Floor(diff + 1e-9));
+            // After the flag (official classification: no live EstTime) the same-lap interval is the difference
+            // of the final race times -- Kapps "17.5" for ResultsPositions Time 17.5409 vs the winner's 0.
+            if (me.EstTime is null && ahead.EstTime is null && me.GapToLeader is double finalMe && ahead.GapToLeader is double finalAhead && finalMe - finalAhead >= 0)
+                return new IntervalValue(finalMe - finalAhead, null);
             // Kapps: the distance between the two cars x the class reference lap (CarClassEstLapTime).
             // Live start 24/09/2026: Sean 0.021 laps behind Ben -> 1.42, Kapps "1.4" (EstTime gave 1.22);
             // Josh 0.005 behind Jonas -> 0.34, Kapps "0.3" (EstTime was negative there: not monotonic).

@@ -39,9 +39,11 @@ public static class StandingsSelection
                 var ranked = group.OrderBy(r => r.ClassPosition > 0 ? r.ClassPosition : r.Position).ToList();
                 bool isPlayerClass = hasPlayer && group.Key == playerClassId;
                 int topN = Math.Max(0, settings.TopNPerClass);
-                // "Top N incluído no total" (spec §12): when off, the Top N rows are ADDED to the class budget.
-                int budget = (isPlayerClass ? Math.Max(1, settings.OwnClassRows) : Math.Max(0, settings.OtherClassRows))
-                             + (settings.TopNCountsTowardTotal ? 0 : topN);
+                // "Top N incluído no total" (spec §12): when off, the Top N rows are ADDED to the player's class
+                // budget. Other classes show exactly OtherClassRows (Kapps: just the class leader).
+                int budget = isPlayerClass || !hasPlayer
+                    ? Math.Max(1, settings.OwnClassRows) + (settings.TopNCountsTowardTotal ? 0 : topN)
+                    : Math.Max(0, settings.OtherClassRows);
                 var picked = new List<StandingsRow>();
 
                 // The Top-N requirement is class-local, not the table index/global grid rank.

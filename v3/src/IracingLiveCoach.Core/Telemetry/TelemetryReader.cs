@@ -52,7 +52,7 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 /// real iRatings -- see iracing.com/strength-in-numbers for the source formula.</summary>
 /// <summary>A class's lap counter for its Standings panel: the class leader's lap and Kapps' projected total
 /// (null before the leader has race laps -- Kapps then shows just "Lap 1").</summary>
-public readonly record struct ClassLapInfo(int Lap, double? Projected);
+public readonly record struct ClassLapInfo(int Lap, double? Projected, int? FinalTotal = null);
 
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
     IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null)
@@ -493,6 +493,8 @@ public class TelemetryReader : IDisposable
     /// <summary>Lone qualifying: no other car is really around the player (SessionKinds.IsSolo).</summary>
     private bool _soloSession;
 
+    /// <summary>Per-class EstTime curves learned from every car (Kapps' Relative gap, RelativeGapKapps).</summary>
+    private readonly EstTimeCurves _estCurves = new();
     /// <summary>Race lap times per car (ClassRaceProjection's last-5 average), reset per session.</summary>
     private readonly LapHistory _lapHistory = new();
     /// <summary>Class id -> (class leader's lap, Kapps' projected total) from the last Standings pass.</summary>
@@ -981,17 +983,33 @@ public class TelemetryReader : IDisposable
             {
                 if (idx == _playerCarIdx) continue;
                 float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                if (pct < 0 || IsPaceCar(idx) || _soloSession) continue;
+                if (pct < 0 || _soloSession) continue; // the pace car too: Kapps lists "Pace Car" in its Relative
                 around.Add((idx, RelativeGap.WrappedDelta(pct, myPct))); // > 0 = ahead of the player on track
+            }
+            // Learn every class's EstTime curve from this tick (cheap: one point per car).
+            for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+            {
+                float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                if (pct < 0 || IsPaceCar(idx)) continue;
+                _estCurves.Add(_sdk.Data.GetInt("CarIdxClass", idx), pct, _sdk.Data.GetFloat("CarIdxEstTime", idx));
+            }
+            double GapTo(int idx, double delta)
+            {
+                // Kapps: the OTHER car's class curve between my spot and theirs (RelativeGapKapps); until that curve
+                // is known, the distance on the player's reference lap.
+                int cls = _sdk.Data.GetInt("CarIdxClass", idx);
+                double theirLap = _classLapTimeById.TryGetValue(cls, out var l) ? l : lapTime;
+                return RelativeGapKapps.Seconds(_sdk.Data.GetFloat("CarIdxEstTime", idx), _estCurves.At(cls, myPct), theirLap)
+                    ?? Math.Abs(delta) * lapTime;
             }
             var ahead = around.Where(c => c.Delta > 0).OrderBy(c => c.Delta).Take(RelativeCarsMax).ToList();
             var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
 
             var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
             for (int i = 0; i < ahead.Count; i++)
-                rows.Add(BuildRelativeRow(ahead[i].Idx, -(i + 1), -Math.Abs(ahead[i].Delta) * lapTime, positions));
+                rows.Add(BuildRelativeRow(ahead[i].Idx, -(i + 1), -GapTo(ahead[i].Idx, ahead[i].Delta), positions));
             for (int i = 0; i < behind.Count; i++)
-                rows.Add(BuildRelativeRow(behind[i].Idx, i + 1, Math.Abs(behind[i].Delta) * lapTime, positions));
+                rows.Add(BuildRelativeRow(behind[i].Idx, i + 1, GapTo(behind[i].Idx, behind[i].Delta), positions));
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
         }
@@ -1122,7 +1140,9 @@ public class TelemetryReader : IDisposable
                 var onPitRoad = false;
                 try { onPitRoad = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); }
                 catch { /* channel absent outside an active driving session */ }
-                var pitStatus = _pitStops.Update(idx, onPitRoad, lapsCompleted, stopsCount, now);
+                bool towed = false;
+                if (idx == _playerCarIdx) { try { towed = _sdk.Data.GetFloat("PlayerCarTowTime") > 0; } catch { } }
+                var pitStatus = _pitStops.Update(idx, onPitRoad, lapsCompleted, stopsCount, now, towed);
                 var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
                 // "Valid lap" (qualifying gate): iRacing only classifies (CarIdxPosition > 0) a car that has
                 // a timed lap.
@@ -1231,6 +1251,19 @@ public class TelemetryReader : IDisposable
                     int lap = 0;
                     try { lap = _sdk.Data.GetInt("CarIdxLap", l.Idx); } catch { }
                     classLaps[l.ClassId] = new ClassLapInfo(lap, projections.TryGetValue(l.ClassId, out var pr) ? pr : null);
+                }
+            }
+            // After the flag: each class panel shows its leader's lap / that leader's final lap count (Kapps
+            // "34/33", "33/32" while the overall header reads "36/35").
+            if (_isRaceSession && _finalResults.Count > 0)
+            {
+                foreach (var g in ordered.GroupBy(r => r.ClassId))
+                {
+                    var leaderRow = g.OrderBy(r => r.ClassPosition > 0 ? r.ClassPosition : int.MaxValue).ThenBy(r => r.Position).First();
+                    int lap = 0;
+                    try { lap = _sdk.Data.GetInt("CarIdxLap", leaderRow.Idx); } catch { }
+                    int? total = _finalResults.TryGetValue(leaderRow.Idx, out var fr) ? fr.LapsComplete : null;
+                    classLaps[g.Key] = new ClassLapInfo(lap, null, total);
                 }
             }
             _classLaps = classLaps;
@@ -1513,6 +1546,14 @@ public class TelemetryReader : IDisposable
                 // itself follows the overall leader's last-5 average (ClassRaceProjection, Kapps).
                 double? ownPace = _lapHistory.RecentAverage(_playerCarIdx) ?? _fuelTracker.MeasuredAverageLapTime ?? (lastLapTime > 1 ? lastLapTime : pole ?? _estimatedLapTime);
                 if (leaderIdx >= 0 && _lapHistory.RecentAverage(leaderIdx) is double leaderAvg) leaderLapTime = leaderAvg;
+                // After the chequered flag (SessionState 5/6) SessionTimeRemain is meaningless (167 h seen live):
+                // the race length is what was driven and the player has nothing left to drive (Kapps "35").
+                if (raceState > SessionStateRacingState)
+                {
+                    int finalLaps = FinalResults.TotalLaps(_finalResults.Values) ?? (int)Math.Ceiling(leader - 1e-9);
+                    _raceEstimate = new RaceLapEstimate(finalLaps, 0, false);
+                }
+                else
                 _raceEstimate = pole is double poleLap && sessionTotal is double sessionLength && (raceState < SessionStateRacingState || !leaderHasRaceLap)
                     ? RaceLapEstimator.EstimateFromPole(lapsLimit, sessionLength, poleLap, player)
                     : RaceLapEstimator.Estimate(lapsLimit, timeLeft, leader, player, ownPace, leaderLapTime);

@@ -92,6 +92,15 @@ public sealed class StandingsSelectionTests
         Assert.Equal(expected, group.Rows.Select(r => r.ClassPosition));
     }
 
+    [Fact]
+    public void Default_options_show_only_the_leader_of_the_other_classes()
+    {
+        var rows = Enumerable.Range(1, 8).Select(p => Row(p, 1, p, p == 6))
+            .Concat(Enumerable.Range(9, 5).Select(p => Row(p, 2, p - 8, false)));
+        var other = StandingsSelection.GroupAndSelect(rows).Single(g => g.ClassId == 2);
+        Assert.Equal(new[] { 1 }, other.Rows.Select(r => r.ClassPosition));
+    }
+
     private static StandingsRow Row(int position, int classId, int classPosition, bool player) =>
         new(position, $"Driver {position}", 1, null, null, player, "", "A", null, 1000, classId,
             "Ferrari", null, null, null, classId == 1 ? "GT3" : "GTP", null, classPosition,

@@ -15,9 +15,10 @@ public enum SafetyRatingFormat { LetterAndNumber, NumberOnly, LetterOnly }
 /// <summary>Live, user-configurable number-format preferences, global across widgets (spec §12
 /// groups this with the other cross-cutting formatting asks, not per-widget like column decimals).
 /// Null means "use Default".</summary>
-public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating, NameDisplayFormat NameFormat = NameDisplayFormat.Full, bool ShowIRatingDelta = true)
+public sealed record NumberFormatConfig(IRatingFormat IRating, SafetyRatingFormat SafetyRating, NameDisplayFormat NameFormat = NameDisplayFormat.FirstLast, bool ShowIRatingDelta = true)
 {
-    public static NumberFormatConfig Default { get; } = new(IRatingFormat.Full, SafetyRatingFormat.LetterAndNumber, NameDisplayFormat.Full);
+    /// <summary>Defaults = Kapps + the driver's choice (24/09/2026): iRating "3.4k", licence "A1.4", "First Last" names.</summary>
+    public static NumberFormatConfig Default { get; } = new(IRatingFormat.Thousands, SafetyRatingFormat.LetterAndNumber, NameDisplayFormat.FirstLast);
 
     /// <summary>Formats a raw iRating value per this config.</summary>
     public string FormatIRating(int iRating) => IRating switch

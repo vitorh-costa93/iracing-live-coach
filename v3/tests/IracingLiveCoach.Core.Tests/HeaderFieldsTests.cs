@@ -85,5 +85,7 @@ public class HeaderFieldsTests
         Assert.Equal("LAP 15/≈33.05", HeaderFields.ClassLapText(session, 2, false));
         Assert.Equal("LAP 1", HeaderFields.ClassLapText(session, 3, false));             // no projection yet: Kapps "Lap 1"
         Assert.Equal("LAP 16/≈35.23", HeaderFields.ClassLapText(session with { ClassLaps = null }, 1, true));
+        var final = session with { ClassLaps = new Dictionary<int, ClassLapInfo> { [2] = new(34, null, 33) } };
+        Assert.Equal("LAP 34/33", HeaderFields.ClassLapText(final, 2, false)); // Kapps after the flag
     }
 }

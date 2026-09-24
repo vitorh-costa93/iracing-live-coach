@@ -121,16 +121,15 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// column ("Padding (H)"); what layout and width actually use.</summary>
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
 
-    private void RebuildEffectiveColumns() =>
-        _effectiveColumns = _columns.Select(c =>
-        {
-            // The Overtake column only exists where the session has push-to-pass (SF23 etc.): in a
-            // GT3 race it would be a column of dashes, so it collapses instead of reserving width.
-            if (c.Key == "overtake" && !_hasP2P) return c with { Visible = false };
-            // Pit: only once a car has actually been on pit road -- before that it would be a column of blanks.
-            if (c.Key == "pit" && !_hasPit) return c with { Visible = false };
-            return _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c;
-        }).ToList();
+    private void RebuildEffectiveColumns()
+    {
+        var cols = _columns.Select(c => _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        // Contextual columns hide WITHOUT shrinking the widget (the name takes the space): Overtake only where the
+        // session has push-to-pass, Pit only once a car has made a stop.
+        if (!_hasP2P) cols = WidgetLayoutEngine.HideKeepingWidth(cols, "overtake");
+        if (!_hasPit) cols = WidgetLayoutEngine.HideKeepingWidth(cols, "pit");
+        _effectiveColumns = cols;
+    }
 
     private bool _hasP2P;
     private bool _hasPit;
@@ -545,12 +544,13 @@ public sealed unsafe class StandingsWidget : IDisposable
                 }
                 case "lapDelta":
                 {
-                    // Item 8: no explicit +/- sign -- the magnitude is shown, colour carries the
-                    // direction. Negative = this driver was faster than the player last lap (green);
-                    // positive = slower (red); zero, unknown, or the player's own row stays neutral.
+                    // No +/- sign -- the magnitude is shown, colour carries the direction FROM THE PLAYER'S
+                    // point of view (Kapps): green = the player was faster (that driver's lap was slower,
+                    // delta = theirs - mine > 0), red = the player was slower (delta < 0); zero, unknown or
+                    // the player's own row stays neutral.
                     double? deltaValue = row.IsPlayer ? 0.0 : row.LapDeltaVsPlayerSeconds;
                     var deltaColor = !row.IsPlayer && deltaValue is double d && d != 0.0
-                        ? (d < 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)
+                        ? (d > 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)
                         : PaletteTokens.NeutralDeltaOrGap;
                     DrawNumericOrDash(dc, cellX, y, cellWidth, deltaValue,
                         v => Math.Abs(v).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture),
@@ -561,7 +561,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                 {
                     // Core's PitStatus is "L8 24s" (last stop: lap + seconds) or "--" when the driver
                     // hasn't stopped; the mockups show it as "L8/24s". Never fabricated when absent.
-                    string pit = string.IsNullOrWhiteSpace(row.PitStatus) || row.PitStatus == "--" ? "—" : row.PitStatus.Replace(' ', '/');
+                    string pit = string.IsNullOrWhiteSpace(row.PitStatus) || row.PitStatus == "--" ? "" : row.PitStatus; // Kapps: blank without a stop // Kapps: "L1 58.8", "PIT 35", "TOW 28m"
                     DrawCell(dc, pit, cellX, y, cellWidth, placement.Column.Alignment);
                     break;
                 }

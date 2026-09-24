@@ -47,6 +47,8 @@ public static class HeaderFields
     {
         if (session?.ClassLaps is { } laps && laps.TryGetValue(classId, out var info))
         {
+            if (info.FinalTotal is int final)
+                return $"LAP {info.Lap.ToString(CultureInfo.InvariantCulture)}/{final.ToString(CultureInfo.InvariantCulture)}";
             if (info.Projected is double p)
                 return $"LAP {info.Lap.ToString(CultureInfo.InvariantCulture)}/≈" + Math.Round(p, 2, MidpointRounding.AwayFromZero).ToString("0.00", CultureInfo.InvariantCulture);
             if (!isOverallLeaderClass) return $"LAP {info.Lap.ToString(CultureInfo.InvariantCulture)}";
