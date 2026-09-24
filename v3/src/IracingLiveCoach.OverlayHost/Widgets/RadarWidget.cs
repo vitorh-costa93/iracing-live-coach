@@ -38,15 +38,9 @@ public sealed unsafe class RadarWidget : IDisposable
     private const float HeightDip = 190f;
     /// <summary>+/- this many metres of track fit the height of the radar.</summary>
     public const float RangeMeters = 15f;
-    private const float KappsBarHeightDip = 127f;
     private const float CarLengthMeters = 4.8f;
     private const float CarWidthDip = 16f;
     private const float LaneOffsetDip = 30f;
-    /// <summary>Side bar track width -- report_backend's radar section: "~20x127 px em 1080p" (the
-    /// 127 px height is this widget's own player-car length in pixels, already computed as
-    /// <c>carHeight</c>; only the width is a fixed constant).</summary>
-    private const float SideBarWidthDip = 14f;
-    private const float SideBarInsetDip = 4f;
 
     /// <summary>Size the radar draws at (the overlay fits its window to it).</summary>
     public (float Width, float Height) LastDrawnSize => (WidthDip * _appearance.FontScale, HeightDip * _appearance.FontScale);
@@ -103,22 +97,52 @@ public sealed unsafe class RadarWidget : IDisposable
         bool simulated = status is not null;
         if (!simulated) { lock (_lock) { status = _status; } }
         if (status is null || !status.HasTrackLength || (!simulated && !_telemetry.HasRecentTelemetry)) return;
-        // Kapps: nothing at all unless a car overlaps side by side (RadarSideOffsets.IsVisible), and then
-        // only the side bars -- no panel, no guides, no cars ahead/behind.
+        // Shown ONLY while a car overlaps side by side (iRacing CarLeftRight 2..6 -- RadarSideOffsets.IsVisible,
+        // the moment the side car turns red), like Kapps; otherwise nothing at all. The drawing itself is the
+        // driver's preferred original radar (player + nearby cars, the overlapping one in red).
         bool anySide = status.BlindSpotLeft || status.BlindSpotRight;
         if (!anySide) return;
 
         float scale = _appearance.FontScale;
         float w = WidthDip * scale, h = HeightDip * scale;
-        float cy = y + h / 2f;
+        float cx = x + w / 2f, cy = y + h / 2f;
+        float pxPerMeter = (h / 2f - 10f * scale) / RangeMeters;
+        float carHeight = CarLengthMeters * pxPerMeter;
+        float carWidth = CarWidthDip * scale;
+        float lane = LaneOffsetDip * scale;
 
-        // One amber bar per side iRacing reports occupied (report_backend's radar section). Its track stands
-        // for the PLAYER's car (rear at the bottom, nose at the top); the amber fill is the stretch of it the
-        // side car covers (RadarSideOffsets.Fill). Kapps' track is ~127 px tall at 1080p.
-        float barHalf = Math.Min(KappsBarHeightDip * scale, h - 8f) / 2f;
-        float barTop = cy - barHalf, barBottom = cy + barHalf;
-        if (status.BlindSpotLeft) DrawSideBar(dc, x + 3f, barTop, barBottom, status.LeftCarOffsetMeters, scale);
-        if (status.BlindSpotRight) DrawSideBar(dc, x + w - 3f - SideBarWidthDip * scale, barTop, barBottom, status.RightCarOffsetMeters, scale);
+        var panel = new RectF(x, y, x + w, y + h);
+        // Item 11: a dedicated, more translucent token -- never the shared PanelBackground.
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.RadarPanelBackground);
+
+        // Distance guides every 10 m.
+        SetBrushColor(PaletteTokens.PanelDivider);
+        for (int m = -10; m <= 10; m += 5)
+        {
+            if (m == 0) continue;
+            float gy = cy - m * pxPerMeter;
+            var guide = new RectF(x + 10f, gy, x + w - 10f, gy + 1f);
+            dc->FillRectangle(&guide, (ID2D1Brush*)_brush.Get());
+        }
+
+        // Occupied sides (iRacing's own flag): red bars along the edges.
+        if (status.BlindSpotLeft) DrawSideBar(dc, x + 3f, y + 8f, y + h - 8f);
+        if (status.BlindSpotRight) DrawSideBar(dc, x + w - 7f, y + 8f, y + h - 8f);
+
+        // The player.
+        DrawCar(dc, cx, cy, carWidth, carHeight, PaletteTokens.PlayerHighlight, filled: true);
+
+        foreach (var blip in status.Blips)
+        {
+            float laneX = blip.Side switch { RadarSide.Left => cx - lane, RadarSide.Right => cx + lane, _ => cx };
+            float carY = cy - (float)Math.Clamp(blip.DistanceMeters, -RangeMeters, RangeMeters) * pxPerMeter;
+            double gap = Math.Abs(blip.DistanceMeters);
+            var color = gap <= RadarSideAssigner.OverlapMeters && blip.Side != RadarSide.Center ? PaletteTokens.Critical
+                : gap <= 12 ? PaletteTokens.Warning
+                : PaletteTokens.TextSecondary;
+            DrawCar(dc, laneX, carY, carWidth, carHeight, color, filled: blip.Side != RadarSide.Center || gap <= 12);
+        }
+        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
     }
 
     private void DrawCar(ID2D1DeviceContext* dc, float centerX, float centerY, float width, float height, Color4 color, bool filled)
@@ -132,32 +156,12 @@ public sealed unsafe class RadarWidget : IDisposable
         else dc->DrawRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get(), 1.6f, null);
     }
 
-    /// <summary>Kapps-style side bar (report_backend's radar section, evidence: kapps_radar1.png).
-    /// The track (dark, rounded) represents the PLAYER's own car, rear at <paramref name="bottom"/>
-    /// and nose at <paramref name="top"/>; the amber fill is the fraction of it
-    /// <see cref="RadarSideOffsets.Fill"/> says the side car covers, inset a few px inside the
-    /// track. A null offset (side reported occupied but no car resolved there) fills the whole
-    /// track, matching Fill's own documented fallback.</summary>
-    private void DrawSideBar(ID2D1DeviceContext* dc, float left, float top, float bottom, double? offsetMeters, float scale)
+    private void DrawSideBar(ID2D1DeviceContext* dc, float x, float top, float bottom)
     {
-        float width = SideBarWidthDip * scale;
-        var track = new RectF(left, top, left + width, bottom);
-        var trackRounded = new RoundedRect { rect = track, radiusX = 3f * scale, radiusY = 3f * scale };
-        SetBrushColor(PaletteTokens.RadarSideBarTrack);
-        dc->FillRoundedRectangle(&trackRounded, (ID2D1Brush*)_brush.Get());
-
-        var (from, to) = RadarSideOffsets.Fill(offsetMeters, CarLengthMeters);
-        float inset = SideBarInsetDip * scale;
-        float trackHeight = bottom - top;
-        // "From"/"To" are measured bottom (rear, 0) to top (nose, 1); Direct2D's y grows downward,
-        // so the near-rear end ("From") maps to the LOWER y coordinate (closer to bottom).
-        float fillTop = bottom - (float)(to * trackHeight);
-        float fillBottom = bottom - (float)(from * trackHeight);
-        if (fillBottom - fillTop < 1f) return; // no measurable overlap -- nothing to draw
-        var fill = new RectF(left + inset, fillTop, left + width - inset, fillBottom);
-        var fillRounded = new RoundedRect { rect = fill, radiusX = 2f * scale, radiusY = 2f * scale };
-        SetBrushColor(PaletteTokens.RadarSideBarFill);
-        dc->FillRoundedRectangle(&fillRounded, (ID2D1Brush*)_brush.Get());
+        var bar = new RectF(x, top, x + 4f, bottom);
+        var rounded = new RoundedRect { rect = bar, radiusX = 2f, radiusY = 2f };
+        SetBrushColor(PaletteTokens.Critical);
+        dc->FillRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get());
     }
 
     public void Dispose()
