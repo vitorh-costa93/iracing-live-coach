@@ -8,6 +8,12 @@ namespace IracingLiveCoach.Core.Telemetry;
 /// </summary>
 public static class RadarSideOffsets
 {
+    /// <summary>Kapps shows the radar ONLY while a car overlaps the player side by side -- iRacing's
+    /// CarLeftRight 2..6 (car left/right/both/2 left/2 right) -- and then only the side bars: no panel, no
+    /// cars ahead/behind. Observed live side by side 24/09/2026 (the bars appear exactly when our car turned
+    /// red = overlap; cars 9-15 m ahead/behind with CarLeftRight 1 showed nothing in Kapps).</summary>
+    public static bool IsVisible(int carLeftRight) => carLeftRight is >= 2 and <= 6;
+
     public static (double? Left, double? Right) Nearest(IEnumerable<RadarBlip> blips, bool leftOccupied, bool rightOccupied)
     {
         double? Pick(RadarSide side) => blips.Where(b => b.Side == side)

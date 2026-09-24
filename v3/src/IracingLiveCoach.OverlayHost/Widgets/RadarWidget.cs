@@ -38,6 +38,7 @@ public sealed unsafe class RadarWidget : IDisposable
     private const float HeightDip = 190f;
     /// <summary>+/- this many metres of track fit the height of the radar.</summary>
     public const float RangeMeters = 15f;
+    private const float KappsBarHeightDip = 127f;
     private const float CarLengthMeters = 4.8f;
     private const float CarWidthDip = 16f;
     private const float LaneOffsetDip = 30f;
@@ -102,54 +103,22 @@ public sealed unsafe class RadarWidget : IDisposable
         bool simulated = status is not null;
         if (!simulated) { lock (_lock) { status = _status; } }
         if (status is null || !status.HasTrackLength || (!simulated && !_telemetry.HasRecentTelemetry)) return;
+        // Kapps: nothing at all unless a car overlaps side by side (RadarSideOffsets.IsVisible), and then
+        // only the side bars -- no panel, no guides, no cars ahead/behind.
         bool anySide = status.BlindSpotLeft || status.BlindSpotRight;
-        if (status.Blips.Count == 0 && !anySide) return; // clear: nothing to show
+        if (!anySide) return;
 
         float scale = _appearance.FontScale;
         float w = WidthDip * scale, h = HeightDip * scale;
-        float cx = x + w / 2f, cy = y + h / 2f;
-        float pxPerMeter = (h / 2f - 10f * scale) / RangeMeters;
-        float carHeight = CarLengthMeters * pxPerMeter;
-        float carWidth = CarWidthDip * scale;
-        float lane = LaneOffsetDip * scale;
+        float cy = y + h / 2f;
 
-        var panel = new RectF(x, y, x + w, y + h);
-        // Item 11: a dedicated, more translucent token -- never the shared PanelBackground other
-        // widgets use, so this change can't affect Standings/Relative.
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.RadarPanelBackground);
-
-        // Distance guides every 10 m.
-        SetBrushColor(PaletteTokens.PanelDivider);
-        for (int m = -10; m <= 10; m += 5)
-        {
-            if (m == 0) continue;
-            float gy = cy - m * pxPerMeter;
-            var guide = new RectF(x + 10f, gy, x + w - 10f, gy + 1f);
-            dc->FillRectangle(&guide, (ID2D1Brush*)_brush.Get());
-        }
-
-        // Item 11 / report_backend's radar section: one amber bar per side iRacing reports occupied.
-        // Its track stands for the PLAYER's own car (rear at the bottom, nose at the top, matching
-        // the player's own car body already drawn at the same height below); the amber fill is
-        // exactly the stretch of the player's car the side car covers, per RadarSideOffsets.Fill.
-        float barTop = cy - carHeight / 2f, barBottom = cy + carHeight / 2f;
+        // One amber bar per side iRacing reports occupied (report_backend's radar section). Its track stands
+        // for the PLAYER's car (rear at the bottom, nose at the top); the amber fill is the stretch of it the
+        // side car covers (RadarSideOffsets.Fill). Kapps' track is ~127 px tall at 1080p.
+        float barHalf = Math.Min(KappsBarHeightDip * scale, h - 8f) / 2f;
+        float barTop = cy - barHalf, barBottom = cy + barHalf;
         if (status.BlindSpotLeft) DrawSideBar(dc, x + 3f, barTop, barBottom, status.LeftCarOffsetMeters, scale);
         if (status.BlindSpotRight) DrawSideBar(dc, x + w - 3f - SideBarWidthDip * scale, barTop, barBottom, status.RightCarOffsetMeters, scale);
-
-        // The player.
-        DrawCar(dc, cx, cy, carWidth, carHeight, PaletteTokens.PlayerHighlight, filled: true);
-
-        foreach (var blip in status.Blips)
-        {
-            float laneX = blip.Side switch { RadarSide.Left => cx - lane, RadarSide.Right => cx + lane, _ => cx };
-            float carY = cy - (float)Math.Clamp(blip.DistanceMeters, -RangeMeters, RangeMeters) * pxPerMeter;
-            double gap = Math.Abs(blip.DistanceMeters);
-            var color = gap <= RadarSideAssigner.OverlapMeters && blip.Side != RadarSide.Center ? PaletteTokens.Critical
-                : gap <= 12 ? PaletteTokens.Warning
-                : PaletteTokens.TextSecondary;
-            DrawCar(dc, laneX, carY, carWidth, carHeight, color, filled: blip.Side != RadarSide.Center || gap <= 12);
-        }
-        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
     }
 
     private void DrawCar(ID2D1DeviceContext* dc, float centerX, float centerY, float width, float height, Color4 color, bool filled)

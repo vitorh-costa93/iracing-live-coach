@@ -49,4 +49,15 @@ public class RadarSideAssignerTests
         // e.g. a car right behind in the slipstream: close, but CarLeftRight is clear.
         Assert.Equal(RadarSide.Center, new RadarSideAssigner().Assign([(4, -4.0)], Clear)[4]);
     }
+
+    [Theory]
+    [InlineData(0, false)] // off
+    [InlineData(1, false)] // clear: cars ahead/behind never show the radar (Kapps)
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    [InlineData(4, true)]
+    [InlineData(5, true)]
+    [InlineData(6, true)]
+    public void Radar_is_visible_only_while_a_car_overlaps_side_by_side(int carLeftRight, bool visible) =>
+        Assert.Equal(visible, RadarSideOffsets.IsVisible(carLeftRight));
 }
