@@ -17,9 +17,15 @@ public sealed class LapHistory
     public double? RecentAverage(int carIdx, int window = ClassRaceProjection.Window)
     {
         if (!_laps.TryGetValue(carIdx, out var laps) || laps.Count == 0) return null;
-        var recent = laps.Values.Skip(Math.Max(0, laps.Count - window)).ToList();
-        return recent.Average();
+        // Lap 1 (standing/rolling start) never counts (Kapps, 24/09/2026: after lap 2 the projection used lap 2 alone).
+        var valid = laps.Where(kv => kv.Key != 1).Select(kv => kv.Value).ToList();
+        if (valid.Count == 0) return null;
+        return valid.Skip(Math.Max(0, valid.Count - window)).Average();
     }
+
+    /// <summary>Changes whenever a lap time is recorded or settles -- the moment Kapps recomputes.</summary>
+    public (int Count, double Last) Signature(int carIdx) =>
+        _laps.TryGetValue(carIdx, out var laps) && laps.Count > 0 ? (laps.Count, laps.Values.Last()) : (0, 0);
 
     public void Clear() => _laps.Clear();
 }

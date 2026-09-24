@@ -104,4 +104,15 @@ public class ClassIntervalsTests
         var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 35, null, gap: 17.5409), Car(1, 1, 1, 35, null, gap: 0), 67.47);
         Assert.Equal(17.5409, v.Seconds!.Value, 3);
     }
+
+    [Fact]
+    public void Race_interval_uses_the_track_time_function_when_available()
+    {
+        // 0.02 laps apart; the trace says that stretch takes 2.4 s (slow corner) -> 2.4, not 0.02 x 67.
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.50, 30), Car(1, 1, 1, 5.52, 31), 67, (rear, front) => rear == 0.5 && Math.Abs(front - 0.52) < 1e-9 ? 2.4 : null);
+        Assert.Equal(2.4, v.Seconds!.Value, 6);
+        // Across the line the fractions wrap (0.99 -> 0.01).
+        var w = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.99, 30), Car(1, 1, 1, 6.01, 1), 67, (rear, front) => rear > 0.98 && front < 0.02 ? 1.3 : null);
+        Assert.Equal(1.3, w.Seconds!.Value, 6);
+    }
 }

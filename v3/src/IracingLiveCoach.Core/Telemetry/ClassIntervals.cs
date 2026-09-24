@@ -38,7 +38,10 @@ public readonly record struct IntervalValue(double? Seconds, int? Laps)
 /// </summary>
 public static class ClassIntervals
 {
-    public static IntervalValue[] Compute(IReadOnlyList<IntervalInput> drivers, bool raceMode, IReadOnlyDictionary<int, double>? lapTimeByClass = null)
+    /// <param name="timeBetween">Kapps' track-time function (rear lap fraction, front lap fraction) -> seconds, the
+    /// same base as the Relative (OwnLapTrace: the player's best lap between the two spots); null/none = the
+    /// distance x class-lap fallback.</param>
+    public static IntervalValue[] Compute(IReadOnlyList<IntervalInput> drivers, bool raceMode, IReadOnlyDictionary<int, double>? lapTimeByClass = null, Func<double, double, double?>? timeBetween = null)
     {
         var result = new IntervalValue[drivers.Count];
         foreach (var group in Enumerable.Range(0, drivers.Count).GroupBy(i => drivers[i].ClassId))
@@ -50,13 +53,13 @@ public static class ClassIntervals
             {
                 var me = drivers[ranked[k]];
                 var ahead = drivers[ranked[k - 1]];
-                result[ranked[k]] = raceMode ? RaceInterval(me, ahead, lapTime) : TimedInterval(me, ahead);
+                result[ranked[k]] = raceMode ? RaceInterval(me, ahead, lapTime, timeBetween) : TimedInterval(me, ahead);
             }
         }
         return result;
     }
 
-    public static IntervalValue RaceInterval(IntervalInput me, IntervalInput ahead, double? classLapTime)
+    public static IntervalValue RaceInterval(IntervalInput me, IntervalInput ahead, double? classLapTime, Func<double, double, double?>? timeBetween = null)
     {
         if (me.Progress is double mine && ahead.Progress is double theirs)
         {
@@ -69,6 +72,10 @@ public static class ClassIntervals
             // Kapps: the distance between the two cars x the class reference lap (CarClassEstLapTime).
             // Live start 24/09/2026: Sean 0.021 laps behind Ben -> 1.42, Kapps "1.4" (EstTime gave 1.22);
             // Josh 0.005 behind Jonas -> 0.34, Kapps "0.3" (EstTime was negative there: not monotonic).
+            // Same base as the Relative: time along a reference lap between the two spots, so braking or
+            // accelerating does not make the interval jump (user, 24/09/2026).
+            if (diff >= 0 && me.EstTime is not null && timeBetween?.Invoke(mine - Math.Floor(mine), theirs - Math.Floor(theirs)) is double t0)
+                return new IntervalValue(t0, null);
             if (diff >= 0 && classLapTime is double lap) return new IntervalValue(diff * lap, null);
             if (diff >= 0 && me.EstTime is double myEst && ahead.EstTime is double theirEst)
             {

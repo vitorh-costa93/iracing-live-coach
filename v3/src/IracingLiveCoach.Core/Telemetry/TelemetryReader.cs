@@ -73,7 +73,7 @@ public record PlayerCarStatus(double? BrakeBiasPct, string? TrackRubberState, do
 /// <summary>One tick's fuel state. AverageFuelPerLapLiters/LapsRemaining/TimeRemainingSeconds are
 /// null until at least one full lap has completed since the app started watching (see UpdateFuel's
 /// own doc comment) -- never show a number computed from zero samples.</summary>
-public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null, double? RaceLapsRemaining = null, int? RaceTotalLaps = null, bool RaceLapsEstimated = false, bool AverageFromHistory = false, double? PlayerLapDistPct = null);
+public record FuelStatus(double FuelLevelLiters, double FuelUsePerHourLiters, double? AverageFuelPerLapLiters, double? LapsRemaining, double? TimeRemainingSeconds, double? RefuelToFullLiters = null, double? FuelNeededForFinishLiters = null, double? PlannedPitFuelLiters = null, double? FuelAfterPitLiters = null, double? FuelAtFinishLiters = null, double? LastLapFuelUsedLiters = null, bool LastLapAffectedByPit = false, double? MaxFuelPerLapLiters = null, double? AverageLapTimeSeconds = null, double? RaceLapsRemaining = null, int? RaceTotalLaps = null, bool RaceLapsEstimated = false, bool AverageFromHistory = false, double? PlayerLapDistPct = null, KappsFuelPanel? Kapps = null);
 
 /// <summary>One car's current position around the lap (0.0 at start/finish, approaching 1.0 as it
 /// completes the lap) -- feeds the Weather widget's linear "track usage" bar. Deliberately NOT a
@@ -497,6 +497,10 @@ public class TelemetryReader : IDisposable
     private readonly OwnLapTrace _ownTrace = new();
     /// <summary>Per-class EstTime curves learned from every car (fallback for the Relative gap before a clean lap).</summary>
     private readonly EstTimeCurves _estCurves = new();
+    /// <summary>Kapps recomputes a class's projection only when its leader closes a lap: class -> (leader lap signature, value).</summary>
+    private readonly Dictionary<int, ((int, double) Sig, double Value)> _latchedProjection = new();
+    private readonly KappsFuelLatch _kappsFuel = new();
+    private readonly List<double> _qualifyFuelLaps = new();
     /// <summary>Race lap times per car (ClassRaceProjection's last-5 average), reset per session.</summary>
     private readonly LapHistory _lapHistory = new();
     /// <summary>Class id -> (class leader's lap, Kapps' projected total) from the last Standings pass.</summary>
@@ -820,6 +824,8 @@ public class TelemetryReader : IDisposable
         _finishDetector.Reset();
         _lapHistory.Clear();
         _classLaps = new();
+        _latchedProjection.Clear();
+        _kappsFuel.Reset();
     }
 
     private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
@@ -1209,7 +1215,7 @@ public class TelemetryReader : IDisposable
 
             var intervals = ClassIntervals.Compute(
                 ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Progress, o.EstTime, o.Gap, o.BestLap)).ToList(),
-                raceMode: !timed, _classLapTimeById);
+                raceMode: !timed, _classLapTimeById, (rear, front) => _ownTrace.Seconds(rear, front));
 
             // Practice/qualifying gap: best lap minus the class's best lap.
             var classBest = ordered.Where(r => r.BestLap is not null).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => g.Min(r => r.BestLap!.Value));
@@ -1257,9 +1263,19 @@ public class TelemetryReader : IDisposable
                     .ToList();
                 double remainNow = -1;
                 try { remainNow = _sdk.Data.GetDouble("SessionTimeRemain"); } catch { }
-                var projections = ordered.Count > 0 && sessionState == SessionStateRacingState
-                    ? ClassRaceProjection.Compute(classLeaders.Select(l => new ClassLeader(l.ClassId, l.Progress ?? 0, _lapHistory.RecentAverage(l.Idx))).ToList(), ordered[0].ClassId, remainNow)
+                // Kapps: laps completed (integer) + remaining / leader average, recomputed only when that class leader's
+                // lap time lands and frozen until the next one (header "26/≈34.74" unchanged from 12:24 to 11:05).
+                var fresh = ordered.Count > 0 && sessionState == SessionStateRacingState
+                    ? ClassRaceProjection.Compute(classLeaders.Select(l => new ClassLeader(l.ClassId, Math.Floor(l.Progress ?? 0), _lapHistory.RecentAverage(l.Idx))).ToList(), ordered[0].ClassId, remainNow)
                     : new Dictionary<int, double>();
+                var projections = new Dictionary<int, double>();
+                foreach (var l in classLeaders)
+                {
+                    var sig = _lapHistory.Signature(l.Idx);
+                    if (fresh.TryGetValue(l.ClassId, out var value) && (!_latchedProjection.TryGetValue(l.ClassId, out var held) || held.Sig != sig))
+                        _latchedProjection[l.ClassId] = (sig, value);
+                    if (_latchedProjection.TryGetValue(l.ClassId, out var latched)) projections[l.ClassId] = latched.Value;
+                }
                 foreach (var l in classLeaders)
                 {
                     int lap = 0;
@@ -1299,7 +1315,11 @@ public class TelemetryReader : IDisposable
             if (!ordered.Any(r => r.IsPlayer)) playerClassId = -1;
 
             StandingsUpdated?.Invoke(rows);
-            SessionStatusUpdated?.Invoke(BuildSessionStatus(ordered.Count, sof) with { ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null });
+            var status = BuildSessionStatus(ordered.Count, sof) with { ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null };
+            // The overall header shows the overall leader's latched projection (frozen between crossings, like Kapps).
+            if (ordered.Count > 0 && classLaps.TryGetValue(ordered[0].ClassId, out var overallInfo) && overallInfo.Projected is double frozen && status.TotalLapsEstimated)
+                status = status with { TotalLapsProjected = frozen };
+            SessionStatusUpdated?.Invoke(status);
         }
         catch
         {
@@ -1482,6 +1502,9 @@ public class TelemetryReader : IDisposable
     /// time-limited), fuel to finish = laps left x average, margin = level - fuel to finish. Every input
     /// is a telemetry channel read each tick -- never the SessionInfo YAML, whose occasional failed
     /// parse used to blank the last row every few frames (the "flicker").</summary>
+    /// <summary>irsdk_PitSvFlags FuelFill bit (LF/RF/LR/RR tyres are 0x01..0x08).</summary>
+    private const int PitSvFuelFill = 0x10;
+
     private void UpdateFuel()
     {
         try
@@ -1504,6 +1527,9 @@ public class TelemetryReader : IDisposable
             try { lastLapTime = _sdk.Data.GetFloat("LapLastLapTime"); } catch { }
 
             bool addedLap = _fuelTracker.Update(fuelLevel, lapCompleted, onPitRoad || notGreen || towed, lastLapTime);
+            // Kapps' "Qualify" row: the consumption of the clean laps driven in qualifying (a constant 2.1866 through the
+            // race, 24/09/2026), kept for the rest of the event.
+            if (addedLap && _sessionKind == SessionKind.Qualify && _fuelTracker.LastLapUsed is double qLap) _qualifyFuelLaps.Add(qLap);
             if (addedLap && FuelUpdated is not null && _carId > 0 && _fuelTracker.AverageFuel is double learned)
                 FuelHistory.Value.Put(_carId, _trackId, learned, _fuelTracker.AverageLapTime);
 
@@ -1554,7 +1580,7 @@ public class TelemetryReader : IDisposable
                 try { raceState = _sdk.Data.GetInt("SessionState"); } catch { }
                 double? sessionTotal = null;
                 try { var tt = _sdk.Data.GetDouble("SessionTimeTotal"); if (tt > 0) sessionTotal = tt; } catch { }
-                bool leaderHasRaceLap = leaderIdx >= 0 && _sdk.Data.GetFloat("CarIdxLastLapTime", leaderIdx) > 1;
+                bool leaderHasRaceLap = leaderIdx >= 0 && _lapHistory.RecentAverage(leaderIdx) is not null; // lap 1 excluded (Kapps)
                 double? pole = RaceLapEstimator.PoleLapTime(_grid, _gridBestLap);
                 // Own pace for the projection: laps actually driven, never the history seed. The race length
                 // itself follows the overall leader's last-5 average (ClassRaceProjection, Kapps).
@@ -1595,10 +1621,17 @@ public class TelemetryReader : IDisposable
             double? fuelAfterPit = plannedPitFuel is double planned ? fuelLevel + planned : null;
             double? fuelAtFinish = fuelAfterPit is double afterPit && fuelBurnToFinish is double burn ? afterPit - burn : null;
 
+            // Kapps' panel (KappsFuel): latched at the player's crossing; the black box counts when its fuel fill box is on.
+            double plannedAdd = 0;
+            try { if ((_sdk.Data.GetInt("PitSvFlags") & PitSvFuelFill) != 0 && plannedPitFuel is double pf) plannedAdd = pf; } catch { }
+            double? lapsInRace = _isRaceSession ? _raceEstimate?.ProjectedTotalLaps ?? _raceEstimate?.TotalLaps : null;
+            double? qualifyRate = _qualifyFuelLaps.Count > 0 ? _qualifyFuelLaps.Average() : null;
+            var kapps = _kappsFuel.Update(lapCompleted, fuelLevel, lapsInRace, avgFuelPerLap, qualifyRate, _fuelTracker.LastLapUsed, plannedAdd);
+
             FuelUpdated?.Invoke(new FuelStatus(fuelLevel, fuelUsePerHour, avgFuelPerLap, lapsRemaining, timeRemaining, refuelToFull,
                 fuelNeededForFinish, plannedPitFuel, fuelAfterPit, fuelAtFinish, _fuelTracker.LastLapUsed, _fuelTracker.LastLapDirty,
                 _fuelTracker.MaxFuel, avgLapTime, _raceEstimate?.PlayerLapsRemaining, _raceEstimate?.TotalLaps, _raceEstimate?.IsEstimate ?? false,
-                _fuelTracker.AverageIsFromHistory, playerLapDistPct));
+                _fuelTracker.AverageIsFromHistory, playerLapDistPct, kapps));
         }
         catch
         {

@@ -522,6 +522,7 @@ public static unsafe class Program
             AutoFit(StandingsKey, standings.LastDrawnSize);
             AutoFit(RelativeKey, relative.LastDrawnSize);
             AutoFit(RadarKey, radar.LastDrawnSize);
+            AutoFit(FuelKey, fuel.LastDrawnSize);
 
             standingsResources.BeginFrame();
             standings.Draw(standingsResources.Context, 0, 0);

@@ -136,7 +136,7 @@ public sealed unsafe class FuelWidget : IDisposable
         SessionStatus? session;
         lock (_lock) { status = _simulatedStatus ?? _status; session = _simulatedSession ?? _session; }
 
-        var panel = new RectF(x, y, x + width, y + PanelHeightDip);
+        var panel = new RectF(x, y, x + width, y + LastDrawnSize.Height);
         PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
 
         if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
@@ -146,60 +146,56 @@ public sealed unsafe class FuelWidget : IDisposable
             return;
         }
 
-        // Effective per-lap figure per spec §9's consumption-source choice, with the configured
-        // reserve subtracted from the displayed autonomy (never negative: a driver already below the
-        // reserve needs "0.0 laps", not a confusing negative number).
-        double? litersPerLap = ResolveLitersPerLap(status!);
-        // Kapps' "Laps Remain": counted from the start of the lap in progress (FuelLapsRemain).
-        double? rawLapsRemaining = FuelLapsRemain.Compute(status!.FuelLevelLiters, litersPerLap, status.PlayerLapDistPct);
-        double? fuelLaps = rawLapsRemaining is double raw ? Math.Max(0, raw - _config.ReserveLaps) : null;
-        double? raceLapsLeft = status!.RaceLapsRemaining;
+        // Kapps' fuel calculator (KappsFuel, latched at the player's crossing): Fuel Level + Laps in Race on top,
+        // then one row per consumption basis -- Average / Qualify / Last -- with Laps Remain, Refuel, Fuel at End.
+        var kapps = status!.Kapps;
+        var avgRow = kapps?.Rows.FirstOrDefault(r => r.Label == "Average");
 
         float rowTop = y + 4f;
         const float topRowHeight = 54f;
         float divA = x + width * 0.46f;
         float divB = x + width * 0.73f;
 
-        // Row 1: pump + level | autonomy in laps | race laps left.
         DrawFuelPumpIcon(dc, x + 14f, rowTop + 10f);
-        string level = $"{status!.FuelLevelLiters:0.0}";
+        string level = $"{status.FuelLevelLiters:0.00}";
         float levelWidth = PanelChrome.MeasureWidth(_dwriteFactory, _bigFormat.Get(), level);
         PanelChrome.DrawText(dc, _brush.Get(), _bigFormat.Get(), level, x + 52f, rowTop, levelWidth + 4f, topRowHeight, PaletteTokens.TextPrimary);
         PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), "L", x + 52f + levelWidth + 3f, rowTop + 5f, 20f, topRowHeight, PaletteTokens.TextPrimary);
-
         PanelChrome.VerticalDivider(dc, _brush.Get(), divA, rowTop + 8f, rowTop + topRowHeight - 4f);
         PanelChrome.VerticalDivider(dc, _brush.Get(), divB, rowTop + 8f, rowTop + topRowHeight - 4f);
-        DrawStacked(dc, divA, divB, rowTop, fuelLaps is double laps ? $"{laps:0.0}" : "—", "laps");
-        DrawStacked(dc, divB, x + width, rowTop, raceLapsLeft is double left ? left.ToString("0.0", CultureInfo.InvariantCulture) : "—", status.RaceLapsEstimated ? "≈ left" : "left");
+        DrawStacked(dc, divA, divB, rowTop, Two(avgRow?.LapsRemain), "laps remain");
+        DrawStacked(dc, divB, x + width, rowTop, Two(kapps?.LapsInRace), status.RaceLapsEstimated ? "≈ in race" : "in race");
 
-        // Row 2: last / average / max consumption per lap.
-        float row2 = rowTop + topRowHeight + 4f;
-        PanelChrome.HorizontalDivider(dc, _brush.Get(), x + 8f, x + width - 8f, row2 - 2f);
-        DrawFooterRow(dc, x, width, row2,
-            [("Last", Liters(status.LastLapFuelUsedLiters), PaletteTokens.TextPrimary),
-             ("Avg", Liters(status.AverageFuelPerLapLiters), PaletteTokens.TextPrimary),
-             ("Max", Liters(status.MaxFuelPerLapLiters), PaletteTokens.TextPrimary)]);
-
-        // Row 3: total needed to finish and the margin over it. Core reports "additional fuel needed"
-        // (negative = surplus), so the total is level + needed and the margin is its negation. Only
-        // shown when calculable (spec §9: never fabricate a number from zero samples).
-        float row3 = row2 + 26f;
-        if (status.FuelNeededForFinishLiters is double needed)
+        // Table: header labels, then the three bases.
+        float tableTop = rowTop + topRowHeight + 2f;
+        PanelChrome.HorizontalDivider(dc, _brush.Get(), x + 8f, x + width - 8f, tableTop);
+        float c0 = x + 10f, c1 = x + width * 0.36f, c2 = x + width * 0.58f, c3 = x + width * 0.79f, cEnd = x + width - 10f;
+        const float headerH = 18f, lineH = 22f;
+        PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), "Laps", c1, tableTop + 1f, c2 - c1, headerH, PaletteTokens.TextSecondary, TextAlignment.Center);
+        PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), "Refuel", c2, tableTop + 1f, c3 - c2, headerH, PaletteTokens.TextSecondary, TextAlignment.Center);
+        PanelChrome.DrawText(dc, _brush.Get(), _unitFormat.Get(), "Fuel at End", c3, tableTop + 1f, cEnd - c3, headerH, PaletteTokens.TextSecondary, TextAlignment.Center);
+        float lineY = tableTop + headerH;
+        foreach (var label in new[] { "Average", "Qualify", "Last" })
         {
-            // Short of fuel: how much to add (Kapps' "Refuel"); enough: the surplus at the flag.
-            double margin = -needed;
-            var last = margin >= 0
-                ? ("Margin", $"+{margin:0.0} L", PaletteTokens.PositiveDelta)
-                : ("Refuel", $"{-margin:0.0} L", PaletteTokens.NegativeDelta);
-            DrawFooterRow(dc, x, width, row3,
-                [("To finish", $"{status.FuelLevelLiters + needed:0.0} L", PaletteTokens.TextPrimary), last]);
+            var row = kapps?.Rows.FirstOrDefault(r => r.Label == label);
+            PanelChrome.DrawLabelValue(dc, _dwriteFactory, _brush.Get(), _labelFormat.Get(), label + " ", Two(row?.PerLap), c0, lineY, lineH,
+                PaletteTokens.TextSecondary, PaletteTokens.TextPrimary);
+            PanelChrome.DrawText(dc, _brush.Get(), _labelFormat.Get(), Two(row?.LapsRemain), c1, lineY, c2 - c1, lineH, PaletteTokens.TextPrimary, TextAlignment.Center);
+            var refuelColor = row?.Refuel is > 0.005 ? PaletteTokens.NegativeDelta : PaletteTokens.TextPrimary;
+            PanelChrome.DrawText(dc, _brush.Get(), _labelFormat.Get(), Two(row?.Refuel), c2, lineY, c3 - c2, lineH, refuelColor, TextAlignment.Center);
+            PanelChrome.DrawText(dc, _brush.Get(), _labelFormat.Get(), Two(row?.FuelAtEnd), c3, lineY, cEnd - c3, lineH, PaletteTokens.TextPrimary, TextAlignment.Center);
+            lineY += lineH;
         }
-        else
-        {
-            DrawFooterRow(dc, x, width, row3, [("To finish", "—", PaletteTokens.TextDisabled), ("Margin", "—", PaletteTokens.TextDisabled)]);
-        }
-        PanelChrome.StrokePanel(dc, _brush.Get(), panel, PaletteTokens.PanelBorder);
+        LastDrawnSize = (width, lineY - y + 6f);
+        var outline = new RectF(x, y, x + width, lineY + 6f);
+        PanelChrome.StrokePanel(dc, _brush.Get(), outline, PaletteTokens.PanelBorder);
     }
+
+    /// <summary>Kapps prints every fuel figure with two decimals ("25.92", "0.00"); "—" when unknown.</summary>
+    private static string Two(double? value) => value is double v ? v.ToString("0.00", CultureInfo.InvariantCulture) : "—";
+
+    /// <summary>Size of the last frame (the overlay auto-fits the window to it).</summary>
+    public (float Width, float Height) LastDrawnSize { get; private set; } = (WidthDip, PanelHeightDip);
 
     private static string Liters(double? value) => value is double v ? v.ToString("0.00", CultureInfo.InvariantCulture) : "—";
 
