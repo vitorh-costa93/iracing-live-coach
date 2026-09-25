@@ -1662,9 +1662,12 @@ public class TelemetryReader : IDisposable
             // Kapps recalculates once per lap, at the player's own line crossing (the remaining race time moves
             // only then). A lap counter that drops or reads 0 (channel hiccup) is ignored, never a crossing.
             bool playerCrossed = playerLap > 0 && playerLap > _fuelLastPlayerLap;
-            bool leaderCrossed = false;
+            // ...and at the class leader's new lap while on track: a lapped player's laps to go follow the
+            // number of laps the LEADER will run. Only an increase counts (a 0/dropped read is a hiccup).
+            bool leaderCrossed = isOnTrack && classLeaderLap > 0 && classLeaderLap > _fuelLastLeaderLap;
             if (playerLap > 0) _fuelLastPlayerLap = playerLap;
-            if (playerCrossed || lap is not null || _fuelPanel.LapsLeft is null)
+            if (classLeaderLap > 0 && (isOnTrack || _fuelLastLeaderLap == int.MinValue)) _fuelLastLeaderLap = classLeaderLap;
+            if (playerCrossed || leaderCrossed || lap is not null || _fuelPanel.LapsLeft is null)
             {
                 double? lapsInRace;
                 int? lapsLeft;
@@ -1682,7 +1685,7 @@ public class TelemetryReader : IDisposable
                 }
                 // A momentarily unknown estimate must not wipe the value of the last lap.
                 if (lapsLeft is not null || _fuelPanel.LapsLeft is null) { _fuelPanel.SetLapsLeft(lapsLeft, lapsInRace); recompute = true; }
-                else if (playerCrossed) recompute = true;
+                else if (playerCrossed || leaderCrossed) recompute = true;
             }
 
             if (recompute)
