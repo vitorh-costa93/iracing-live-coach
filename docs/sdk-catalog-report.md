@@ -3,6 +3,39 @@
 O catálogo lista **349 variáveis de telemetria** (47 são arrays por carro/roda) e **293 chaves de SessionInfo** em 8 seções. Fonte: `sdk_catalog_race.json`.
 O Live Coach V3 lê **54** variáveis pelo nome; as outras **295** estão sem uso hoje (a contagem é por nome literal no código, então é aproximada).
 
+# Guia de exemplos: o que cada informação do SDK significa
+
+Valores tirados de `sdk_catalog_race.json` (corrida em Road Atlanta, 60 Hz). Os exemplos de bitfield foram decodificados; as descrições vêm do próprio catálogo do SDK (campo `desc`).
+
+## Como ler um array por carro
+Variáveis `CarIdx*` têm 72 posições, uma por carro. O índice é o `CarIdx` do piloto na sessão (não o número do carro, e o do jogador muda entre sessões).
+- `CarIdxLapDistPct` = `[0.0358, 0.991, 0.0019, 0.9841, ...]`: o carro 0 está a 3,6% da volta; o 1 está a 99,1%, logo atrás da linha; o 2 acabou de cruzar.
+- `CarIdxEstTime` = `[1.87, 67.97, 0.11, 67.56, ...]`: segundos que o carro levaria (na volta de referência da classe) para chegar onde está. Com isso dá para estimar o gap entre dois carros mesmo sem histórico de voltas.
+
+## Bitfields decodificados
+- `SessionFlags` = `268697636` → **green | blue | servicible | startHidden**. É o estado global (bandeira verde, aviso de largada etc.).
+- `CarIdxSessionFlags` = `262144` = `0x40000` → só "servicible": o carro está normal. Se aparecer `0x80000` (furled) é aviso de Slow Down; `0x10000/0x20000/0x100000` (black, disqualify, repair) é ida obrigatória ao box. É o que alimenta as badges do Relative.
+- `PitSvFlags` = `16` = `0x10` → o box tem "abastecer" marcado. Por isso o Fuel at End soma o `PitSvFuel`.
+- `EngineWarnings` = `0` → nenhuma luz acesa (bits para água, óleo, pressão de óleo, limitador etc.).
+- `CarLeftRight` = `1` → livre. `2` carro à esquerda, `3` à direita, `4` dos dois lados, `5` dois à esquerda, `6` dois à direita.
+- `CarIdxTrackSurface` = `3` → na pista. `-1` fora do mundo, `0` fora da pista, `1` box (parada), `2` pit lane.
+
+## Exemplos de informação para o piloto
+| Informação possível | Variáveis | Exemplo com o valor gravado |
+|---|---|---|
+| Delta ao vivo | `LapDeltaToBestLap`, `LapCurrentLapTime` | +1,78 s contra a melhor volta, volta atual em 7,46 s |
+| Combustível | `FuelLevel`, `FuelUsePerHour`, `PitSvFuel` | 57,5 L; consumo instantâneo 112 kg/h; 34 L planejados no box |
+| Temperatura de pneus | `LFtempCL` (e as outras 11 de carcaça) | carcaça esquerda dianteira a 78,3 °C |
+| Desgaste de pneu | `LFwearR` | 98,6% de banda restante |
+| Clima e pista | `TrackTempCrew`, `TrackWetness`, `Precipitation`, `WindDir` | pista a 26,7 °C, umidade nível 1, sem chuva, vento a 2,86 rad |
+| Quem fala no rádio | `RadioTransmitCarIdx` | `-1` = ninguém; se for 5, mostrar o nome do carro 5 |
+| ABS atuando | `BrakeABSactive` | `false` na frente reta |
+| Incidentes | `PlayerCarMyIncidentCount` | 0 |
+| Distribuição de freio | `dcBrakeBias` | 47,0 |
+| Reboque | `PlayerCarTowTime` | 0 = sem reboque; maior que 0 = sendo rebocado |
+
+Observação: `LFpressure` não existe neste catálogo (a pressão de pneu só é publicada no box), então uma tela de pressão exigiria outra variável ou o SessionInfo.
+
 ## Variáveis por família (usadas / total)
 
 | Família | Usadas | Total | Exemplos não usados |
