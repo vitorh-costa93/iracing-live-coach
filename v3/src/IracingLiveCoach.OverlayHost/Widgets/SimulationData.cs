@@ -30,10 +30,10 @@ public static class SimulationData
     [
         new(-3, "Antoine Moreau", -3.922, null, true, null, 124, false, "🇫🇷", "A 4.12", null, 6240, 2, "Ferrari", false, 1, "GTP", Gtp, "6", 1, 1),
         new(-2, "Oliver Wilson", -2.537, null, false, null, 142, true, "🇬🇧", "A 4.10", null, 4390, 1, "Aston Martin", false, 1, "GT3", Gt3, "27", 2, 2),
-        new(-1, "Max Hoffmann", -1.182, null, false, null, 167, true, "🇩🇪", "A 3.72", null, 4210, 1, "BMW", false, 2, "GT3", Gt3, "18", 3, 2),
+        new(-1, "Max Hoffmann", -1.182, null, false, null, 167, true, "🇩🇪", "A 3.72", null, 4210, 1, "BMW", false, 2, "GT3", Gt3, "18", 3, 2, FlagBadge.SlowDown),
         new(0, "Vitor Costa", 0, null, true, null, 108, false, "🇧🇷", "A 3.49", null, 3694, 1, "McLaren", true, 3, "GT3", Gt3, "93", 4, 2),
         new(1, "Daniel Walker", 1.386, null, false, null, 96, false, "🇺🇸", "A 3.65", null, 4085, 1, "Porsche", false, 4, "GT3", Gt3, "44", 5, 2),
-        new(2, "Simon Wagner", 2.083, null, false, null, 88, false, "🇩🇪", "A 4.01", null, 4320, 1, "Mercedes", false, 5, "GT3", Gt3, "11", 6, 2),
+        new(2, "Simon Wagner", 2.083, null, false, null, 88, false, "🇩🇪", "A 4.01", null, 4320, 1, "Mercedes", false, 5, "GT3", Gt3, "11", 6, 2, FlagBadge.MandatoryPit),
         new(3, "James Carter", 2.611, null, false, null, 150, false, "🇺🇸", "A 3.67", null, 3670, 1, "Ford", false, 6, "GT3", Gt3, "7", 7, 2),
     ];
 

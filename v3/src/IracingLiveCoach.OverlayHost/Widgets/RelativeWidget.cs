@@ -59,7 +59,6 @@ public sealed unsafe class RelativeWidget : IDisposable
     // Item 13: the Standings-style iRating pill, narrower than Standings' own combined iRating+Δ
     // badge since this widget never shows a delta.
     private const float IRatingColumnWidthDip = 54f;
-    private const float IRatingPillHeightDip = 24f;
     private const float GapColumnWidthDip = 70f;
     private const float OvertakeColumnWidthDip = 62f;
     private const float ColumnGapDip = 6f;
@@ -403,8 +402,14 @@ public sealed unsafe class RelativeWidget : IDisposable
                     break;
                 case "name":
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _statusFormat.Get(), NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellWidth, _nameFit), cellX, y, cellWidth, ColumnAlignment.Left);
+                {
+                    // A flag badge sits at the right of the name cell; the name gives way to it (ellipsis).
+                    float badgeSize = row.Flag == FlagBadge.None ? 0f : Math.Min(PanelChrome.BadgeHeight(RowHeightDip), cellWidth / 2f);
+                    float nameWidth = cellWidth - (badgeSize > 0 ? badgeSize + 3f : 0f);
+                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _statusFormat.Get(), NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), nameWidth, _nameFit), cellX, y, nameWidth, ColumnAlignment.Left);
+                    if (badgeSize > 0) DrawFlagBadge(dc, row.Flag, cellX + cellWidth - badgeSize, y + (RowHeightDip - badgeSize) / 2f, badgeSize);
                     break;
+                }
                 case "license":
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
                     break;
@@ -412,7 +417,8 @@ public sealed unsafe class RelativeWidget : IDisposable
                 {
                     // Item 13: the same Standings-style pill, without the ΔiRating half (spec §7:
                     // "Não inclua ΔiRating neste widget") and at this widget's narrower column width.
-                    var pill = new RectF(cellX, y + (RowHeightDip - IRatingPillHeightDip) / 2, cellX + cellWidth, y + (RowHeightDip + IRatingPillHeightDip) / 2);
+                    float pillHeight = PanelChrome.BadgeHeight(RowHeightDip);
+                    var pill = new RectF(cellX, y + (RowHeightDip - pillHeight) / 2, cellX + cellWidth, y + (RowHeightDip + pillHeight) / 2);
                     StandingsWidget.DrawIRatingPillOnly(dc, _brush.Get(), _statusFormat.Get(), pill, row.IRating, _numberFormatConfig);
                     break;
                 }
@@ -463,15 +469,32 @@ public sealed unsafe class RelativeWidget : IDisposable
         ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
     }
 
+    /// <summary>Slow down = double yellow flag; mandatory pit = meatball (orange disc on black).</summary>
+    private void DrawFlagBadge(ID2D1DeviceContext* dc, FlagBadge flag, float x, float y, float size)
+    {
+        if (flag == FlagBadge.MandatoryPit)
+        {
+            PanelChrome.FillPanel(dc, _brush.Get(), new RectF(x, y, x + size, y + size), PaletteTokens.FlagBlack, size / 2f);
+            float inset = size * 0.22f;
+            PanelChrome.FillPanel(dc, _brush.Get(), new RectF(x + inset, y + inset, x + size - inset, y + size - inset), PaletteTokens.FlagMeatball, size / 2f);
+            return;
+        }
+        float w = size * 0.62f, h = size * 0.5f, top = y + size * 0.12f;
+        PanelChrome.FillPanel(dc, _brush.Get(), new RectF(x + size - w, top + size * 0.28f, x + size, top + size * 0.28f + h), PaletteTokens.FlagYellow, 1.5f);
+        PanelChrome.StrokePanel(dc, _brush.Get(), new RectF(x + size - w, top + size * 0.28f, x + size, top + size * 0.28f + h), PaletteTokens.FlagBlack, 1f, 1.5f);
+        PanelChrome.FillPanel(dc, _brush.Get(), new RectF(x, top, x + w, top + h), PaletteTokens.FlagYellow, 1.5f);
+        PanelChrome.StrokePanel(dc, _brush.Get(), new RectF(x, top, x + w, top + h), PaletteTokens.FlagBlack, 1f, 1.5f);
+    }
+
     private void DrawLicenseBadge(ID2D1DeviceContext* dc, float x, float y, float width, string license, string? colorHex)
     {
         // Mockups: a solid blue rounded pill with bold white "A 4.12".
         // Kapps colours the pill by the licence letter (LicenseStyle); the SDK's LicColor is a decimal
         // number, not "#RRGGBB", and rendered the AI's "R" blue.
         var color = ParseHexOrFallback(LicenseStyle.ColorHex(license) ?? colorHex, PaletteTokens.SrPillBlue);
-        const float pillHeight = 24f;
+        float pillHeight = PanelChrome.BadgeHeight(RowHeightDip);
         var pill = new RectF(x, y + (RowHeightDip - pillHeight) / 2, x + width, y + (RowHeightDip + pillHeight) / 2);
-        PanelChrome.FillPanel(dc, _brush.Get(), pill, color, 5f);
+        PanelChrome.DrawTranslucentBadge(dc, _brush.Get(), pill, color);
         SetBrushColor(PaletteTokens.TextPrimary);
         string text = string.IsNullOrWhiteSpace(license) ? "—" : _numberFormatConfig.FormatLicense(license);
         fixed (char* p = text)

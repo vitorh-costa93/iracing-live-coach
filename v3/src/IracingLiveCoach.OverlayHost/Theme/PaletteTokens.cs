@@ -377,6 +377,8 @@ public static class PaletteTokens
 
     /// <summary>Bandeira preta — borda clara para contraste.</summary>
     public static readonly Color4 FlagBlack = Hex("#101010");
+    /// <summary>Meatball (repair / mandatory pit): orange disc on black.</summary>
+    public static readonly Color4 FlagMeatball = Hex("#FF8800");
 
     /// <summary>Quadriculada — padrão bicolor (#F2F5F7 + #101010), nunca uma cor única.</summary>
     public static readonly (Color4 Light, Color4 Dark) FlagCheckered = (Hex("#F2F5F7"), Hex("#101010"));

@@ -64,7 +64,6 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float FlagColumnWidthDip = 30f;
     private const float BrandColumnWidthDip = 34f;
     private const float BadgeWidthDip = 96f;
-    private const float BadgeHeightDip = 24f;
     private const float GapColumnWidthDip = 66f;
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
@@ -516,7 +515,8 @@ public sealed unsafe class StandingsWidget : IDisposable
                     break;
                 case "iratingDelta":
                     // iRating + Δ combined badge, same row, same rectangle (spec §6: never stacked).
-                    var badgeRect = new Rect2D(cellX, y + (RowHeightDip - BadgeHeightDip) / 2, cellWidth, BadgeHeightDip);
+                    float badgeHeight = PanelChrome.BadgeHeight(RowHeightDip);
+                    var badgeRect = new Rect2D(cellX, y + (RowHeightDip - badgeHeight) / 2, cellWidth, badgeHeight);
                     DrawIRatingBadge(dc, badgeRect, row.IRating, row.EstimatedDeltaIRating);
                     break;
                 case "gap":
@@ -652,8 +652,9 @@ public sealed unsafe class StandingsWidget : IDisposable
         // Kapps colours the pill by the licence letter (LicenseStyle); the SDK's LicColor is a decimal
         // number, not "#RRGGBB", and rendered the AI's "R" blue.
         var color = ParseHexOrFallback(LicenseStyle.ColorHex(license) ?? colorHex, PaletteTokens.SrPillBlue);
-        var pill = new RectF(x, y + (RowHeightDip - BadgeHeightDip) / 2, x + width, y + (RowHeightDip + BadgeHeightDip) / 2);
-        PanelChrome.FillPanel(dc, _brush.Get(), pill, color, 5f);
+        float badgeHeight = PanelChrome.BadgeHeight(RowHeightDip);
+        var pill = new RectF(x, y + (RowHeightDip - badgeHeight) / 2, x + width, y + (RowHeightDip + badgeHeight) / 2);
+        PanelChrome.DrawTranslucentBadge(dc, _brush.Get(), pill, color);
         SetBrushColor(PaletteTokens.TextPrimary);
         string text = string.IsNullOrWhiteSpace(license) ? "—" : _numberFormatConfig.FormatLicense(license);
         fixed (char* p = text)
@@ -706,8 +707,9 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// own copy of the pill background.</summary>
     internal static void DrawIRatingPillBackground(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, RectF pill)
     {
-        PanelChrome.FillPanel(dc, brush, pill, PaletteTokens.PillFill, 5f);
-        PanelChrome.StrokePanel(dc, brush, pill, PaletteTokens.PillBorder, 1f, 5f);
+        float radius = Math.Min(5f, (pill.Bottom - pill.Top) / 4f);
+        PanelChrome.FillPanel(dc, brush, pill, PaletteTokens.PillFill, radius);
+        PanelChrome.StrokePanel(dc, brush, pill, PaletteTokens.PillBorder, 1f, radius);
     }
 
     /// <summary>Item 13: the Standings' own iRating pill, WITHOUT the projected-delta half -- used by

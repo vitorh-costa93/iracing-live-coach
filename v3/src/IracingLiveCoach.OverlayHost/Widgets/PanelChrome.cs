@@ -142,6 +142,18 @@ internal static unsafe class PanelChrome
         dc->FillRectangle(&rect, (ID2D1Brush*)brush);
     }
 
+    /// <summary>Height of a pill/badge inside a row: 24 dip at the default row height, shrinking with the row
+    /// so a compact row never gets a badge that fills it edge to edge.</summary>
+    public static float BadgeHeight(float rowHeightDip) => Math.Clamp(rowHeightDip * 0.75f, 8f, 24f);
+
+    /// <summary>Licence badge chrome: the class colour as border and text-independent translucent fill.</summary>
+    public static void DrawTranslucentBadge(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, RectF pill, Color4 color)
+    {
+        float radius = Math.Min(5f, (pill.Bottom - pill.Top) / 4f);
+        FillPanel(dc, brush, pill, new Color4(color.R, color.G, color.B, 0.22f), radius);
+        StrokePanel(dc, brush, pill, color, 1f, radius);
+    }
+
     /// <summary>Panel fill + border (call the border AFTER the clipped content so it sits on top).</summary>
     public static void FillPanel(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, RectF rect, Color4 fill, float radius = CornerRadius)
     {
