@@ -317,7 +317,7 @@ public static unsafe class Program
         using var headerConfigIpcServer = new HeaderConfigIpcServer();
         headerConfigIpcServer.MessageReceived += m =>
         {
-            var fields = m.Fields.Select(f => new HeaderFieldConfig(f.Key, f.Visible)).ToList();
+            var fields = m.Fields.Select(f => new HeaderFieldConfig(f.Key, f.Visible, f.FontFamily, f.FontWeight)).ToList();
             ApplyHeaderFields(m.Widget, fields);
             PlacementStore.HeaderOverrides[m.Widget] = fields;
             PlacementPersistence.Save(PlacementStore);
@@ -709,7 +709,9 @@ public static unsafe class Program
             c.PaddingRightPx,
             c.Visible,
             c.Order,
-            c.DecimalPlaces)).ToList();
+            c.DecimalPlaces,
+            c.FontFamily,
+            c.FontWeight)).ToList();
 
         switch (message.Widget)
         {

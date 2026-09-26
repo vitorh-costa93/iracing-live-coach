@@ -37,9 +37,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     private SessionStatus? _sessionStatus;
     private PlayerCarStatus? _playerStatus;
 
-    private ComPtr<IDWriteTextFormat> _nameFormat;
-    private ComPtr<IDWriteTextFormat> _statusFormat;
-    private ComPtr<IDWriteTextFormat> _numericFormat;
+    private readonly TableFormatSet _fmt;
     private ComPtr<ID2D1SolidColorBrush> _brush;
 
     private readonly IDWriteFactory* _dwriteFactory;
@@ -132,6 +130,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         _dwriteFactory = dwriteFactory;
         RebuildEffectiveColumns();
         _fontCollection = fontCollection;
+        _fmt = new TableFormatSet(dwriteFactory, fontCollection);
         CreateTextFormats();
 
         var white = PaletteTokens.TextPrimary;
@@ -149,27 +148,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     private void CreateTextFormats()
     {
         _nameFit.Clear();
-        _nameFormat.Dispose();
-        _statusFormat.Dispose();
-        _numericFormat.Dispose();
-
-        float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> nameFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 17f * scale, FontWeight.Medium, _appearance.FontWeight);
-        ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _nameFormat = nameFormat;
-
-        ComPtr<IDWriteTextFormat> statusFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 15.5f * scale, FontWeight.SemiBold, _appearance.FontWeight);
-        ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _statusFormat = statusFormat;
-
-        ComPtr<IDWriteTextFormat> numericFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 16f * scale, FontWeight.Medium, _appearance.FontWeight);
-        ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
-        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _numericFormat = numericFormat;
+        _fmt.Rebuild(_appearance);
     }
 
     public void SetAppearance(WidgetAppearance appearance)
@@ -215,7 +194,7 @@ public sealed unsafe class RelativeWidget : IDisposable
             fixed (char* p = simLabel)
             {
                 var rect = new RectF(x, y - 16, x + 200, y);
-                dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)simLabel.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
             SyncP2PColumn(simulated);
             DrawPanel(dc, x, y, simulated.Where(r => _relativeRules.Includes(r.PositionOffset)).ToList(), _simulatedSession, _simulatedPlayer);
@@ -236,7 +215,7 @@ public sealed unsafe class RelativeWidget : IDisposable
             fixed (char* p = text)
             {
                 var rect = new RectF(x, y, x + NameColumnWidthDip + OffsetColumnWidthDip + IRatingColumnWidthDip, y + RowHeightDip);
-                dc->DrawText(p, (uint)text.Length, _nameFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)text.Length, _fmt.NameFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
             return;
         }
@@ -311,8 +290,8 @@ public sealed unsafe class RelativeWidget : IDisposable
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
 
         var texts = _headerFields.Where(f => f.Visible)
-            .Select(f => HeaderFields.Text(f.Key, session, player, DateTime.Now))
-            .Where(t => t is not null).Select(t => t!).ToList();
+            .Select(f => (Text: HeaderFields.Text(f.Key, session, player, DateTime.Now), Font: f.FontFamily is null && f.FontWeight is null ? ((string?, int?)?)null : (f.FontFamily, f.FontWeight)))
+            .Where(t => t.Text is not null).ToList();
         if (texts.Count == 0) return;
 
         float left = x + ClassStripWidthDip + 4f;
@@ -321,9 +300,11 @@ public sealed unsafe class RelativeWidget : IDisposable
         {
             float cellX = left + cellWidth * i;
             if (i > 0) PanelChrome.VerticalDivider(dc, _brush.Get(), cellX, y + 7f, y + HeaderHeightDip - 7f);
-            PanelChrome.DrawText(dc, _brush.Get(), _statusFormat.Get(), texts[i], cellX, y, cellWidth, HeaderHeightDip, PaletteTokens.TextPrimary, TextAlignment.Center);
+            _fmt.Override = texts[i].Font;
+            PanelChrome.DrawText(dc, _brush.Get(), _fmt.StatusFormat, texts[i].Text!, cellX, y, cellWidth, HeaderHeightDip, PaletteTokens.TextPrimary, TextAlignment.Center);
         }
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        _fmt.Override = null;
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
     }
 
     private void DrawRow(ID2D1DeviceContext* dc, float x, float y, RelativeRow row)
@@ -346,6 +327,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         {
             float cellX = rowLeft + placement.OffsetXPx;
             float cellWidth = placement.ResolvedWidthPx;
+            _fmt.Override = placement.Column.FontFamily is null && placement.Column.FontWeight is null ? null : (placement.Column.FontFamily, placement.Column.FontWeight);
             switch (placement.Column.Key)
             {
                 case "position":
@@ -383,7 +365,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                         dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
                     }
                     else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge)
-                             && PanelChrome.MeasureWidth(_dwriteFactory, _statusFormat.Get(), row.ManufacturerBadge) <= cellWidth)
+                             && PanelChrome.MeasureWidth(_dwriteFactory, _fmt.StatusFormat, row.ManufacturerBadge) <= cellWidth)
                     {
                         // A make without a bundled logo: its name, but only if it fits the cell --
                         // an overflowing word (e.g. the pace car's "SAFETY") would spill over the
@@ -398,7 +380,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     // A flag badge sits at the right of the name cell; the name gives way to it (ellipsis).
                     float badgeSize = row.Flag == FlagBadge.None ? 0f : Math.Min(PanelChrome.BadgeHeight(RowHeightDip), cellWidth / 2f);
                     float nameWidth = cellWidth - (badgeSize > 0 ? badgeSize + 3f : 0f);
-                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _statusFormat.Get(), NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), nameWidth, _nameFit), cellX, y, nameWidth, ColumnAlignment.Left);
+                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _fmt.StatusFormat, NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), nameWidth, _nameFit), cellX, y, nameWidth, ColumnAlignment.Left);
                     if (badgeSize > 0) DrawFlagBadge(dc, row.Flag, cellX + cellWidth - badgeSize, y + (RowHeightDip - badgeSize) / 2f, badgeSize);
                     break;
                 }
@@ -411,7 +393,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     // "Não inclua ΔiRating neste widget") and at this widget's narrower column width.
                     float pillHeight = PanelChrome.BadgeHeight(RowHeightDip);
                     var pill = new RectF(cellX, y + (RowHeightDip - pillHeight) / 2, cellX + cellWidth, y + (RowHeightDip + pillHeight) / 2);
-                    StandingsWidget.DrawIRatingPillOnly(dc, _brush.Get(), _statusFormat.Get(), pill, row.IRating, _numberFormatConfig);
+                    StandingsWidget.DrawIRatingPillOnly(dc, _brush.Get(), _fmt.StatusFormat, pill, row.IRating, _numberFormatConfig);
                     break;
                 }
                 case "gap":
@@ -427,6 +409,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                     break;
             }
         }
+        _fmt.Override = null;
     }
 
     private static string DecimalSuffix(int? decimalPlaces)
@@ -452,13 +435,13 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// helper for why the format's alignment is swapped per call rather than kept one-per-alignment.</summary>
     private void DrawCell(ID2D1DeviceContext* dc, string text, float x, float y, float width, ColumnAlignment alignment)
     {
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(ToDWrite(alignment)));
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
     }
 
     /// <summary>Slow down = double yellow flag; mandatory pit = meatball (orange disc on black).</summary>
@@ -492,13 +475,13 @@ public sealed unsafe class RelativeWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
     private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, float width, bool? active, double? seconds, bool cooldown)
     {
-        StandingsWidget.DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _numericFormat.Get(), _brush.Get());
+        StandingsWidget.DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _fmt.NumericFormat, _brush.Get());
     }
 
     private static Color4 ParseHexOrFallback(string? hex, Color4 fallback)
@@ -522,8 +505,6 @@ public sealed unsafe class RelativeWidget : IDisposable
         _telemetry.PlayerCarStatusUpdated -= OnPlayerCarStatusUpdated;
         _telemetry.Dispose();
         _brush.Dispose();
-        _numericFormat.Dispose();
-        _statusFormat.Dispose();
-        _nameFormat.Dispose();
+        _fmt.Dispose();
     }
 }

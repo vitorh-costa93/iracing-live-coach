@@ -28,6 +28,8 @@ public enum ColumnAlignment { Left, Center, Right }
 /// <param name="PaddingRightPx">Right padding, physical pixels.</param>
 /// <param name="Visible">Hidden columns are excluded from width sums entirely, not drawn empty.</param>
 /// <param name="Order">Display order among visible columns; reorderable independent of <see cref="Key"/>.</param>
+/// <param name="FontFamily">FontCatalog key; null inherits the widget's family (typography phase 2).</param>
+/// <param name="FontWeight">Null inherits the widget's weight.</param>
 /// <param name="DecimalPlaces">Null for non-numeric columns; spec §12's per-field configurable precision.</param>
 public sealed record ColumnDefinition(
     string Key,
@@ -39,7 +41,9 @@ public sealed record ColumnDefinition(
     float PaddingRightPx,
     bool Visible,
     int Order,
-    int? DecimalPlaces = null)
+    int? DecimalPlaces = null,
+    string? FontFamily = null,
+    int? FontWeight = null)
 {
     /// <summary>Total footprint of this column including its own padding — what actually gets summed
     /// for the table's auto-width (spec §12: "largura automática de tabela = soma das colunas visíveis + paddings...").</summary>

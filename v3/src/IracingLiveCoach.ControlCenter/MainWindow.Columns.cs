@@ -104,7 +104,7 @@ public partial class MainWindow
                 Padding = new Thickness(0, 3, 0, 3), AllowDrop = true, Background = Brushes.Transparent, Tag = key
             };
             var grid = new Grid();
-            foreach (double width in new[] { 30d, 58d, 50d, 0d, 72d, 140d, 108d })
+            foreach (double width in new[] { 30d, 58d, 50d, 0d, 72d, 140d, 108d, 130d, 96d })
                 grid.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = width == 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(width) });
 
             var handle = new TextBlock
@@ -186,6 +186,15 @@ public partial class MainWindow
             Grid.SetColumn(alignBox, 6);
             grid.Children.Add(alignBox);
 
+            var (fontBox, weightBox) = MakeFontPickers(column.FontFamily, column.FontWeight,
+                (family, weight) => UpdateColumn(key, c => c with { FontFamily = family, FontWeight = weight }));
+            Grid.SetColumn(fontBox, 7);
+            grid.Children.Add(fontBox);
+            Grid.SetColumn(weightBox, 8);
+            grid.Children.Add(weightBox);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(fontBox, "ColFont_" + key);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(weightBox, "ColWeight_" + key);
+
             row.Child = grid;
             row.DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(typeof(string)) ? DragDropEffects.Move : DragDropEffects.None; e.Handled = true; row.Background = (Brush)new BrushConverter().ConvertFromString("#0B2A3D")!; };
             row.DragLeave += (_, _) => row.Background = Brushes.Transparent;
@@ -203,6 +212,28 @@ public partial class MainWindow
     }
 
     private bool _buildingColumns;
+
+    /// <summary>Font family + weight pair of one column/header field. "Herdar" (null) follows the widget's setting.</summary>
+    private (ComboBox Family, ComboBox Weight) MakeFontPickers(string? family, int? weight, Action<string?, int?> onChange)
+    {
+        var familyBox = new ComboBox { FontSize = 14, MinHeight = 32, Margin = new Thickness(8, 0, 0, 0) };
+        familyBox.Items.Add("Herdar");
+        foreach (var f in FontCatalog.Families) familyBox.Items.Add(f.Label);
+        familyBox.SelectedIndex = family is null ? 0 : Math.Max(0, FontCatalog.Families.ToList().FindIndex(f => f.Key == family) + 1);
+        var weightBox = new ComboBox { FontSize = 14, MinHeight = 32, Margin = new Thickness(8, 0, 0, 0) };
+        foreach (int w in WeightSteps) weightBox.Items.Add(w == 0 ? "Herdar" : w.ToString(CultureInfo.InvariantCulture));
+        weightBox.SelectedIndex = weight is int cw ? Math.Max(0, Array.IndexOf(WeightSteps, cw)) : 0;
+        void Changed(object? s, SelectionChangedEventArgs e)
+        {
+            if (_buildingColumns || _suppressChangeEvents || familyBox.SelectedIndex < 0 || weightBox.SelectedIndex < 0) return;
+            string? newFamily = familyBox.SelectedIndex == 0 ? null : FontCatalog.Families[familyBox.SelectedIndex - 1].Key;
+            int? newWeight = weightBox.SelectedIndex == 0 ? null : WeightSteps[weightBox.SelectedIndex];
+            onChange(newFamily, newWeight);
+        }
+        familyBox.SelectionChanged += Changed;
+        weightBox.SelectionChanged += Changed;
+        return (familyBox, weightBox);
+    }
 
     private static HorizontalAlignment Center() => HorizontalAlignment.Center;
 
@@ -249,7 +280,7 @@ public partial class MainWindow
         _previewHost?.ApplyProfile(_profileStore);
         var entries = snapshot.Select(c => new ColumnConfigEntry(
             c.Key, c.Visible, c.Order, c.WidthPx, c.MinWidthPx, c.WidthMode.ToString(),
-            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx)).ToList();
+            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx, c.FontFamily, c.FontWeight)).ToList();
         bool sent = await _columnConfigClient.SendAsync(widget, entries);
         ReportSent(sent, "Colunas");
         Debounce("save", SaveProfileStore, 600);
@@ -420,7 +451,7 @@ public partial class MainWindow
         {
             var field = _currentHeader[i];
             int index = i;
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 6), Width = 440, HorizontalAlignment = HorizontalAlignment.Left };
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6), Width = 700, HorizontalAlignment = HorizontalAlignment.Left };
             row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(30) });
             row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = GridLength.Auto });
@@ -438,7 +469,17 @@ public partial class MainWindow
             Grid.SetColumn(label, 1);
             row.Children.Add(label);
 
-            var toggle = new CheckBox { Style = (Style)FindResource("Switch"), IsChecked = field.Visible, VerticalAlignment = VerticalAlignment.Center };
+            row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(130) });
+            row.ColumnDefinitions.Add(new System.Windows.Controls.ColumnDefinition { Width = new GridLength(96) });
+            var (hdrFont, hdrWeight) = MakeFontPickers(field.FontFamily, field.FontWeight,
+                (family, weight) => { _currentHeader[index] = _currentHeader[index] with { FontFamily = family, FontWeight = weight }; ApplyHeaderNow(); });
+            Grid.SetColumn(hdrFont, 3);
+            Grid.SetColumn(hdrWeight, 4);
+            row.Children.Add(hdrFont);
+            row.Children.Add(hdrWeight);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(hdrFont, "HdrFont_" + field.Key);
+
+            var toggle = new CheckBox { Style = (Style)FindResource("Switch"), IsChecked = field.Visible, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
             toggle.Checked += (_, _) => { _currentHeader[index] = _currentHeader[index] with { Visible = true }; ApplyHeaderNow(); };
             toggle.Unchecked += (_, _) => { _currentHeader[index] = _currentHeader[index] with { Visible = false }; ApplyHeaderNow(); };
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "Hdr_" + field.Key);
@@ -464,7 +505,7 @@ public partial class MainWindow
         string widget = _selectedWidget;
         _profileStore.HeaderOverrides[widget] = _currentHeader.ToList();
         _previewHost?.ApplyProfile(_profileStore);
-        bool sent = await _headerClient.SendAsync(widget, _currentHeader.Select(f => new HeaderFieldWire(f.Key, f.Visible)).ToList());
+        bool sent = await _headerClient.SendAsync(widget, _currentHeader.Select(f => new HeaderFieldWire(f.Key, f.Visible, f.FontFamily, f.FontWeight)).ToList());
         ReportSent(sent, "Cabeçalho");
         Debounce("save", SaveProfileStore, 600);
     }

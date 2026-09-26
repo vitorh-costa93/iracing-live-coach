@@ -42,9 +42,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// disponível sem iRacing aberto". Never used as a fallback for missing real data.</summary>
     private List<StandingsRow>? _simulatedRows;
 
-    private ComPtr<IDWriteTextFormat> _nameFormat;
-    private ComPtr<IDWriteTextFormat> _statusFormat;
-    private ComPtr<IDWriteTextFormat> _numericFormat; // right-aligned, for gap/interval/lap-time/delta columns
+    private readonly TableFormatSet _fmt;
     private ComPtr<ID2D1SolidColorBrush> _brush; // color set per-draw via SetColor; one brush reused throughout.
 
     private readonly IDWriteFactory* _dwriteFactory;
@@ -179,6 +177,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         _dwriteFactory = dwriteFactory;
         RebuildEffectiveColumns();
         _fontCollection = fontCollection;
+        _fmt = new TableFormatSet(dwriteFactory, fontCollection);
         CreateTextFormats();
 
         var white = PaletteTokens.TextPrimary;
@@ -201,27 +200,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void CreateTextFormats()
     {
         _nameFit.Clear();
-        _nameFormat.Dispose();
-        _statusFormat.Dispose();
-        _numericFormat.Dispose();
-
-        float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> nameFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 17f * scale, FontWeight.Medium, _appearance.FontWeight);
-        ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _nameFormat = nameFormat;
-
-        ComPtr<IDWriteTextFormat> statusFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 15.5f * scale, FontWeight.SemiBold, _appearance.FontWeight);
-        ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
-        ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _statusFormat = statusFormat;
-
-        ComPtr<IDWriteTextFormat> numericFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 16f * scale, FontWeight.Medium, _appearance.FontWeight);
-        ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
-        ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
-        ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
-        _numericFormat = numericFormat;
+        _fmt.Rebuild(_appearance);
     }
 
     /// <summary>Spec §12: font scale/row height/row spacing apply live, no restart, same pattern as
@@ -271,7 +250,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             fixed (char* p = simLabel)
             {
                 var rect = new RectF(x, y - 16, x + 200, y);
-                dc->DrawText(p, (uint)simLabel.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)simLabel.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
             DrawPanels(dc, x, y, simulated, _simulatedSession, _simulatedPlayer);
             return;
@@ -358,7 +337,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         var band = new RectF(x, y, x + TableWidth, y + HeaderHeightDip);
         dc->FillRectangle(&band, (ID2D1Brush*)_brush.Get());
 
-        var cells = new List<(string Text, Color4 Color, bool IsClass)>();
+        var cells = new List<(string Text, Color4 Color, bool IsClass, (string?, int?)? Font)>();
         var classColor = PaletteTokens.ResolveClassColor(group.ClassId, group.ClassShortName, group.ClassColorHex, group.ClassRank);
         // The class colour also runs down the header so a panel is identifiable even when the sim
         // publishes no class name (never invented -- spec §15).
@@ -372,7 +351,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             {
                 // Spec §15: never invent a class name -- a blank SDK class simply has no label.
                 if (!string.IsNullOrWhiteSpace(group.ClassShortName))
-                    cells.Add((group.ClassShortName.Replace(" CLASS", ""), classColor, true));
+                    cells.Add((group.ClassShortName.Replace(" CLASS", ""), classColor, true, FieldFont(field)));
                 continue;
             }
             string? text = field.Key switch
@@ -384,7 +363,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                 "lap" => HeaderFields.ClassLapText(session, group.ClassId, group.Rows.Any(r => r.Position == 1)),
                 _ => HeaderFields.Text(field.Key, session, player, DateTime.Now),
             };
-            if (text is not null) cells.Add((text, PaletteTokens.TextPrimary, false));
+            if (text is not null) cells.Add((text, PaletteTokens.TextPrimary, false, FieldFont(field)));
         }
         if (cells.Count == 0) return;
 
@@ -398,7 +377,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         float cellX = left;
         for (int i = 0; i < cells.Count; i++)
         {
-            var (text, color, isClass) = cells[i];
+            var (text, color, isClass, font) = cells[i];
             float width = isClass ? classWidth : otherWidth;
             if (i > 0)
             {
@@ -407,16 +386,21 @@ public sealed unsafe class StandingsWidget : IDisposable
                 dc->FillRectangle(&divider, (ID2D1Brush*)_brush.Get());
             }
             SetBrushColor(color);
-            ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(isClass ? TextAlignment.Leading : TextAlignment.Center));
+            _fmt.Override = font;
+            ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(isClass ? TextAlignment.Leading : TextAlignment.Center));
             fixed (char* p = text)
             {
                 var rect = new RectF(cellX + (isClass ? 2f : 0f), y, cellX + width, y + HeaderHeightDip);
-                dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
-            ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+            ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
+            _fmt.Override = null;
             cellX += width;
         }
     }
+
+    private static (string?, int?)? FieldFont(HeaderFieldConfig field) =>
+        field.FontFamily is null && field.FontWeight is null ? null : (field.FontFamily, field.FontWeight);
 
     private void DrawWaitingState(ID2D1DeviceContext* dc, float x, float y)
     {
@@ -426,7 +410,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + NameColumnWidthDip + PositionColumnWidthDip + BadgeWidthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _nameFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.NameFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
@@ -452,6 +436,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         {
             float cellX = rowLeft + placement.OffsetXPx;
             float cellWidth = placement.ResolvedWidthPx;
+            _fmt.Override = placement.Column.FontFamily is null && placement.Column.FontWeight is null ? null : (placement.Column.FontFamily, placement.Column.FontWeight);
             switch (placement.Column.Key)
             {
                 case "position":
@@ -486,7 +471,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                         dc->DrawBitmap(brandBitmap, &destination, 1f, InterpolationMode.HighQualityCubic, null, null);
                     }
                     else if (!string.IsNullOrWhiteSpace(row.ManufacturerBadge)
-                             && PanelChrome.MeasureWidth(_dwriteFactory, _statusFormat.Get(), row.ManufacturerBadge) <= cellWidth)
+                             && PanelChrome.MeasureWidth(_dwriteFactory, _fmt.StatusFormat, row.ManufacturerBadge) <= cellWidth)
                     {
                         // A make without a bundled logo: its name, but only if it fits the cell --
                         // an overflowing word (e.g. the pace car's "SAFETY") would spill over the
@@ -499,7 +484,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Full name is expected to already be in DriverCode per spec §5 -- this widget
                     // does not truncate or abbreviate on its own.
                     SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
-                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _statusFormat.Get(), NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellWidth, _nameFit), cellX, y, cellWidth, ColumnAlignment.Left);
+                    DrawCell(dc, PanelChrome.Ellipsize(_dwriteFactory, _fmt.StatusFormat, NameDisplay.Format(row.DriverCode, _numberFormatConfig.NameFormat), cellWidth, _nameFit), cellX, y, cellWidth, ColumnAlignment.Left);
                     break;
                 case "license":
                     DrawLicenseBadge(dc, cellX, y, cellWidth, row.LicString, row.LicColorHex);
@@ -561,6 +546,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                     break;
             }
         }
+        _fmt.Override = null;
     }
 
     /// <summary>Builds a numeric format string honoring the column's configured decimal places
@@ -581,43 +567,43 @@ public sealed unsafe class StandingsWidget : IDisposable
     };
 
     /// <summary>Draws a single line of text respecting a per-column alignment, reusing
-    /// <see cref="_statusFormat"/> (this widget's one general-purpose format) with its text
+    /// the status format (this widget's one general-purpose format) with its text
     /// alignment swapped per call -- cheaper than keeping one <c>IDWriteTextFormat</c> per
     /// alignment for a value that changes rarely (only on a column-config update, not per frame).</summary>
     private void DrawCell(ID2D1DeviceContext* dc, string text, float x, float y, float width, ColumnAlignment alignment)
     {
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(ToDWrite(alignment)));
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center)); // restore this format's other callers' expectation
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center)); // restore this format's other callers' expectation
     }
 
     private void DrawNumericOrDash(ID2D1DeviceContext* dc, float x, float y, float widthDip, double? value, Func<double, string> format, Color4 color, ColumnAlignment alignment)
     {
         SetBrushColor(value is null ? PaletteTokens.TextDisabled : color);
         string text = value is double v ? format(v) : "—"; // spec §17/§7: missing data is an explicit dash, never a fabricated zero.
-        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(ToDWrite(alignment)));
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _numericFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.NumericFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing)); // restore this format's default for the next call
+        ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(TextAlignment.Trailing)); // restore this format's default for the next call
     }
 
     private void DrawTextCell(ID2D1DeviceContext* dc, float x, float y, float widthDip, string text, Color4 color, ColumnAlignment alignment)
     {
         SetBrushColor(color);
-        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(ToDWrite(alignment)));
+        ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(ToDWrite(alignment)));
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _numericFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.NumericFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
-        ThrowIfFailed(_numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+        ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(TextAlignment.Trailing));
     }
 
     /// <summary>Kapps' positions gained/lost: a chevron (green up / red down) followed by the number in the
@@ -651,13 +637,13 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
     }
 
     private void DrawOvertakeCell(ID2D1DeviceContext* dc, float x, float y, float width, bool? active, double? seconds, bool cooldown)
     {
-        DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _numericFormat.Get(), _brush.Get());
+        DrawTimeBarPill(dc, x, y, width, RowHeightDip, active, seconds, cooldown, _fmt.NumericFormat, _brush.Get());
     }
 
     /// <summary>Push-to-pass cell: the remaining bank in seconds ("124s") on top, in the same colour as
@@ -732,12 +718,12 @@ public sealed unsafe class StandingsWidget : IDisposable
         if (iRating <= 1) estimatedDelta = null; // unknown rating: never a delta on top of a dash
         SetBrushColor(PaletteTokens.TextPrimary);
         string iratingText = _numberFormatConfig.FormatIRating(Math.Max(0, iRating)); // Kapps: AI "0.0k"
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(estimatedDelta is null ? TextAlignment.Center : TextAlignment.Leading));
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(estimatedDelta is null ? TextAlignment.Center : TextAlignment.Leading));
         fixed (char* p = iratingText)
         {
             var rect = new RectF(bounds.X + 7f, bounds.Y, bounds.X + bounds.Width * 0.62f, bounds.Y + bounds.Height);
             if (estimatedDelta is null) rect = new RectF(bounds.X, bounds.Y, bounds.X + bounds.Width, bounds.Y + bounds.Height);
-            dc->DrawText(p, (uint)iratingText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            dc->DrawText(p, (uint)iratingText.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
         }
 
         if (estimatedDelta is double delta)
@@ -745,14 +731,14 @@ public sealed unsafe class StandingsWidget : IDisposable
             int rounded = (int)Math.Round(delta);
             SetBrushColor(rounded > 0 ? PaletteTokens.PositiveDelta : rounded < 0 ? PaletteTokens.NegativeDelta : PaletteTokens.TextSecondary);
             string deltaText = rounded == 0 ? "0" : rounded.ToString("+0;-0", CultureInfo.InvariantCulture);
-            ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
+            ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Trailing));
             fixed (char* p = deltaText)
             {
                 var rect = new RectF(bounds.X + bounds.Width * 0.5f, bounds.Y, bounds.X + bounds.Width - 7f, bounds.Y + bounds.Height);
-                dc->DrawText(p, (uint)deltaText.Length, _statusFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                dc->DrawText(p, (uint)deltaText.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
         }
-        ThrowIfFailed(_statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
+        ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
     }
 
     private static Color4 ParseHexOrFallback(string? hex, Color4 fallback)
@@ -776,8 +762,6 @@ public sealed unsafe class StandingsWidget : IDisposable
         _telemetry.PlayerCarStatusUpdated -= OnPlayerCarStatusUpdated;
         _telemetry.Dispose();
         _brush.Dispose();
-        _numericFormat.Dispose();
-        _statusFormat.Dispose();
-        _nameFormat.Dispose();
+        _fmt.Dispose();
     }
 }

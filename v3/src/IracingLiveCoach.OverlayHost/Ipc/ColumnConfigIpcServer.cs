@@ -44,7 +44,7 @@ public sealed class ColumnConfigIpcServer : IDisposable
         try
         {
             var message = JsonSerializer.Deserialize<ColumnConfigMessage>(line);
-            if (message is { SchemaVersion: ColumnConfigMessage.CurrentSchemaVersion })
+            if (message is { SchemaVersion: >= 1 and <= ColumnConfigMessage.CurrentSchemaVersion })
                 MessageReceived?.Invoke(message);
         }
         catch (JsonException) { /* malformed line from an incompatible/broken client -- skip it */ }

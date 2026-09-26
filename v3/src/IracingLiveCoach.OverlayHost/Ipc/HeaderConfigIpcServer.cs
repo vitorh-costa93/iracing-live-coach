@@ -44,7 +44,7 @@ public sealed class HeaderConfigIpcServer : IDisposable
         try
         {
             var message = JsonSerializer.Deserialize<HeaderConfigMessage>(line);
-            if (message is { SchemaVersion: HeaderConfigMessage.CurrentSchemaVersion })
+            if (message is { SchemaVersion: >= 1 and <= HeaderConfigMessage.CurrentSchemaVersion })
                 MessageReceived?.Invoke(message);
         }
         catch (JsonException) { /* malformed line from an incompatible/broken client -- skip it */ }

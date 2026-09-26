@@ -8,14 +8,15 @@ namespace IracingLiveCoach.ControlCenter;
 public sealed record ColumnConfigEntry(
     string Key, bool Visible, int Order, float WidthPx, float MinWidthPx,
     string WidthMode, string Alignment, int? DecimalPlaces,
-    float PaddingLeftPx, float PaddingRightPx);
+    float PaddingLeftPx, float PaddingRightPx,
+    string? FontFamily = null, int? FontWeight = null);
 
 /// <summary>Same short-lived-connection pattern as <see cref="PlacementIpcClient"/>/<see cref="EditModeIpcClient"/>,
 /// on the dedicated column-config pipe.</summary>
 public sealed class ColumnConfigIpcClient
 {
     private const string PipeName = "iracinglivecoach-v3-columns";
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int ConnectTimeoutMs = 200;
 
     public async Task<bool> SendAsync(string widget, List<ColumnConfigEntry> columns)

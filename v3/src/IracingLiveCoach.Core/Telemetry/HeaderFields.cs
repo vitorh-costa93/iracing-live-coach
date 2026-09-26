@@ -4,7 +4,7 @@ namespace IracingLiveCoach.Core.Telemetry;
 
 /// <summary>One entry in a widget's configurable header (spec §12: "cabeçalhos configuráveis, com
 /// campos reordenáveis"). List order in the owning collection IS the display order.</summary>
-public sealed record HeaderFieldConfig(string Key, bool Visible);
+public sealed record HeaderFieldConfig(string Key, bool Visible, string? FontFamily = null, int? FontWeight = null);
 
 /// <summary>Builds header text from an ordered field list. Pure and GPU-free so it is unit-tested
 /// and shared by Standings/Relative. A field whose data isn't available yet is skipped, never

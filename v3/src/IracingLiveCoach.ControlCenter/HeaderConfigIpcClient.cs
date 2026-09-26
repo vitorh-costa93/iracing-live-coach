@@ -5,13 +5,13 @@ using System.Text.Json;
 
 namespace IracingLiveCoach.ControlCenter;
 
-public sealed record HeaderFieldWire(string Key, bool Visible);
+public sealed record HeaderFieldWire(string Key, bool Visible, string? FontFamily = null, int? FontWeight = null);
 
 /// <summary>Same short-lived-connection pattern as the other IPC clients, on the dedicated header pipe.</summary>
 public sealed class HeaderConfigIpcClient
 {
     private const string PipeName = "iracinglivecoach-v3-headers";
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int ConnectTimeoutMs = 200;
 
     public async Task<bool> SendAsync(string widget, List<HeaderFieldWire> fields)
