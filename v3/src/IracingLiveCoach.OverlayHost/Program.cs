@@ -296,7 +296,7 @@ public static unsafe class Program
         using var appearanceIpcServer = new AppearanceIpcServer();
         appearanceIpcServer.MessageReceived += m =>
         {
-            var appearance = new WidgetAppearance(m.FontScale, m.RowHeightDip, m.RowSpacingDip, m.FontWeight, m.PaddingHDip);
+            var appearance = new WidgetAppearance(m.FontScale, m.RowHeightDip, m.RowSpacingDip, m.FontWeight, m.PaddingHDip, m.FontFamily ?? FontCatalog.DefaultKey);
             ApplyAppearance(m.WidgetKey, appearance);
             PlacementStore.AppearanceOverrides[m.WidgetKey] = appearance;
             PlacementPersistence.Save(PlacementStore);

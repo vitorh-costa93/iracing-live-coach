@@ -64,7 +64,7 @@ public sealed unsafe class RadarWidget : IDisposable
     private void CreateTextFormats()
     {
         _labelFormat.Dispose();
-        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 12f * _appearance.FontScale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> labelFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 12f * _appearance.FontScale, FontWeight.SemiBold, _appearance.FontWeight);
         ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -73,7 +73,7 @@ public sealed unsafe class RadarWidget : IDisposable
 
     public void SetAppearance(WidgetAppearance appearance)
     {
-        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight || appearance.FontFamily != _appearance.FontFamily;
         _appearance = appearance;
         if (fontChanged) CreateTextFormats();
     }

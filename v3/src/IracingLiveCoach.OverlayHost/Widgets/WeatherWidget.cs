@@ -66,12 +66,12 @@ public sealed unsafe class WeatherWidget : IDisposable
         _valueFormat.Dispose();
 
         float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> labelFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> labelFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 15f * scale, FontWeight.SemiBold, _appearance.FontWeight);
         ThrowIfFailed(labelFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(labelFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _labelFormat = labelFormat;
 
-        ComPtr<IDWriteTextFormat> valueFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 13.5f * scale, fontWeight: FontWeight.SemiBold, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> valueFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 13.5f * scale, FontWeight.SemiBold, _appearance.FontWeight);
         ThrowIfFailed(valueFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(valueFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _valueFormat = valueFormat;
@@ -79,7 +79,7 @@ public sealed unsafe class WeatherWidget : IDisposable
 
     public void SetAppearance(WidgetAppearance appearance)
     {
-        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight || appearance.FontFamily != _appearance.FontFamily;
         _appearance = appearance;
         if (fontChanged) CreateTextFormats();
     }

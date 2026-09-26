@@ -154,15 +154,6 @@ public sealed unsafe class StandingsWidget : IDisposable
         if (changed) RebuildEffectiveColumns();
     }
 
-    /// <summary>The weight to use for a text format: the widget's own choice unless the appearance
-    /// forces Regular (400) or SemiBold (600) -- the two bundled cuts.</summary>
-    private FontWeight Weight(FontWeight own) => _appearance.FontWeight switch
-    {
-        >= 600 => FontWeight.SemiBold,
-        > 0 => FontWeight.Regular,
-        _ => own
-    };
-
     public IReadOnlyList<ColumnDefinition> Columns => _columns;
 
     /// <summary>Spec §6/§12: "Top N fixo configurável por classe, combinado com janela em torno do
@@ -215,18 +206,18 @@ public sealed unsafe class StandingsWidget : IDisposable
         _numericFormat.Dispose();
 
         float scale = _appearance.FontScale;
-        ComPtr<IDWriteTextFormat> nameFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 17f * scale, fontWeight: Weight(FontWeight.Medium), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> nameFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 17f * scale, FontWeight.Medium, _appearance.FontWeight);
         ThrowIfFailed(nameFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(nameFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _nameFormat = nameFormat;
 
-        ComPtr<IDWriteTextFormat> statusFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 15.5f * scale, fontWeight: Weight(FontWeight.SemiBold), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> statusFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 15.5f * scale, FontWeight.SemiBold, _appearance.FontWeight);
         ThrowIfFailed(statusFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetTextAlignment(TextAlignment.Center));
         ThrowIfFailed(statusFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
         _statusFormat = statusFormat;
 
-        ComPtr<IDWriteTextFormat> numericFormat = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, 16f * scale, fontWeight: Weight(FontWeight.Medium), fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> numericFormat = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, 16f * scale, FontWeight.Medium, _appearance.FontWeight);
         ThrowIfFailed(numericFormat.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(numericFormat.Get()->SetTextAlignment(TextAlignment.Trailing));
         ThrowIfFailed(numericFormat.Get()->SetWordWrapping(WordWrapping.NoWrap));
@@ -237,7 +228,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// <see cref="SetColumns"/>.</summary>
     public void SetAppearance(WidgetAppearance appearance)
     {
-        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight;
+        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight || appearance.FontFamily != _appearance.FontFamily;
         _appearance = appearance;
         RebuildEffectiveColumns();
         if (fontChanged) CreateTextFormats();

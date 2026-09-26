@@ -246,16 +246,16 @@
                                             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Grid.Row="0" Text="Fonte" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
-                                        <ComboBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,7" IsEnabled="False" SelectedIndex="0" FontSize="14" MinHeight="32">
-                                            <ComboBoxItem Content="Barlow Semi Condensed"/>
-                                        </ComboBox>
+                                        <ComboBox x:Name="FontFamilyBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="FontFamilyChanged"/>
                                         <TextBlock Grid.Row="1" Text="Tamanho" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <ComboBox x:Name="FontSizeBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="AppearanceChanged"/>
                                         <TextBlock Grid.Row="2" Text="Peso" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <ComboBox x:Name="FontWeightBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="AppearanceChanged">
                                             <ComboBoxItem Content="Padrão do widget"/>
                                             <ComboBoxItem Content="400 (Regular)"/>
+                                            <ComboBoxItem Content="500 (Medium)"/>
                                             <ComboBoxItem Content="600 (Semibold)"/>
+                                            <ComboBoxItem Content="700 (Bold)"/>
                                         </ComboBox>
                                         <TextBlock Grid.Row="3" Text="Altura da linha" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <TextBox x:Name="RowHeightBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,7" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — 0 usa o padrão do widget"/>

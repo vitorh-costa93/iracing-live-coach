@@ -87,7 +87,7 @@ public sealed unsafe class FuelWidget : IDisposable
 
     private ComPtr<IDWriteTextFormat> MakeFormat(float size, FontWeight weight)
     {
-        ComPtr<IDWriteTextFormat> format = _dwriteFactory->CreateTextFormat("Barlow", (IDWriteFontCollection*)_fontCollection, size * _appearance.FontScale, fontWeight: weight, fontStretch: FontStretch.SemiCondensed, localeName: "en-us");
+        ComPtr<IDWriteTextFormat> format = FontCatalog.CreateFormat(_dwriteFactory, _fontCollection, _appearance.FontFamily, size * _appearance.FontScale, weight, _appearance.FontWeight);
         ThrowIfFailed(format.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(format.Get()->SetWordWrapping(WordWrapping.NoWrap));
         return format;
@@ -107,7 +107,7 @@ public sealed unsafe class FuelWidget : IDisposable
 
     public void SetAppearance(WidgetAppearance appearance)
     {
-        bool fontChanged = appearance.FontScale != _appearance.FontScale;
+        bool fontChanged = appearance.FontScale != _appearance.FontScale || appearance.FontWeight != _appearance.FontWeight || appearance.FontFamily != _appearance.FontFamily;
         _appearance = appearance;
         if (fontChanged) CreateTextFormats();
     }

@@ -221,7 +221,7 @@ public sealed unsafe class DeviceResources : IDisposable
 
             string directory = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
             int added = 0;
-            foreach (string file in new[] { "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf" })
+            foreach (string file in new[] { "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf", "ChakraPetch-Medium.ttf", "ChakraPetch-SemiBold.ttf", "ChakraPetch-Bold.ttf", "IBMPlexSans-Regular.ttf", "IBMPlexSans-Medium.ttf", "IBMPlexSans-SemiBold.ttf", "Inter.ttf" })
             {
                 string path = Path.Combine(directory, file);
                 if (!File.Exists(path)) continue;

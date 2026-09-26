@@ -281,6 +281,8 @@ public partial class MainWindow
 
     private void FillFontSizes()
     {
+        FontFamilyBox.Items.Clear();
+        foreach (var family in FontCatalog.Families) FontFamilyBox.Items.Add(new ComboBoxItem { Content = family.Label });
         FontSizeBox.Items.Clear();
         foreach (int px in FontSizes) FontSizeBox.Items.Add(new ComboBoxItem { Content = $"{px} px" });
     }
@@ -289,6 +291,15 @@ public partial class MainWindow
         _profileStore.AppearanceOverrides.TryGetValue(_selectedWidget, out var saved) ? saved : WidgetAppearance.Default;
 
     private float CurrentAppearancePaddingH() => StoredAppearance().PaddingHDip;
+
+    /// <summary>Weight list order of <c>FontWeightBox</c> (0 = the widget's own weights).</summary>
+    private static readonly int[] WeightSteps = [0, 400, 500, 600, 700];
+
+    private void FontFamilyChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressChangeEvents || !IsLoaded) return;
+        Debounce("appearance", ApplyAppearance, 120);
+    }
 
     private bool IsTableWidget => _selectedWidget is "standings" or "relative";
 
@@ -304,7 +315,8 @@ public partial class MainWindow
             for (int i = 0; i < FontSizes.Length; i++)
                 if (Math.Abs(FontSizes[i] - px) < Math.Abs(FontSizes[best] - px)) best = i;
             FontSizeBox.SelectedIndex = best;
-            FontWeightBox.SelectedIndex = appearance.FontWeight >= 600 ? 2 : appearance.FontWeight > 0 ? 1 : 0;
+            FontFamilyBox.SelectedIndex = Math.Max(0, FontCatalog.Families.ToList().FindIndex(f => f.Key == appearance.FontFamily));
+            FontWeightBox.SelectedIndex = Array.IndexOf(WeightSteps, appearance.FontWeight) is var wi and >= 0 ? wi : 0;
             RowHeightBox.IsEnabled = IsTableWidget;
             RowHeightBox.Text = IsTableWidget ? (appearance.RowHeightDip > 0 ? appearance.RowHeightDip : DefaultRowHeightPx).ToString("0", CultureInfo.InvariantCulture) : "";
             PaddingHBox.IsEnabled = IsTableWidget;
@@ -332,7 +344,8 @@ public partial class MainWindow
         var current = StoredAppearance();
         int sizeIndex = Math.Clamp(FontSizeBox.SelectedIndex, 0, FontSizes.Length - 1);
         float scale = FontSizes[sizeIndex] / BaseFontPx;
-        int weight = FontWeightBox.SelectedIndex switch { 2 => 600, 1 => 400, _ => 0 };
+        int weight = WeightSteps[Math.Clamp(FontWeightBox.SelectedIndex, 0, WeightSteps.Length - 1)];
+        string family = FontCatalog.Families[Math.Clamp(FontFamilyBox.SelectedIndex, 0, FontCatalog.Families.Count - 1)].Key;
         float rowHeight = current.RowHeightDip;
         float padding = current.PaddingHDip;
         if (IsTableWidget)
@@ -341,11 +354,11 @@ public partial class MainWindow
                 rowHeight = Math.Abs(rh - DefaultRowHeightPx) < 0.5f || rh <= 0 ? 0f : Math.Clamp(rh, 16f, 80f);
             padding = float.TryParse(PaddingHBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var ph) ? Math.Clamp(ph, 0f, 40f) : -1f;
         }
-        var appearance = new WidgetAppearance(scale, rowHeight, current.RowSpacingDip, weight, padding);
+        var appearance = new WidgetAppearance(scale, rowHeight, current.RowSpacingDip, weight, padding, family);
         _profileStore.AppearanceOverrides[widget] = appearance;
         _previewHost?.ApplyProfile(_profileStore);
         UpdateWidthWarning();
-        bool sent = await _appearanceClient.SendAsync(widget, appearance.FontScale, appearance.RowHeightDip, appearance.RowSpacingDip, appearance.FontWeight, appearance.PaddingHDip);
+        bool sent = await _appearanceClient.SendAsync(widget, appearance.FontScale, appearance.RowHeightDip, appearance.RowSpacingDip, appearance.FontWeight, appearance.PaddingHDip, appearance.FontFamily);
         ReportSent(sent, "Tipografia");
         Debounce("save", SaveProfileStore, 600);
     }
@@ -360,7 +373,7 @@ public partial class MainWindow
         _previewHost?.ApplyProfile(_profileStore);
         UpdateWidthWarning();
         var d = WidgetAppearance.Default;
-        bool sent = await _appearanceClient.SendAsync(_selectedWidget, d.FontScale, d.RowHeightDip, d.RowSpacingDip, d.FontWeight, d.PaddingHDip);
+        bool sent = await _appearanceClient.SendAsync(_selectedWidget, d.FontScale, d.RowHeightDip, d.RowSpacingDip, d.FontWeight, d.PaddingHDip, d.FontFamily);
         await SendPlacementAsync(_selectedWidget);
         ReportSent(sent, "Aparência restaurada");
         Debounce("save", SaveProfileStore, 600);
