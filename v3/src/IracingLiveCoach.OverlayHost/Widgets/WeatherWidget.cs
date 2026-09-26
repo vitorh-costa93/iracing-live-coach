@@ -103,7 +103,7 @@ public sealed unsafe class WeatherWidget : IDisposable
         lock (_lock) { status = _simulatedStatus ?? _status; }
 
         var panel = new RectF(x, y, x + width, y + PanelHeightDip);
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
 
         if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
         {

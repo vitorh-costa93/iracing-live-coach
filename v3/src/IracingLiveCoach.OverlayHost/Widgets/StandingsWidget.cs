@@ -302,7 +302,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             // this widget selected for display).
             double? classSof = Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
 
-            PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+            PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
             using (PanelChrome.PushClip(dc, panel))
             {
                 DrawHeaderBand(dc, x, cursorY, group, classSof, session, player);
@@ -391,7 +391,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             fixed (char* p = text)
             {
                 var rect = new RectF(cellX + (isClass ? 2f : 0f), y, cellX + width, y + HeaderHeightDip);
-                dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+                PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.StatusFormat, text, rect);
             }
             ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
             _fmt.Override = null;
@@ -576,7 +576,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.StatusFormat, text, rect);
         }
         ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center)); // restore this format's other callers' expectation
     }
@@ -589,7 +589,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.NumericFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.NumericFormat, text, rect);
         }
         ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(TextAlignment.Trailing)); // restore this format's default for the next call
     }
@@ -601,7 +601,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + widthDip, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.NumericFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.NumericFormat, text, rect);
         }
         ThrowIfFailed(_fmt.NumericFormat->SetTextAlignment(TextAlignment.Trailing));
     }
@@ -637,7 +637,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.StatusFormat, text, rect);
         }
     }
 

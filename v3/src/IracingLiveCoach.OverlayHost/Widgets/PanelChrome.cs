@@ -98,6 +98,35 @@ internal static unsafe class PanelChrome
         return result;
     }
 
+    /// <summary>Draws text with OpenType tabular figures (<c>tnum</c>) so digits keep one advance and
+    /// columns of numbers line up. Fonts that are tabular by default (IBM Plex Sans) or lack the
+    /// feature (Chakra Petch) are unaffected; falls back to a plain DrawText if the layout fails.</summary>
+    public static void DrawTabularText(ID2D1DeviceContext* dc, IDWriteFactory* factory, ID2D1Brush* brush, IDWriteTextFormat* format, string text, RectF rect)
+    {
+        if (text.Length == 0) return;
+        ComPtr<IDWriteTextLayout> layout = default;
+        ComPtr<IDWriteTypography> typography = default;
+        fixed (char* p = text)
+        {
+            float width = Math.Max(1f, rect.Right - rect.Left), height = Math.Max(1f, rect.Bottom - rect.Top);
+            if (factory->CreateTextLayout(p, (uint)text.Length, format, width, height, layout.GetAddressOf()).Failure
+                || factory->CreateTypography(typography.GetAddressOf()).Failure)
+            {
+                layout.Dispose(); typography.Dispose();
+                var fallback = rect;
+                dc->DrawText(p, (uint)text.Length, format, &fallback, brush, DrawTextOptions.None, MeasuringMode.Natural);
+                return;
+            }
+            var feature = new FontFeature { nameTag = FontFeatureTag.TabularFigures, parameter = 1 };
+            typography.Get()->AddFontFeature(feature);
+            var range = new TextRange { startPosition = 0, length = (uint)text.Length };
+            layout.Get()->SetTypography(typography.Get(), range);
+            dc->DrawTextLayout(new System.Numerics.Vector2(rect.Left, rect.Top), layout.Get(), brush, DrawTextOptions.None);
+        }
+        layout.Dispose();
+        typography.Dispose();
+    }
+
     /// <summary>Draws one text run inside a box, vertically centred.</summary>
     public static void DrawText(ID2D1DeviceContext* dc, ID2D1SolidColorBrush* brush, IDWriteTextFormat* format, string text, float x, float y, float width, float height, Color4 color, TextAlignment alignment = TextAlignment.Leading)
     {

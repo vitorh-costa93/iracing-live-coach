@@ -44,7 +44,7 @@ public sealed class AppearanceIpcServer : IDisposable
         try
         {
             var message = JsonSerializer.Deserialize<AppearanceMessage>(line);
-            if (message is { SchemaVersion: AppearanceMessage.CurrentSchemaVersion })
+            if (message is { SchemaVersion: >= 1 and <= AppearanceMessage.CurrentSchemaVersion })
                 MessageReceived?.Invoke(message);
         }
         catch (JsonException) { /* malformed line from an incompatible/broken client -- skip it */ }

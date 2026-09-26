@@ -113,7 +113,7 @@ public sealed unsafe class RadarWidget : IDisposable
 
         var panel = new RectF(x, y, x + w, y + h);
         // Item 11: a dedicated, more translucent token -- never the shared PanelBackground.
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.RadarPanelBackground);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.RadarPanelBackground));
 
         // Distance guides every 10 m.
         SetBrushColor(PaletteTokens.PanelDivider);

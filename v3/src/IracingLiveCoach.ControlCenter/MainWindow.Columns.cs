@@ -350,6 +350,8 @@ public partial class MainWindow
             FontWeightBox.SelectedIndex = Array.IndexOf(WeightSteps, appearance.FontWeight) is var wi and >= 0 ? wi : 0;
             RowHeightBox.IsEnabled = IsTableWidget;
             RowHeightBox.Text = IsTableWidget ? (appearance.RowHeightDip > 0 ? appearance.RowHeightDip : DefaultRowHeightPx).ToString("0", CultureInfo.InvariantCulture) : "";
+            BackgroundColorBox.Text = appearance.BackgroundColor;
+            BackgroundOpacityBox.Text = appearance.BackgroundOpacity >= 0 ? Math.Round(appearance.BackgroundOpacity * 100).ToString("0", CultureInfo.InvariantCulture) : "";
             PaddingHBox.IsEnabled = IsTableWidget;
             PaddingHBox.Text = IsTableWidget && appearance.PaddingHDip >= 0 ? appearance.PaddingHDip.ToString("0", CultureInfo.InvariantCulture) : "";
             AppearanceStatus.Text = IsTableWidget ? "" : "Altura da linha e padding só valem para Standings e Relative.";
@@ -385,11 +387,14 @@ public partial class MainWindow
                 rowHeight = Math.Abs(rh - DefaultRowHeightPx) < 0.5f || rh <= 0 ? 0f : Math.Clamp(rh, 16f, 80f);
             padding = float.TryParse(PaddingHBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var ph) ? Math.Clamp(ph, 0f, 40f) : -1f;
         }
-        var appearance = new WidgetAppearance(scale, rowHeight, current.RowSpacingDip, weight, padding, family);
+        string bgHex = BackgroundColorBox.Text.Trim();
+        string bgColor = bgHex.TrimStart('#').Length == 6 && bgHex.TrimStart('#').All(Uri.IsHexDigit) ? "#" + bgHex.TrimStart('#').ToUpperInvariant() : "";
+        float bgOpacity = float.TryParse(BackgroundOpacityBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var bp) ? Math.Clamp(bp, 0f, 100f) / 100f : -1f;
+        var appearance = new WidgetAppearance(scale, rowHeight, current.RowSpacingDip, weight, padding, family, bgColor, bgOpacity);
         _profileStore.AppearanceOverrides[widget] = appearance;
         _previewHost?.ApplyProfile(_profileStore);
         UpdateWidthWarning();
-        bool sent = await _appearanceClient.SendAsync(widget, appearance.FontScale, appearance.RowHeightDip, appearance.RowSpacingDip, appearance.FontWeight, appearance.PaddingHDip, appearance.FontFamily);
+        bool sent = await _appearanceClient.SendAsync(widget, appearance.FontScale, appearance.RowHeightDip, appearance.RowSpacingDip, appearance.FontWeight, appearance.PaddingHDip, appearance.FontFamily, appearance.BackgroundColor, appearance.BackgroundOpacity);
         ReportSent(sent, "Tipografia");
         Debounce("save", SaveProfileStore, 600);
     }
@@ -404,7 +409,7 @@ public partial class MainWindow
         _previewHost?.ApplyProfile(_profileStore);
         UpdateWidthWarning();
         var d = WidgetAppearance.Default;
-        bool sent = await _appearanceClient.SendAsync(_selectedWidget, d.FontScale, d.RowHeightDip, d.RowSpacingDip, d.FontWeight, d.PaddingHDip, d.FontFamily);
+        bool sent = await _appearanceClient.SendAsync(_selectedWidget, d.FontScale, d.RowHeightDip, d.RowSpacingDip, d.FontWeight, d.PaddingHDip, d.FontFamily, d.BackgroundColor, d.BackgroundOpacity);
         await SendPlacementAsync(_selectedWidget);
         ReportSent(sent, "Aparência restaurada");
         Debounce("save", SaveProfileStore, 600);

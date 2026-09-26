@@ -256,7 +256,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         float height = HeaderHeightDip + slots.Count * RowHeightDip;
         LastDrawnSize = (TableWidthDip, height);
         var panel = new RectF(x, y, x + TableWidthDip, y + height);
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
         using (PanelChrome.PushClip(dc, panel))
         {
             DrawHeader(dc, x, y, session, player);
@@ -439,7 +439,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.StatusFormat, text, rect);
         }
         ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
     }
@@ -475,7 +475,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         fixed (char* p = text)
         {
             var rect = new RectF(x, y, x + width, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _fmt.StatusFormat, text, rect);
         }
     }
 

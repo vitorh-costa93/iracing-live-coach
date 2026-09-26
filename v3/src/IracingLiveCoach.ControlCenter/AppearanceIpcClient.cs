@@ -9,10 +9,10 @@ namespace IracingLiveCoach.ControlCenter;
 public sealed class AppearanceIpcClient
 {
     private const string PipeName = "iracinglivecoach-v3-appearance";
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int ConnectTimeoutMs = 200;
 
-    public async Task<bool> SendAsync(string widgetKey, float fontScale, float rowHeightDip, float rowSpacingDip, int fontWeight = 0, float paddingHDip = -1f, string fontFamily = "barlow")
+    public async Task<bool> SendAsync(string widgetKey, float fontScale, float rowHeightDip, float rowSpacingDip, int fontWeight = 0, float paddingHDip = -1f, string fontFamily = "barlow", string backgroundColor = "", float backgroundOpacity = -1f)
     {
         try
         {
@@ -20,7 +20,7 @@ public sealed class AppearanceIpcClient
             using var cts = new CancellationTokenSource(ConnectTimeoutMs);
             await pipe.ConnectAsync(cts.Token);
 
-            var message = new AppearanceMessageWire(SchemaVersion, widgetKey, fontScale, rowHeightDip, rowSpacingDip, fontWeight, paddingHDip, fontFamily);
+            var message = new AppearanceMessageWire(SchemaVersion, widgetKey, fontScale, rowHeightDip, rowSpacingDip, fontWeight, paddingHDip, fontFamily, backgroundColor, backgroundOpacity);
             string json = JsonSerializer.Serialize(message) + "\n";
             byte[] bytes = Encoding.UTF8.GetBytes(json);
             await pipe.WriteAsync(bytes);
@@ -33,4 +33,4 @@ public sealed class AppearanceIpcClient
     }
 }
 
-file sealed record AppearanceMessageWire(int SchemaVersion, string WidgetKey, float FontScale, float RowHeightDip, float RowSpacingDip, int FontWeight, float PaddingHDip, string FontFamily);
+file sealed record AppearanceMessageWire(int SchemaVersion, string WidgetKey, float FontScale, float RowHeightDip, float RowSpacingDip, int FontWeight, float PaddingHDip, string FontFamily, string BackgroundColor, float BackgroundOpacity);

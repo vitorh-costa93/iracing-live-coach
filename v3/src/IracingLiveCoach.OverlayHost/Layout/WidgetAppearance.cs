@@ -11,10 +11,12 @@ namespace IracingLiveCoach.OverlayHost.Layout;
 /// have no rows.</param>
 /// <param name="FontWeight">0 = the widget's own weights; 400 = Regular; 600 = SemiBold (the two bundled cuts).</param>
 /// <param name="FontFamily">Key of <see cref="FontCatalog"/> (barlow, chakra, plex, inter, sfpro); missing in old profiles = barlow.</param>
+/// <param name="BackgroundColor">"#RRGGBB" of the panel fill; empty = the widget's own token colour.</param>
+/// <param name="BackgroundOpacity">Alpha 0..1 of the panel fill only (the window-wide content opacity stays in <see cref="WidgetPlacement.Opacity"/>, which multiplies it); negative = the token's own alpha.</param>
 /// <param name="PaddingHDip">Right padding of every padded table column; negative = each column's own default.</param>
 /// <param name="RowSpacingDip">Extra vertical gap inserted between consecutive rows, on top of
 /// <paramref name="RowHeightDip"/>. Ignored by widgets with no row list.</param>
-public sealed record WidgetAppearance(float FontScale, float RowHeightDip, float RowSpacingDip, int FontWeight = 0, float PaddingHDip = -1f, string FontFamily = "barlow")
+public sealed record WidgetAppearance(float FontScale, float RowHeightDip, float RowSpacingDip, int FontWeight = 0, float PaddingHDip = -1f, string FontFamily = "barlow", string BackgroundColor = "", float BackgroundOpacity = -1f)
 {
     public static WidgetAppearance Default { get; } = new(FontScale: 1f, RowHeightDip: 0f, RowSpacingDip: 0f);
 }

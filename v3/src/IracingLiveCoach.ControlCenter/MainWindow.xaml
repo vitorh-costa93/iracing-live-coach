@@ -247,7 +247,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <TextBlock Grid.Row="0" Text="Fonte" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <ComboBox x:Name="FontFamilyBox" Grid.Row="0" Grid.Column="1" Margin="0,0,0,7" FontSize="14" MinHeight="32" SelectionChanged="FontFamilyChanged"/>
@@ -264,7 +264,11 @@
                                         <TextBlock Grid.Row="3" Text="Altura da linha" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                                         <TextBox x:Name="RowHeightBox" Grid.Row="3" Grid.Column="1" Margin="0,0,0,7" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — 0 usa o padrão do widget"/>
                                         <TextBlock Grid.Row="4" Text="Padding (H)" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="PaddingHBox" Grid.Row="4" Grid.Column="1" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — vazio usa o padrão de cada coluna"/>
+                                        <TextBox x:Name="PaddingHBox" Grid.Row="4" Grid.Column="1" Margin="0,0,0,7" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="px — vazio usa o padrão de cada coluna"/>
+                                        <TextBlock Grid.Row="5" Text="Cor do fundo" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="BackgroundColorBox" Grid.Row="5" Grid.Column="1" Margin="0,0,0,7" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="#RRGGBB — vazio usa a cor padrão do widget"/>
+                                        <TextBlock Grid.Row="6" Text="Opac. fundo (%)" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="BackgroundOpacityBox" Grid.Row="6" Grid.Column="1" Style="{StaticResource NumField}" TextChanged="AppearanceTextChanged" ToolTip="0–100 — só o fundo; vazio usa o padrão do widget"/>
                                     </Grid>
                                     <TextBlock x:Name="AppearanceStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                 </StackPanel>

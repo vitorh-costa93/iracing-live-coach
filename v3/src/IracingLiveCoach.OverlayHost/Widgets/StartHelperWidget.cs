@@ -101,7 +101,7 @@ public sealed unsafe class StartHelperWidget : IDisposable
 
         float panelHeight = RowHeightDip * 3 + RowGapDip * 2 + 8f;
         var panel = new RectF(x, y, x + width, y + panelHeight);
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
 
         float rowY = y + 4f;
         DrawRpmRow(dc, status.RpmValue, x, rowY, width);

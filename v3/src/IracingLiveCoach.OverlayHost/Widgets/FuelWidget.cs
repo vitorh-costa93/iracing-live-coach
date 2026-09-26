@@ -137,7 +137,7 @@ public sealed unsafe class FuelWidget : IDisposable
         lock (_lock) { status = _simulatedStatus ?? _status; session = _simulatedSession ?? _session; }
 
         var panel = new RectF(x, y, x + width, y + LastDrawnSize.Height);
-        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.PanelBackground);
+        PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
 
         if (_simulatedStatus is null && (!_telemetry.HasRecentTelemetry || status is null))
         {
@@ -230,7 +230,7 @@ public sealed unsafe class FuelWidget : IDisposable
         var body = new RectF(x, y, x + 20f, y + 32f);
         var rounded = new RoundedRect { rect = body, radiusX = 3f, radiusY = 3f };
         dc->FillRoundedRectangle(&rounded, (ID2D1Brush*)_brush.Get());
-        SetBrushColor(PaletteTokens.PanelBackground);
+        SetBrushColor(PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
         var window = new RectF(x + 4f, y + 5f, x + 16f, y + 13f);
         dc->FillRectangle(&window, (ID2D1Brush*)_brush.Get());
         SetBrushColor(PumpYellow);

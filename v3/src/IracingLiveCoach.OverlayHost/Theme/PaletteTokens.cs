@@ -61,6 +61,20 @@ public static class PaletteTokens
             SessionClassColors.TryRemove(key, out _);
     }
 
+    /// <summary>Panel fill for a widget: the user's background colour/opacity (typography spec, phase 3)
+    /// over the widget's own token as the default.</summary>
+    public static Color4 ResolveBackground(Layout.WidgetAppearance appearance, Color4 token)
+    {
+        var color = token;
+        string hex = appearance.BackgroundColor?.Trim() ?? "";
+        if (hex.TrimStart('#').Length == 6)
+        {
+            try { color = Hex(hex, token.A); } catch (FormatException) { }
+        }
+        if (appearance.BackgroundOpacity >= 0f) color = new Color4(color.R, color.G, color.B, Math.Clamp(appearance.BackgroundOpacity, 0f, 1f));
+        return color;
+    }
+
     private static Color4 Hex(string hex, float alpha = 1f)
     {
         var span = hex.AsSpan().TrimStart('#');
