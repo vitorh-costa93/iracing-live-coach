@@ -98,6 +98,10 @@ internal static unsafe class PanelChrome
         return result;
     }
 
+    /// <summary>The DirectWrite factory of the current device (set by <see cref="DeviceResources"/>), so
+    /// <see cref="DrawText"/> can build tabular-figure layouts without every caller passing it.</summary>
+    public static IDWriteFactory* SharedFactory;
+
     /// <summary>Draws text with OpenType tabular figures (<c>tnum</c>) so digits keep one advance and
     /// columns of numbers line up. Fonts that are tabular by default (IBM Plex Sans) or lack the
     /// feature (Chakra Petch) are unaffected; falls back to a plain DrawText if the layout fails.</summary>
@@ -134,11 +138,10 @@ internal static unsafe class PanelChrome
         var c = color;
         brush->SetColor(&c);
         format->SetTextAlignment(alignment);
+        var rect = new RectF(x, y, x + width, y + height);
+        if (SharedFactory != null) { DrawTabularText(dc, SharedFactory, (ID2D1Brush*)brush, format, text, rect); return; }
         fixed (char* p = text)
-        {
-            var rect = new RectF(x, y, x + width, y + height);
             dc->DrawText(p, (uint)text.Length, format, &rect, (ID2D1Brush*)brush, DrawTextOptions.None, MeasuringMode.Natural);
-        }
     }
 
     /// <summary>Draws label + value on one line: the label in <paramref name="labelColor"/>, the

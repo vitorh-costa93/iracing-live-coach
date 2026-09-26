@@ -121,18 +121,16 @@ public sealed unsafe class StartHelperWidget : IDisposable
 
         SetBrushColor(PaletteTokens.TextSecondary);
         const string label = "RPM";
-        fixed (char* p = label)
         {
             var rect = new RectF(x + 6f, y, x + 70f, y + RowHeightDip);
-            dc->DrawText(p, (uint)label.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _labelFormat.Get(), label, rect);
         }
 
         SetBrushColor(color);
         string value = rpm.ToString("0", CultureInfo.InvariantCulture);
-        fixed (char* p = value)
         {
             var rect = new RectF(x + width - 90f, y, x + width - 6f, y + RowHeightDip);
-            dc->DrawText(p, (uint)value.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _labelFormat.Get(), value, rect);
         }
     }
 
@@ -145,10 +143,9 @@ public sealed unsafe class StartHelperWidget : IDisposable
 
         SetBrushColor(PaletteTokens.TextPrimary);
         string text = $"{label} {valuePct.ToString("0", CultureInfo.InvariantCulture)}%";
-        fixed (char* p = text)
         {
             var rect = new RectF(x + 4f, y, x + width - 4f, y + RowHeightDip);
-            dc->DrawText(p, (uint)text.Length, _labelFormat.Get(), &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
+            PanelChrome.DrawTabularText(dc, _dwriteFactory, (ID2D1Brush*)_brush.Get(), _labelFormat.Get(), text, rect);
         }
     }
 

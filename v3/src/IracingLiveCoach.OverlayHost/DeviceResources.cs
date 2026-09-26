@@ -176,6 +176,7 @@ public sealed unsafe class DeviceResources : IDisposable
         ComPtr<IDWriteFactory> dwriteFactory = default;
         ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwriteFactory.GetAddressOf()));
         _dwriteFactory = dwriteFactory;
+        Widgets.PanelChrome.SharedFactory = _dwriteFactory.Get();
         _fontCollection = BuildPrivateFontCollection();
 
         ComPtr<IDWriteTextFormat> textFormat = _dwriteFactory.Get()->CreateTextFormat(
