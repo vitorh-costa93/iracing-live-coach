@@ -20,7 +20,10 @@ public static unsafe class FontCatalog
         new("chakra", "Chakra Petch", "Chakra Petch", false, [500, 600, 700]),
         new("plex", "IBM Plex Sans", "IBM Plex Sans", false, [400, 500, 600]),
         new("inter", "Inter", "Inter", false, [400]),
-        new("sfpro", "SF Pro (instalada no Windows)", "SF Pro Display", false, [400, 500, 600, 700]),
+        // Only Regular/Medium/Bold are installed on this machine (SFPRODISPLAY{REGULAR,MEDIUM,BOLD}.OTF,
+        // usWeightClass 400/500/700) -- no 600 cut exists, so it's not offered; requesting it would
+        // silently snap to whichever of these three DirectWrite picks as nearest.
+        new("sfpro", "SF Pro (instalada no Windows)", "SF Pro Display", false, [400, 500, 700]),
     ];
 
     public static FamilyInfo Get(string? key) =>
@@ -38,7 +41,10 @@ public static unsafe class FontCatalog
         try
         {
             using ComPtr<IDWriteFontCollection> system = default;
-            if (factory->GetSystemFontCollection(system.GetAddressOf(), false).Success)
+            // checkForUpdates: true -- SF Pro is a per-user install (HKCU\...\Fonts, not HKLM), so the
+            // first process to ask may need DirectWrite to rescan rather than trust an already-cached
+            // system collection that predates the install.
+            if (factory->GetSystemFontCollection(system.GetAddressOf(), true).Success)
             {
                 fixed (char* p = "SF Pro Display")
                 {
@@ -46,6 +52,22 @@ public static unsafe class FontCatalog
                     Bool32 exists = false;
                     system.Get()->FindFamilyName(p, &index, &exists);
                     found = exists;
+                    if (exists)
+                    {
+                        using ComPtr<IDWriteFontFamily> fam = default;
+                        if (system.Get()->GetFontFamily(index, fam.GetAddressOf()).Success)
+                        {
+                            uint faceCount = fam.Get()->GetFontCount();
+                            var weights = new List<int>();
+                            for (uint i = 0; i < faceCount; i++)
+                            {
+                                using ComPtr<IDWriteFont> face = default;
+                                if (fam.Get()->GetFont(i, face.GetAddressOf()).Success)
+                                    weights.Add((int)face.Get()->GetWeight());
+                            }
+                            Console.WriteLine($"[Fonts] SF Pro Display: {faceCount} face(s) in the system collection, weights [{string.Join(", ", weights)}].");
+                        }
+                    }
                 }
             }
         }
