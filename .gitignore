@@ -489,3 +489,4 @@ $RECYCLE.BIN/
 # Claude Code
 .claude/scheduled_tasks.lock
 preview-*.png
+.claude/settings.local.json
