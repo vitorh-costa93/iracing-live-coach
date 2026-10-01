@@ -31,7 +31,6 @@ public partial class MainWindow : Window
     private readonly EditModeIpcClient _editModeClient = new();
     private readonly ColumnConfigIpcClient _columnConfigClient = new();
     private readonly RulesIpcClient _rulesClient = new();
-    private readonly FuelConfigIpcClient _fuelConfigClient = new();
     private readonly AppearanceIpcClient _appearanceClient = new();
     private readonly UndoRedoIpcClient _undoRedoClient = new();
     private readonly NumberFormatIpcClient _numberFormatClient = new();
@@ -312,10 +311,10 @@ public partial class MainWindow : Window
 
     private void ShowTab(int index)
     {
-        UIElement[] panels = [Tab0, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6];
+        UIElement[] panels = [Tab0, Tab1, Tab2, Tab3, Tab4, Tab5];
         for (int i = 0; i < panels.Length; i++)
             panels[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
-        var buttons = new[] { TabBtn0, TabBtn1, TabBtn2, TabBtn3, TabBtn4, TabBtn5, TabBtn6 };
+        var buttons = new[] { TabBtn0, TabBtn1, TabBtn2, TabBtn3, TabBtn4, TabBtn5 };
         if (buttons[index].IsChecked != true) buttons[index].IsChecked = true;
     }
 
@@ -396,7 +395,7 @@ public partial class MainWindow : Window
     {
         switch ((string)((Button)sender).Tag)
         {
-            case "visibility": ShowTab(6); break;
+            case "visibility": ShowTab(5); break;
             case "shortcuts": ShowShortcuts(); break;
             case "p2p": SelectWidget("relative"); ShowTab(2); SetStatus("Coluna Overtake: ative-a na tabela de colunas (aparece só em sessões com push-to-pass)."); break;
             case "radar": SelectWidget("radar"); ShowTab(0); break;
@@ -465,7 +464,7 @@ public partial class MainWindow : Window
         _profileStore.AppearanceOverrides.Clear();
         _profileStore.HeaderOverrides.Clear();
         _profileStore.ClassColorOverrides.Clear();
-        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null; _profileStore.FuelConfig = null;
+        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null;
         _profileStore.NumberFormat = null; _profileStore.ClassRankColors = null;
         PaletteTokens.ClearAllNameOverrides();
         PlacementPersistence.Load(_profileStore);
@@ -503,7 +502,7 @@ public partial class MainWindow : Window
         _profileStore.AppearanceOverrides.Clear();
         _profileStore.HeaderOverrides.Clear();
         _profileStore.ClassColorOverrides.Clear();
-        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null; _profileStore.FuelConfig = null;
+        _profileStore.StandingsRules = null; _profileStore.RelativeRules = null;
         _profileStore.NumberFormat = null; _profileStore.ClassRankColors = null; _profileStore.SessionVisibility = null;
         _profileStore.ClassProfiles.Clear();
         PaletteTokens.ClearAllNameOverrides();
@@ -563,7 +562,6 @@ public partial class MainWindow : Window
             LoadAppearanceIntoControls();
             LoadHeaderForSelectedWidget();
             LoadRulesIntoControls();
-            LoadFuelConfigIntoControls();
             LoadVictoryIntoControls();
             LoadNumberFormatIntoControls();
             RefreshClassColorList();

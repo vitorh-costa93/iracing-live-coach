@@ -134,47 +134,6 @@ public partial class MainWindow
         ApplyColumnsNow();
     }
 
-    // --- Combustível ---
-
-    private void LoadFuelConfigIntoControls()
-    {
-        var config = _profileStore.FuelConfig ?? FuelConfig.Default;
-        FuelSourceBox.SelectedIndex = config.Source switch
-        {
-            FuelConsumptionSource.LastLap => 0,
-            FuelConsumptionSource.Average => 1,
-            FuelConsumptionSource.Max => 2,
-            _ => 3
-        };
-        FuelManualBox.Text = config.ManualLitersPerLap.ToString(CultureInfo.InvariantCulture);
-        FuelReserveBox.Text = config.ReserveLaps.ToString(CultureInfo.InvariantCulture);
-        FuelExcludePitBox.IsChecked = config.ExcludePitLaps;
-    }
-
-    private void FuelChanged(object sender, RoutedEventArgs e)
-    {
-        if (_suppressChangeEvents || !IsLoaded) return;
-        Debounce("fuel", ApplyFuelConfig, 350);
-    }
-
-    private async void ApplyFuelConfig()
-    {
-        string source = FuelSourceBox.SelectedIndex switch { 0 => "LastLap", 1 => "Average", 2 => "Max", _ => "Manual" };
-        if (!double.TryParse(FuelManualBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var manual) ||
-            !double.TryParse(FuelReserveBox.Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var reserve))
-        {
-            FuelRulesStatus.Text = "Valores inválidos.";
-            return;
-        }
-        FuelRulesStatus.Text = "";
-        bool excludePit = FuelExcludePitBox.IsChecked == true;
-        _profileStore.FuelConfig = new FuelConfig(Enum.Parse<FuelConsumptionSource>(source), manual, reserve, excludePit);
-        _previewHost?.ApplyProfile(_profileStore);
-        bool sent = await _fuelConfigClient.SendAsync(source, manual, reserve, excludePit);
-        ReportSent(sent, "Combustível");
-        Debounce("save", SaveProfileStore, 600);
-    }
-
     // --- Cores por classe: by speed rank (right card) + by class name (Classes tab) ---
 
     private List<string> CurrentRankColors()

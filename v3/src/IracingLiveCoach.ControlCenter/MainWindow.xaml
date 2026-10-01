@@ -140,8 +140,7 @@
                     <RadioButton x:Name="TabBtn2" Content="Colunas" Style="{StaticResource TabButton}" GroupName="tabs" Tag="2" Checked="TabChecked" IsChecked="True"/>
                     <RadioButton x:Name="TabBtn3" Content="Aparência" Style="{StaticResource TabButton}" GroupName="tabs" Tag="3" Checked="TabChecked"/>
                     <RadioButton x:Name="TabBtn4" Content="Classes" Style="{StaticResource TabButton}" GroupName="tabs" Tag="4" Checked="TabChecked"/>
-                    <RadioButton x:Name="TabBtn5" Content="Combustível" Style="{StaticResource TabButton}" GroupName="tabs" Tag="5" Checked="TabChecked"/>
-                    <RadioButton x:Name="TabBtn6" Content="Regras" Style="{StaticResource TabButton}" GroupName="tabs" Tag="6" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn5" Content="Regras" Style="{StaticResource TabButton}" GroupName="tabs" Tag="5" Checked="TabChecked"/>
                 </StackPanel>
 
                 <!-- Live preview -->
@@ -316,20 +315,8 @@
                                 <TextBlock x:Name="ClassProfileStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
                             </StackPanel>
 
-                            <!-- 5 · Combustível -->
+                            <!-- 5 · Regras -->
                             <StackPanel x:Name="Tab5" Visibility="Collapsed">
-                                <TextBlock Text="Combustível" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
-                                <TextBlock Text="A base da margem, a reserva e a exclusão de voltas de pit ficam no cartão Combustível ao lado. Aqui, o consumo manual usado quando a base é “Manual”." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                                <TextBlock Text="Consumo manual (L/volta)" Style="{StaticResource FieldLabel}"/>
-                                <TextBox x:Name="FuelManualBox" Text="0" Width="160" HorizontalAlignment="Left" Style="{StaticResource NumField}" TextChanged="FuelChanged"/>
-                                <TextBlock x:Name="FuelRulesStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"/>
-                                <TextBlock Text="Bases da margem" Style="{StaticResource SectionLabel}" Margin="0,20,0,6"/>
-                                <TextBlock TextWrapping="Wrap" Style="{StaticResource Muted}" LineHeight="20"
-                                           Text="Última volta — usa o consumo da volta anterior (cai para a média se essa volta foi afetada pelo pit).&#10;Média móvel — média das últimas voltas limpas; é a base padrão.&#10;Máximo — o maior consumo entre as voltas limpas; a leitura mais conservadora.&#10;Manual — usa o valor acima, em litros por volta."/>
-                            </StackPanel>
-
-                            <!-- 6 · Regras -->
-                            <StackPanel x:Name="Tab6" Visibility="Collapsed">
                                 <TextBlock Text="Regras" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
                                 <CheckBox x:Name="KeepPlayerWindowBox" Content="Standings: manter janela em torno do jogador" IsChecked="True" Checked="RulesChanged" Unchecked="RulesChanged" Margin="0,8,0,18"/>
                                 <TextBlock Text="Visibilidade por tipo de sessão" Style="{StaticResource SectionLabel}" Margin="0,0,0,4"/>
@@ -520,43 +507,6 @@
                             </StackPanel>
                             <StackPanel x:Name="RankColorList"/>
                             <TextBlock Text="A cor segue a velocidade da classe no grid (mais rápida = 1ª). Aplicada à faixa e ao cabeçalho de Standings e Relative." Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Combustível -->
-                    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <Path Data="{StaticResource IconFuel}" Stroke="{StaticResource CyanBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeEndLineCap="Round" Stretch="Uniform" Width="22" Height="22" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Combustível" Style="{StaticResource CardTitle}"/>
-                            </StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="0.7*"/><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="0.9*"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,7,10">
-                                    <TextBlock Text="Base da margem" Style="{StaticResource SmallLabel}"/>
-                                    <ComboBox x:Name="FuelSourceBox" FontSize="14" MinHeight="34" SelectedIndex="1" SelectionChanged="FuelChanged">
-                                        <ComboBoxItem Content="Última volta"/>
-                                        <ComboBoxItem Content="Média móvel"/>
-                                        <ComboBoxItem Content="Máximo"/>
-                                        <ComboBoxItem Content="Manual"/>
-                                    </ComboBox>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Margin="0,0,7,10">
-                                    <TextBlock Text="Reserva" Style="{StaticResource SmallLabel}"/>
-                                    <TextBox x:Name="FuelReserveBox" Text="1.0" Style="{StaticResource NumField}" TextChanged="FuelChanged"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Margin="0,0,7,10">
-                                    <TextBlock Text="&#160;" Style="{StaticResource SmallLabel}"/>
-                                    <ComboBox FontSize="14" MinHeight="34" SelectedIndex="0" IsEnabled="False"><ComboBoxItem Content="volta(s)"/></ComboBox>
-                                </StackPanel>
-                                <StackPanel Grid.Column="3" Margin="0,0,0,10">
-                                    <TextBlock Text="Unidade" Style="{StaticResource SmallLabel}"/>
-                                    <ComboBox FontSize="14" MinHeight="34" SelectedIndex="0" IsEnabled="False"><ComboBoxItem Content="Litros"/></ComboBox>
-                                </StackPanel>
-                            </Grid>
-                            <CheckBox x:Name="FuelExcludePitBox" Content="Excluir voltas de pit e outlap" IsChecked="True" Checked="FuelChanged" Unchecked="FuelChanged" FontSize="14"/>
                         </StackPanel>
                     </Border>
 

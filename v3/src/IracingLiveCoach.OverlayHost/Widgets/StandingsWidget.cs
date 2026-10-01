@@ -141,7 +141,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void SyncP2PColumn(IEnumerable<StandingsRow> rows)
     {
         var list = rows as IReadOnlyCollection<StandingsRow> ?? rows.ToList();
-        bool pit = list.Any(r => !string.IsNullOrEmpty(r.PitStatus));
+        bool pit = list.Any(r => !string.IsNullOrWhiteSpace(r.PitStatus) && r.PitStatus != "--");
         bool changed = pit != _hasPit;
         _hasPit = pit;
         if (!_hasP2P && list.Any(r => r.P2PActive is not null))
@@ -293,6 +293,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         SyncP2PColumn(rows);
         var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);
         float cursorY = y;
+        double? overallBest = rows.Where(r => r.BestLapTime is > 0).Select(r => r.BestLapTime!.Value).DefaultIfEmpty(0).Min() is var minBest && minBest > 0 ? minBest : null;
         foreach (var group in groups)
         {
             float panelHeight = HeaderHeightDip + group.Rows.Count * RowHeightDip;
@@ -300,7 +301,9 @@ public sealed unsafe class StandingsWidget : IDisposable
 
             // SOF is that class's own, computed from EVERY driver in the class (not just the rows
             // this widget selected for display).
-            double? classSof = Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
+            double? classSof = session?.ClassSof is { } frozenSof && frozenSof.TryGetValue(group.ClassId, out var fixedSof)
+                ? fixedSof // race: fixed at the green flag
+                : Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
 
             PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
             using (PanelChrome.PushClip(dc, panel))
@@ -317,7 +320,7 @@ public sealed unsafe class StandingsWidget : IDisposable
                         var separator = new RectF(x + ClassStripWidthDip, rowY, x + TableWidth, rowY + 1f);
                         dc->FillRectangle(&separator, (ID2D1Brush*)_brush.Get());
                     }
-                    DrawRow(dc, x, rowY, row);
+                    DrawRow(dc, x, rowY, row, overallBest);
                     rowY += RowHeightDip;
                     first = false;
                 }
@@ -414,7 +417,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         }
     }
 
-    private void DrawRow(ID2D1DeviceContext* dc, float x, float y, StandingsRow row)
+    private void DrawRow(ID2D1DeviceContext* dc, float x, float y, StandingsRow row, double? overallBest)
     {
         // Class color strip -- keyed by the class, already resolved by TelemetryReader/LiveCoachEngine,
         // never recomputed here from manufacturer/licence/etc (spec §15).
@@ -515,7 +518,10 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Kapps (StandingsCellText.LapText): last lap in a race with 1 decimal, best lap with 3
                     // when ordered by best lap; truncated.
                     string lapText = StandingsCellText.LapText(row);
-                    DrawTextCell(dc, cellX, y, cellWidth, lapText, lapText == "—" ? PaletteTokens.TextDisabled : PaletteTokens.TextPrimary, placement.Column.Alignment);
+                    // Purple = the session's best lap: the fastest car's best (order by best lap) or the race lap that set it.
+                    bool isBest = overallBest is double ob && row.BestLapTime is double bt && Math.Abs(bt - ob) < 0.0005
+                        && (row.TimedOrder || row.LastLapTime is double ll && Math.Abs(ll - ob) < 0.0005);
+                    DrawTextCell(dc, cellX, y, cellWidth, lapText, lapText == "—" ? PaletteTokens.TextDisabled : isBest ? PaletteTokens.BestLapPurple : PaletteTokens.TextPrimary, placement.Column.Alignment);
                     break;
                 }
                 case "lapDelta":

@@ -147,7 +147,6 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _relative.SetHeaderFields(store.HeaderOverrides.TryGetValue("relative", out var rh) ? rh : HeaderFields.DefaultRelative());
         _standings.SetPresentationOptions(store.StandingsRules ?? StandingsPresentationOptions.Default);
         _relative.SetRelativeRules(store.RelativeRules ?? RelativeRules.Default);
-        _fuel.SetConfig(store.FuelConfig ?? FuelConfig.Default);
         if (store.ClassRankColors is { Count: > 0 }) PaletteTokens.SetRankColors(store.ClassRankColors);
     }
 

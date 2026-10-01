@@ -24,7 +24,7 @@ public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 /// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
 /// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
 /// driver confirmed this is a real feature they use today.</summary>
-public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "", int OverallPosition = 0, int ClassRank = 0, FlagBadge Flag = FlagBadge.None);
+public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "", int OverallPosition = 0, int ClassRank = 0, FlagBadge Flag = FlagBadge.None, int LapsDiff = 0, bool InPit = false);
 
 /// <summary>One row of the full classification/standings widget (Task 6).
 /// GapToLeaderSeconds is real (CarIdxF2Time, "race time behind leader or fastest lap otherwise" --
@@ -55,7 +55,8 @@ public record StandingsRow(int Position, string DriverCode, int LapsCompleted, d
 public readonly record struct ClassLapInfo(int Lap, double? Projected, int? FinalTotal = null);
 
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
-    IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null)
+    IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null,
+    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null)
 {
     /// <summary>Kapps' per-class count ("14", "2/14") for a class; the whole-field count only when the
     /// session's driver list was not available.</summary>
@@ -858,6 +859,7 @@ public class TelemetryReader : IDisposable
         _raceLength.Reset();
         _fuelLaps.Reset();
         _fuelPanel.Reset();
+        _frozenSof = null;
         _fuelLastPlayerLap = _fuelLastLeaderLap = int.MinValue;
     }
 
@@ -1098,10 +1100,26 @@ public class TelemetryReader : IDisposable
         var classPosition = positions.ByClass.TryGetValue(idx, out var cp) ? cp : 0;
         var overall = positions.Overall.TryGetValue(idx, out var op) ? op : 0;
         var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+        // Laps ahead (+, they will lap me / are a lap up) or behind (-, I lap them): whole laps between the two cars'
+        // race progress once the on-track distance between them is taken out.
+        int lapsDiff = 0;
+        bool inPit = false;
+        if (idx != _playerCarIdx)
+        {
+            try
+            {
+                inPit = _sdk.Data.GetBool("CarIdxOnPitRoad", idx);
+                float theirPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx), myPct = _sdk.Data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
+                if (RaceLapEstimator.Progress(_sdk.Data.GetInt("CarIdxLapCompleted", idx), theirPct) is double tp
+                    && RaceLapEstimator.Progress(_sdk.Data.GetInt("CarIdxLapCompleted", _playerCarIdx), myPct) is double mp)
+                    lapsDiff = (int)Math.Round(tp - mp - RelativeGap.WrappedDelta(theirPct, myPct));
+            }
+            catch { /* channel momentarily unavailable */ }
+        }
         return new RelativeRow(offset, code, gap, tireCompound >= 0 ? tireCompound : null, p2p, p2pSeconds, p2pSeconds, p2pCharging,
             identity.FlagEmoji, identity.LicString, identity.LicColorHex, identity.IRating, identity.CarClassId, identity.ManufacturerBadge,
             idx == _playerCarIdx, classPosition, identity.ClassShortName, identity.ClassColorHex, identity.CarNumber, overall, identity.ClassRank,
-            _flagBadgeByCar.TryGetValue(idx, out var flagBadge) ? flagBadge : FlagBadge.None);
+            _flagBadgeByCar.TryGetValue(idx, out var flagBadge) ? flagBadge : FlagBadge.None, lapsDiff, inPit);
     }
 
     // 14/09/2026: mirrors UpdateFullRelative's shape but ranks by the live class position within
@@ -1165,6 +1183,7 @@ public class TelemetryReader : IDisposable
     private const double SofBr1 = 1600.0 / 0.69314718055994530942;
 
     private const int SessionStateRacingState = 4;
+    private (double? Overall, Dictionary<int, double?> ByClass)? _frozenSof;
 
     private void UpdateStandings(LivePositions positions)
     {
@@ -1254,6 +1273,15 @@ public class TelemetryReader : IDisposable
 
             var classified = ordered.Where(r => r.IRating > 1).ToList();
             double? sof = classified.Count > 0 ? Sof.Compute(classified.Select(r => r.IRating)) : null;
+            // Race: the SOF is fixed at the green flag (a driver leaving must not move it); before it, and in
+            // practice/qualifying, it follows the field.
+            Dictionary<int, double?>? classSof = null;
+            if (_isRaceSession && sessionState >= SessionStateRacingState)
+            {
+                if (_frozenSof is null && classified.Count > 0)
+                    _frozenSof = (sof, ordered.Where(r => r.IRating > 1).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => Sof.Compute(g.Select(r => r.IRating))));
+                if (_frozenSof is { } frozen) { sof = frozen.Overall; classSof = frozen.ByClass; }
+            }
 
             // ΔiR: projected iRating change in the current order, per class (IRatingProjection -- the
             // community-standard iRacing formula), gated by session: never in practice, in qualifying only
@@ -1349,7 +1377,7 @@ public class TelemetryReader : IDisposable
             if (!ordered.Any(r => r.IsPlayer)) playerClassId = -1;
 
             StandingsUpdated?.Invoke(rows);
-            var status = BuildSessionStatus(ordered.Count, sof) with { ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null };
+            var status = BuildSessionStatus(ordered.Count, sof) with { ClassSof = classSof, ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null };
             // The overall header shows the overall leader's class estimate (stable between that leader's crossings).
             if (_finalResults.Count == 0 && ordered.Count > 0 && classLaps.TryGetValue(ordered[0].ClassId, out var overallInfo))
             {
@@ -1400,7 +1428,10 @@ public class TelemetryReader : IDisposable
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
         var (flagText, flagColorHex) = DecodeSessionFlag();
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected);
+        // SessionTimeRemain is a huge sentinel (or negative) in lap-limited / unlimited sessions: no minutes then.
+        double? timeRemain = null;
+        try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t is >= 0 and < 86400) timeRemain = t; } catch { }
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),
@@ -1664,10 +1695,11 @@ public class TelemetryReader : IDisposable
             bool playerCrossed = playerLap > 0 && playerLap > _fuelLastPlayerLap;
             // ...and at the class leader's new lap while on track: a lapped player's laps to go follow the
             // number of laps the LEADER will run. Only an increase counts (a 0/dropped read is a hiccup).
-            bool leaderCrossed = isOnTrack && classLeaderLap > 0 && classLeaderLap > _fuelLastLeaderLap;
+            // The class leader's crossing no longer recalculates: Refuel moved mid-lap each time the leader (or a
+            // lapped car's leader) crossed. It is set once per lap, at the player's own line crossing.
+            const bool leaderCrossed = false;
             if (playerLap > 0) _fuelLastPlayerLap = playerLap;
-            if (classLeaderLap > 0 && (isOnTrack || _fuelLastLeaderLap == int.MinValue)) _fuelLastLeaderLap = classLeaderLap;
-            if (playerCrossed || leaderCrossed || lap is not null || _fuelPanel.LapsLeft is null)
+            if (playerCrossed || lap is not null || _fuelPanel.LapsLeft is null)
             {
                 double? lapsInRace;
                 int? lapsLeft;

@@ -100,10 +100,6 @@ public sealed class WidgetPlacementStore
     /// StandingsPresentationOptions.Default" -- never persisted as a redundant copy of the default.</summary>
     public StandingsPresentationOptions? StandingsRules { get; set; }
 
-    /// <summary>Fuel's consumption-source/reserve/pit-exclusion config (spec §9). Null means "use
-    /// FuelConfig.Default".</summary>
-    public FuelConfig? FuelConfig { get; set; }
-
     /// <summary>Per-widget font scale/row height/row spacing overrides (spec §12), keyed by widget
     /// key. A widget absent from this dictionary uses <see cref="WidgetAppearance.Default"/>.</summary>
     public Dictionary<string, WidgetAppearance> AppearanceOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -139,7 +135,6 @@ public sealed class WidgetPlacementStore
         ClassProfiles.Clear(); foreach (var (k, v) in other.ClassProfiles) ClassProfiles[k] = v;
         StandingsRules = other.StandingsRules;
         RelativeRules = other.RelativeRules;
-        FuelConfig = other.FuelConfig;
         NumberFormat = other.NumberFormat;
         SessionVisibility = other.SessionVisibility;
         ClassRankColors = other.ClassRankColors;

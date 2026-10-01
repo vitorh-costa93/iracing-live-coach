@@ -320,6 +320,18 @@ public static class PaletteTokens
     /// <summary>Delta de última volta mais rápido (delta negativo contra o jogador).</summary>
     public static readonly Color4 LapDeltaFaster = Hex("#32D583");
 
+    /// <summary>Relative (Kapps): slower car I am lapping -- whole row text in blue.</summary>
+    public static readonly Color4 RelativeLapped = Hex("#4DA3FF");
+
+    /// <summary>Relative (Kapps): faster car about to lap me -- whole row text in pink.</summary>
+    public static readonly Color4 RelativeLapping = Hex("#FF6FB5");
+
+    /// <summary>Relative (Kapps): car in the pit lane -- whole row text in grey.</summary>
+    public static readonly Color4 RelativeInPit = Hex("#8A939C");
+
+    /// <summary>Standings: the session's best lap -- lilac purple.</summary>
+    public static readonly Color4 BestLapPurple = Hex("#C084FC");
+
     /// <summary>Delta de última volta mais lento (delta positivo contra o jogador).</summary>
     public static readonly Color4 LapDeltaSlower = Hex("#FF5252");
 

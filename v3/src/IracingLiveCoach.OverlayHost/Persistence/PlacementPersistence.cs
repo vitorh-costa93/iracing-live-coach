@@ -24,7 +24,6 @@ public sealed record PlacementProfile(
     Dictionary<string, string>? ClassColorOverrides = null,
     Dictionary<string, List<ColumnDefinition>>? ColumnOverrides = null,
     StandingsPresentationOptions? StandingsRules = null,
-    FuelConfig? FuelConfig = null,
     Dictionary<string, WidgetAppearance>? AppearanceOverrides = null,
     NumberFormatConfig? NumberFormat = null,
     Dictionary<string, List<HeaderFieldConfig>>? HeaderOverrides = null,
@@ -120,9 +119,6 @@ public static class PlacementPersistence
         if (profile.StandingsRules is not null)
             store.StandingsRules = profile.StandingsRules;
 
-        if (profile.FuelConfig is not null)
-            store.FuelConfig = profile.FuelConfig;
-
         if (profile.AppearanceOverrides is not null)
         {
             foreach (var (widgetKey, appearance) in profile.AppearanceOverrides)
@@ -189,7 +185,6 @@ public static class PlacementPersistence
                 new Dictionary<string, string>(store.ClassColorOverrides, StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, List<ColumnDefinition>>(store.ColumnOverrides, StringComparer.OrdinalIgnoreCase),
                 store.StandingsRules,
-                store.FuelConfig,
                 new Dictionary<string, WidgetAppearance>(store.AppearanceOverrides, StringComparer.OrdinalIgnoreCase),
                 store.NumberFormat,
                 new Dictionary<string, List<HeaderFieldConfig>>(store.HeaderOverrides, StringComparer.OrdinalIgnoreCase),

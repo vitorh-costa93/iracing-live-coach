@@ -265,18 +265,6 @@ public static unsafe class Program
             PlacementPersistence.Save(PlacementStore);
         };
 
-        // Fifth small typed channel: Fuel's consumption-source/reserve/pit-exclusion config.
-        if (PlacementStore.FuelConfig is { } savedFuelConfig) fuel.SetConfig(savedFuelConfig);
-        using var fuelConfigIpcServer = new FuelConfigIpcServer();
-        fuelConfigIpcServer.MessageReceived += m =>
-        {
-            if (!Enum.TryParse<FuelConsumptionSource>(m.Source, out var source)) return;
-            var config = new FuelConfig(source, m.ManualLitersPerLap, m.ReserveLaps, m.ExcludePitLaps);
-            fuel.SetConfig(config);
-            PlacementStore.FuelConfig = config;
-            PlacementPersistence.Save(PlacementStore);
-        };
-
         // Sixth small typed channel: per-widget font-scale/row-height/row-spacing (spec §12).
         void ApplyAppearance(string widgetKey, WidgetAppearance appearance)
         {
@@ -382,7 +370,6 @@ public static unsafe class Program
             relative.SetNumberFormat(format);
             standings.SetPresentationOptions(PlacementStore.StandingsRules ?? StandingsPresentationOptions.Default);
             relative.SetRelativeRules(PlacementStore.RelativeRules ?? RelativeRules.Default);
-            fuel.SetConfig(PlacementStore.FuelConfig ?? FuelConfig.Default);
             PaletteTokens.SetRankColors(PlacementStore.ClassRankColors ?? ["#FFD400", "#5CC8FF", "#FF6EB4", "#3DDC84"]);
             _appliedProfileKey = ""; // let the class/car auto-profile re-evaluate against the new profile
             Console.WriteLine("Profile reloaded from disk.");

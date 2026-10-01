@@ -307,6 +307,15 @@ public sealed unsafe class RelativeWidget : IDisposable
         ThrowIfFailed(_fmt.StatusFormat->SetTextAlignment(TextAlignment.Center));
     }
 
+    /// <summary>Kapps: the whole row's text colour for a car in the pit lane (grey), a slower car I lap (blue) or a
+    /// faster car about to lap me (pink); null keeps the normal colours.</summary>
+    private static Color4? LapStatusColor(RelativeRow row) =>
+        row.IsPlayer ? null
+        : row.InPit ? PaletteTokens.RelativeInPit
+        : row.LapsDiff < 0 ? PaletteTokens.RelativeLapped
+        : row.LapsDiff > 0 ? PaletteTokens.RelativeLapping
+        : null;
+
     private void DrawRow(ID2D1DeviceContext* dc, float x, float y, RelativeRow row)
     {
         if (row.IsPlayer)
@@ -316,6 +325,7 @@ public sealed unsafe class RelativeWidget : IDisposable
             PanelChrome.FillPanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowFill, 4f);
             PanelChrome.StrokePanel(dc, _brush.Get(), highlight, PaletteTokens.PlayerRowBorder, 1f, 4f);
         }
+        var tint = LapStatusColor(row);
         var stripColor = PaletteTokens.ResolveClassColor(row.CarClassId, row.ClassShortName, row.ClassColorHex, row.ClassRank);
         SetBrushColor(stripColor);
         var stripRect = new RectF(x, y, x + ClassStripWidthDip, y + RowHeightDip);
@@ -333,18 +343,18 @@ public sealed unsafe class RelativeWidget : IDisposable
                 case "position":
                     // Mockups: the real running position (overall), not an offset. Falls back to the
                     // class position when the overall one isn't known.
-                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
+                    SetBrushColor(tint ?? (row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary));
                     int position = row.ClassPosition > 0 ? row.ClassPosition : row.OverallPosition;
                     DrawCell(dc, position > 0 ? position.ToString(CultureInfo.InvariantCulture) : "—", cellX, y, cellWidth, ColumnAlignment.Center);
                     break;
                 case "offset":
                     // "P" for the player's own row (never a fabricated "0"/"+0"), otherwise a signed
                     // offset (spec §7 preset: 3 ahead negative, 3 behind positive, centered on the player).
-                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextSecondary);
+                    SetBrushColor(tint ?? (row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextSecondary));
                     DrawCell(dc, row.IsPlayer ? "P" : row.PositionOffset.ToString("+0;-0", CultureInfo.InvariantCulture), cellX, y, cellWidth, ColumnAlignment.Center);
                     break;
                 case "carNumber":
-                    SetBrushColor(PaletteTokens.TextSecondary);
+                    SetBrushColor(tint ?? PaletteTokens.TextSecondary);
                     DrawCell(dc, string.IsNullOrWhiteSpace(row.CarNumber) ? "—" : $"#{row.CarNumber}", cellX, y, cellWidth, ColumnAlignment.Center);
                     break;
                 case "flag":
@@ -370,12 +380,12 @@ public sealed unsafe class RelativeWidget : IDisposable
                         // A make without a bundled logo: its name, but only if it fits the cell --
                         // an overflowing word (e.g. the pace car's "SAFETY") would spill over the
                         // neighbouring columns.
-                        SetBrushColor(PaletteTokens.TextSecondary);
+                        SetBrushColor(tint ?? PaletteTokens.TextSecondary);
                         DrawCell(dc, row.ManufacturerBadge, cellX, y, cellWidth, ColumnAlignment.Center);
                     }
                     break;
                 case "name":
-                    SetBrushColor(row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary);
+                    SetBrushColor(tint ?? (row.IsPlayer ? PaletteTokens.PlayerHighlight : PaletteTokens.TextPrimary));
                 {
                     // A flag badge sits at the right of the name cell; the name gives way to it (ellipsis).
                     float badgeSize = row.Flag == FlagBadge.None ? 0f : Math.Min(PanelChrome.BadgeHeight(RowHeightDip), cellWidth / 2f);
@@ -399,7 +409,7 @@ public sealed unsafe class RelativeWidget : IDisposable
                 case "gap":
                     // Player's own row always shows a neutral 0.0, never a computed value. Kapps prints the gap
                     // WITHOUT a sign (ahead/behind is the row's place), 1 decimal by default.
-                    SetBrushColor(row.IsPlayer ? PaletteTokens.TextSecondary : PaletteTokens.TextPrimary);
+                    SetBrushColor(tint ?? (row.IsPlayer ? PaletteTokens.TextSecondary : PaletteTokens.TextPrimary));
                     string gapText = row.IsPlayer ? "0" + DecimalSuffix(placement.Column.DecimalPlaces)
                         : row.GapSeconds is double gap ? Math.Abs(gap).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture) : "—";
                     DrawCell(dc, gapText, cellX, y, cellWidth, placement.Column.Alignment);

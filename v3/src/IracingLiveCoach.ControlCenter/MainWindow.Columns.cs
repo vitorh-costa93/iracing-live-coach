@@ -420,7 +420,7 @@ public partial class MainWindow
     private static readonly Dictionary<string, string> HeaderLabels = new()
     {
         ["type"] = "Tipo de sessão (RACE)", ["class"] = "Classe", ["lap"] = "Volta atual/total",
-        ["sof"] = "SOF", ["drivers"] = "Nº de pilotos", ["clock"] = "Relógio", ["bb"] = "Brake bias", ["track"] = "Temperatura da pista",
+        ["sof"] = "SOF", ["remain"] = "Minutos restantes", ["drivers"] = "Nº de pilotos", ["clock"] = "Relógio", ["bb"] = "Brake bias", ["track"] = "Temperatura da pista",
         ["rubber"] = "Emborrachamento", ["best"] = "Melhor volta", ["last"] = "Última volta", ["local"] = "Hora local",
         ["incidents"] = "Incidentes",
     };
