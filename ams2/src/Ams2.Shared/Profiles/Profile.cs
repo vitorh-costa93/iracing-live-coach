@@ -121,7 +121,7 @@ public static class ProfileFactory
         {
             Id = d.Id, Visible = d.DefaultVisible, Order = i,
             X = (int)Math.Round(d.DefaultX * fx), Y = (int)Math.Round(d.DefaultY * fy),
-            Rows = d.DefaultRows,
+            Rows = d.DefaultRows, Scale = d.DefaultScale,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }

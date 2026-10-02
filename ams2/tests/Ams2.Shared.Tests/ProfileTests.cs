@@ -19,7 +19,10 @@ public class ProfileTests
     {
         var p = ProfileFactory.CreateDefault("A", Theme);
         Assert.Equal(WidgetCatalog.All.Select(w => w.Id), p.Ordered.Select(w => w.Id));
-        Assert.All(p.Widgets, w => { Assert.True(w.Visible); Assert.Equal(1f, w.Scale); });
+        Assert.All(p.Widgets, w => { Assert.True(w.Visible); Assert.Equal(WidgetCatalog.Find(w.Id)!.DefaultScale, w.Scale); });
+        // layout do usuario no iRacing V3 (v3-layout.json): relative embaixo à direita, standings no canto superior esquerdo
+        Assert.Equal((1430, 925), (p.Get("relative")!.X, p.Get("relative")!.Y));
+        Assert.Equal((0, 0), (p.Get("standings")!.X, p.Get("standings")!.Y));
         Assert.Equal(8, p.Get("standings")!.Rows);
         Assert.Equal(3, p.Get("relative")!.Rows);
         Assert.Null(p.Get("fuel")!.Rows);

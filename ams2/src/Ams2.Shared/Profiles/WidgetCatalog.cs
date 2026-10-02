@@ -8,7 +8,7 @@ public sealed record WidgetDef(
     string Id, string DisplayName,
     int? MinRows, int? MaxRows, int? DefaultRows, string RowsLabel,
     IReadOnlyList<ColumnDef> Columns,
-    int DefaultX, int DefaultY, bool DefaultVisible = true)
+    int DefaultX, int DefaultY, bool DefaultVisible = true, float DefaultScale = 1f)
 {
     public bool SupportsRows => MinRows.HasValue;
 }
@@ -18,15 +18,15 @@ public static class WidgetCatalog
     public const float MinScale = 0.5f, MaxScale = 3f;
     public const float MinOpacity = 0.2f, MaxOpacity = 1f;
 
-    /// <summary>Ordem padrao = ordem desta lista. Posicoes padrao em pixels de uma tela 1920x1080 (ajustadas por <see cref="ProfileFactory"/>).</summary>
+    /// <summary>Ordem padrao = ordem desta lista. Posicoes e escalas padrao reproduzem o layout do usuario no V3/iRacing (v3-layout.json), em pixels de uma tela 1920x1080 (ajustadas por <see cref="ProfileFactory"/>).</summary>
     public static readonly IReadOnlyList<WidgetDef> All =
     [
-        new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posição"), new("name", "Piloto"), new("class", "Classe"), new("gap", "Gap")], 40, 40),
-        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap")], 40, 860),
-        new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1380, 40),
-        new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1380, 230),
-        new("weather", "Weather", null, null, null, "", [], 1380, 450),
-        new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 1180, 860),
+        new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posição"), new("name", "Piloto"), new("class", "Classe"), new("gap", "Gap")], 0, 0, DefaultScale: 0.6f),
+        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap")], 1430, 925, DefaultScale: 0.58f),
+        new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1133, 931, DefaultScale: 0.66f),
+        new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
+        new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.92f),
+        new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
     ];
 
     public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
