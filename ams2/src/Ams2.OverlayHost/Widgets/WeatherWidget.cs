@@ -9,9 +9,13 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class WeatherWidget : IWidget
 {
     public string Id => "weather";
-    public (float Width, float Height) DesignSize => (295, 128);
+    // O título do 1998 é alto (fonte grande): cabeçalho mais alto e linhas empurradas para baixo, sem colidir com AIR.
+    bool _b98;
+    public void UseTheme(Theme.Theme theme) => _b98 = theme.Style == ThemeStyle.Broadcast98;
+    public (float Width, float Height) DesignSize => (295, _b98 ? 144 : 128);
 
-    const float LabelX = 87, ValueRight = 275, Row0 = 33, RowPitch = 29;
+    const float LabelX = 87, ValueRight = 275, RowPitch = 29;
+    float Row0 => _b98 ? 52 : 33;
 
     public void Configure(WidgetSettings s) { }
 
@@ -21,7 +25,7 @@ public sealed class WeatherWidget : IWidget
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
         DrawCloud(c, 18, 20);
-        Chrome.Header(c, "WEATHER", LabelX, t.Style == ThemeStyle.Broadcast98 ? 11 : 3, 40, underline: false);
+        Chrome.Header(c, "WEATHER", LabelX, _b98 ? 4 : 3, 40, underline: false);
 
         var wx = m.Session?.Weather;
         if (!m.Connected || wx is null)
@@ -31,15 +35,15 @@ public sealed class WeatherWidget : IWidget
         }
 
         var f = t.Label with { Size = 22 };
-        Row(c, "AIR", Math.Round(wx.AmbientC).ToString("0", CultureInfo.InvariantCulture), "°C", 0, f);
-        Row(c, "TRACK", Math.Round(wx.TrackC).ToString("0", CultureInfo.InvariantCulture), "°C", 1, f);
-        Row(c, "RAIN", Math.Round(Math.Clamp(wx.RainDensity, 0, 1) * 100).ToString("0", CultureInfo.InvariantCulture), "%", 2, f);
+        Row(c, Row0, "AIR", Math.Round(wx.AmbientC).ToString("0", CultureInfo.InvariantCulture), "°C", 0, f);
+        Row(c, Row0, "TRACK", Math.Round(wx.TrackC).ToString("0", CultureInfo.InvariantCulture), "°C", 1, f);
+        Row(c, Row0, "RAIN", Math.Round(Math.Clamp(wx.RainDensity, 0, 1) * 100).ToString("0", CultureInfo.InvariantCulture), "%", 2, f);
     }
 
-    static void Row(ThemeCanvas c, string label, string value, string unit, int row, FontToken labelFont)
+    static void Row(ThemeCanvas c, float row0, string label, string value, string unit, int row, FontToken labelFont)
     {
         var t = c.Theme;
-        float y = Row0 + row * RowPitch;
+        float y = row0 + row * RowPitch;
         c.Text(label, labelFont, LabelX, y, 120, 28, t.LabelColor, shadow: t.TextShadow);
         Chrome.ValueUnit(c, value, unit, ValueRight, y - 2, 30, t.ReadoutColor, true, t.Label with { Size = 20 });
     }
