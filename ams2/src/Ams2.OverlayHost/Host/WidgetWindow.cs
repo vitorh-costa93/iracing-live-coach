@@ -215,7 +215,11 @@ internal sealed class WidgetWindow : IDisposable
         int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
         if (vw <= 0 || vh <= 0) return (x, y);
         const int keep = 40;
-        return (Math.Clamp(x, vx - w + keep, vx + vw - keep), Math.Clamp(y, vy - h + keep, vy + vh - keep));
+        // Se a janela cabe na tela, mantém inteira dentro dela (o Inputs analógico do 2004 passava da borda inferior);
+        // se for maior que a tela, só garante uma faixa visível.
+        int minX = w <= vw ? vx : vx - w + keep, maxX = w <= vw ? vx + vw - w : vx + vw - keep;
+        int minY = h <= vh ? vy : vy - h + keep, maxY = h <= vh ? vy + vh - h : vy + vh - keep;
+        return (Math.Clamp(x, minX, maxX), Math.Clamp(y, minY, maxY));
     }
 
     public void Dispose()
