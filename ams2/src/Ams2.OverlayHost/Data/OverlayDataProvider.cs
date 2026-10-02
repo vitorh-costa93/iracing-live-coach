@@ -122,8 +122,9 @@ public sealed class OverlayDataProvider : IDisposable
         }
         else
         {
-            _wasConnected = false;
-            // Torn: mantém o quadro anterior (leitura rasgada é transitória); o resto = desconectado.
+            // Torn: leitura rasgada é transitória: mantém o quadro anterior e NÃO conta como desconexão
+            // (senão os trackers de gap/combustível seriam zerados a cada leitura rasgada). O resto = desconectado.
+            if (r.Status != ReadStatus.Torn) _wasConnected = false;
             model = r.Status == ReadStatus.Torn ? _current : new OverlayModel(false, r.Status, now, ++_frame, null, [], null, [], []);
         }
         _current = model;
