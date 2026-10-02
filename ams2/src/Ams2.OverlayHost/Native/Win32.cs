@@ -12,16 +12,29 @@ internal static class Win32
     public const int WS_EX_LAYERED = 0x00080000;
     public const int WS_EX_NOACTIVATE = 0x08000000;
     public const int WS_EX_NOREDIRECTIONBITMAP = 0x00200000;
+    public const int GWL_EXSTYLE = -20;
 
+    public const int SW_HIDE = 0;
     public const int SW_SHOWNOACTIVATE = 4;
     public const uint WM_DESTROY = 0x0002;
     public const uint WM_QUIT = 0x0012;
+    public const uint WM_SETCURSOR = 0x0020;
     public const uint WM_HOTKEY = 0x0312;
     public const uint WM_MOUSEACTIVATE = 0x0021;
     public const uint WM_NCHITTEST = 0x0084;
+    public const uint WM_MOUSEMOVE = 0x0200;
+    public const uint WM_LBUTTONDOWN = 0x0201;
+    public const uint WM_LBUTTONUP = 0x0202;
+    public const uint WM_MOUSEWHEEL = 0x020A;
     public const nint MA_NOACTIVATE = 3;
     public const nint HTTRANSPARENT = -1;
+    public const nint HTCLIENT = 1;
     public const uint MOD_CONTROL = 0x2, MOD_ALT = 0x1, MOD_NOREPEAT = 0x4000;
+    public const int VK_MENU = 0x12;
+
+    public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+    public static readonly nint HWND_TOPMOST = -1;
+    public const int IDC_SIZEALL = 32646, IDC_SIZENWSE = 32642;
 
     public delegate nint WndProcDelegate(nint hwnd, uint msg, nint wParam, nint lParam);
 
@@ -40,6 +53,12 @@ internal static class Win32
     [StructLayout(LayoutKind.Sequential)]
     public struct MSG { public nint hwnd; public uint message; public nint wParam, lParam; public uint time; public int ptX, ptY; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+
     [DllImport("kernel32.dll")] public static extern nint GetModuleHandleW(string? name);
     [DllImport("user32.dll")] public static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -56,4 +75,14 @@ internal static class Win32
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(nint value);
     [DllImport("kernel32.dll")] public static extern bool AttachConsole(int pid);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(nint hwnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] public static extern nint SetCapture(nint hwnd);
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] public static extern short GetKeyState(int vk);
+    [DllImport("user32.dll")] public static extern nint LoadCursorW(nint inst, nint name);
+    [DllImport("user32.dll")] public static extern nint SetCursor(nint cursor);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern nint GetWindowLongPtr(nint hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] public static extern nint SetWindowLongPtr(nint hwnd, int index, nint value);
 }

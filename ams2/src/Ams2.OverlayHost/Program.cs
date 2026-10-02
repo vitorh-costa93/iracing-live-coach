@@ -1,6 +1,9 @@
 using System.Globalization;
 using Ams2.Core.Reading;
 using Ams2.OverlayHost.Data;
+using Ams2.OverlayHost.Host;
+using Ams2.Shared.Ipc;
+using Ams2.Shared.Profiles;
 using Ams2.OverlayHost.Gfx;
 using Ams2.OverlayHost.Native;
 using Ams2.OverlayHost.Theme;
@@ -11,13 +14,18 @@ namespace Ams2.OverlayHost;
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
 ///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
+///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
+///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
+///   --edit   inicia no modo de edicao do layout (Ctrl+Alt+E alterna; arraste, roda ou canto para escalar).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
 {
-    sealed record Options(bool Fake, string? Png, bool Real, string ThemeId, float Scale, string Bg, int? X, int? Y, double Seconds, string Widget, double Sim);
+    sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit);
 
     [STAThread]
     static int Main(string[] args)
@@ -44,14 +52,18 @@ internal static class Program
             Fake: a.Contains("--fake"),
             Png: Val("--png"),
             Real: a.Contains("--real"),
-            ThemeId: Val("--theme") ?? Themes.F1_1998.Id,
-            Scale: float.Parse(Val("--scale") ?? "1", CultureInfo.InvariantCulture),
+            ThemeId: Val("--theme"),
+            Scale: Val("--scale") is { } sc ? float.Parse(sc, CultureInfo.InvariantCulture) : null,
             Bg: Val("--bg") ?? "5A6055",
             X: Val("--x") is { } x ? int.Parse(x) : null,
             Y: Val("--y") is { } y ? int.Parse(y) : null,
             Seconds: double.Parse(Val("--seconds") ?? "0", CultureInfo.InvariantCulture),
-            Widget: Val("--widget") ?? "relative",
-            Sim: double.Parse(Val("--sim") ?? "40", CultureInfo.InvariantCulture));
+            Widget: Val("--widget"),
+            Sim: double.Parse(Val("--sim") ?? "40", CultureInfo.InvariantCulture),
+            Pipe: Val("--pipe") ?? IpcProtocol.DefaultPipeName,
+            ProfilesDir: Val("--profiles-dir"),
+            Profile: Val("--profile"),
+            Edit: a.Contains("--edit"));
     }
 
     static IRawMemorySource FakeOrReal(bool fake, Func<double> clock) => fake ? new FakeRawSource(clock) : new MemoryMappedSource();
@@ -68,12 +80,13 @@ internal static class Program
         if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
 
+        float scale = o.Scale ?? 1f;
         var theme = Themes.Get(o.ThemeId);
         var widget = WidgetRegistry.Create(o.Widget);
-        int w = (int)Math.Ceiling(widget.DesignSize.Width * o.Scale), h = (int)Math.Ceiling(widget.DesignSize.Height * o.Scale);
+        int w = (int)Math.Ceiling(widget.DesignSize.Width * scale), h = (int)Math.Ceiling(widget.DesignSize.Height * scale);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");
-        using var canvas = new ThemeCanvas(gfx, theme, o.Scale);
+        using var canvas = new ThemeCanvas(gfx, theme, scale);
         gfx.BeginFrame();
         canvas.Begin();
         widget.Draw(canvas, provider.Current);
@@ -97,29 +110,16 @@ internal static class Program
         using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock);
         provider.Start(60);
 
-        var theme = Themes.Get(o.ThemeId);
-        var widget = WidgetRegistry.Create(o.Widget);
-        int w = (int)Math.Ceiling(widget.DesignSize.Width * o.Scale), h = (int)Math.Ceiling(widget.DesignSize.Height * o.Scale);
-        int x = o.X ?? 40;
-        int y = o.Y ?? Math.Max(0, Win32.GetSystemMetrics(1) - h - 40);
-        var window = OverlayWindow.Create($"AMS2 Overlay - {widget.Id}", x, y, w, h);
-        OverlayWindow.RegisterQuitHotkey();
-
-        using var gfx = DeviceResources.CreateForWindow(window.Handle, w, h);
-        using var canvas = new ThemeCanvas(gfx, theme, o.Scale);
-        Console.WriteLine($"[Overlay] {w}x{h} em ({x},{y}), fake={o.Fake}, fontes=[{string.Join(", ", gfx.Fonts.Families)}]. Ctrl+Alt+Q sai.");
-
-        var run = System.Diagnostics.Stopwatch.StartNew();
-        while (OverlayWindow.Pump())
-        {
-            if (o.Seconds > 0 && run.Elapsed.TotalSeconds >= o.Seconds) break;
-            gfx.BeginFrame();
-            canvas.Begin();
-            widget.Draw(canvas, provider.Current);
-            canvas.End();
-            gfx.EndFrame(); // Present(1): ritmo de ~60 Hz pelo vsync
-        }
-        window.Close();
+        var store = new ProfileStore(o.ProfilesDir);
+        bool single = o.Widget is not null;
+        using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single);
+        if (single && (o.X is not null || o.Y is not null || o.Scale is not null))
+            host.ApplyPatch(o.Widget!, new WidgetPatch { X = o.X, Y = o.Y, Scale = o.Scale });
+        OverlayWindow.RegisterHotkeys();
+        host.StartIpc(o.Pipe);
+        if (o.Edit) host.SetEditModeDirect(true);
+        Console.WriteLine($"[Overlay] perfil='{host.Profile.Name}' tema={host.Profile.ThemeId} fake={o.Fake} pipe={o.Pipe}. Ctrl+Alt+Q sai, Ctrl+Alt+E edita o layout.");
+        host.Run(o.Seconds);
         return 0;
     }
 }

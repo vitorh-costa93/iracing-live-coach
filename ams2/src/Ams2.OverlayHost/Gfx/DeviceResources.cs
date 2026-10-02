@@ -60,6 +60,8 @@ public sealed unsafe class DeviceResources : IDisposable
     public int Height => _height;
     /// <summary>Muda a cada recuperação de device lost.</summary>
     public int Generation { get; private set; }
+    /// <summary>Intervalo de vsync do Present. Com varias janelas o host usa 0 (ritmo por temporizador) para nao somar vsyncs.</summary>
+    public int PresentInterval { get; set; } = 1;
 
     DeviceResources() { }
 
@@ -186,7 +188,7 @@ public sealed unsafe class DeviceResources : IDisposable
         ThrowIfFailed(end);
         if (_offscreenMode) return true;
 
-        var present = _swapChain.Get()->Present(1, PresentFlags.None);
+        var present = _swapChain.Get()->Present((uint)PresentInterval, PresentFlags.None);
         if (IsLost(present)) { Recover(); return false; }
         ThrowIfFailed(present);
         _dcompDevice.Get()->Commit();
