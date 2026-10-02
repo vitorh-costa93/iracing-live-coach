@@ -36,7 +36,7 @@ public sealed class InputsWidget : IWidget
             float x = GX, graphX = x, thrX = 0, gearCx = 0;
             if (_cfg.ColumnVisible("graph")) x += GW + BlockGap;
             if (_cfg.ColumnVisible("bars")) { thrX = x; x += BarPitch + BarW + GearGap; }
-            if (_cfg.ColumnVisible("gear")) { if (!_cfg.ColumnVisible("graph")) x = Math.Max(x, 124); /* o rotulo GEAR nao pode invadir o titulo */ gearCx = x + GearBlockW / 2; x += GearBlockW; }
+            if (_cfg.ColumnVisible("gear")) { if (!_cfg.ColumnVisible("graph")) x = Math.Max(x, 150); /* o rotulo GEAR nao pode invadir o titulo e a barra do titulo precisa de largura util */ gearCx = x + GearBlockW / 2; x += GearBlockW; }
             else if (_cfg.ColumnVisible("bars")) x -= GearGap;
             else if (_cfg.ColumnVisible("graph")) x -= BlockGap;
             return new StdLayout(graphX, thrX, gearCx, Math.Max(MinStdWidth, x + EdgeRight));
