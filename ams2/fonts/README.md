@@ -21,3 +21,11 @@ Os contornos desenhados à mão (`glyphs_*.py`) são refinados por síntese: `op
 ## Reddit Sans (texto do tema)
 - `RedditSans-ExtraBold.ttf`: instância estática do peso 800, gerada da fonte variável oficial (`google/fonts`, `ofl/redditsans/RedditSans[wght].ttf`) com `fontTools.varLib.instancer.instantiateVariableFont(font, {'wght': 800})`. Família DirectWrite: "Reddit Sans", peso ExtraBold.
 - Licença: SIL OFL 1.1 (`OFL-RedditSans.txt`). Copyright 2020-23 Reddit, Inc.
+
+## Open Sans Bold (tema 2004–2008)
+- `OpenSans-Bold.ttf`: instância estática (wght 700, wdth 100) gerada da fonte variável oficial (`google/fonts`, `ofl/opensans/OpenSans[wdth,wght].ttf`) com `fontTools.varLib.instancer.instantiateVariableFont(font, {'wght': 700, 'wdth': 100}, updateFontNames=True)`. Família DirectWrite: "Open Sans", peso Bold.
+- Licença: SIL OFL 1.1 (`OFL-OpenSans.txt`). Copyright 2020 The Open Sans Project Authors.
+
+## Barlow Semi Condensed (tema 2010s)
+- `BarlowSemiCondensed-Regular.ttf` (400) e `BarlowSemiCondensed-SemiBold.ttf` (600): cópia dos arquivos já usados no V3 (`v3\src\IracingLiveCoach.OverlayHost\Assets\Fonts`). Família DirectWrite: "Barlow Semi Condensed".
+- Licença: SIL OFL 1.1 (`OFL-Barlow.txt`). Copyright 2017 The Barlow Project Authors.
