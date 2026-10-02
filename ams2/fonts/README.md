@@ -17,3 +17,7 @@ Nos valores, a captura tem uma sombra preta projetada: deslocamento de cerca de 
 
 ## Otimização contra os pixels (versão atual)
 Os contornos desenhados à mão (`glyphs_*.py`) são refinados por síntese: `optpix.py` renderiza o contorno do mesmo jeito que a captura foi gerada (cobertura de pixel e desfoque de cerca de 0,4 px) e ajusta vértices e pontos de controle para minimizar a diferença com os pixels reais, com penalização para não se afastar do desenho limpo. Rodar `run_optpix_box.py 12345678 3.0 0.4` e `make_box_v8.py` para as caixas, e `run_optpix_vals.py 012345678. 2.0` e `make_vals_v8.py` para os valores. `pixel_diff.py` compara o glifo e o original na mesma grade de pixels.
+
+## Reddit Sans (texto do tema)
+- `RedditSans-ExtraBold.ttf`: instância estática do peso 800, gerada da fonte variável oficial (`google/fonts`, `ofl/redditsans/RedditSans[wght].ttf`) com `fontTools.varLib.instancer.instantiateVariableFont(font, {'wght': 800})`. Família DirectWrite: "Reddit Sans", peso ExtraBold.
+- Licença: SIL OFL 1.1 (`OFL-RedditSans.txt`). Copyright 2020-23 Reddit, Inc.
