@@ -490,3 +490,10 @@ $RECYCLE.BIN/
 .claude/scheduled_tasks.lock
 preview-*.png
 .claude/settings.local.json
+
+# AMS2
+ams2/.env
+
+# AMS2 build output
+ams2/**/bin/
+ams2/**/obj/
