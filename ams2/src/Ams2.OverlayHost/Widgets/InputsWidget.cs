@@ -88,10 +88,19 @@ public sealed class InputsWidget : IWidget
 
     static void DrawGraphFrame(ThemeCanvas c, Theme.Theme t, float GX, float GY, float GW, float GH)
     {
-        c.FillRect(GX, GY, GW, GH, new Color4(0, 0, 0, 0.22f));
+        bool b04 = t.Style == ThemeStyle.Broadcast2000s;
+        c.FillRect(GX, GY, GW, GH, b04 ? new Color4(0, 0, 0, 0.6f) : new Color4(0, 0, 0, 0.22f));
         c.Line(GX, GY, GX, GY + GH, t.GraphAxis, 2);
         c.Line(GX, GY + GH, GX + GW, GY + GH, t.GraphAxis, 2);
         var f = t.Label with { Size = 16 };
+        if (b04)
+        {
+            var cf = t.Label with { Size = 13 };
+            Chrome.Caption(c, GX, GY + GH + 3, "10s", 18, cf);
+            float zw = c.Measure("0s", cf) + 18;
+            Chrome.Caption(c, GX + GW - zw, GY + GH + 3, "0s", 18, cf);
+            return;
+        }
         c.Text("10s", f, GX, GY + GH + 2, 50, 22, t.TitleColor, shadow: t.TextShadow);
         c.Text("0s", f, GX + GW - 50, GY + GH + 2, 50, 22, t.TitleColor, HAlign.Right, t.TextShadow);
     }
@@ -216,10 +225,10 @@ public sealed class InputsWidget : IWidget
                 if (i >= lit) col = new Color4(col.R * 0.22f, col.G * 0.22f, col.B * 0.22f, 1f);
                 c.FillRect(RpX + i * (lw + 2), y, lw, 20, col);
             }
-            c.Text("RPM", t.Label with { Size = 15 }, RpX, y + 20, 60, 20, t.LabelColor);
+            Chrome.Caption(c, RpX, y + 24, "RPM", 18, t.Label with { Size = 13 });
             string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
-            c.FillRect(RpX, y + 44, 140, 38, t.NameCellFill);
-            c.Text("Gear " + g, t.Text, RpX, y + 44, 140, 38, t.NameCellInk, HAlign.Center);
+            Chrome.WhiteCell(c, RpX, y + 46, 90, 36, "Gear", t.Text);
+            Chrome.Cell(c, RpX + 90, y + 46, 50, 36, g, t.Numbers, t.AccentFill, t.AccentInk, HAlign.Center, 0);
             y += GearSectionH;
         }
         if (_cfg.ColumnVisible("bars"))
@@ -234,7 +243,7 @@ public sealed class InputsWidget : IWidget
             const float gh = 84;
             DrawGraphFrame(c, t, RpX, y, RpW, gh);
             if (live) DrawTrace(c, t, m.InputHistory, m.Now, RpX, y, RpW, gh);
-            else c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, RpX + 10, y + 24, 280, 30, t.LabelColor, shadow: t.TextShadow);
+            else Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", RpX + 10, y + 24, 280);
         }
     }
 
@@ -253,9 +262,10 @@ public sealed class InputsWidget : IWidget
 
     static void PedalBar(ThemeCanvas c, Theme.Theme t, float y, string label, double value, Color4 color)
     {
-        c.FillRect(RpX, y, RpW, 28, new Color4(0, 0, 0, 0.5f));
-        c.FillRect(RpX, y, (float)Math.Clamp(value, 0, 1) * RpW, 28, color);
-        c.StrokeRect(RpX, y, RpW, 28, t.GraphAxis, 1.5f);
-        c.Text(label, t.Label with { Size = 17 }, RpX + 8, y, 200, 28, t.TitleColor, shadow: t.TextShadow);
+        // Rótulo em célula branca e barra em célula preta (estilo 2004–2008).
+        const float lw = 104;
+        Chrome.WhiteCell(c, RpX, y, lw, 28, label, t.Label with { Size = 17 });
+        c.FillRect(RpX + lw, y, RpW - lw, 28, t.ValueCellFill);
+        c.FillRect(RpX + lw + 2, y + 2, (float)Math.Clamp(value, 0, 1) * (RpW - lw - 4), 24, color);
     }
 }
