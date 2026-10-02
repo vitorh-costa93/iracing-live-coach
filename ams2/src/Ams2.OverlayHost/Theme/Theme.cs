@@ -35,6 +35,14 @@ public sealed record Theme(
     Color4 AccentFill,   // caixa amarela do ícone
     Color4 AccentInk,    // tinta sobre a caixa amarela
     BarStop[] TitleBar,
+    // Gráfico de pedais, divisórias e selo de classe
+    Color4 ThrottleColor,
+    Color4 BrakeColor,
+    Color4 SteeringColor,
+    Color4 GraphAxis,
+    Color4 Divider,
+    Color4 BadgeFill,
+    Color4 BadgeInk,
     // Geometria
     float CornerRadius,
     float BorderWidth,
@@ -76,6 +84,13 @@ public static class Themes
             new(0.85f, Rgb(235, 227, 173)),
             new(1.00f, Rgb(230, 228, 216)),
         ],
+        ThrottleColor: Rgb(74, 196, 62),
+        BrakeColor: Rgb(214, 36, 40),
+        SteeringColor: Rgb(240, 240, 236),
+        GraphAxis: Rgb(226, 228, 224),
+        Divider: Rgb(176, 178, 170, 0.75f),
+        BadgeFill: Rgb(88, 200, 196),
+        BadgeInk: Rgb(24, 40, 40),
         CornerRadius: 0f,
         BorderWidth: 1f,
         TextShadow: new ShadowToken(2f, 2f, Rgb(0, 0, 0, 0.62f)),

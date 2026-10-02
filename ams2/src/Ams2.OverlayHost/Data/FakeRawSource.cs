@@ -65,7 +65,10 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         raw.FuelCapacity = 95;
         raw.FuelLevel = (float)Math.Max(0.05, 0.34 - t * 0.0004);
         raw.Speed = (float)Speed; raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
-        raw.Throttle = 0.8f;
+        double cyc = (t % 10) / 10 * Math.PI * 2;
+        raw.Throttle = (float)Math.Clamp(0.5 + 0.9 * Math.Sin(cyc * 2), 0, 1);
+        raw.Brake = (float)Math.Clamp(-0.2 - 1.2 * Math.Sin(cyc * 2 + 0.6), 0, 1);
+        raw.Steering = (float)(0.55 * Math.Sin(cyc * 3.1) * Math.Cos(cyc * 0.8));
         raw.AmbientTemperature = 22; raw.TrackTemperature = 27;
         for (int w = 0; w < 4; w++) { raw.TyreTemp[w] = 92 + (w >> 1) * 2; raw.TyreWear[w] = 0.12f + (w >> 1) * 0.02f; }
         Put(MemoryMarshal.CreateSpan(ref raw.TyreCompound[0], 40), "Soft");

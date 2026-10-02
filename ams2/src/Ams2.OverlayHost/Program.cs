@@ -10,14 +10,14 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--x N] [--y N] [--seconds N]
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
 {
-    sealed record Options(bool Fake, string? Png, bool Real, string ThemeId, float Scale, string Bg, int? X, int? Y, double Seconds);
+    sealed record Options(bool Fake, string? Png, bool Real, string ThemeId, float Scale, string Bg, int? X, int? Y, double Seconds, string Widget);
 
     [STAThread]
     static int Main(string[] args)
@@ -49,7 +49,8 @@ internal static class Program
             Bg: Val("--bg") ?? "5A6055",
             X: Val("--x") is { } x ? int.Parse(x) : null,
             Y: Val("--y") is { } y ? int.Parse(y) : null,
-            Seconds: double.Parse(Val("--seconds") ?? "0", CultureInfo.InvariantCulture));
+            Seconds: double.Parse(Val("--seconds") ?? "0", CultureInfo.InvariantCulture),
+            Widget: Val("--widget") ?? "relative");
     }
 
     static IRawMemorySource FakeOrReal(bool fake, Func<double> clock) => fake ? new FakeRawSource(clock) : new MemoryMappedSource();
@@ -67,7 +68,7 @@ internal static class Program
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
 
         var theme = Themes.Get(o.ThemeId);
-        var widget = new RelativeWidget();
+        var widget = WidgetRegistry.Create(o.Widget);
         int w = (int)Math.Ceiling(widget.DesignSize.Width * o.Scale), h = (int)Math.Ceiling(widget.DesignSize.Height * o.Scale);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");
@@ -96,11 +97,11 @@ internal static class Program
         provider.Start(60);
 
         var theme = Themes.Get(o.ThemeId);
-        var widget = new RelativeWidget();
+        var widget = WidgetRegistry.Create(o.Widget);
         int w = (int)Math.Ceiling(widget.DesignSize.Width * o.Scale), h = (int)Math.Ceiling(widget.DesignSize.Height * o.Scale);
         int x = o.X ?? 40;
         int y = o.Y ?? Math.Max(0, Win32.GetSystemMetrics(1) - h - 40);
-        var window = OverlayWindow.Create("AMS2 Overlay - Relative", x, y, w, h);
+        var window = OverlayWindow.Create($"AMS2 Overlay - {widget.Id}", x, y, w, h);
         OverlayWindow.RegisterQuitHotkey();
 
         using var gfx = DeviceResources.CreateForWindow(window.Handle, w, h);

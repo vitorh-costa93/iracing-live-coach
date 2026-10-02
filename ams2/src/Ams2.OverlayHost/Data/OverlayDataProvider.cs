@@ -12,9 +12,43 @@ public sealed record OverlayModel(
     long Frame,
     SessionSnapshot? Session,
     IReadOnlyList<RelativeRow> Relative,
-    FuelEstimate? Fuel)
+    FuelEstimate? Fuel,
+    IReadOnlyList<StandingRow> Standings,
+    IReadOnlyList<InputSample> InputHistory)
 {
-    public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null);
+    public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], []);
+}
+
+/// <summary>Linha da classificação: gap para o líder em segundos (null = líder ou sem dado) e voltas de atraso.</summary>
+public sealed record StandingRow(CarSnapshot Car, double? GapToLeader, int LapsBehind, bool IsPlayer);
+
+/// <summary>Amostra dos pedais para o gráfico (T = relógio do provider, em segundos).</summary>
+public readonly record struct InputSample(double T, float Throttle, float Brake, float Steering);
+
+public static class StandingsBuilder
+{
+    public static IReadOnlyList<StandingRow> Build(SessionSnapshot s, GapTracker tracker, double now)
+    {
+        if (s.TrackLength <= 0) return [];
+        var cars = s.Cars.Where(c => !c.InGarage && c.Position > 0).OrderBy(c => c.Position).ToList();
+        if (cars.Count == 0) return [];
+        var leader = cars[0];
+        double len = s.TrackLength;
+        var rows = new List<StandingRow>(cars.Count);
+        foreach (var c in cars)
+        {
+            double? gap = null; int laps = 0;
+            if (c.Index != leader.Index)
+            {
+                double delta = leader.LapDistance - c.LapDistance;
+                if (delta > len / 2) delta -= len; else if (delta < -len / 2) delta += len;
+                laps = (int)Math.Round((leader.TotalDistance(len) - c.TotalDistance(len) - delta) / len);
+                if (laps <= 0) gap = tracker.GapSeconds(now, c, leader, 1);
+            }
+            rows.Add(new StandingRow(c, gap, Math.Max(0, laps), c.IsPlayer));
+        }
+        return rows;
+    }
 }
 
 /// <summary>
@@ -33,6 +67,10 @@ public sealed class OverlayDataProvider : IDisposable
     CancellationTokenSource? _cts;
     Thread? _thread;
     long _frame;
+    readonly List<InputSample> _inputs = [];
+    InputSample[] _inputsPublished = [];
+    double _lastInputT = double.NegativeInfinity;
+    public const double InputWindowSeconds = 10, InputSampleSeconds = 1.0 / 30;
     bool _wasConnected;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4)
@@ -79,16 +117,30 @@ public sealed class OverlayDataProvider : IDisposable
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
             var fuel = s.InSession ? _fuel.Update(s) : null;
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel);
+            var standings = s.InSession ? StandingsBuilder.Build(s, _gaps, now) : [];
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s));
         }
         else
         {
             _wasConnected = false;
             // Torn: mantém o quadro anterior (leitura rasgada é transitória); o resto = desconectado.
-            model = r.Status == ReadStatus.Torn ? _current : new OverlayModel(false, r.Status, now, ++_frame, null, [], null);
+            model = r.Status == ReadStatus.Torn ? _current : new OverlayModel(false, r.Status, now, ++_frame, null, [], null, [], []);
         }
         _current = model;
         return model;
+    }
+
+    InputSample[] SampleInputs(double now, SessionSnapshot s)
+    {
+        if (s.Player is null) return _inputsPublished;
+        if (_inputs.Count > 0 && now < _inputs[^1].T) { _inputs.Clear(); _lastInputT = double.NegativeInfinity; } // relógio voltou
+        if (now - _lastInputT < InputSampleSeconds) return _inputsPublished;
+        _lastInputT = now;
+        var i = s.Player.Inputs;
+        _inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
+        int drop = _inputs.FindIndex(x => x.T >= now - InputWindowSeconds);
+        if (drop > 0) _inputs.RemoveRange(0, drop);
+        return _inputsPublished = _inputs.ToArray();
     }
 
     public void Dispose()
