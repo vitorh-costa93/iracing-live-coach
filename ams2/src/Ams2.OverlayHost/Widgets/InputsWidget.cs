@@ -16,14 +16,33 @@ public sealed class InputsWidget : IWidget
     Theme.Theme _theme = Themes.F1_1998;
     bool Analog => _theme.Style == ThemeStyle.Broadcast2000s;
     public void UseTheme(Theme.Theme theme) => _theme = theme;
-    public (float Width, float Height) DesignSize => Analog ? (640, 300) : (692, 197);
+    public (float Width, float Height) DesignSize => Analog ? AnalogSize() : (L.Width, 197);
 
     // Gráfico
-    const float GX = 21, GY = 78, GW = 408, GH = 88;
+    // (o gráfico e a largura de cada bloco seguem as colunas visíveis; todas visíveis = mockup)
+    const float GX = 21, GW = 408, GY = 78, GH = 88;
     // Barras verticais
-    const float BarW = 22, BarY = 46, BarH = 109, ThrX = 465, BrkX = 519;
+    const float BarW = 22, BarY = 46, BarH = 109, BarPitch = 54;
     // Marcha / velocidade
-    const float GearCx = 628;
+    const float GearBlockW = 120, BlockGap = 36, GearGap = 27, EdgeRight = 4, MinStdWidth = 280;
+
+    readonly record struct StdLayout(float GraphX, float ThrX, float GearCx, float Width);
+
+    /// <summary>Blocos visíveis (gráfico, barras, marcha) lado a lado, sem buracos.</summary>
+    StdLayout L
+    {
+        get
+        {
+            float x = GX, graphX = x, thrX = 0, gearCx = 0;
+            if (_cfg.ColumnVisible("graph")) x += GW + BlockGap;
+            if (_cfg.ColumnVisible("bars")) { thrX = x; x += BarPitch + BarW + GearGap; }
+            if (_cfg.ColumnVisible("gear")) { if (!_cfg.ColumnVisible("graph")) x = Math.Max(x, 124); /* o rotulo GEAR nao pode invadir o titulo */ gearCx = x + GearBlockW / 2; x += GearBlockW; }
+            else if (_cfg.ColumnVisible("bars")) x -= GearGap;
+            else if (_cfg.ColumnVisible("graph")) x -= BlockGap;
+            return new StdLayout(graphX, thrX, gearCx, Math.Max(MinStdWidth, x + EdgeRight));
+        }
+    }
+
 
     WidgetSettings _cfg = new() { Id = "inputs" };
     public void Configure(WidgetSettings s) => _cfg = s;
@@ -34,9 +53,10 @@ public sealed class InputsWidget : IWidget
         if (Analog) { DrawAnalog(c, t, m); return; }
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
-        Chrome.Header(c, "INPUTS", 19, 11, 150);
+        Chrome.Header(c, "INPUTS", 19, 11, 150, maxRight: !_cfg.ColumnVisible("graph") && _cfg.ColumnVisible("gear") ? L.GearCx - 35 : w - 14);
         bool graph = _cfg.ColumnVisible("graph"), bars = _cfg.ColumnVisible("bars"), gear = _cfg.ColumnVisible("gear");
-        if (graph) { DrawLegend(c, t); DrawGraphFrame(c, t, GX, GY, GW, GH); }
+        var lay = L;
+        if (graph) { DrawLegend(c, t, lay.GraphX); DrawGraphFrame(c, t, lay.GraphX, GY, GW, GH); }
 
         var p = m.Session?.Player;
         if (!m.Connected || p is null)
@@ -45,24 +65,24 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
-        if (graph) DrawTrace(c, t, m.InputHistory, m.Now, GX, GY, GW, GH);
+        if (graph) DrawTrace(c, t, m.InputHistory, m.Now, lay.GraphX, GY, GW, GH);
         if (bars)
         {
-            DrawBar(c, t, ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
-            DrawBar(c, t, BrkX, p.Inputs.Brake, t.BrakeColor, "BRK");
+            DrawBar(c, t, lay.ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
+            DrawBar(c, t, lay.ThrX + BarPitch, p.Inputs.Brake, t.BrakeColor, "BRK");
         }
-        if (gear) DrawGear(c, t, p.Gear, p.SpeedMps * 3.6);
+        if (gear) DrawGear(c, t, lay.GearCx, p.Gear, p.SpeedMps * 3.6);
     }
 
-    static void DrawLegend(ThemeCanvas c, Theme.Theme t)
+    static void DrawLegend(ThemeCanvas c, Theme.Theme t, float gx)
     {
         var f = t.Label with { Size = 17 };
         (string, Color4)[] items = [("THROTTLE", t.ThrottleColor), ("BRAKE", t.BrakeColor), ("STEERING", t.SteeringColor)];
         for (int i = 0; i < items.Length; i++)
         {
             float y = 14 + i * 21;
-            c.FillRect(314, y + 7, 20, 8, items[i].Item2);
-            c.Text(items[i].Item1, f, 342, y, 110, 22, t.TitleColor, shadow: t.TextShadow);
+            c.FillRect(gx + 293, y + 7, 20, 8, items[i].Item2);
+            c.Text(items[i].Item1, f, gx + 321, y, 110, 22, t.TitleColor, shadow: t.TextShadow);
         }
     }
 
@@ -127,7 +147,7 @@ public sealed class InputsWidget : IWidget
         c.Text(label, t.Label with { Size = 17 }, x - 20, BarY + BarH + 3, BarW + 40, 24, t.TitleColor, HAlign.Center, t.TextShadow);
     }
 
-    static void DrawGear(ThemeCanvas c, Theme.Theme t, int gear, double kph)
+    static void DrawGear(ThemeCanvas c, Theme.Theme t, float GearCx, int gear, double kph)
     {
         c.Text("GEAR", t.Label with { Size = 21 }, GearCx - 50, 11, 100, 30, t.TitleColor, HAlign.Center, t.TextShadow);
         string g = gear switch { < 0 => "R", 0 => "N", _ => gear.ToString(CultureInfo.InvariantCulture) };
@@ -181,31 +201,54 @@ public sealed class InputsWidget : IWidget
         c.FillEllipse(DialCx, DialCy, 13, 13, t.TitleColor);
         c.FillEllipse(DialCx, DialCy, 5, 5, black);
 
-        // RPM em LEDs (20 segmentos: verde, amarelo, vermelho).
-        const int leds = 20;
-        double frac = live && p!.MaxRpm > 0 ? Math.Clamp(p.Rpm / p.MaxRpm, 0, 1) : 0;
-        int lit = (int)Math.Round(frac * leds);
-        float lw = (RpW - (leds - 1) * 2) / leds;
-        for (int i = 0; i < leds; i++)
+        // Coluna da direita: blocos visíveis (marcha+RPM, pedais, gráfico) empilhados sem buracos.
+        float y = 16;
+        if (_cfg.ColumnVisible("gear"))
         {
-            var col = i < 12 ? t.ThrottleColor : i < 17 ? new Color4(0.95f, 0.8f, 0.1f, 1f) : t.BrakeColor;
-            if (i >= lit) col = new Color4(col.R * 0.22f, col.G * 0.22f, col.B * 0.22f, 1f);
-            c.FillRect(RpX + i * (lw + 2), 16, lw, 20, col);
+            // RPM em LEDs (20 segmentos: verde, amarelo, vermelho).
+            const int leds = 20;
+            double frac = live && p!.MaxRpm > 0 ? Math.Clamp(p.Rpm / p.MaxRpm, 0, 1) : 0;
+            int lit = (int)Math.Round(frac * leds);
+            float lw = (RpW - (leds - 1) * 2) / leds;
+            for (int i = 0; i < leds; i++)
+            {
+                var col = i < 12 ? t.ThrottleColor : i < 17 ? new Color4(0.95f, 0.8f, 0.1f, 1f) : t.BrakeColor;
+                if (i >= lit) col = new Color4(col.R * 0.22f, col.G * 0.22f, col.B * 0.22f, 1f);
+                c.FillRect(RpX + i * (lw + 2), y, lw, 20, col);
+            }
+            c.Text("RPM", t.Label with { Size = 15 }, RpX, y + 20, 60, 20, t.LabelColor);
+            string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
+            c.FillRect(RpX, y + 44, 140, 38, t.NameCellFill);
+            c.Text("Gear " + g, t.Text, RpX, y + 44, 140, 38, t.NameCellInk, HAlign.Center);
+            y += GearSectionH;
         }
-        c.Text("RPM", t.Label with { Size = 15 }, RpX, 36, 60, 20, t.LabelColor);
+        if (_cfg.ColumnVisible("bars"))
+        {
+            PedalBar(c, t, y, "THROTTLE", live ? p!.Inputs.Throttle : 0, t.ThrottleColor);
+            PedalBar(c, t, y + 34, "BRAKE", live ? p!.Inputs.Brake : 0, t.BrakeColor);
+            y += BarsSectionH;
+        }
+        if (_cfg.ColumnVisible("graph"))
+        {
+            // Gráfico dos últimos 10 s (mesmos dados do estilo padrão).
+            const float gh = 84;
+            DrawGraphFrame(c, t, RpX, y, RpW, gh);
+            if (live) DrawTrace(c, t, m.InputHistory, m.Now, RpX, y, RpW, gh);
+            else c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, RpX + 10, y + 24, 280, 30, t.LabelColor, shadow: t.TextShadow);
+        }
+    }
 
-        // Marcha e barras de pedal.
-        string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
-        c.FillRect(RpX, 60, 140, 38, t.NameCellFill);
-        c.Text("Gear " + g, t.Text, RpX, 60, 140, 38, t.NameCellInk, HAlign.Center);
-        PedalBar(c, t, 108, "THROTTLE", live ? p!.Inputs.Throttle : 0, t.ThrottleColor);
-        PedalBar(c, t, 142, "BRAKE", live ? p!.Inputs.Brake : 0, t.BrakeColor);
+    // Alturas dos blocos da coluna da direita (incluem a folga até o próximo; todos visíveis = mockup 640x300).
+    const float GearSectionH = 92, BarsSectionH = 78, GraphSectionH = 84 + 26, AnalogPad = 4, DialW = 300;
 
-        // Gráfico dos últimos 10 s (mesmos dados do estilo padrão).
-        const float gx = 322, gy = 186, gw = 302, gh = 84;
-        DrawGraphFrame(c, t, gx, gy, gw, gh);
-        if (live) DrawTrace(c, t, m.InputHistory, m.Now, gx, gy, gw, gh);
-        else c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, gx + 10, gy + 24, 280, 30, t.LabelColor, shadow: t.TextShadow);
+    (float Width, float Height) AnalogSize()
+    {
+        float y = 16;
+        bool any = false;
+        if (_cfg.ColumnVisible("gear")) { y += GearSectionH; any = true; }
+        if (_cfg.ColumnVisible("bars")) { y += BarsSectionH; any = true; }
+        if (_cfg.ColumnVisible("graph")) { y += GraphSectionH; any = true; }
+        return (any ? 640 : DialW, Math.Max(300, y + AnalogPad));
     }
 
     static void PedalBar(ThemeCanvas c, Theme.Theme t, float y, string label, double value, Color4 color)

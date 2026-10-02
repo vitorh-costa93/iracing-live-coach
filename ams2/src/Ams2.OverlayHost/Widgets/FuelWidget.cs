@@ -9,7 +9,10 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class FuelWidget : IWidget
 {
     public string Id => "fuel";
-    public (float Width, float Height) DesignSize => (470, 156);
+    // Linhas da coluna da direita (LAPS/USE/ADD): as visiveis sobem para ocupar o lugar das ocultas.
+    int RightRows => (_cfg.ColumnVisible("laps") ? 1 : 0) + (_cfg.ColumnVisible("use") ? 1 : 0) + (_cfg.ColumnVisible("add") ? 1 : 0);
+    public (float Width, float Height) DesignSize => RightRows == 0 ? (250, 96) : (470, Math.Max(96, 46 + RightRows * RowPitch + 8));
+    const float RowPitch = 34;
 
     WidgetSettings _cfg = new() { Id = "fuel" };
     public void Configure(WidgetSettings s) => _cfg = s;
@@ -19,7 +22,7 @@ public sealed class FuelWidget : IWidget
         var t = c.Theme;
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
-        Chrome.Header(c, "FUEL", 96, 11, 160);
+        Chrome.Header(c, "FUEL", 96, 11, 160, maxRight: w - 20);
         DrawPump(c, t, 22, 22);
 
         var f = m.Fuel;
@@ -30,22 +33,27 @@ public sealed class FuelWidget : IWidget
         }
 
         Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.ReadoutColor, false);
+        float y = 46;
         if (_cfg.ColumnVisible("laps"))
         {
-            c.Text("LAPS", t.Label, 235, 46, 90, 34, t.LabelColor, shadow: t.TextShadow);
+            c.Text("LAPS", t.Label, 235, y, 90, 34, t.LabelColor, shadow: t.TextShadow);
             string laps = f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--";
-            c.Text(laps, t.Numbers, 330, 46, 100, 34, t.ReadoutColor, shadow: t.ValueShadow);
+            c.Text(laps, t.Numbers, 330, y, 100, 34, t.ReadoutColor, shadow: t.ValueShadow);
+            y += RowPitch;
         }
         if (_cfg.ColumnVisible("use"))
         {
-            c.Text("USE", t.Label, 235, 80, 90, 34, t.LabelColor, shadow: t.TextShadow);
+            c.Text("USE", t.Label, 235, y, 90, 34, t.LabelColor, shadow: t.TextShadow);
             string use = f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--";
-            Chrome.ValueUnit(c, use, "L/LAP", 448, 80, 34, t.ReadoutColor, true, t.Label with { Size = 20 });
+            Chrome.ValueUnit(c, use, "L/LAP", 448, y, 34, t.ReadoutColor, true, t.Label with { Size = 20 });
+            y += RowPitch;
         }
-        if (_cfg.ColumnVisible("add") && f.LitersToAdd is { } add && add > 0.05)
+        if (_cfg.ColumnVisible("add"))
         {
-            c.Text("ADD", t.Label, 235, 114, 90, 34, t.LabelColor, shadow: t.TextShadow);
-            Chrome.ValueUnit(c, add.ToString("0.0", CultureInfo.InvariantCulture), "L", 448, 114, 34, t.ValueColor, true);
+            // Sem necessidade de reabastecer a linha continua (mostra "--"), para o painel nao mudar de tamanho com os dados.
+            c.Text("ADD", t.Label, 235, y, 90, 34, t.LabelColor, shadow: t.TextShadow);
+            string add = f.LitersToAdd is { } v && v > 0.05 ? v.ToString("0.0", CultureInfo.InvariantCulture) : "--";
+            Chrome.ValueUnit(c, add, "L", 448, y, 34, t.ValueColor, true);
         }
     }
 

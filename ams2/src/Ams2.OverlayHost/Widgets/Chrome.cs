@@ -6,9 +6,18 @@ namespace Ams2.OverlayHost.Widgets;
 /// <summary>Peças de cabeçalho compartilhadas pelos widgets: título em caixa alta + barra dourada do tema.</summary>
 public static class Chrome
 {
-    public static void Header(ThemeCanvas c, string title, float x, float y, float barWidth = 160, bool underline = true)
+    public static void Header(ThemeCanvas c, string title, float x, float y, float barWidth = 160, bool underline = true, float maxRight = float.MaxValue)
     {
         var t = c.Theme;
+        // maxRight: borda direita util do painel; encurta a barra do tema para widgets que ficam estreitos ao ocultar colunas.
+        if (maxRight < float.MaxValue)
+        {
+            float tw = c.Measure(title, t.Title);
+            float used = t.Style switch { ThemeStyle.Modern2010s => x + 16 + tw + 16, ThemeStyle.Broadcast2000s => x + tw, _ => x + tw + 10 };
+            float k = t.Style == ThemeStyle.Broadcast2000s ? 0.5f : 1f;
+            barWidth = Math.Clamp((maxRight - used) / k, 0, barWidth);
+            if (barWidth < 12) underline = false;
+        }
         switch (t.Style)
         {
             case ThemeStyle.Modern2010s:
@@ -28,7 +37,7 @@ public static class Chrome
             {
                 c.Text(title, t.Title, x, y, 260, 30, t.TitleColor, shadow: t.TextShadow);
                 float w = c.Measure(title, t.Title);
-                c.GradientBar(x + w + 10, y + 3, barWidth, t.TitleBarHeight, t.TitleBar);
+                if (barWidth >= 12) c.GradientBar(x + w + 10, y + 3, barWidth, t.TitleBarHeight, t.TitleBar);
                 break;
             }
         }

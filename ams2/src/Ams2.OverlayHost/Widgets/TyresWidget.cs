@@ -9,10 +9,13 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class TyresWidget : IWidget
 {
     public string Id => "tyres";
-    public (float Width, float Height) DesignSize => (290, 192);
+    // Cada roda = nome + (temperatura e/ou desgaste). Ocultar uma linha encurta as celulas e o painel.
+    int Lines => (_cfg.ColumnVisible("temp") ? 1 : 0) + (_cfg.ColumnVisible("wear") ? 1 : 0);
+    float RowPitch => 22 + 26 * Lines;   // 74 com as duas linhas (mockup)
+    public (float Width, float Height) DesignSize => (290, RowTop0 + 2 * RowPitch + 2);
 
     static readonly string[] Names = ["FL", "FR", "RL", "RR"];
-    const float ColCenter0 = 80, ColCenter1 = 200, RowTop0 = 42, RowTop1 = 116;
+    const float ColCenter0 = 80, ColCenter1 = 200, RowTop0 = 42;
 
     WidgetSettings _cfg = new() { Id = "tyres" };
     public void Configure(WidgetSettings s) => _cfg = s;
@@ -38,7 +41,7 @@ public sealed class TyresWidget : IWidget
         {
             var wh = p.Wheels[i];
             float cx = i % 2 == 0 ? ColCenter0 : ColCenter1;
-            float y = i < 2 ? RowTop0 : RowTop1;
+            float y = RowTop0 + (i < 2 ? 0 : RowPitch);
             c.Text(Names[i], t.Label with { Size = 17, Tracking = 4 }, cx - 40, y, 80, 20, t.TitleColor, HAlign.Center, t.TextShadow);
             bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
             if (temp) DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);

@@ -14,7 +14,7 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class RelativeWidget : IWidget
 {
     public string Id => "relative";
-    public (float Width, float Height) DesignSize => (820, RowsTop + RowsPerSide * RowPitch + 15);
+    public (float Width, float Height) DesignSize => (Math.Max(MinWidth, BlockEnd(Ahead, AheadX) + BlockGap + BlockWidth(Behind) + EdgeRight), RowsTop + RowsPerSide * RowPitch + 15);
 
     public int RowsPerSide { get; set; } = 3;
     WidgetSettings _cfg = new() { Id = "relative" };
@@ -25,8 +25,28 @@ public sealed class RelativeWidget : IWidget
     const float HeaderCenterY = 22;
     const float RowsTop = 72;     // topo da primeira linha
     const float RowPitch = 31;
-    const float AheadX = 68, BehindX = 473;   // início de cada coluna (número)
-    const float AheadNameDx = 50, BehindNameDx = 43, AheadValueRight = 279, BehindValueRight = 285;
+    const float AheadX = 68;      // início da coluna AHEAD (número)
+    const float PosSlot = 6, NameCellW = 112, MinWidth = 420, BlockGap = 126, EdgeRight = 62;
+
+    /// <summary>Colunas visiveis de um lado: posicoes relativas ao inicio do bloco, sem buracos. Todas visiveis = mockup.</summary>
+    readonly record struct Side(float PosDx, float NameDx, float ValueRight, float Width);
+    Side Ahead => SideLayout(50, 279);
+    Side Behind => SideLayout(43, 285);
+    float BehindX => AheadX + Ahead.Width + BlockGap;
+    static float BlockEnd(Side s, float x) => x + s.Width;
+    static float BlockWidth(Side s) => s.Width;
+
+    Side SideLayout(float nameDx, float valueRight)
+    {
+        bool pos = _cfg.ColumnVisible("pos"), name = _cfg.ColumnVisible("name"), gap = _cfg.ColumnVisible("gap");
+        float cursor = pos ? nameDx : PosSlot;   // sem posição, o texto do nome fica 6 px à direita da célula
+        float nx = cursor;
+        if (name) cursor = nx + NameCellW - 0;
+        else if (!pos) cursor = 0;
+        float gapRight = 0;
+        if (gap) { gapRight = cursor + (valueRight - nameDx - NameCellW); cursor = gapRight; }
+        return new Side(0, nx, gapRight, Math.Max(cursor, 60));
+    }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -46,8 +66,8 @@ public sealed class RelativeWidget : IWidget
 
         c.Text("AHEAD", t.Label, AheadX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
         c.Text("BEHIND", t.Label, BehindX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
-        DrawColumn(c, t, ahead, AheadX, AheadNameDx, AheadValueRight);
-        DrawColumn(c, t, behind, BehindX, BehindNameDx, BehindValueRight);
+        DrawColumn(c, t, ahead, AheadX, Ahead);
+        DrawColumn(c, t, behind, BehindX, Behind);
     }
 
     static void DrawHeader(ThemeCanvas c, Theme.Theme t)
@@ -75,7 +95,7 @@ public sealed class RelativeWidget : IWidget
         c.FillRect(cx - 2, y + 3, 4, h - 6, t.AccentInk);
     }
 
-    void DrawColumn(ThemeCanvas c, Theme.Theme t, List<RelativeRow> rows, float x, float nameDx, float valueRight)
+    void DrawColumn(ThemeCanvas c, Theme.Theme t, List<RelativeRow> rows, float x, Side side)
     {
         for (int i = 0; i < rows.Count; i++)
         {
@@ -90,10 +110,10 @@ public sealed class RelativeWidget : IWidget
             if (_cfg.ColumnVisible("name"))
             {
                 var ink = row.IsPlayer && t.NameCellFill.A <= 0f ? t.PlayerColor : t.TextColor;
-                ink = Chrome.NameCell(c, x + nameDx - 6, y + 2, 118, 26, ink);
-                c.Text(Code(row.Car.Name), t.Text, x + nameDx, y, 130, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+                ink = Chrome.NameCell(c, x + side.NameDx - 6, y + 2, 118, 26, ink);
+                c.Text(Code(row.Car.Name), t.Text, x + side.NameDx, y, 130, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
-            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + valueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + side.ValueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 

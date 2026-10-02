@@ -14,6 +14,7 @@ namespace Ams2.OverlayHost;
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
 ///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--cols id,id|none|all] [--rows N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
@@ -25,7 +26,7 @@ namespace Ams2.OverlayHost;
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity);
 
     [STAThread]
     static int Main(string[] args)
@@ -63,7 +64,11 @@ internal static class Program
             Pipe: Val("--pipe") ?? IpcProtocol.DefaultPipeName,
             ProfilesDir: Val("--profiles-dir"),
             Profile: Val("--profile"),
-            Edit: a.Contains("--edit"));
+            Edit: a.Contains("--edit"),
+            Cols: Val("--cols"),
+            Rows: Val("--rows") is { } rw ? int.Parse(rw) : null,
+            Font: Val("--font"),
+            Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null);
     }
 
     static IRawMemorySource FakeOrReal(bool fake, Func<double> clock) => fake ? new FakeRawSource(clock) : new MemoryMappedSource();
@@ -84,10 +89,17 @@ internal static class Program
         var theme = Themes.Get(o.ThemeId);
         var widget = WidgetRegistry.Create(o.Widget);
         widget.UseTheme(theme);
+        // Configuracao do widget como no perfil: --cols = ids das colunas VISIVEIS separados por virgula ("none" = nenhuma, omitido = todas).
+        var settings = new WidgetSettings
+        {
+            Id = widget.Id, Scale = scale, Rows = o.Rows, Font = o.Font, Opacity = o.Opacity ?? 1f,
+            Columns = o.Cols is null || o.Cols == "all" ? null : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries),
+        }.Normalized();
+        widget.Configure(settings);
         int w = (int)Math.Ceiling(widget.DesignSize.Width * scale), h = (int)Math.Ceiling(widget.DesignSize.Height * scale);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");
-        using var canvas = new ThemeCanvas(gfx, theme, scale);
+        using var canvas = new ThemeCanvas(gfx, theme, scale) { Opacity = settings.Opacity, FontOverride = settings.Font };
         gfx.BeginFrame();
         canvas.Begin();
         widget.Draw(canvas, provider.Current);

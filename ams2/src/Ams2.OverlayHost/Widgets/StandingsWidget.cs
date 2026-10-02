@@ -15,11 +15,29 @@ public sealed class StandingsWidget : IWidget
     public int Rows { get; set; } = 8;
     WidgetSettings _cfg = new() { Id = "standings" };
     public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
-    public (float Width, float Height) DesignSize => (433, 12 + Rows * RowPitch + 2);
+    public (float Width, float Height) DesignSize => (Layout().Width, 12 + Rows * RowPitch + 2);
 
     const float RowTop = 12, RowPitch = 43;
     const float BoxX = 19, BoxW = 40, BoxH = 34;
-    const float NameX = 75, BadgeCx = 200, ValueRight = 397;
+    const float NameCellW = 104, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
+    const float NameX = 75; // so para a mensagem de espera
+
+    /// <summary>Posicoes das colunas visiveis, da esquerda para a direita, sem buracos (todas visiveis = layout do mockup).</summary>
+    readonly record struct Cols(float PosX, float NameCellX, float BadgeCx, float GapRight, float Width);
+
+    Cols Layout()
+    {
+        float x = BoxX;
+        float posX = x, nameX = 0, badgeCx = 0, gapRight = 0;
+        bool any = false;
+        if (_cfg.ColumnVisible("pos")) { x += BoxW + ColSpacing; any = true; }
+        if (_cfg.ColumnVisible("name")) { nameX = x; x += NameCellW + ColSpacing + 1; any = true; }
+        if (_cfg.ColumnVisible("class")) { badgeCx = x + BadgeW / 2; x += BadgeW + ColSpacing; any = true; }
+        if (_cfg.ColumnVisible("gap")) { x += any ? GapW : GapOnlyW; gapRight = x; any = true; }
+        else x -= ColSpacing;
+        if (!any) x = BoxX + 100;
+        return new Cols(posX, nameX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
+    }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -39,21 +57,22 @@ public sealed class StandingsWidget : IWidget
         var me = m.Standings.FirstOrDefault(r => r.IsPlayer);
         if (me is not null && !rows.Contains(me) && rows.Count > 0) rows[^1] = me;
 
+        var L = Layout();
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
             float y = RowTop + i * RowPitch;
             if (_cfg.ColumnVisible("pos"))
             {
-                Chrome.AccentBox(c, BoxX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
+                Chrome.AccentBox(c, L.PosX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
             }
             if (_cfg.ColumnVisible("name"))
             {
-                var ink = Chrome.NameCell(c, NameX - 8, y, 104, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
-                c.Text(RelativeWidget.Code(r.Car.Name), t.Text, NameX, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+                var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
+                c.Text(RelativeWidget.Code(r.Car.Name), t.Text, L.NameCellX + 8, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
-            if (_cfg.ColumnVisible("class")) DrawBadge(c, t, BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
-            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, ValueRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
+            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 
