@@ -27,12 +27,8 @@ public static class Chrome
                 if (underline) c.GradientBar(x, y + 31, barWidth + c.Measure(title, t.Title) + 16, t.TitleBarHeight, t.TitleBar);
                 break;
             case ThemeStyle.Broadcast2000s:
-            {
-                c.Text(title, t.Title, x, y, 260, 30, t.TitleColor, shadow: t.TextShadow);
-                float w2 = c.Measure(title, t.Title);
-                if (underline) c.GradientBar(x, y + 30, w2 + barWidth * 0.5f, t.TitleBarHeight, t.TitleBar);
+                Caption(c, x, y + 2, title);
                 break;
-            }
             default:
             {
                 c.Text(title, t.Title, x, y, 260, 30, t.TitleColor, shadow: t.TextShadow);
@@ -41,6 +37,38 @@ public static class Chrome
                 break;
             }
         }
+    }
+
+    /// <summary>Célula retangular com texto (vocabulário 2004–2008): fundo sólido, texto sem sombra.</summary>
+    public static void Cell(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, Color4 fill, Color4 ink, HAlign align = HAlign.Left, float padX = 8)
+    {
+        c.FillRect(x, y, w, h, fill);
+        c.Text(text, font, x + padX, y - 1, w - 2 * padX, h, ink, align);
+    }
+
+    /// <summary>Célula branca com texto escuro (nomes, rótulos).</summary>
+    public static void WhiteCell(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, HAlign align = HAlign.Left, Color4? ink = null)
+        => Cell(c, x, y, w, h, text, font, c.Theme.NameCellFill, ink ?? c.Theme.NameCellInk, align);
+
+    /// <summary>Célula preta com texto branco (valores, gaps).</summary>
+    public static void BlackCell(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, HAlign align = HAlign.Right, Color4? ink = null)
+        => Cell(c, x, y, w, h, text, font, c.Theme.ValueCellFill, ink ?? c.Theme.ValueColor, align);
+
+    /// <summary>Legenda pequena em caixa branca ("30/56", títulos de widget). Devolve a largura.</summary>
+    public static float Caption(ThemeCanvas c, float x, float y, string text, float h = 26, FontToken? font = null)
+    {
+        var f = font ?? c.Theme.Label;
+        float w = c.Measure(text, f) + 18;
+        Cell(c, x, y, w, h, text, f, c.Theme.NameCellFill, c.Theme.NameCellInk, HAlign.Center, 9);
+        return w;
+    }
+
+    /// <summary>Mensagem de espera ("NO DATA"): legenda em caixa branca no 2004–2008, texto simples nos outros.</summary>
+    public static void Notice(ThemeCanvas c, string text, float x, float y, float w = 360)
+    {
+        var t = c.Theme;
+        if (t.Style == ThemeStyle.Broadcast2000s) Caption(c, x, y + 2, text);
+        else c.Text(text, t.Label, x, y, w, 30, t.LabelColor, shadow: t.TextShadow);
     }
 
     /// <summary>Caixa de destaque do tema (posição, marcha): retângulo reto no 1998/2004, cantos suaves no 2010s.</summary>

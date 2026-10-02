@@ -59,7 +59,8 @@ public sealed record Theme(
     Color4 NameCellInk = default,
     Color4 AccentBar = default,         // faixa vermelha (sublinhado 2004, barra inclinada 2010s)
     float BoxRadius = 0f,               // canto das caixas de posição
-    float TitleBarHeight = 15f);
+    float TitleBarHeight = 15f,
+    Color4 ValueCellFill = default);   // célula preta atrás de valores (2004–2008; alfa 0 = sem célula)
 
 public static class Themes
 {
@@ -109,8 +110,8 @@ public static class Themes
         ReadoutColor: Rgb(96, 204, 200));
 
     /// <summary>
-    /// Transmissão de F1 2004–2008: painéis azul-marinho com borda clara, Open Sans Bold, células brancas atrás dos
-    /// nomes, caixas de posição vermelhas e sombra leve. O Inputs vira um velocímetro analógico com pedais.
+    /// Transmissão de F1 2004–2008: linhas flutuantes sem painel (véu preto quase invisível, sem borda): caixa vermelha de posição,
+    /// célula branca com o nome, célula preta com o valor e legendas em caixa branca. O Inputs vira um velocímetro analógico com pedais.
     /// </summary>
     public static readonly Theme F1_2004 = new(
         Id: "f1-2004",
@@ -119,10 +120,10 @@ public static class Themes
         Label: new FontToken("Open Sans", 700, 22f),
         Text: new FontToken("Open Sans", 700, 25f),
         Numbers: new FontToken("Open Sans", 700, 25f),
-        PanelFill: Rgb(16, 31, 78, 0.94f),
-        PanelBorder: Rgb(150, 170, 220, 0.85f),
+        PanelFill: Rgb(0, 0, 0, 0.08f),
+        PanelBorder: Rgb(0, 0, 0, 0f),
         TitleColor: Rgb(255, 255, 255),
-        LabelColor: Rgb(176, 192, 232),
+        LabelColor: Rgb(255, 255, 255),
         TextColor: Rgb(255, 255, 255),
         NumberColor: Rgb(255, 255, 255),
         ValueColor: Rgb(255, 255, 255),
@@ -138,21 +139,22 @@ public static class Themes
         ThrottleColor: Rgb(32, 190, 56),
         BrakeColor: Rgb(222, 28, 36),
         SteeringColor: Rgb(255, 255, 255),
-        GraphAxis: Rgb(214, 222, 244),
-        Divider: Rgb(170, 186, 230, 0.6f),
-        BadgeFill: Rgb(52, 86, 176),
+        GraphAxis: Rgb(232, 232, 232),
+        Divider: Rgb(200, 200, 200, 0.6f),
+        BadgeFill: Rgb(46, 46, 54),
         BadgeInk: Rgb(255, 255, 255),
         CornerRadius: 0f,
-        BorderWidth: 1.5f,
+        BorderWidth: 0f,
         TextShadow: new ShadowToken(1f, 1f, Rgb(0, 0, 0, 0.45f)),
         ValueShadow: new ShadowToken(1f, 1f, Rgb(0, 0, 0, 0.45f)),
         Style: ThemeStyle.Broadcast2000s,
         ReadoutColor: Rgb(255, 255, 255),
-        NameCellFill: Rgb(240, 243, 250),
-        NameCellInk: Rgb(18, 24, 52),
+        NameCellFill: Rgb(246, 246, 246),
+        NameCellInk: Rgb(20, 20, 24),
         AccentBar: Rgb(214, 24, 40),
         BoxRadius: 0f,
-        TitleBarHeight: 4f);
+        TitleBarHeight: 4f,
+        ValueCellFill: Rgb(6, 6, 8, 0.97f));
 
     /// <summary>
     /// F1 2010s: painéis escuros arredondados, Barlow Semi Condensed, caixas de posição amarelas com número preto,
