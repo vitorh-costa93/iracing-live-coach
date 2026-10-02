@@ -11,7 +11,7 @@ public sealed class TyresWidget : IWidget
     public string Id => "tyres";
     // Cada roda = nome + (temperatura e/ou desgaste). Ocultar uma linha encurta as celulas e o painel.
     int Lines => (_cfg.ColumnVisible("temp") ? 1 : 0) + (_cfg.ColumnVisible("wear") ? 1 : 0);
-    float RowPitch => 22 + 26 * Lines;   // 74 com as duas linhas (mockup)
+    float RowPitch => Lines == 1 ? 60 : 22 + 26 * Lines;   // 74 com as duas linhas (mockup); 1 linha precisa de folga extra entre as rodas
     public (float Width, float Height) DesignSize => (290, RowTop0 + 2 * RowPitch + 2);
 
     static readonly string[] Names = ["FL", "FR", "RL", "RR"];
