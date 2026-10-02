@@ -28,10 +28,11 @@ public sealed class FuelWidget : IWidget
         var f = m.Fuel;
         if (!m.Connected || f is null || m.Session?.Player is null)
         {
-            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, 96, 56, 360, 30, t.LabelColor, shadow: t.TextShadow);
+            Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", 96, 56);
             return;
         }
 
+        if (t.Style == ThemeStyle.Broadcast2000s) { Draw2000s(c, t, f); return; }
         Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.ReadoutColor, false);
         float y = 46;
         if (_cfg.ColumnVisible("laps"))
@@ -57,12 +58,37 @@ public sealed class FuelWidget : IWidget
         }
     }
 
+    /// <summary>2004–2008: litros numa célula preta; LAPS/USE/ADD como rótulo branco + valor preto.</summary>
+    void Draw2000s(ThemeCanvas c, Theme.Theme t, Ams2.Core.Calc.FuelEstimate f)
+    {
+        Chrome.BlackCell(c, 96, 46, 124, 34, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture) + " L", t.Numbers, HAlign.Center);
+        var small = t.Numbers with { Size = 22 };
+        float y = 46;
+        if (_cfg.ColumnVisible("laps"))
+        {
+            Chrome.WhiteCell(c, 235, y, 86, 32, "LAPS", t.Label);
+            Chrome.BlackCell(c, 321, y, 135, 32, f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--", t.Numbers);
+            y += RowPitch;
+        }
+        if (_cfg.ColumnVisible("use"))
+        {
+            Chrome.WhiteCell(c, 235, y, 86, 32, "USE", t.Label);
+            Chrome.BlackCell(c, 321, y, 135, 32, (f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--") + " L/LAP", small);
+            y += RowPitch;
+        }
+        if (_cfg.ColumnVisible("add"))
+        {
+            Chrome.WhiteCell(c, 235, y, 86, 32, "ADD", t.Label);
+            Chrome.BlackCell(c, 321, y, 135, 32, (f.LitersToAdd is { } v && v > 0.05 ? v.ToString("0.0", CultureInfo.InvariantCulture) : "--") + " L", t.Numbers);
+        }
+    }
+
     /// <summary>Bomba de combustível em tinta de destaque (corpo, visor, base e mangueira), sem depender de glifo.</summary>
     static void DrawPump(ThemeCanvas c, Theme.Theme t, float x, float y)
     {
         var fill = t.AccentFill;
         c.FillRect(x + 4, y + 2, 30, 46, fill);                 // corpo
-        c.FillRect(x + 9, y + 7, 20, 14, t.PanelFill);          // visor
+        c.FillRect(x + 9, y + 7, 20, 14, t.ValueCellFill.A > 0f ? t.ValueCellFill : t.PanelFill);          // visor
         c.FillRect(x, y + 48, 38, 6, fill);                     // base
         c.FillRect(x + 36, y + 10, 7, 4, fill);                 // mangueira: sai do corpo...
         c.FillRect(x + 40, y + 10, 4, 28, fill);                // ...desce...

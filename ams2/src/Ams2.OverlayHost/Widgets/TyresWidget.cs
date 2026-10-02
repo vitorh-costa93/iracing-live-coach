@@ -30,24 +30,39 @@ public sealed class TyresWidget : IWidget
         var p = m.Session?.Player;
         if (!m.Connected || p is null || p.Wheels.Count < 4)
         {
-            c.Text(m.Connected ? "NO DATA" : "WAITING", t.Label, 14, 60, 260, 30, t.LabelColor, shadow: t.TextShadow);
+            Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING", 14, 60, 260);
             return;
         }
 
         string compound = p.Wheels[0].Compound.Trim().ToUpperInvariant();
-        if (compound.Length > 0) c.Text(compound, t.Label with { Size = 20 }, 190, 11, 90, 30, t.LabelColor, HAlign.Right, t.TextShadow);
+        bool b04 = t.Style == ThemeStyle.Broadcast2000s;
+        if (compound.Length > 0 && b04) Chrome.Caption(c, 280 - c.Measure(compound, t.Label with { Size = 18 }) - 18, 13, compound, 24, t.Label with { Size = 18 });
+        else if (compound.Length > 0) c.Text(compound, t.Label with { Size = 20 }, 190, 11, 90, 30, t.LabelColor, HAlign.Right, t.TextShadow);
 
         for (int i = 0; i < 4; i++)
         {
             var wh = p.Wheels[i];
             float cx = i % 2 == 0 ? ColCenter0 : ColCenter1;
             float y = RowTop0 + (i < 2 ? 0 : RowPitch);
+            if (b04) { Draw2000s(c, t, wh, i, cx, y); continue; }
             c.Text(Names[i], t.Label with { Size = 17, Tracking = 4 }, cx - 40, y, 80, 20, t.TitleColor, HAlign.Center, t.TextShadow);
             bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
             if (temp) DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);
             double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100; // 0 = novo ... 1 = gasto (a confirmar em sessão real)
             if (wear) DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + (temp ? 45 : 19), wearPct >= 70 ? t.PlayerColor : t.ReadoutColor);
         }
+    }
+
+    /// <summary>2004–2008: nome da roda em célula branca sobre a célula preta com temperatura e/ou desgaste.</summary>
+    void Draw2000s(ThemeCanvas c, Theme.Theme t, Ams2.Core.WheelSnapshot wh, int i, float cx, float y)
+    {
+        bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
+        Chrome.WhiteCell(c, cx - 50, y, 100, 22, Names[i], t.Label with { Size = 17 }, HAlign.Center);
+        var f = t.Numbers with { Size = 21 };
+        double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100;
+        float yy = y + 22;
+        if (temp) { Chrome.BlackCell(c, cx - 50, yy, 100, 24, wh.TempC.ToString("0", CultureInfo.InvariantCulture) + " °C", f, HAlign.Center); yy += 24; }
+        if (wear) Chrome.BlackCell(c, cx - 50, yy, 100, 24, wearPct.ToString("0", CultureInfo.InvariantCulture) + " %", f, HAlign.Center, wearPct >= 70 ? t.PlayerColor : null);
     }
 
     static void DrawCentered(ThemeCanvas c, string value, string unit, float cx, float y, Vortice.Win32.Numerics.Color4 color)

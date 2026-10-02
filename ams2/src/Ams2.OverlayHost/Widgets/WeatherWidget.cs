@@ -30,7 +30,7 @@ public sealed class WeatherWidget : IWidget
         var wx = m.Session?.Weather;
         if (!m.Connected || wx is null)
         {
-            c.Text(m.Connected ? "NO DATA" : "WAITING", t.Label, LabelX, Row0 + 10, 200, 30, t.LabelColor, shadow: t.TextShadow);
+            Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING", LabelX, Row0 + 10, 200);
             return;
         }
 
@@ -44,6 +44,12 @@ public sealed class WeatherWidget : IWidget
     {
         var t = c.Theme;
         float y = row0 + row * RowPitch;
+        if (t.Style == ThemeStyle.Broadcast2000s)
+        {
+            Chrome.WhiteCell(c, LabelX, y, 92, 27, label, labelFont);
+            Chrome.BlackCell(c, LabelX + 92, y, ValueRight + 8 - LabelX - 92, 27, value + " " + unit, t.Numbers with { Size = 22 });
+            return;
+        }
         c.Text(label, labelFont, LabelX, y, 120, 28, t.LabelColor, shadow: t.TextShadow);
         Chrome.ValueUnit(c, value, unit, ValueRight, y - 2, 30, t.ReadoutColor, true, t.Label with { Size = 20 });
     }
