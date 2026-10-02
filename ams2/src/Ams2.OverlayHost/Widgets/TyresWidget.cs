@@ -43,7 +43,7 @@ public sealed class TyresWidget : IWidget
             bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
             if (temp) DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);
             double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100; // 0 = novo ... 1 = gasto (a confirmar em sessão real)
-            if (wear) DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + (temp ? 45 : 19), wearPct >= 70 ? t.PlayerColor : t.LabelColor);
+            if (wear) DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + (temp ? 45 : 19), wearPct >= 70 ? t.PlayerColor : t.ReadoutColor);
         }
     }
 

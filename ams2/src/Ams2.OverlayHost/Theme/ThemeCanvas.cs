@@ -124,6 +124,19 @@ public sealed unsafe class ThemeCanvas : IDisposable
         Dc->FillEllipse(&e, Solid(color));
     }
 
+    public void FillRoundRect(float x, float y, float w, float h, float radius, Color4 color)
+    {
+        if (radius <= 0.5f) { FillRect(x, y, w, h, color); return; }
+        var rr = new RoundedRect { rect = new RectF(x, y, x + w, y + h), radiusX = radius, radiusY = radius };
+        Dc->FillRoundedRectangle(&rr, Solid(color));
+    }
+
+    public void StrokeEllipse(float cx, float cy, float rx, float ry, Color4 color, float width)
+    {
+        var e = new Ellipse { point = new Vector2(cx, cy), radiusX = rx, radiusY = ry };
+        Dc->DrawEllipse(&e, Solid(color), width, null);
+    }
+
     public void Line(float x1, float y1, float x2, float y2, Color4 color, float width = 1f)
         => Dc->DrawLine(new Vector2(x1, y1), new Vector2(x2, y2), Solid(color), width, null);
 

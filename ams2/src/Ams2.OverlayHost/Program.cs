@@ -83,6 +83,7 @@ internal static class Program
         float scale = o.Scale ?? 1f;
         var theme = Themes.Get(o.ThemeId);
         var widget = WidgetRegistry.Create(o.Widget);
+        widget.UseTheme(theme);
         int w = (int)Math.Ceiling(widget.DesignSize.Width * scale), h = (int)Math.Ceiling(widget.DesignSize.Height * scale);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");

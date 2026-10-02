@@ -29,18 +29,18 @@ public sealed class FuelWidget : IWidget
             return;
         }
 
-        Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.LabelColor, false);
+        Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.ReadoutColor, false);
         if (_cfg.ColumnVisible("laps"))
         {
             c.Text("LAPS", t.Label, 235, 46, 90, 34, t.LabelColor, shadow: t.TextShadow);
             string laps = f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--";
-            c.Text(laps, t.Numbers, 330, 46, 100, 34, t.LabelColor, shadow: t.ValueShadow);
+            c.Text(laps, t.Numbers, 330, 46, 100, 34, t.ReadoutColor, shadow: t.ValueShadow);
         }
         if (_cfg.ColumnVisible("use"))
         {
             c.Text("USE", t.Label, 235, 80, 90, 34, t.LabelColor, shadow: t.TextShadow);
             string use = f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--";
-            Chrome.ValueUnit(c, use, "L/LAP", 448, 80, 34, t.LabelColor, true, t.Label with { Size = 20 });
+            Chrome.ValueUnit(c, use, "L/LAP", 448, 80, 34, t.ReadoutColor, true, t.Label with { Size = 20 });
         }
         if (_cfg.ColumnVisible("add") && f.LitersToAdd is { } add && add > 0.05)
         {

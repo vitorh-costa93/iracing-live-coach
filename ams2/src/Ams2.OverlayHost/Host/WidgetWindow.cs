@@ -50,6 +50,7 @@ internal sealed class WidgetWindow : IDisposable
         _theme = theme;
         _widget = WidgetRegistry.Create(id);
         Settings = settings;
+        _widget.UseTheme(theme);
         _widget.Configure(settings);
         (_w, _h) = PixelSize(settings.Scale);
         var (x, y) = ClampToScreen(settings.X, settings.Y, _w, _h);
@@ -84,6 +85,7 @@ internal sealed class WidgetWindow : IDisposable
     {
         Settings = s;
         _theme = theme;
+        _widget.UseTheme(theme);
         _widget.Configure(s);
         var (w, h) = PixelSize(s.Scale);
         var (x, y) = ClampToScreen(s.X, s.Y, w, h);

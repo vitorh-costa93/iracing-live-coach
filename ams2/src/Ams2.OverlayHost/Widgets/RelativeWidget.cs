@@ -52,6 +52,7 @@ public sealed class RelativeWidget : IWidget
 
     static void DrawHeader(ThemeCanvas c, Theme.Theme t)
     {
+        if (t.Style != ThemeStyle.Broadcast98) { Chrome.Header(c, "RELATIVE", 20, 7, 160); return; }
         // Caixa amarela com o ícone (duas pontas de seta, em tinta escura).
         const float bx = 20, by = 11, bw = 45, bh = 22;
         c.FillRect(bx, by, bw, bh, t.AccentFill);
@@ -80,8 +81,18 @@ public sealed class RelativeWidget : IWidget
         {
             var row = rows[i];
             float y = RowsTop + i * RowPitch;
-            if (_cfg.ColumnVisible("pos")) c.Text(row.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
-            if (_cfg.ColumnVisible("name")) c.Text(Code(row.Car.Name), t.Text, x + nameDx, y, 130, 30, t.TextColor, shadow: t.TextShadow);
+            string pos = row.Car.Position.ToString(CultureInfo.InvariantCulture);
+            if (_cfg.ColumnVisible("pos"))
+            {
+                if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
+                else Chrome.AccentBox(c, x, y + 2, 34, 26, pos, t.Numbers);
+            }
+            if (_cfg.ColumnVisible("name"))
+            {
+                var ink = row.IsPlayer && t.NameCellFill.A <= 0f ? t.PlayerColor : t.TextColor;
+                ink = Chrome.NameCell(c, x + nameDx - 6, y + 2, 118, 26, ink);
+                c.Text(Code(row.Car.Name), t.Text, x + nameDx, y, 130, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+            }
             if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + valueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }

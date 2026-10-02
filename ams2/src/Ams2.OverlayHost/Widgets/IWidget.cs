@@ -10,6 +10,8 @@ public interface IWidget
     string Id { get; }
     (float Width, float Height) DesignSize { get; }
     /// <summary>Aplica linhas e colunas visiveis do perfil (muda DesignSize quando o widget tem linhas).</summary>
+    /// <summary>Informa o tema antes de Configure/DesignSize (so Inputs muda de tamanho com o estilo).</summary>
+    void UseTheme(Theme.Theme theme) { }
     void Configure(WidgetSettings settings);
     void Draw(ThemeCanvas canvas, OverlayModel model);
 }

@@ -42,8 +42,8 @@ public static class ThemeCatalog
     public static readonly IReadOnlyList<ThemeDef> All =
     [
         new("f1-1998", "F1 1998-2001", true),
-        new("f1-2004", "F1 2004-2008", false),
-        new("f1-2010s", "F1 2010s", false),
+        new("f1-2004", "F1 2004-2008", true),
+        new("f1-2010s", "F1 2010s", true),
     ];
 
     public static ThemeDef? Find(string? id) => All.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));

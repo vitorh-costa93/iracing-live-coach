@@ -13,7 +13,10 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class InputsWidget : IWidget
 {
     public string Id => "inputs";
-    public (float Width, float Height) DesignSize => (692, 197);
+    Theme.Theme _theme = Themes.F1_1998;
+    bool Analog => _theme.Style == ThemeStyle.Broadcast2000s;
+    public void UseTheme(Theme.Theme theme) => _theme = theme;
+    public (float Width, float Height) DesignSize => Analog ? (640, 300) : (692, 197);
 
     // Gráfico
     const float GX = 21, GY = 78, GW = 408, GH = 88;
@@ -28,11 +31,12 @@ public sealed class InputsWidget : IWidget
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var t = c.Theme;
+        if (Analog) { DrawAnalog(c, t, m); return; }
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
         Chrome.Header(c, "INPUTS", 19, 11, 150);
         bool graph = _cfg.ColumnVisible("graph"), bars = _cfg.ColumnVisible("bars"), gear = _cfg.ColumnVisible("gear");
-        if (graph) { DrawLegend(c, t); DrawGraphFrame(c, t); }
+        if (graph) { DrawLegend(c, t); DrawGraphFrame(c, t, GX, GY, GW, GH); }
 
         var p = m.Session?.Player;
         if (!m.Connected || p is null)
@@ -41,7 +45,7 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
-        if (graph) DrawTrace(c, t, m.InputHistory, m.Now);
+        if (graph) DrawTrace(c, t, m.InputHistory, m.Now, GX, GY, GW, GH);
         if (bars)
         {
             DrawBar(c, t, ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
@@ -62,7 +66,7 @@ public sealed class InputsWidget : IWidget
         }
     }
 
-    static void DrawGraphFrame(ThemeCanvas c, Theme.Theme t)
+    static void DrawGraphFrame(ThemeCanvas c, Theme.Theme t, float GX, float GY, float GW, float GH)
     {
         c.FillRect(GX, GY, GW, GH, new Color4(0, 0, 0, 0.22f));
         c.Line(GX, GY, GX, GY + GH, t.GraphAxis, 2);
@@ -73,7 +77,7 @@ public sealed class InputsWidget : IWidget
     }
 
     /// <summary>Uma coluna de pixel por vez: valor interpolado no instante da coluna (10 s = largura do gráfico).</summary>
-    static void DrawTrace(ThemeCanvas c, Theme.Theme t, IReadOnlyList<InputSample> hist, double now)
+    static void DrawTrace(ThemeCanvas c, Theme.Theme t, IReadOnlyList<InputSample> hist, double now, float GX, float GY, float GW, float GH)
     {
         if (hist.Count < 2) return;
         const double win = OverlayDataProvider.InputWindowSeconds;
@@ -126,10 +130,89 @@ public sealed class InputsWidget : IWidget
     static void DrawGear(ThemeCanvas c, Theme.Theme t, int gear, double kph)
     {
         c.Text("GEAR", t.Label with { Size = 21 }, GearCx - 50, 11, 100, 30, t.TitleColor, HAlign.Center, t.TextShadow);
-        c.FillRect(GearCx - 30, 45, 60, 57, t.AccentFill);
         string g = gear switch { < 0 => "R", 0 => "N", _ => gear.ToString(CultureInfo.InvariantCulture) };
+        c.FillRoundRect(GearCx - 30, 45, 60, 57, t.BoxRadius, t.AccentFill);
         c.Text(g, t.Numbers, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
         c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
         c.Text("KPH", t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);
+    }
+
+    // ---- Estilo 2004-2008: velocímetro analógico com pedais embutidos ----
+    const float DialCx = 150, DialCy = 150, DialR = 142, DialMaxKph = 360;
+    const float RpX = 322, RpW = 302;
+
+    static (float X, float Y) Polar(float r, double deg) =>
+        (DialCx + r * (float)Math.Cos(deg * Math.PI / 180), DialCy + r * (float)Math.Sin(deg * Math.PI / 180));
+
+    static double DialAngle(double kph) => 135 + Math.Clamp(kph / DialMaxKph, 0, 1) * 270;
+
+    void DrawAnalog(ThemeCanvas c, Theme.Theme t, OverlayModel m)
+    {
+        var (w, h) = DesignSize;
+        c.Panel(0, 0, w, h);
+        var p = m.Session?.Player;
+        bool live = m.Connected && p is not null;
+        double kph = live ? p!.SpeedMps * 3.6 : 0;
+        var black = new Color4(0.03f, 0.03f, 0.05f, 1f);
+
+        // Mostrador: aro claro, fundo preto, marcas e números da escala.
+        c.FillEllipse(DialCx, DialCy, DialR, DialR, t.GraphAxis);
+        c.FillEllipse(DialCx, DialCy, DialR - 5, DialR - 5, black);
+        for (int v = 0; v <= (int)DialMaxKph; v += 10)
+        {
+            bool major = v % 40 == 0;
+            var (x1, y1) = Polar(DialR - 10, DialAngle(v));
+            var (x2, y2) = Polar(DialR - (major ? 26 : 18), DialAngle(v));
+            c.Line(x1, y1, x2, y2, v >= 300 ? t.BrakeColor : t.TitleColor, major ? 2.6f : 1.4f);
+            if (major)
+            {
+                var (tx, ty) = Polar(DialR - 45, DialAngle(v));
+                c.Text(v.ToString(CultureInfo.InvariantCulture), t.Label with { Size = 17 }, tx - 24, ty - 12, 48, 24, t.TitleColor, HAlign.Center);
+            }
+        }
+        c.Text("km/h", t.Label with { Size = 16 }, DialCx - 40, DialCy + 52, 80, 22, t.LabelColor, HAlign.Center);
+        c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture), t.Numbers with { Size = 30 }, DialCx - 50, DialCy + 74, 100, 36, t.TitleColor, HAlign.Center);
+
+        // Ponteiro (com contrapeso) e cubo.
+        double a = DialAngle(kph);
+        var (nx, ny) = Polar(DialR - 22, a);
+        var (bx, by) = Polar(-26, a);
+        c.Line(bx, by, nx, ny, t.TitleColor, 4.5f);
+        c.FillEllipse(DialCx, DialCy, 13, 13, t.TitleColor);
+        c.FillEllipse(DialCx, DialCy, 5, 5, black);
+
+        // RPM em LEDs (20 segmentos: verde, amarelo, vermelho).
+        const int leds = 20;
+        double frac = live && p!.MaxRpm > 0 ? Math.Clamp(p.Rpm / p.MaxRpm, 0, 1) : 0;
+        int lit = (int)Math.Round(frac * leds);
+        float lw = (RpW - (leds - 1) * 2) / leds;
+        for (int i = 0; i < leds; i++)
+        {
+            var col = i < 12 ? t.ThrottleColor : i < 17 ? new Color4(0.95f, 0.8f, 0.1f, 1f) : t.BrakeColor;
+            if (i >= lit) col = new Color4(col.R * 0.22f, col.G * 0.22f, col.B * 0.22f, 1f);
+            c.FillRect(RpX + i * (lw + 2), 16, lw, 20, col);
+        }
+        c.Text("RPM", t.Label with { Size = 15 }, RpX, 36, 60, 20, t.LabelColor);
+
+        // Marcha e barras de pedal.
+        string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
+        c.FillRect(RpX, 60, 140, 38, t.NameCellFill);
+        c.Text("Gear " + g, t.Text, RpX, 60, 140, 38, t.NameCellInk, HAlign.Center);
+        PedalBar(c, t, 108, "THROTTLE", live ? p!.Inputs.Throttle : 0, t.ThrottleColor);
+        PedalBar(c, t, 142, "BRAKE", live ? p!.Inputs.Brake : 0, t.BrakeColor);
+
+        // Gráfico dos últimos 10 s (mesmos dados do estilo padrão).
+        const float gx = 322, gy = 186, gw = 302, gh = 84;
+        DrawGraphFrame(c, t, gx, gy, gw, gh);
+        if (live) DrawTrace(c, t, m.InputHistory, m.Now, gx, gy, gw, gh);
+        else c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, gx + 10, gy + 24, 280, 30, t.LabelColor, shadow: t.TextShadow);
+    }
+
+    static void PedalBar(ThemeCanvas c, Theme.Theme t, float y, string label, double value, Color4 color)
+    {
+        c.FillRect(RpX, y, RpW, 28, new Color4(0, 0, 0, 0.5f));
+        c.FillRect(RpX, y, (float)Math.Clamp(value, 0, 1) * RpW, 28, color);
+        c.StrokeRect(RpX, y, RpW, 28, t.GraphAxis, 1.5f);
+        c.Text(label, t.Label with { Size = 17 }, RpX + 8, y, 200, 28, t.TitleColor, shadow: t.TextShadow);
     }
 }

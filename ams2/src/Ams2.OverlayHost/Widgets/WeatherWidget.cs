@@ -21,8 +21,7 @@ public sealed class WeatherWidget : IWidget
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
         DrawCloud(c, 18, 20);
-        c.Text("WEATHER", t.Title, LabelX, 11, 200, 30, t.TitleColor, shadow: t.TextShadow);
-        c.GradientBar(LabelX + c.Measure("WEATHER", t.Title) + 10, 14, 40, 15, t.TitleBar);
+        Chrome.Header(c, "WEATHER", LabelX, t.Style == ThemeStyle.Broadcast98 ? 11 : 3, 40, underline: false);
 
         var wx = m.Session?.Weather;
         if (!m.Connected || wx is null)
@@ -42,7 +41,7 @@ public sealed class WeatherWidget : IWidget
         var t = c.Theme;
         float y = Row0 + row * RowPitch;
         c.Text(label, labelFont, LabelX, y, 120, 28, t.LabelColor, shadow: t.TextShadow);
-        Chrome.ValueUnit(c, value, unit, ValueRight, y - 2, 30, t.LabelColor, true, t.Label with { Size = 20 });
+        Chrome.ValueUnit(c, value, unit, ValueRight, y - 2, 30, t.ReadoutColor, true, t.Label with { Size = 20 });
     }
 
     /// <summary>Nuvem em tinta clara: três elipses e uma base, sem depender de glifo.</summary>

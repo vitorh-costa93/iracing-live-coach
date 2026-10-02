@@ -45,10 +45,13 @@ public sealed class StandingsWidget : IWidget
             float y = RowTop + i * RowPitch;
             if (_cfg.ColumnVisible("pos"))
             {
-                c.FillRect(BoxX, y, BoxW, BoxH, t.AccentFill);
-                c.Text(r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, BoxX, y - 1, BoxW, BoxH, t.AccentInk, HAlign.Center);
+                Chrome.AccentBox(c, BoxX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
             }
-            if (_cfg.ColumnVisible("name")) c.Text(RelativeWidget.Code(r.Car.Name), t.Text, NameX, y, 130, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+            if (_cfg.ColumnVisible("name"))
+            {
+                var ink = Chrome.NameCell(c, NameX - 8, y, 104, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
+                c.Text(RelativeWidget.Code(r.Car.Name), t.Text, NameX, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+            }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, ValueRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
@@ -56,7 +59,8 @@ public sealed class StandingsWidget : IWidget
 
     static void DrawBadge(ThemeCanvas c, Theme.Theme t, float cx, float cy, char letter)
     {
-        c.FillEllipse(cx, cy, 20, 20, t.BadgeFill);
+        if (t.Style == ThemeStyle.Broadcast98) c.FillEllipse(cx, cy, 20, 20, t.BadgeFill);
+        else c.FillRoundRect(cx - 20, cy - 14, 40, 28, t.BoxRadius, t.BadgeFill);
         c.Text(letter.ToString(), t.Text, cx - 20, cy - 17, 40, 34, t.BadgeInk, HAlign.Center);
     }
 
