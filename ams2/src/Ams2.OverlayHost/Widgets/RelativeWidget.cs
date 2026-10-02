@@ -64,8 +64,16 @@ public sealed class RelativeWidget : IWidget
         var ahead = m.Relative.TakeWhile(r => !r.IsPlayer).Reverse().Take(RowsPerSide).ToList(); // mais próximo primeiro
         var behind = m.Relative.SkipWhile(r => !r.IsPlayer).Skip(1).Take(RowsPerSide).ToList();
 
-        c.Text("AHEAD", t.Label, AheadX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
-        c.Text("BEHIND", t.Label, BehindX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
+        if (t.Style == ThemeStyle.Broadcast2000s)
+        {
+            Chrome.Caption(c, AheadX, 42, "AHEAD", 24, t.Label with { Size = 18 });
+            Chrome.Caption(c, BehindX, 42, "BEHIND", 24, t.Label with { Size = 18 });
+        }
+        else
+        {
+            c.Text("AHEAD", t.Label, AheadX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
+            c.Text("BEHIND", t.Label, BehindX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
+        }
         DrawColumn(c, t, ahead, AheadX, Ahead);
         DrawColumn(c, t, behind, BehindX, Behind);
     }
@@ -102,6 +110,7 @@ public sealed class RelativeWidget : IWidget
             var row = rows[i];
             float y = RowsTop + i * RowPitch;
             string pos = row.Car.Position.ToString(CultureInfo.InvariantCulture);
+            if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, row, pos, x, y, side); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
                 if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
@@ -115,6 +124,21 @@ public sealed class RelativeWidget : IWidget
             }
             if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + side.ValueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
+    }
+
+    /// <summary>Linha flutuante 2004–2008: caixa vermelha com a posição, célula branca com a sigla, célula preta com o gap.</summary>
+    void DrawRow2000s(ThemeCanvas c, Theme.Theme t, RelativeRow row, string pos, float x, float y, Side side)
+    {
+        const float h = 28;
+        bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
+        float cx = x;
+        if (p) { Chrome.Cell(c, cx, y + 1, 34, h, pos, t.Numbers, t.AccentFill, t.AccentInk, HAlign.Center, 0); cx += 34; }
+        if (n)
+        {
+            Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, Code(row.Car.Name), t.Text, ink: row.IsPlayer ? t.AccentFill : null);
+            cx += NameCellW;
+        }
+        if (g) Chrome.BlackCell(c, cx, y + 1, 112, h, FormatGap(row), t.Numbers);
     }
 
     /// <summary>Sigla de 3 letras: início do sobrenome (última palavra do nome), em maiúsculas.</summary>

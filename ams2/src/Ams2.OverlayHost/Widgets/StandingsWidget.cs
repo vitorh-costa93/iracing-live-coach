@@ -62,6 +62,7 @@ public sealed class StandingsWidget : IWidget
         {
             var r = rows[i];
             float y = RowTop + i * RowPitch;
+            if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, r, L, y, classes); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
                 Chrome.AccentBox(c, L.PosX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
@@ -73,6 +74,30 @@ public sealed class StandingsWidget : IWidget
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+        }
+    }
+
+    /// <summary>Linha flutuante 2004–2008: caixa vermelha, célula branca, selo escuro e célula preta, coladas.</summary>
+    void DrawRow2000s(ThemeCanvas c, Theme.Theme t, StandingRow r, Cols L, float y, List<string> classes)
+    {
+        float h = BoxH;
+        if (_cfg.ColumnVisible("pos"))
+            Chrome.Cell(c, L.PosX, y, BoxW, h, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, t.AccentFill, t.AccentInk, HAlign.Center, 0);
+        if (_cfg.ColumnVisible("name"))
+        {
+            float x0 = _cfg.ColumnVisible("pos") ? L.PosX + BoxW : L.NameCellX;
+            float x1 = L.NameCellX + NameCellW + (_cfg.ColumnVisible("class") || _cfg.ColumnVisible("gap") ? ColSpacing : 0);
+            Chrome.WhiteCell(c, x0, y, x1 - x0, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? t.AccentFill : null);
+        }
+        if (_cfg.ColumnVisible("class"))
+        {
+            float bx = L.BadgeCx - BadgeW / 2 - 1;
+            Chrome.Cell(c, bx, y, BadgeW + 1, h, ((char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25))).ToString(), t.Text, t.BadgeFill, t.BadgeInk, HAlign.Center, 0);
+        }
+        if (_cfg.ColumnVisible("gap"))
+        {
+            float gx = _cfg.ColumnVisible("class") ? L.BadgeCx + BadgeW / 2 : _cfg.ColumnVisible("name") ? L.NameCellX + NameCellW + ColSpacing : L.PosX + (_cfg.ColumnVisible("pos") ? BoxW : 0);
+            Chrome.BlackCell(c, gx, y, L.GapRight + 8 - gx, h, FormatGap(r), t.Numbers);
         }
     }
 
