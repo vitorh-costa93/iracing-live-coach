@@ -3,7 +3,7 @@ using Vortice.Win32.Numerics;
 namespace Ams2.OverlayHost.Theme;
 
 /// <summary>Fonte de um papel tipográfico do tema. Tamanho em unidades de design (escalado na renderização).</summary>
-public sealed record FontToken(string Family, int Weight, float Size);
+public sealed record FontToken(string Family, int Weight, float Size, float Tracking = 0f);
 
 /// <summary>Sombra projetada do texto: deslocamento em unidades de design e cor (com a opacidade).</summary>
 public sealed record ShadowToken(float OffsetX, float OffsetY, Color4 Color);
@@ -53,10 +53,10 @@ public static class Themes
     public static readonly Theme F1_1998 = new(
         Id: "f1-1998",
         DisplayName: "F1 1998-2001",
-        Title: new FontToken("Reddit Sans", 800, 29f),
+        Title: new FontToken("Reddit Sans", 800, 30f),
         Label: new FontToken("Reddit Sans", 800, 25f),
-        Text: new FontToken("Reddit Sans", 800, 28f),
-        Numbers: new FontToken("F1 Broadcast 98 Values", 400, 28f),
+        Text: new FontToken("Reddit Sans", 800, 30f),
+        Numbers: new FontToken("F1 Broadcast 98 Values", 400, 32f, 3f),
         PanelFill: Rgb(49, 54, 49, 0.90f),
         PanelBorder: Rgb(61, 66, 62, 0.9f),
         TitleColor: Rgb(232, 233, 232),

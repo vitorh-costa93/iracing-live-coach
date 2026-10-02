@@ -54,5 +54,6 @@ internal static class Win32
     [DllImport("user32.dll")] public static extern nint DispatchMessageW(ref MSG msg);
     [DllImport("user32.dll")] public static extern bool RegisterHotKey(nint hwnd, int id, uint mods, uint vk);
     [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(nint value);
+    [DllImport("kernel32.dll")] public static extern bool AttachConsole(int pid);
     [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
 }

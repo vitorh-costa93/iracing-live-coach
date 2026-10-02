@@ -163,6 +163,21 @@ public sealed unsafe class ThemeCanvas : IDisposable
         var fmt = Format(font, align);
         fixed (char* p = text)
         {
+            if (font.Tracking != 0f)
+            {
+                // Espaçamento entre caracteres exige IDWriteTextLayout1.
+                ComPtr<IDWriteTextLayout> layout = default;
+                ThrowIfFailed(_gfx.DWriteFactory->CreateTextLayout(p, (uint)text.Length, fmt, w, h, layout.GetAddressOf()));
+                using var _l = layout;
+                ComPtr<IDWriteTextLayout1> layout1 = default;
+                ThrowIfFailed(layout.As(ref layout1));
+                using var _l1 = layout1;
+                ThrowIfFailed(layout1.Get()->SetCharacterSpacing(0, font.Tracking, 0, new TextRange { startPosition = 0, length = (uint)text.Length }));
+                if (shadow is not null)
+                    Dc->DrawTextLayout(new Vector2(x + shadow.OffsetX, y + shadow.OffsetY), (IDWriteTextLayout*)layout.Get(), Solid(shadow.Color), DrawTextOptions.None);
+                Dc->DrawTextLayout(new Vector2(x, y), (IDWriteTextLayout*)layout.Get(), Solid(color), DrawTextOptions.None);
+                return;
+            }
             if (shadow is not null)
             {
                 var s = new RectF(x + shadow.OffsetX, y + shadow.OffsetY, x + w + shadow.OffsetX, y + h + shadow.OffsetY);
