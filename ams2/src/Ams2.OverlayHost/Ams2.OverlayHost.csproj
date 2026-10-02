@@ -9,6 +9,7 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RootNamespace>Ams2.OverlayHost</RootNamespace>
+    <ApplicationIcon>..\..\assets\ams2-live-coach.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 

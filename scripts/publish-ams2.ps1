@@ -60,6 +60,7 @@ if ($Shortcut) {
         $lnk.TargetPath = $s.Target
         $lnk.WorkingDirectory = $desktopInstallDir
         $lnk.Description = $s.Desc
+        $lnk.IconLocation = "$($s.Target),0"   # icone proprio embutido no exe (ams2\assets\make_icon.py)
         $lnk.Save()
     }
     Write-Host "Atalhos criados na area de trabalho."

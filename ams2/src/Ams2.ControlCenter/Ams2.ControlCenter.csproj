@@ -7,8 +7,13 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Ams2.ControlCenter</RootNamespace>
     <AssemblyName>Ams2.ControlCenter</AssemblyName>
+    <ApplicationIcon>..\..\assets\ams2-live-coach.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ams2.Shared\Ams2.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="..\..\assets\ams2-live-coach.ico" Link="Assets\ams2-live-coach.ico" />
+    <Resource Include="..\..\assets\ams2-live-coach.png" Link="Assets\ams2-live-coach.png" />
   </ItemGroup>
 </Project>
