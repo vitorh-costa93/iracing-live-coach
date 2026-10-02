@@ -9,7 +9,7 @@ namespace Ams2.Shared.Profiles;
 /// </summary>
 public sealed class ProfileStore
 {
-    public const string DefaultProfileName = "Padrao";
+    public const string DefaultProfileName = "Padrão";
 
     public static readonly JsonSerializerOptions Json = new()
     {

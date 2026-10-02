@@ -25,7 +25,7 @@ public class IpcTests
             Assert.Equal("fuel", req.Widget);
             Assert.Equal(1.5f, req.Patch!.Scale);
             server!.Broadcast(new IpcMessage { Event = IpcEvents.StateChanged });
-            return new IpcMessage { State = new HostState { Theme = "f1-1998", ActiveProfile = "Padrao", GameConnected = true } };
+            return new IpcMessage { State = new HostState { Theme = "f1-1998", ActiveProfile = "Padrão", GameConnected = true } };
         });
         using var _s = server;
         using var client = new IpcClient(pipe);
@@ -36,7 +36,7 @@ public class IpcTests
 
         var state = await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "fuel", Patch = new WidgetPatch { Scale = 1.5f } });
         Assert.True(state!.GameConnected);
-        Assert.Equal("Padrao", state.ActiveProfile);
+        Assert.Equal("Padrão", state.ActiveProfile);
         await WaitFor(() => evt is not null);
         Assert.Equal(IpcEvents.StateChanged, evt!.Event);
     }

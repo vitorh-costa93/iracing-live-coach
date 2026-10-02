@@ -21,12 +21,12 @@ public static class WidgetCatalog
     /// <summary>Ordem padrao = ordem desta lista. Posicoes padrao em pixels de uma tela 1920x1080 (ajustadas por <see cref="ProfileFactory"/>).</summary>
     public static readonly IReadOnlyList<WidgetDef> All =
     [
-        new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posicao"), new("name", "Piloto"), new("class", "Classe"), new("gap", "Gap")], 40, 40),
-        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posicao"), new("name", "Piloto"), new("gap", "Gap")], 40, 860),
+        new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posição"), new("name", "Piloto"), new("class", "Classe"), new("gap", "Gap")], 40, 40),
+        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap")], 40, 860),
         new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1380, 40),
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1380, 230),
         new("weather", "Weather", null, null, null, "", [], 1380, 450),
-        new("inputs", "Inputs", null, null, null, "", [new("graph", "Grafico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 1180, 860),
+        new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 1180, 860),
     ];
 
     public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));

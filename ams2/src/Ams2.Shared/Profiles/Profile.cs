@@ -76,7 +76,7 @@ public sealed record Profile
     public const int CurrentSchemaVersion = 1;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
-    public string Name { get; init; } = "Padrao";
+    public string Name { get; init; } = "Padrão";
     public string ThemeId { get; init; } = ThemeCatalog.Default;
     public List<WidgetSettings> Widgets { get; init; } = [];
 

@@ -197,6 +197,7 @@ internal sealed class WidgetWindow : IDisposable
     void SetScale(float scale)
     {
         scale = (float)Math.Round(Math.Clamp(scale, WidgetCatalog.MinScale, WidgetCatalog.MaxScale) / ScaleStep) * ScaleStep;
+        scale = MathF.Round(scale, 2);
         if (Math.Abs(scale - Settings.Scale) < 0.001f) return;
         var b = _win.Bounds;
         Settings = Settings with { Scale = scale, X = b.X, Y = b.Y };

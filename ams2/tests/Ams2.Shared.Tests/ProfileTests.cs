@@ -80,7 +80,7 @@ public class ProfileTests
         var dir = Path.Combine(t.Dir, "profiles", Theme);
         File.WriteAllText(Path.Combine(dir, "ruim.json"), "{ not json");
         File.WriteAllText(Path.Combine(dir, "futuro.json"), "{\"schemaVersion\":99,\"name\":\"Futuro\",\"themeId\":\"f1-1998\",\"widgets\":[]}");
-        Assert.Equal(["Padrao"], t.Store.List(Theme));
+        Assert.Equal(["Padrão"], t.Store.List(Theme));
         Assert.Null(t.Store.Load(Theme, "futuro"));
     }
 
@@ -89,10 +89,10 @@ public class ProfileTests
     {
         using var t = new TempStore();
         var active = t.Store.GetActiveProfile(Theme);
-        Assert.Equal("Padrao", active);
-        t.Store.Duplicate(Theme, "Padrao", "Chuva");
-        Assert.Equal(["Chuva", "Padrao"], t.Store.List(Theme));
-        Assert.Throws<InvalidOperationException>(() => t.Store.Duplicate(Theme, "Padrao", "Chuva"));
+        Assert.Equal("Padrão", active);
+        t.Store.Duplicate(Theme, "Padrão", "Chuva");
+        Assert.Equal(["Chuva", "Padrão"], t.Store.List(Theme));
+        Assert.Throws<InvalidOperationException>(() => t.Store.Duplicate(Theme, "Padrão", "Chuva"));
 
         t.Store.SetActiveProfile(Theme, "Chuva");
         t.Store.Rename(Theme, "Chuva", "Noite");
@@ -100,7 +100,7 @@ public class ProfileTests
         Assert.False(t.Store.Exists(Theme, "Chuva"));
 
         t.Store.Delete(Theme, "Noite");
-        Assert.Equal("Padrao", t.Store.GetActiveProfile(Theme)); // o ativo sumiu: cai no padrao
+        Assert.Equal("Padrão", t.Store.GetActiveProfile(Theme)); // o ativo sumiu: cai no padrao
     }
 
     [Fact]
