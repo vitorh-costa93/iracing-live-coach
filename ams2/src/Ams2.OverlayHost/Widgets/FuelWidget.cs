@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 
 namespace Ams2.OverlayHost.Widgets;
 
@@ -9,6 +10,9 @@ public sealed class FuelWidget : IWidget
 {
     public string Id => "fuel";
     public (float Width, float Height) DesignSize => (470, 156);
+
+    WidgetSettings _cfg = new() { Id = "fuel" };
+    public void Configure(WidgetSettings s) => _cfg = s;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -26,13 +30,19 @@ public sealed class FuelWidget : IWidget
         }
 
         Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.LabelColor, false);
-        c.Text("LAPS", t.Label, 235, 46, 90, 34, t.LabelColor, shadow: t.TextShadow);
-        string laps = f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--";
-        c.Text(laps, t.Numbers, 330, 46, 100, 34, t.LabelColor, shadow: t.ValueShadow);
-        c.Text("USE", t.Label, 235, 80, 90, 34, t.LabelColor, shadow: t.TextShadow);
-        string use = f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--";
-        Chrome.ValueUnit(c, use, "L/LAP", 448, 80, 34, t.LabelColor, true, t.Label with { Size = 20 });
-        if (f.LitersToAdd is { } add && add > 0.05)
+        if (_cfg.ColumnVisible("laps"))
+        {
+            c.Text("LAPS", t.Label, 235, 46, 90, 34, t.LabelColor, shadow: t.TextShadow);
+            string laps = f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--";
+            c.Text(laps, t.Numbers, 330, 46, 100, 34, t.LabelColor, shadow: t.ValueShadow);
+        }
+        if (_cfg.ColumnVisible("use"))
+        {
+            c.Text("USE", t.Label, 235, 80, 90, 34, t.LabelColor, shadow: t.TextShadow);
+            string use = f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--";
+            Chrome.ValueUnit(c, use, "L/LAP", 448, 80, 34, t.LabelColor, true, t.Label with { Size = 20 });
+        }
+        if (_cfg.ColumnVisible("add") && f.LitersToAdd is { } add && add > 0.05)
         {
             c.Text("ADD", t.Label, 235, 114, 90, 34, t.LabelColor, shadow: t.TextShadow);
             Chrome.ValueUnit(c, add.ToString("0.0", CultureInfo.InvariantCulture), "L", 448, 114, 34, t.ValueColor, true);

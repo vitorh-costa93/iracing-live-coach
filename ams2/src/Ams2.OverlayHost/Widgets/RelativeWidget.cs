@@ -2,6 +2,7 @@ using System.Globalization;
 using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Widgets;
@@ -13,9 +14,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class RelativeWidget : IWidget
 {
     public string Id => "relative";
-    public (float Width, float Height) DesignSize => (820, 180);
+    public (float Width, float Height) DesignSize => (820, RowsTop + RowsPerSide * RowPitch + 15);
 
-    public int RowsPerSide { get; init; } = 3;
+    public int RowsPerSide { get; set; } = 3;
+    WidgetSettings _cfg = new() { Id = "relative" };
+    public void Configure(WidgetSettings s) { _cfg = s; RowsPerSide = s.Rows ?? 3; }
 
     // Geometria (extraída de ams2\mockups\v3\1990s\overlay.png)
     const float PanelLeft = 0;
@@ -77,9 +80,9 @@ public sealed class RelativeWidget : IWidget
         {
             var row = rows[i];
             float y = RowsTop + i * RowPitch;
-            c.Text(row.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
-            c.Text(Code(row.Car.Name), t.Text, x + nameDx, y, 130, 30, t.TextColor, shadow: t.TextShadow);
-            c.Text(FormatGap(row), t.Numbers, x + valueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("pos")) c.Text(row.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
+            if (_cfg.ColumnVisible("name")) c.Text(Code(row.Car.Name), t.Text, x + nameDx, y, 130, 30, t.TextColor, shadow: t.TextShadow);
+            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + valueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 

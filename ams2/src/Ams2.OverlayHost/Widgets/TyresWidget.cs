@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 
 namespace Ams2.OverlayHost.Widgets;
 
@@ -12,6 +13,9 @@ public sealed class TyresWidget : IWidget
 
     static readonly string[] Names = ["FL", "FR", "RL", "RR"];
     const float ColCenter0 = 80, ColCenter1 = 200, RowTop0 = 42, RowTop1 = 116;
+
+    WidgetSettings _cfg = new() { Id = "tyres" };
+    public void Configure(WidgetSettings s) => _cfg = s;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -36,9 +40,10 @@ public sealed class TyresWidget : IWidget
             float cx = i % 2 == 0 ? ColCenter0 : ColCenter1;
             float y = i < 2 ? RowTop0 : RowTop1;
             c.Text(Names[i], t.Label with { Size = 17, Tracking = 4 }, cx - 40, y, 80, 20, t.TitleColor, HAlign.Center, t.TextShadow);
-            DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);
+            bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
+            if (temp) DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);
             double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100; // 0 = novo ... 1 = gasto (a confirmar em sessão real)
-            DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + 45, wearPct >= 70 ? t.PlayerColor : t.LabelColor);
+            if (wear) DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + (temp ? 45 : 19), wearPct >= 70 ? t.PlayerColor : t.LabelColor);
         }
     }
 

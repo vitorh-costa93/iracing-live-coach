@@ -25,6 +25,22 @@ public sealed unsafe class ThemeCanvas : IDisposable
 
     public Theme Theme { get; set; }
     public float Scale { get; set; }
+    /// <summary>Opacidade global do widget (0..1): multiplica o alfa de toda cor desenhada.</summary>
+    public float Opacity { get; set; } = 1f;
+
+    string? _fontOverride;
+    /// <summary>Familia que substitui as fontes de texto do tema; a familia de numeros do tema nunca e trocada.</summary>
+    public string? FontOverride
+    {
+        get => _fontOverride;
+        set
+        {
+            if (_fontOverride == value) return;
+            _fontOverride = value;
+            foreach (var f in _formats.Values) f.Dispose();
+            _formats.Clear();
+        }
+    }
 
     public ThemeCanvas(DeviceResources gfx, Theme theme, float scale = 1f)
     {
@@ -70,6 +86,8 @@ public sealed unsafe class ThemeCanvas : IDisposable
     IDWriteTextFormat* Format(FontToken font, HAlign align)
     {
         if (_formats.TryGetValue((font, align), out var cached)) return cached.Get();
+        var requested = font;
+        if (_fontOverride is not null && font.Family != Theme.Numbers.Family) font = font with { Family = _fontOverride };
         bool has = _gfx.Fonts.Has(font.Family);
         string family = has ? font.Family : "Segoe UI";
         var collection = has ? (IDWriteFontCollection*)_gfx.Fonts.Collection : null;
@@ -83,12 +101,13 @@ public sealed unsafe class ThemeCanvas : IDisposable
             HAlign.Right => TextAlignment.Trailing,
             _ => TextAlignment.Leading,
         }));
-        _formats[(font, align)] = fmt;
+        _formats[(requested, align)] = fmt;
         return fmt.Get();
     }
 
     ID2D1Brush* Solid(Color4 c)
     {
+        c = new Color4(c.R, c.G, c.B, c.A * Opacity);
         _brush.Get()->SetColor(&c);
         return (ID2D1Brush*)_brush.Get();
     }
@@ -139,7 +158,11 @@ public sealed unsafe class ThemeCanvas : IDisposable
     public void GradientBar(float x, float y, float w, float h, BarStop[] stops)
     {
         var d2d = new D2DGradientStop[stops.Length];
-        for (int i = 0; i < stops.Length; i++) d2d[i] = new D2DGradientStop { position = stops[i].Position, color = stops[i].Color };
+        for (int i = 0; i < stops.Length; i++)
+        {
+            var sc0 = stops[i].Color; var sc = new Color4(sc0.R, sc0.G, sc0.B, sc0.A * Opacity);
+            d2d[i] = new D2DGradientStop { position = stops[i].Position, color = sc };
+        }
         ComPtr<ID2D1GradientStopCollection> collection = default;
         fixed (D2DGradientStop* p = d2d)
             ThrowIfFailed(Dc->CreateGradientStopCollection(p, (uint)d2d.Length, Gamma.Gamma_2_2, ExtendMode.Clamp, collection.GetAddressOf()));

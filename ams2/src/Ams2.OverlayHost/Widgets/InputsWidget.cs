@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Widgets;
@@ -21,14 +22,17 @@ public sealed class InputsWidget : IWidget
     // Marcha / velocidade
     const float GearCx = 628;
 
+    WidgetSettings _cfg = new() { Id = "inputs" };
+    public void Configure(WidgetSettings s) => _cfg = s;
+
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var t = c.Theme;
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
         Chrome.Header(c, "INPUTS", 19, 11, 150);
-        DrawLegend(c, t);
-        DrawGraphFrame(c, t);
+        bool graph = _cfg.ColumnVisible("graph"), bars = _cfg.ColumnVisible("bars"), gear = _cfg.ColumnVisible("gear");
+        if (graph) { DrawLegend(c, t); DrawGraphFrame(c, t); }
 
         var p = m.Session?.Player;
         if (!m.Connected || p is null)
@@ -37,10 +41,13 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
-        DrawTrace(c, t, m.InputHistory, m.Now);
-        DrawBar(c, t, ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
-        DrawBar(c, t, BrkX, p.Inputs.Brake, t.BrakeColor, "BRK");
-        DrawGear(c, t, p.Gear, p.SpeedMps * 3.6);
+        if (graph) DrawTrace(c, t, m.InputHistory, m.Now);
+        if (bars)
+        {
+            DrawBar(c, t, ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
+            DrawBar(c, t, BrkX, p.Inputs.Brake, t.BrakeColor, "BRK");
+        }
+        if (gear) DrawGear(c, t, p.Gear, p.SpeedMps * 3.6);
     }
 
     static void DrawLegend(ThemeCanvas c, Theme.Theme t)

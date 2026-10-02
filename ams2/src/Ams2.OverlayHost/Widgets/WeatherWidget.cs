@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 
 namespace Ams2.OverlayHost.Widgets;
 
@@ -11,6 +12,8 @@ public sealed class WeatherWidget : IWidget
     public (float Width, float Height) DesignSize => (295, 128);
 
     const float LabelX = 87, ValueRight = 275, Row0 = 33, RowPitch = 29;
+
+    public void Configure(WidgetSettings s) { }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {

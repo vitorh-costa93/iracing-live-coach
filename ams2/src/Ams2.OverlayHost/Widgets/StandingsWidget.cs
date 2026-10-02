@@ -1,6 +1,7 @@
 using System.Globalization;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
 
 namespace Ams2.OverlayHost.Widgets;
 
@@ -11,7 +12,9 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class StandingsWidget : IWidget
 {
     public string Id => "standings";
-    public int Rows { get; init; } = 8;
+    public int Rows { get; set; } = 8;
+    WidgetSettings _cfg = new() { Id = "standings" };
+    public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
     public (float Width, float Height) DesignSize => (433, 12 + Rows * RowPitch + 2);
 
     const float RowTop = 12, RowPitch = 43;
@@ -40,11 +43,14 @@ public sealed class StandingsWidget : IWidget
         {
             var r = rows[i];
             float y = RowTop + i * RowPitch;
-            c.FillRect(BoxX, y, BoxW, BoxH, t.AccentFill);
-            c.Text(r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, BoxX, y - 1, BoxW, BoxH, t.AccentInk, HAlign.Center);
-            c.Text(RelativeWidget.Code(r.Car.Name), t.Text, NameX, y, 130, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
-            DrawBadge(c, t, BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
-            c.Text(FormatGap(r), t.Numbers, ValueRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("pos"))
+            {
+                c.FillRect(BoxX, y, BoxW, BoxH, t.AccentFill);
+                c.Text(r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers, BoxX, y - 1, BoxW, BoxH, t.AccentInk, HAlign.Center);
+            }
+            if (_cfg.ColumnVisible("name")) c.Text(RelativeWidget.Code(r.Car.Name), t.Text, NameX, y, 130, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+            if (_cfg.ColumnVisible("class")) DrawBadge(c, t, BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
+            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, ValueRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 
