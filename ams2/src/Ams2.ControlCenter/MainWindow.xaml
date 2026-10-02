@@ -103,6 +103,15 @@
                         <TextBlock Text="WIDGETS" Style="{StaticResource SectionTitle}" Margin="0"/>
                         <TextBlock Text="Arraste ≡ para reordenar" Style="{StaticResource Muted}" HorizontalAlignment="Right"/>
                     </DockPanel>
+                    <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="12" Background="{StaticResource BgBrush}" CornerRadius="6"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Height="190">
+                        <Grid>
+                            <TextBlock x:Name="PreviewCaption" Text="PRÉVIA" Style="{StaticResource SectionTitle}" VerticalAlignment="Top" Margin="0"/>
+                            <Image x:Name="PreviewImage" Margin="0,22,0,0" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock x:Name="PreviewStatus" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,22,0,0"/>
+                        </Grid>
+                    </Border>
                     <ListBox x:Name="WidgetsList" AllowDrop="True" SelectionChanged="WidgetsList_SelectionChanged"
                              PreviewMouseLeftButtonDown="WidgetsList_PreviewMouseLeftButtonDown" PreviewMouseMove="WidgetsList_PreviewMouseMove"
                              DragOver="WidgetsList_DragOver" DragLeave="WidgetsList_DragLeave" Drop="WidgetsList_Drop">

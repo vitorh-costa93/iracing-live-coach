@@ -1,4 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Media.Imaging;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -28,6 +31,10 @@ public partial class MainWindow : Window
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    readonly DispatcherTimer _previewTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    int _previewSeq;
+    string? _previewDir;
+
     string _themeId = ThemeCatalog.Default;
     string _profileName = "";
     Profile _profile = new();
@@ -55,8 +62,9 @@ public partial class MainWindow : Window
         _flushTimer.Tick += async (_, _) => { _flushTimer.Stop(); await FlushPendingAsync(); };
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveNow(); };
         _pollTimer.Tick += async (_, _) => await PollAsync();
-        Closing += (_, _) => { SaveNow(); _client.Dispose(); };
+        Closing += (_, _) => { SaveNow(); _client.Dispose(); try { if (_previewDir is not null) Directory.Delete(_previewDir, true); } catch { } };
 
+        _previewTimer.Tick += async (_, _) => { _previewTimer.Stop(); await RefreshPreviewAsync(); };
         _client.ConnectionChanged += c => Dispatcher.BeginInvoke(async () => await OnConnectionChanged(c));
         _client.EventReceived += e => Dispatcher.BeginInvoke(() => { if (e.State is { } s) ApplyHostState(s); });
 
@@ -276,6 +284,7 @@ public partial class MainWindow : Window
         _loading = true; // ligar o DataContext nao pode contar como edicao
         Detail.DataContext = vm;
         _loading = false;
+        SchedulePreview();
         if (vm is null) return;
         RowsPanel.Visibility = vm.SupportsRows ? Visibility.Visible : Visibility.Collapsed;
         ColumnsPanel.Visibility = vm.HasColumns ? Visibility.Visible : Visibility.Collapsed;
@@ -284,6 +293,7 @@ public partial class MainWindow : Window
     void OnWidgetEdited(WidgetVm vm, string prop)
     {
         if (_loading) return;
+        if (ReferenceEquals(vm, Detail.DataContext)) SchedulePreview();
         _lastLocalEdit = DateTime.UtcNow;
         int order = _widgets.IndexOf(vm);
         _profile = _profile.WithWidget(vm.ToSettings(order));
@@ -339,6 +349,74 @@ public partial class MainWindow : Window
         foreach (var c in vm.Columns) c.IsVisible = true;
         vm.X = d.X; vm.Y = d.Y;
     }
+
+    // ---------------------------------------------------------------- previa
+
+    void SchedulePreview() { _previewTimer.Stop(); _previewTimer.Start(); }
+
+    /// <summary>Procura o OverlayHost: ao lado deste exe (publicado) ou na saida de build irma (desenvolvimento).</summary>
+    static string? FindHostExe()
+    {
+        string dir = AppContext.BaseDirectory;
+        string local = Path.Combine(dir, "Ams2.OverlayHost.exe");
+        if (File.Exists(local)) return local;
+        for (var d = new DirectoryInfo(dir); d is not null; d = d.Parent)
+        {
+            var cand = Path.Combine(d.FullName, "Ams2.OverlayHost", "bin");
+            if (!Directory.Exists(cand)) continue;
+            return Directory.EnumerateFiles(cand, "Ams2.OverlayHost.exe", SearchOption.AllDirectories)
+                .OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Previa do widget selecionado: roda o proprio OverlayHost em modo --png (dados simulados, nunca abre o jogo nem uma janela)
+    /// com o tema e as opcoes atuais do widget. Respostas antigas sao descartadas pela sequencia.
+    /// </summary>
+    async Task RefreshPreviewAsync()
+    {
+        if (Detail.DataContext is not WidgetVm vm) { PreviewImage.Source = null; PreviewStatus.Text = ""; return; }
+        int seq = ++_previewSeq;
+        var exe = FindHostExe();
+        if (exe is null) { PreviewImage.Source = null; PreviewStatus.Text = "OverlayHost não encontrado."; return; }
+        _previewDir ??= Path.Combine(Path.GetTempPath(), "ams2-cc-preview-" + Environment.ProcessId);
+        Directory.CreateDirectory(_previewDir);
+        string png = Path.Combine(_previewDir, $"{seq}.png");
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", "20", "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
+            psi.ArgumentList.Add(a);
+        if (vm.SupportsRows) { psi.ArgumentList.Add("--rows"); psi.ArgumentList.Add(vm.Rows.ToString()); }
+        if (vm.FontChoice != WidgetVm.FontDefault) { psi.ArgumentList.Add("--font"); psi.ArgumentList.Add(vm.FontChoice); }
+        if (vm.HasColumns && !vm.Columns.All(c => c.IsVisible))
+        {
+            psi.ArgumentList.Add("--cols");
+            psi.ArgumentList.Add(vm.Columns.Any(c => c.IsVisible) ? string.Join(",", vm.Columns.Where(c => c.IsVisible).Select(c => c.Def.Id)) : "none");
+        }
+        try
+        {
+            using var p = Process.Start(psi)!;
+            _ = p.StandardOutput.ReadToEndAsync();
+            _ = p.StandardError.ReadToEndAsync();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await p.WaitForExitAsync(cts.Token);
+            if (seq != _previewSeq) { TryDelete(png); return; }
+            if (p.ExitCode != 0 || !File.Exists(png)) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; return; }
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;   // carrega tudo e solta o arquivo
+            bmp.UriSource = new Uri(png);
+            bmp.EndInit();
+            bmp.Freeze();
+            PreviewImage.Source = bmp;
+            PreviewStatus.Text = "";
+            PreviewCaption.Text = $"PRÉVIA · {vm.Name} · dados simulados";
+            TryDelete(png);
+        }
+        catch (Exception) { if (seq == _previewSeq) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; } }
+    }
+
+    static void TryDelete(string f) { try { File.Delete(f); } catch { } }
 
     // ---------------------------------------------------------------- arrastar para reordenar
 
