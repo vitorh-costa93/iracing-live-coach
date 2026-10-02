@@ -10,14 +10,14 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--sim N] [--x N] [--y N] [--seconds N]
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
 {
-    sealed record Options(bool Fake, string? Png, bool Real, string ThemeId, float Scale, string Bg, int? X, int? Y, double Seconds, string Widget);
+    sealed record Options(bool Fake, string? Png, bool Real, string ThemeId, float Scale, string Bg, int? X, int? Y, double Seconds, string Widget, double Sim);
 
     [STAThread]
     static int Main(string[] args)
@@ -50,7 +50,8 @@ internal static class Program
             X: Val("--x") is { } x ? int.Parse(x) : null,
             Y: Val("--y") is { } y ? int.Parse(y) : null,
             Seconds: double.Parse(Val("--seconds") ?? "0", CultureInfo.InvariantCulture),
-            Widget: Val("--widget") ?? "relative");
+            Widget: Val("--widget") ?? "relative",
+            Sim: double.Parse(Val("--sim") ?? "40", CultureInfo.InvariantCulture));
     }
 
     static IRawMemorySource FakeOrReal(bool fake, Func<double> clock) => fake ? new FakeRawSource(clock) : new MemoryMappedSource();
@@ -64,7 +65,7 @@ internal static class Program
         var wall = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
         using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock);
-        if (fake) for (int i = 0; i < 40 * 60; i++) { simNow += 1.0 / 60; provider.Tick(); }
+        if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
 
         var theme = Themes.Get(o.ThemeId);
