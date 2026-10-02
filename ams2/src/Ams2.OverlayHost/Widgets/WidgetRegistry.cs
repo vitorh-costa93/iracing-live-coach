@@ -11,6 +11,7 @@ public static class WidgetRegistry
         "fuel" => new FuelWidget(),
         "tyres" => new TyresWidget(),
         "weather" => new WeatherWidget(),
+        "inputs" => new InputsWidget(),
         _ => new RelativeWidget(),
     };
 }
