@@ -124,6 +124,16 @@ public class ProfileTests
     }
 
     [Fact]
+    public void MoveTo_reorders_and_renumbers()
+    {
+        var p = ProfileFactory.CreateDefault("A", Theme).MoveTo("weather", 0);
+        Assert.Equal("weather", p.Ordered.First().Id);
+        Assert.Equal(Enumerable.Range(0, WidgetCatalog.All.Count), p.Ordered.Select(w => w.Order));
+        p = p.MoveTo("weather", 99);
+        Assert.Equal("weather", p.Ordered.Last().Id);
+    }
+
+    [Fact]
     public void Names_with_invalid_characters_still_roundtrip()
     {
         using var t = new TempStore();

@@ -111,6 +111,7 @@ internal sealed class HostController : IDisposable
             }
             case IpcCommands.SetTheme:
             {
+                SaveNow(); // grava o que estiver pendente antes de trocar de perfil
                 var def = ThemeCatalog.Find(req.Theme);
                 if (def is null || !def.Available || !Themes.All.Any(t => t.Id == def.Id)) return Fail($"Tema indisponivel: {req.Theme}.");
                 int sw = Win32.GetSystemMetrics(0), sh = Win32.GetSystemMetrics(1);
@@ -131,6 +132,7 @@ internal sealed class HostController : IDisposable
 
     void ApplyProfileCommand(IpcMessage req)
     {
+        SaveNow();
         int sw = Win32.GetSystemMetrics(0), sh = Win32.GetSystemMetrics(1);
         Profile p;
         if (req.Data is not null)
@@ -165,9 +167,14 @@ internal sealed class HostController : IDisposable
 
     void UpdateWidget(WidgetSettings next, bool orderChanged)
     {
-        _profile = _profile.WithWidget(next);
-        if (orderChanged) _profile = _profile.Normalized();
-        if (_windows.TryGetValue(next.Id, out var w)) w.Apply(_profile.Get(next.Id)!, _theme);
+        if (orderChanged)
+        {
+            var cur = _profile.Get(next.Id)!;
+            _profile = _profile.WithWidget(next with { Order = cur.Order }).MoveTo(next.Id, next.Order);
+        }
+        else _profile = _profile.WithWidget(next);
+        foreach (var o in _profile.Widgets)
+            if ((o.Id == next.Id || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(o, _theme);
         if (orderChanged) RestackByOrder();
         ScheduleSave();
     }

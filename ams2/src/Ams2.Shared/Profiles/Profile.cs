@@ -97,6 +97,17 @@ public sealed record Profile
         return this with { SchemaVersion = CurrentSchemaVersion, Widgets = ordered };
     }
 
+    /// <summary>Move o widget para a posicao <paramref name="index"/> da ordem de exibicao e renumera 0..n-1.</summary>
+    public Profile MoveTo(string id, int index)
+    {
+        var list = Ordered.ToList();
+        var w = list.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (w is null) return this;
+        list.Remove(w);
+        list.Insert(Math.Clamp(index, 0, list.Count), w);
+        return this with { Widgets = list.Select((x, i) => x with { Order = i }).ToList() };
+    }
+
     public Profile WithWidget(WidgetSettings s) => this with { Widgets = Widgets.Select(w => string.Equals(w.Id, s.Id, StringComparison.OrdinalIgnoreCase) ? s : w).ToList() };
 }
 
