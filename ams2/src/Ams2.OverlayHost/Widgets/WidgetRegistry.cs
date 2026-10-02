@@ -9,6 +9,7 @@ public static class WidgetRegistry
     {
         "standings" => new StandingsWidget(),
         "fuel" => new FuelWidget(),
+        "tyres" => new TyresWidget(),
         _ => new RelativeWidget(),
     };
 }
