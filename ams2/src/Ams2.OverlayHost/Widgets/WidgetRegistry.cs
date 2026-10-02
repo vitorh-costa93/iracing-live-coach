@@ -7,6 +7,7 @@ public static class WidgetRegistry
 
     public static IWidget Create(string? id) => (id ?? "relative").ToLowerInvariant() switch
     {
+        "standings" => new StandingsWidget(),
         _ => new RelativeWidget(),
     };
 }
