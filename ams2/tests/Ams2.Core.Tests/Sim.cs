@@ -19,6 +19,7 @@ public sealed class Sim
     public bool AutoLapTimes;
     public string[]? Names;
     public string[]? CarNames;
+    public string[]? Nations;
     public readonly double[] Speeds;
     readonly double _len;
     readonly double[] _total;
@@ -70,7 +71,7 @@ public sealed class Sim
             string carName = CarNames?[i] ?? "car";
             list.Add(new CarSnapshot(i, Names?[i] ?? $"C{i}", carName, "cls", pos[i], pos[i], laps, laps + 1, d, Math.Clamp((int)(d / _len * 3), 0, 2),
                 0, LastLap.GetValueOrDefault(i), Speeds[i], Pit.GetValueOrDefault(i), Race.GetValueOrDefault(i, RaceState.Racing), false, i == PlayerIndex,
-                "", Ams2.Core.Reading.SnapshotMapper.SupplierFromCarName(carName)));
+                Nations?[i] ?? "", Ams2.Core.Reading.SnapshotMapper.SupplierFromCarName(carName)));
         }
         var wheels = Enumerable.Repeat(new WheelSnapshot(0, 0, 0, 0, ""), 4).ToList();
         var player = new PlayerSnapshot(PlayerIndex, new InputsSnapshot(0, 0, 0, 0, 0, 0, 0, 0), 3, 0, 0, Speeds[PlayerIndex], 50, 80, wheels, 0);
