@@ -73,7 +73,7 @@ public class ProfileTests
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
         Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
         Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
-        Assert.Equal(["pos", "name", "class", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);
+        Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);
         Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("relative")!.Columns);
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "table");
         Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Normalized().Columns);

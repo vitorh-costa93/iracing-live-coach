@@ -17,9 +17,12 @@ public sealed class StandingsWidget : IWidget
     WidgetSettings _cfg = new() { Id = "standings" };
     public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
     public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
-        : (_b04 ? Width2004 : Layout().Width, 12 + Rows * Pitch + 2);
-    bool _b04, _b98;
-    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; }
+        : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + 2);
+    bool _b04, _b98, _b10;
+    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2010s; }
+    /// <summary>2010s: cabecalho "RACE" + "LAP n / N" (mockup v5) empurra as linhas para baixo.</summary>
+    float Top => _b10 && !TableMode ? RowTop + HeaderH10 : RowTop;
+    const float HeaderH10 = 36;
     /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
     bool TableMode => _b98 && _cfg.ColumnVisible("table");
     float Pitch => _b04 ? RowPitch2000s : RowPitch;
@@ -66,10 +69,11 @@ public sealed class StandingsWidget : IWidget
 
         if (TableMode) { DrawTable(c, t, rows, m); return; }
         var L = Layout();
+        if (_b10) DrawHeader10(c, t, m, w);
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
-            float y = RowTop + i * Pitch;
+            float y = Top + i * Pitch;
             if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, r, L, y, classes); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
@@ -81,8 +85,35 @@ public sealed class StandingsWidget : IWidget
                 c.Text(RelativeWidget.Code(r.Car.Name), t.Text, L.NameCellX + 8, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
-            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("gap"))
+            {
+                // 1998-2001: o lider mostra "LAP" (rotulo) + numero (fonte de numeros), como na faixa da TV.
+                if (t.Style == ThemeStyle.Broadcast98 && r.Car.Position == 1 && r.Car.CurrentLap > 0)
+                {
+                    string n = r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture);
+                    float nw = c.Measure(n, t.Numbers) + t.Numbers.Tracking * n.Length;
+                    c.Text(n, t.Numbers, L.GapRight - nw, y, nw + 4, BoxH, t.ValueColor, shadow: t.ValueShadow);
+                    c.Text("LAP", t.Label, L.GapRight - nw - 70, y, 66, BoxH, t.ValueColor, HAlign.Right, t.TextShadow);
+                }
+                else c.Text(ListGap(r, t), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            }
         }
+    }
+
+    /// <summary>Gap da lista vertical. 1998-2001 (TV): sem sinal "+" e o lider mostra "LAP n" em amarelo; 2010s: lider "–".</summary>
+    static string ListGap(StandingRow r, Theme.Theme t)
+    {
+        if (t.Style == ThemeStyle.Broadcast98)
+            return r.Car.Position == 1 && r.Car.CurrentLap > 0 ? "LAP " + r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture) : FormatGap(r).TrimStart('+');
+        if (t.Style == ThemeStyle.Modern2010s && r.Car.Position == 1) return "–";
+        return FormatGap(r);
+    }
+
+    void DrawHeader10(ThemeCanvas c, Theme.Theme t, OverlayModel m, float w)
+    {
+        Chrome.Header(c, "RACE", 14, 6, w - 28 - c.Measure("RACE", t.Title) - 16);
+        string lc = LapCounterWidget.Format(m);
+        if (!lc.StartsWith("--")) c.Text("LAP " + lc.Replace("Lap ", "").Replace("/", " / "), t.Label, w - 160 - 14, 6, 160, 30, t.LabelColor, HAlign.Right);
     }
 
     // Tabela inferior 1998–2001 (faixa do GP do Brasil 2003): 2 colunas x N linhas, [caixa amarela][NOME][gap amarelo à direita]; o líder mostra "LAP n".
