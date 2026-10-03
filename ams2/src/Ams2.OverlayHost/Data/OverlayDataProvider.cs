@@ -14,7 +14,8 @@ public sealed record OverlayModel(
     IReadOnlyList<RelativeRow> Relative,
     FuelEstimate? Fuel,
     IReadOnlyList<StandingRow> Standings,
-    IReadOnlyList<InputSample> InputHistory)
+    IReadOnlyList<InputSample> InputHistory,
+    BroadcastState? Broadcast = null)
 {
     public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], []);
 }
@@ -62,6 +63,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly Func<double> _clock;
     readonly GapTracker _gaps = new();
     readonly FuelTracker _fuel = new();
+    readonly BroadcastTracker _broadcast = new();
     readonly int _ahead, _behind;
     volatile OverlayModel _current = OverlayModel.Empty;
     CancellationTokenSource? _cts;
@@ -112,13 +114,14 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); }
             _wasConnected = true;
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
             var fuel = s.InSession ? _fuel.Update(s) : null;
             var standings = s.InSession ? StandingsBuilder.Build(s, _gaps, now) : [];
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s));
+            var bc = s.InSession ? _broadcast.Update(now, s) : BroadcastState.Empty;
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s), bc);
         }
         else
         {
