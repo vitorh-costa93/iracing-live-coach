@@ -147,6 +147,8 @@ internal static class Program
         foreach (var (id, st) in host.RenderStats) Console.WriteLine($"[FPS] render {id,-14} {st.Report(fromT)}");
         Console.WriteLine($"[FPS] provider.tick          {provider.TickStats.Report(fromT)}");
         Console.WriteLine($"[FPS] inputs.amostragem      {provider.InputStats.Report(fromT)}");
+        var cpu = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime.TotalSeconds;
+        Console.WriteLine($"[FPS] cpu do processo        {cpu / Math.Max(0.1, RateStats.Now() - (fromT - 1.0)) * 100:F1}% de 1 nucleo (media; inclui o aquecimento)  monitor={Win32.PrimaryRefreshHz()} Hz");
     }
 
     static int RunOverlay(Options o)
@@ -155,7 +157,8 @@ internal static class Program
         Win32.SetProcessDpiAwarenessContext(-4); // per-monitor v2
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = () => sw.Elapsed.TotalSeconds;
-        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock);
+        // Amostrador de entradas dedicado (fonte propria): grava na taxa do jogo, independente do passo de 60 Hz do provider.
+        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock));
         provider.Start(60);
 
         var store = new ProfileStore(o.ProfilesDir);

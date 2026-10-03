@@ -59,6 +59,37 @@ internal static class Win32
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT { public int Left, Top, Right, Bottom; }
 
+    // Temporização de alta resolução e sincronismo com o vblank do DWM.
+    [DllImport("dwmapi.dll")] public static extern int DwmFlush();
+    [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
+    [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
+    [DllImport("kernel32.dll")] public static extern nint GetCurrentProcess();
+    [StructLayout(LayoutKind.Sequential)] public struct PROCESS_POWER_THROTTLING_STATE { public uint Version, ControlMask, StateMask; }
+    [DllImport("kernel32.dll")] public static extern bool SetProcessInformation(nint process, int infoClass, ref PROCESS_POWER_THROTTLING_STATE info, int size);
+    [DllImport("user32.dll")] public static extern nint GetDC(nint hwnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(nint hwnd, nint dc);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(nint dc, int index);
+
+    /// <summary>Taxa de atualização do monitor principal (Hz); 60 se não der para saber.</summary>
+    public static int PrimaryRefreshHz()
+    {
+        nint dc = GetDC(0);
+        if (dc == 0) return 60;
+        int hz = GetDeviceCaps(dc, 116); // VREFRESH
+        ReleaseDC(0, dc);
+        return hz is >= 24 and <= 1000 ? hz : 60;
+    }
+
+    /// <summary>Timer de 1 ms e sem "power throttling" do processo (no Windows 11 o timer fino é ignorado em processo em segundo plano
+    /// se não houver este opt-out). Chamar uma vez antes do laço de render; desfazer com <see cref="EndHighResTimer"/>.</summary>
+    public static void BeginHighResTimer()
+    {
+        timeBeginPeriod(1);
+        var st = new PROCESS_POWER_THROTTLING_STATE { Version = 1, ControlMask = 1 | 4, StateMask = 0 }; // EXECUTION_SPEED | IGNORE_TIMER_RESOLUTION: desligados
+        SetProcessInformation(GetCurrentProcess(), 4 /* ProcessPowerThrottling */, ref st, System.Runtime.InteropServices.Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
+    }
+    public static void EndHighResTimer() => timeEndPeriod(1);
+
     [DllImport("kernel32.dll")] public static extern nint GetModuleHandleW(string? name);
     [DllImport("user32.dll")] public static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

@@ -14,18 +14,15 @@ public sealed record OverlayModel(
     IReadOnlyList<RelativeRow> Relative,
     FuelEstimate? Fuel,
     IReadOnlyList<StandingRow> Standings,
-    IReadOnlyList<InputSample> InputHistory,
+    InputRing? Inputs,
     BroadcastState? Broadcast = null,
     BoardState? Board = null)
 {
-    public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], []);
+    public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], null);
 }
 
 /// <summary>Linha da classificação: gap para o líder em segundos (null = líder ou sem dado) e voltas de atraso.</summary>
 public sealed record StandingRow(CarSnapshot Car, double? GapToLeader, int LapsBehind, bool IsPlayer);
-
-/// <summary>Amostra dos pedais para o gráfico (T = relógio do provider, em segundos).</summary>
-public readonly record struct InputSample(double T, float Throttle, float Brake, float Steering);
 
 public static class StandingsBuilder
 {
@@ -71,14 +68,18 @@ public sealed class OverlayDataProvider : IDisposable
     CancellationTokenSource? _cts;
     Thread? _thread;
     long _frame;
-    readonly List<InputSample> _inputs = [];
-    InputSample[] _inputsPublished = [];
-    double _lastInputT = double.NegativeInfinity;
-    public const double InputWindowSeconds = 10, InputSampleSeconds = 1.0 / 30;
+    /// <summary>Histórico das entradas (10 s). Gravado pelo <see cref="InputSampler"/> dedicado (taxa do jogo) quando há
+    /// <c>inputSource</c>; sem ele, o <see cref="Tick"/> grava uma amostra por passo (--png com relógio simulado, testes).</summary>
+    public InputRing Inputs { get; }
+    readonly InputSampler? _sampler;
+    public const double InputWindowSeconds = 10;
     bool _wasConnected;
 
-    public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null)
+    public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
+        Func<IRawMemorySource>? inputSource = null)
     {
+        Inputs = new InputRing(clock);
+        if (inputSource is not null) _sampler = new InputSampler(inputSource(), Inputs, clock, InputStats);
         _reader = new SharedMemoryReader(source);
         _board = new BoardTracker(board);
         _clock = clock;
@@ -89,10 +90,12 @@ public sealed class OverlayDataProvider : IDisposable
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
     public RateStats TickStats { get; } = new();
     public RateStats InputStats { get; } = new();
+    public bool HasInputSampler => _sampler is not null;
 
     public void Start(double hz = 60)
     {
         if (_thread != null) return;
+        _sampler?.Start();
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
         _thread = new Thread(() =>
@@ -123,6 +126,7 @@ public sealed class OverlayDataProvider : IDisposable
         {
             if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); }
             _wasConnected = true;
+            if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
             var fuel = s.InSession ? _fuel.Update(s) : null;
@@ -130,37 +134,32 @@ public sealed class OverlayDataProvider : IDisposable
             var bc = s.InSession ? _broadcast.Update(now, s) : BroadcastState.Empty;
             // Board: depois do GapTracker (usa o gap em tempo). Fora de sessão: estado vazio (o tracker se zera sozinho).
             var board = _board.Update(now, s, _gaps);
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s), bc, board);
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board);
         }
         else
         {
             // Torn: leitura rasgada é transitória: mantém o quadro anterior e NÃO conta como desconexão
             // (senão os trackers de gap/combustível seriam zerados a cada leitura rasgada). O resto = desconectado.
             if (r.Status != ReadStatus.Torn) _wasConnected = false;
-            model = r.Status == ReadStatus.Torn ? _current : new OverlayModel(false, r.Status, now, ++_frame, null, [], null, [], []);
+            model = r.Status == ReadStatus.Torn ? _current : new OverlayModel(false, r.Status, now, ++_frame, null, [], null, [], Inputs);
         }
         _current = model;
         return model;
     }
 
-    InputSample[] SampleInputs(double now, SessionSnapshot s)
+    /// <summary>Caminho sem amostrador (relógio simulado): uma amostra por passo do provider.</summary>
+    void SampleFromSnapshot(double now, InputsSnapshot i)
     {
-        if (s.Player is null) return _inputsPublished;
-        if (_inputs.Count > 0 && now < _inputs[^1].T) { _inputs.Clear(); _lastInputT = double.NegativeInfinity; } // relógio voltou
-        if (now - _lastInputT < InputSampleSeconds) return _inputsPublished;
-        _lastInputT = now;
+        if (now < Inputs.LastT) Inputs.Clear();
+        Inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
         InputStats.Mark();
-        var i = s.Player.Inputs;
-        _inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
-        int drop = _inputs.FindIndex(x => x.T >= now - InputWindowSeconds);
-        if (drop > 0) _inputs.RemoveRange(0, drop);
-        return _inputsPublished = _inputs.ToArray();
     }
 
     public void Dispose()
     {
         _cts?.Cancel();
         _thread?.Join(500);
+        _sampler?.Dispose();
         _reader.Dispose();
     }
 }

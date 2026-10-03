@@ -1,4 +1,5 @@
 using System.Globalization;
+using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
@@ -13,6 +14,8 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class InputsWidget : IWidget
 {
     public string Id => "inputs";
+    /// <summary>O gráfico rola por tempo: precisa de um quadro por vblank para o deslocamento ser contínuo.</summary>
+    public bool HighFrequency => true;
     Theme.Theme _theme = Themes.F1_1998;
     bool Analog => _theme.Style == ThemeStyle.Broadcast2000s;
     public void UseTheme(Theme.Theme theme) => _theme = theme;
@@ -65,7 +68,7 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
-        if (graph) DrawTrace(c, t, m.InputHistory, m.Now, lay.GraphX, GY, GW, GH);
+        if (graph) DrawTrace(c, t, m.Inputs, lay.GraphX, GY, GW, GH);
         if (bars)
         {
             DrawBar(c, t, lay.ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
@@ -105,21 +108,38 @@ public sealed class InputsWidget : IWidget
         c.Text("0s", f, GX + GW - 50, GY + GH + 2, 50, 22, t.TitleColor, HAlign.Right, t.TextShadow);
     }
 
-    /// <summary>Uma coluna de pixel por vez: valor interpolado no instante da coluna (10 s = largura do gráfico).</summary>
-    static void DrawTrace(ThemeCanvas c, Theme.Theme t, IReadOnlyList<InputSample> hist, double now, float GX, float GY, float GW, float GH)
+    // Buffers do gráfico: criados uma vez (o widget é desenhado a cada vblank; nada é alocado por quadro).
+    InputSample[]? _snap;
+    float[] _thr = [], _brk = [], _str = [];
+    bool[] _ok = [];
+    /// <summary>Quanto tempo o último valor é mantido (zero-order hold) à direita da última amostra, em s: cobre o atraso até a próxima escrita do jogo.</summary>
+    const double HoldSeconds = 0.05;
+
+    /// <summary>
+    /// Uma coluna de pixel por vez: valor interpolado no instante da coluna (10 s = largura do gráfico). O instante "agora" é o do
+    /// RENDER (relógio do anel), não o do último passo do provider: o gráfico desloca de forma contínua por tempo, não por amostra.
+    /// </summary>
+    void DrawTrace(ThemeCanvas c, Theme.Theme t, InputRing? ring, float GX, float GY, float GW, float GH)
     {
-        if (hist.Count < 2) return;
+        if (ring is null) return;
         const double win = OverlayDataProvider.InputWindowSeconds;
         int cols = (int)GW;
-        float[] thr = new float[cols], brk = new float[cols], str = new float[cols];
-        bool[] ok = new bool[cols];
+        if (_thr.Length < cols) { _thr = new float[cols]; _brk = new float[cols]; _str = new float[cols]; _ok = new bool[cols]; }
+        var snap = _snap ??= new InputSample[ring.Usable];
+        double now = ring.Now;
+        int n = ring.CopyFrom(now - win - 0.25, snap); // um pouco antes da borda esquerda, para interpolar a primeira coluna
+        if (n < 2) return;
+        var thr = _thr; var brk = _brk; var str = _str; var ok = _ok;
+        double firstT = snap[0].T, lastT = snap[n - 1].T;
         int k = 0;
         for (int x = 0; x < cols; x++)
         {
             double tt = now - win + (x + 0.5) / cols * win;
-            if (tt < hist[0].T || tt > hist[^1].T) continue;
-            while (k < hist.Count - 2 && hist[k + 1].T < tt) k++;
-            var a = hist[k]; var b = hist[k + 1];
+            ok[x] = false;
+            if (tt < firstT || tt > lastT + HoldSeconds) continue;
+            if (tt >= lastT) { thr[x] = snap[n - 1].Throttle; brk[x] = snap[n - 1].Brake; str[x] = snap[n - 1].Steering; ok[x] = true; continue; }
+            while (k < n - 2 && snap[k + 1].T < tt) k++;
+            var a = snap[k]; var b = snap[k + 1];
             float f = b.T > a.T ? (float)Math.Clamp((tt - a.T) / (b.T - a.T), 0, 1) : 0;
             thr[x] = a.Throttle + (b.Throttle - a.Throttle) * f;
             brk[x] = a.Brake + (b.Brake - a.Brake) * f;
@@ -129,12 +149,13 @@ public sealed class InputsWidget : IWidget
 
         float bottom = GY + GH - 1, span = GH - 4;
         Color4 Fill(Color4 col) => new(col.R, col.G, col.B, 0.5f);
+        var thrFill = Fill(t.ThrottleColor); var brkFill = Fill(t.BrakeColor);
         for (int x = 0; x < cols; x++)
         {
             if (!ok[x]) continue;
             float fx = GX + x;
-            c.FillRect(fx, bottom - thr[x] * span, 1, thr[x] * span, Fill(t.ThrottleColor));
-            c.FillRect(fx, bottom - brk[x] * span, 1, brk[x] * span, Fill(t.BrakeColor));
+            c.FillRect(fx, bottom - thr[x] * span, 1, thr[x] * span, thrFill);
+            c.FillRect(fx, bottom - brk[x] * span, 1, brk[x] * span, brkFill);
         }
         for (int x = 1; x < cols; x++)
         {
@@ -295,7 +316,7 @@ public sealed class InputsWidget : IWidget
             // Gráfico opcional dos últimos 10 s (mesmos dados do estilo padrão).
             float gy = ClusterH + 8;
             DrawGraphFrame(c, t, 0, gy, GraphW, GraphH);
-            if (live) DrawTrace(c, t, m.InputHistory, m.Now, 0, gy, GraphW, GraphH);
+            if (live) DrawTrace(c, t, m.Inputs, 0, gy, GraphW, GraphH);
             else Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", 10, gy + 24, 280);
         }
     }

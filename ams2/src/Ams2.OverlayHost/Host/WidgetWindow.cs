@@ -40,6 +40,8 @@ internal sealed class WidgetWindow : IDisposable
     public WidgetSettings Settings { get; private set; }
     public bool Visible => Settings.Visible;
     public bool Editing => _win.EditMode;
+    /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>
+    public bool HighFrequency => Settings.Visible && _widget.HighFrequency;
 
     /// <summary>Disparado quando o usuário termina de arrastar ou muda a escala no modo de edição (já com as novas Settings).</summary>
     public event Action<WidgetWindow>? UserChanged;

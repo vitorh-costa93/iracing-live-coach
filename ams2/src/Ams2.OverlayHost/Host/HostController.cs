@@ -235,27 +235,67 @@ internal sealed class HostController : IDisposable
 
     // ---- Laço principal ----
 
-    /// <summary>Roda até Ctrl+Alt+Q, fechamento ou <paramref name="seconds"/> (0 = sem limite). Thread principal.</summary>
+    /// <summary>Taxa dos widgets de baixo custo (todos menos os marcados <see cref="IWidget.HighFrequency"/>).</summary>
+    const double LowPeriod = 1.0 / 60, LowSlack = 0.002;
+
+    /// <summary>
+    /// Roda até Ctrl+Alt+Q, fechamento ou <paramref name="seconds"/> (0 = sem limite). Thread principal.
+    /// Dois ritmos num só laço (mesma thread: nenhuma janela é tocada fora da sua thread):
+    ///  - widgets de alta frequência (Inputs) são desenhados a cada vblank; o laço dorme em DwmFlush (bloqueia até a próxima
+    ///    composição do DWM, sem gastar CPU) e o Present usa intervalo 0, então 1 quadro por atualização do monitor;
+    ///  - os demais seguem a 60 Hz por relógio (acumulador, sem deriva), como antes;
+    ///  - sem nenhum widget de alta frequência visível o laço volta a dormir só até o próximo passo de 60 Hz.
+    /// </summary>
     public void Run(double seconds)
     {
+        Win32.BeginHighResTimer();
+        var prio = Thread.CurrentThread.Priority;
+        Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
+        try { RunLoop(seconds); }
+        finally { Thread.CurrentThread.Priority = prio; Win32.EndHighResTimer(); }
+        SaveNow();
+    }
+
+    void RunLoop(double seconds)
+    {
         var run = System.Diagnostics.Stopwatch.StartNew();
-        double next = 0;
-        const double period = 1.0 / 60;
+        double nextLow = 0;
+        double refreshPeriod = 1.0 / Win32.PrimaryRefreshHz();
+        int dwmFast = 0; // DwmFlush que voltou sem bloquear (composição desligada / sem vblank): cai para relógio
         while (OverlayWindow.Pump(() => ToggleEditFromHotkey()))
         {
-            if (seconds > 0 && run.Elapsed.TotalSeconds >= seconds) break;
+            double now = run.Elapsed.TotalSeconds;
+            if (seconds > 0 && now >= seconds) break;
             while (_queue.TryDequeue(out var a)) a();
             if (_saveAt is { } at && DateTime.UtcNow >= at) SaveNow();
 
             var model = _provider.Current;
-            foreach (var w in _windows.Values) w.Render(model);
+            bool lowDue = now + LowSlack >= nextLow;
+            if (lowDue) { nextLow += LowPeriod; if (nextLow < now - LowPeriod) nextLow = now + LowPeriod; }
+            bool high = false;
+            foreach (var w in _windows.Values)
+            {
+                if (w.HighFrequency) { w.Render(model); high = true; }
+                else if (lowDue) w.Render(model);
+            }
 
-            next += period;
-            double wait = next - run.Elapsed.TotalSeconds;
-            if (wait > 0) Thread.Sleep((int)(wait * 1000));
-            else if (wait < -0.25) next = run.Elapsed.TotalSeconds;
+            if (high)
+            {
+                double t0 = run.Elapsed.TotalSeconds;
+                int hr = Win32.DwmFlush();
+                double waited = run.Elapsed.TotalSeconds - t0;
+                if (hr != 0 || waited < 0.0005) dwmFast++; else dwmFast = 0;
+                if (dwmFast >= 3) SleepUntil(run, t0 + refreshPeriod); // DwmFlush nao esta sincronizando: ritmo por relogio
+            }
+            else SleepUntil(run, nextLow);
         }
-        SaveNow();
+    }
+
+    static void SleepUntil(System.Diagnostics.Stopwatch run, double target)
+    {
+        double wait = target - run.Elapsed.TotalSeconds;
+        if (wait > 0.0015) Thread.Sleep(Math.Max(1, (int)(wait * 1000) - 1)); // timer de 1 ms: acorda ate ~1 ms antes
+        else Thread.Sleep(1);
     }
 
     void ToggleEditFromHotkey()

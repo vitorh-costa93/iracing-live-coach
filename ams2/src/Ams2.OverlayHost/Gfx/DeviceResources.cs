@@ -127,7 +127,8 @@ public sealed unsafe class DeviceResources : IDisposable
             Format = DxgiFormat.B8G8R8A8Unorm,
             SampleDesc = new SampleDescription(1, 0),
             BufferUsage = DxgiUsage.RenderTargetOutput,
-            BufferCount = 2,
+            // 3 buffers: com 2 e Present(0) o Present bloqueava ~9 ms esperando o DWM liberar o buffer (limitava o render a ~70 fps a 165 Hz).
+            BufferCount = 3,
             Scaling = Scaling.Stretch,
             SwapEffect = SwapEffect.FlipSequential,
             AlphaMode = DxgiAlphaMode.Premultiplied,
