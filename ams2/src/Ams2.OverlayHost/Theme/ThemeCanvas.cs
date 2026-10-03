@@ -87,7 +87,9 @@ public sealed unsafe class ThemeCanvas : IDisposable
     {
         if (_formats.TryGetValue((font, align), out var cached)) return cached.Get();
         var requested = font;
-        if (_fontOverride is not null && font.Family != Theme.Numbers.Family) font = font with { Family = _fontOverride };
+        // So a familia de numeros "especial" (1998: F1 Broadcast, sem letras) e preservada; quando numeros e texto usam a mesma familia (2004, 2010s) a troca vale para tudo.
+        bool specialNumbers = Theme.Numbers.Family != Theme.Text.Family;
+        if (_fontOverride is not null && !(specialNumbers && font.Family == Theme.Numbers.Family)) font = font with { Family = _fontOverride };
         bool has = _gfx.Fonts.Has(font.Family);
         string family = has ? font.Family : "Segoe UI";
         var collection = has ? (IDWriteFontCollection*)_gfx.Fonts.Collection : null;

@@ -90,6 +90,41 @@ public sealed class CustomizationPngTests
         Assert.Equal(a.H, b.H);
     }
 
+    /// <summary>Renderiza e devolve os bytes do PNG (para comparar pixels).</summary>
+    static byte[] Pixels(string args, WidgetSettings settings)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-cust-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(settings, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim 20 {args} --settings \"{json}\"") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_BOARD"] = "1";
+        using var p = Process.Start(psi)!;
+        p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try { Assert.Equal(0, p.ExitCode); return File.ReadAllBytes(png); }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    // 2004 e 2010s usam a mesma familia para texto e numeros: a troca de fonte tem que valer mesmo assim.
+    [Theory]
+    [InlineData("standings", "f1-2004")]
+    [InlineData("relative", "f1-2010s")]
+    public void Font_override_changes_the_drawing_when_text_and_numbers_share_a_family(string widget, string theme)
+    {
+        var a = Pixels($"--widget {widget} --theme {theme}", new WidgetSettings { Id = widget });
+        var b = Pixels($"--widget {widget} --theme {theme}", new WidgetSettings { Id = widget, Font = "Reddit Sans" });
+        Assert.NotEqual(a, b);
+    }
+
+    // No 2004 os nomes ficam em celulas brancas (tinta propria): a cor de "Textos" tem que chegar nelas.
+    [Fact]
+    public void Text_color_reaches_names_on_the_white_cells_of_2004()
+    {
+        var a = Pixels("--widget standings --theme f1-2004", new WidgetSettings { Id = "standings" });
+        var b = Pixels("--widget standings --theme f1-2004", new WidgetSettings { Id = "standings", TextColor = "#00AA00" });
+        Assert.NotEqual(a, b);
+    }
+
     [Fact]
     public void Relative_gap_format_reaches_the_drawn_rows()
     {

@@ -385,7 +385,7 @@ public partial class MainWindow : Window
         if (Detail.DataContext is not WidgetVm vm) return;
         var (sw, sh) = ScreenPixels();
         var d = ProfileFactory.CreateDefault("", _themeId, sw, sh).Get(vm.Id)!;
-        vm.Visible = d.Visible; vm.Scale = 1; vm.OpacityPct = 100; vm.FontChoice = WidgetVm.FontDefault;
+        vm.Visible = d.Visible; vm.Scale = d.Scale; vm.OpacityPct = 100; vm.FontChoice = WidgetVm.FontDefault;
         if (vm.SupportsRows) vm.Rows = vm.Def.DefaultRows ?? vm.Rows;
         if (vm.HasSelection) { vm.TopCount = WidgetCatalog.DefaultTopCount; vm.NearCount = WidgetCatalog.DefaultNearCount; }
         if (vm.HasRadarOptions) { vm.RadarRange = WidgetCatalog.DefaultRadarRange; vm.RadarSensitivity = WidgetCatalog.DefaultRadarSensitivity; }

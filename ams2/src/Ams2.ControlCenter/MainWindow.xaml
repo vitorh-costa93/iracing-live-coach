@@ -248,7 +248,7 @@
                                 <TextBlock Grid.Row="0" Text="Textos" VerticalAlignment="Center" ToolTip="Nomes e títulos"/>
                                 <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TextColor, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Margin="0,2,6,2"/>
                                 <Border Grid.Row="0" Grid.Column="2" Width="22" Height="22" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="{Binding TextColor, FallbackValue=Transparent, TargetNullValue=Transparent}"/>
-                                <TextBlock Grid.Row="1" Text="Rótulos" VerticalAlignment="Center" ToolTip="AHEAD/BEHIND, LAPS, AIR..."/>
+                                <TextBlock Grid.Row="1" Text="Rótulos" VerticalAlignment="Center" ToolTip="AHEAD/BEHIND, LAPS, AIR... (no 2004 os rótulos ficam em células brancas e seguem a cor de Textos)"/>
                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LabelColor, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Margin="0,2,6,2"/>
                                 <Border Grid.Row="1" Grid.Column="2" Width="22" Height="22" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="{Binding LabelColor, FallbackValue=Transparent, TargetNullValue=Transparent}"/>
                                 <TextBlock Grid.Row="2" Text="Valores" VerticalAlignment="Center" ToolTip="Gaps, tempos, números"/>

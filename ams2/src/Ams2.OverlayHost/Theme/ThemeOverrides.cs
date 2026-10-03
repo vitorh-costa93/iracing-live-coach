@@ -23,7 +23,7 @@ public static class ThemeOverrides
                 Numbers = numbersToo ? t.Numbers with { Weight = fw } : t.Numbers,
             };
         }
-        if (Color(s.TextColor) is { } tc) r = r with { TextColor = tc, TitleColor = tc };
+        if (Color(s.TextColor) is { } tc) r = r with { TextColor = tc, TitleColor = tc, NameCellInk = tc };   // NameCellInk: nomes sobre as celulas claras do 2004
         if (Color(s.LabelColor) is { } lc) r = r with { LabelColor = lc };
         if (Color(s.ValueColor) is { } vc) r = r with { ValueColor = vc, NumberColor = vc, ReadoutColor = vc };
         return r;
