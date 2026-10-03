@@ -27,6 +27,7 @@ public static class WidgetCatalog
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
         new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),
         new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
+        new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f),
     ];
 
     public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));

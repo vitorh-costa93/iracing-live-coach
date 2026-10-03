@@ -13,7 +13,7 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
