@@ -70,7 +70,8 @@ public sealed record SessionSnapshot(
     uint FlagColour,
     WeatherSnapshot Weather,
     IReadOnlyList<CarSnapshot> Cars,
-    PlayerSnapshot? Player)
+    PlayerSnapshot? Player,
+    uint GameState = 2)   // $pcars2$ GameState cru: 1 menu, 2 jogando, 3 carregando, 4 pausa/classificacao dentro da sessao, 5/6 replay/outros
 {
     public CarSnapshot? PlayerCar => Player is null ? null : Cars.FirstOrDefault(c => c.Index == Player.Index);
 }

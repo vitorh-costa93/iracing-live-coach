@@ -38,10 +38,11 @@ internal sealed class WidgetWindow : IDisposable
     /// <summary>Medição de fps de render (marca a cada quadro desenhado).</summary>
     public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
     public WidgetSettings Settings { get; private set; }
-    public bool Visible => Settings.Visible;
+    public bool Visible => Settings.Visible && _gateOpen;
+    bool _gateOpen = true;
     public bool Editing => _win.EditMode;
     /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>
-    public bool HighFrequency => Settings.Visible && _widget.HighFrequency;
+    public bool HighFrequency => Visible && _widget.HighFrequency;
     /// <summary>Widget de alta frequencia sem nada para desenhar neste quadro (volta ao ritmo de 60 Hz).</summary>
     public bool IsIdle(OverlayModel model) => _widget.IsIdle(model);
 
@@ -67,7 +68,7 @@ internal sealed class WidgetWindow : IDisposable
         _gfx.PresentInterval = 0;
         _canvas = new ThemeCanvas(_gfx, theme, settings.Scale);
         ApplyCanvas();
-        _win.SetVisible(settings.Visible);
+        _win.SetVisible(Visible);
     }
 
     (int W, int H) PixelSize(float scale)
@@ -103,7 +104,7 @@ internal sealed class WidgetWindow : IDisposable
         }
         else if (_drag == Drag.None) _win.Move(x, y);
         ApplyCanvas();
-        _win.SetVisible(s.Visible);
+        _win.SetVisible(Visible);
     }
 
     void Rebuild()
@@ -116,6 +117,14 @@ internal sealed class WidgetWindow : IDisposable
         ApplyCanvas();
     }
 
+    /// <summary>Regra central de visibilidade (PlayerDriving ou modo de edicao): fecha/abre a janela sem mexer nas Settings do perfil.</summary>
+    public void SetGate(bool open)
+    {
+        if (_gateOpen == open) return;
+        _gateOpen = open;
+        _win.SetVisible(Visible);
+    }
+
     public void SetEditMode(bool edit)
     {
         _win.SetEditMode(edit);
@@ -126,7 +135,7 @@ internal sealed class WidgetWindow : IDisposable
 
     public void Render(OverlayModel model)
     {
-        if (!Settings.Visible) return;
+        if (!Visible) return;
         RenderStats.Mark();
         _gfx.BeginFrame();
         _canvas.Begin();

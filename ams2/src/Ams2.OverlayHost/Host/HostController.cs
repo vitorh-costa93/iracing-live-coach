@@ -30,6 +30,7 @@ internal sealed class HostController : IDisposable
     Profile _profile;
     HostTheme _theme;
     bool _edit;
+    bool _gate = true; // espelha o estado das janelas (WidgetWindow nasce aberta)
     DateTime? _saveAt;
 
     public HostController(OverlayDataProvider provider, ProfileStore store, bool fake, string? themeId, string? profileName, string[]? onlyWidgets, bool persist)
@@ -304,6 +305,9 @@ internal sealed class HostController : IDisposable
             if (_saveAt is { } at && DateTime.UtcNow >= at) SaveNow();
 
             var model = _provider.Current;
+            // Regra unica: widgets so aparecem com o jogador no carro (ou editando o layout). Oculto = janelas escondidas, sem Render e sem vblank.
+            bool gate = _edit || model.PlayerDriving;
+            if (gate != _gate) { _gate = gate; foreach (var w in _windows.Values) w.SetGate(gate); }
             bool lowDue = now + LowSlack >= nextLow;
             if (lowDue) { nextLow += LowPeriod; if (nextLow < now - LowPeriod) nextLow = now + LowPeriod; }
             bool high = false;

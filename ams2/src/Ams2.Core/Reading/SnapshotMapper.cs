@@ -70,7 +70,7 @@ public static class SnapshotMapper
             trackLength, (int)raw.LapsInEvent, remaining, raw.HighestFlagColour,
             new WeatherSnapshot(raw.AmbientTemperature, raw.TrackTemperature, raw.RainDensity, raw.WindSpeed,
                 raw.WindDirectionX, raw.WindDirectionY, raw.CloudBrightness, raw.SnowDensity),
-            cars, player);
+            cars, player, raw.GameState);
     }
 
     /// <summary>Não há ID de classe: a posição na classe vem da ordem de posição geral dentro do mesmo nome de classe.</summary>
