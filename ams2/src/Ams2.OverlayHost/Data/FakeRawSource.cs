@@ -9,7 +9,7 @@ namespace Ams2.OverlayHost.Data;
 /// Escritor falso em processo (modo --fake): simula uma corrida de 8 carros numa pista de 7004 m, sem o jogo
 /// e sem tocar no mapa real $pcars2$. O estado é função do relógio, então é determinístico para o --png.
 /// </summary>
-public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
+public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRawMemorySource
 {
     public const double TrackLength = 7004;
     const double Speed = 60; // m/s
@@ -23,7 +23,11 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
     public const int PlayerIndex = 3;
     // IDs ficticios (o AMS2 real manda 0): registrados so para o modo --fake mostrar bandeiras.
     static readonly string[] FakeIso = ["de", "gb", "fi", "br", "br", "es", "it", "de"];
-    static FakeRawSource() { for (int i = 0; i < FakeIso.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(900 + i), FakeIso[i]); }
+    static FakeRawSource()
+    {
+        for (int i = 0; i < FakeIso.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(900 + i), FakeIso[i]);
+        for (int i = 0; i < BoardField.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(920 + i), BoardField[i].Iso);
+    }
 
     // Auxilios de teste visual (so --fake): AMS2_FAKE_PITS=1 faz alguns carros pararem nos boxes (jogador entra em t=16 s, parado ~3,4 s);
     // AMS2_FAKE_FINISH=1 encerra a corrida de 1 volta do lider em t=31 s.
@@ -39,6 +43,30 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         return s < 5.4 ? 3u : 0u;  // DrivingOutOfPits
     }
 
+    // AMS2_FAKE_BOARD=1 (so --fake): corrida rapida de 20 carros para o widget rotativo inferior (board): pista de 1400 m,
+    // volta de ~20 s, lider cruza a linha em t~1,5 s e depois a cada ~20 s; P20 uma volta atras ("+1L"); o carro 12 para
+    // no box de t=62 a 65 s (InPit, nao conta para a torre nem como vizinho); jogador = indice 5. Setores em tercos da volta.
+    public const double BoardTrackLength = 1400;
+    const double BoardSpeed = 70;
+    public const int BoardPlayerIndex = 5;
+    static readonly (string Name, string Iso, string Car)[] BoardField =
+    [
+        ("Michael Schumacher", "de", "Formula Classic Gen2 (B)"), ("Fernando Alonso", "es", "Formula Classic Gen2 (M)"),
+        ("Kimi Raikkonen", "fi", "Formula Classic Gen2 (M)"), ("Giancarlo Fisichella", "it", "Formula Classic Gen2 (M)"),
+        ("Jenson Button", "gb", "Formula Classic Gen2 (M)"), ("Player", "br", "Formula Classic Gen2"),
+        ("Rubens Barrichello", "br", "Formula Classic Gen2 (M)"), ("Felipe Massa", "br", "Formula Classic Gen2 (B)"),
+        ("Juan Pablo Montoya", "co", "Formula Classic Gen2 (M)"), ("Jarno Trulli", "it", "Formula Classic Gen2 (M)"),
+        ("Ralf Schumacher", "de", "Formula Classic Gen2 (M)"), ("Mark Webber", "au", "Formula Classic Gen2 (M)"),
+        ("Nick Heidfeld", "de", "Formula Classic Gen2 (M)"), ("Jacques Villeneuve", "ca", "Formula Classic Gen2 (M)"),
+        ("David Coulthard", "gb", "Formula Classic Gen2 (M)"), ("Christian Klien", "at", "Formula Classic Gen2 (M)"),
+        ("Takuma Sato", "jp", "Formula Classic Gen2 (B)"), ("Vitantonio Liuzzi", "it", "Formula Classic Gen2 (M)"),
+        ("Tiago Monteiro", "pt", "Formula Classic Gen2 (B)"), ("Christijan Albers", "nl", "Formula Classic Gen2 (B)"),
+    ];
+    // Atraso de cada carro para o lider (s) no inicio (pelotao de 2 s para sobrar intervalo livre na volta de 20 s); o ultimo leva +1 volta.
+    static readonly double[] BoardGaps = [0, 0.239, 0.33, 0.45, 0.58, 0.66, 0.79, 0.88, 0.97, 1.08, 1.17, 1.29, 1.38, 1.47, 1.55, 1.63, 1.74, 1.83, 1.92, 2.0];
+    static readonly bool BoardEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_BOARD") == "1";
+    readonly bool _board = board ?? BoardEnv;
+
     uint _seq;
 
     public bool TryRead(out RawSharedMemory raw)
@@ -47,17 +75,18 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         raw = default;
         raw.Version = Const.ExpectedVersion;
         raw.GameState = 2; raw.SessionState = 5; raw.RaceState = 2;
-        raw.ViewedParticipantIndex = PlayerIndex;
-        raw.NumParticipants = Field.Length;
-        raw.TrackLength = (float)TrackLength;
-        raw.LapsInEvent = Finish ? 1u : 44u;
+        raw.ViewedParticipantIndex = _board ? BoardPlayerIndex : PlayerIndex;
+        raw.NumParticipants = _board ? BoardField.Length : Field.Length;
+        raw.TrackLength = (float)(_board ? BoardTrackLength : TrackLength);
+        raw.LapsInEvent = Finish ? 1u : _board ? 20u : 44u;
         raw.NumSectors = 3;
         raw.EventTimeRemaining = -1;
         Put(raw.TrackLocation, "Spa-Francorchamps");
         Put(raw.CarName, "Formula Classic Gen2");
         Put(raw.CarClassName, "F1");
 
-        for (int i = 0; i < Field.Length; i++)
+        if (_board) FillBoardField(ref raw, t);
+        else for (int i = 0; i < Field.Length; i++)
         {
             double wobble = 0.4 / 0.3;
             double total = 5000 + Field[i].Gap * Speed + Speed * t + wobble * (Math.Cos(i) - Math.Cos(0.3 * t + i));
@@ -100,6 +129,46 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         _seq += 2; // par = memória estável
         raw.SequenceNumber = _seq;
         return true;
+    }
+
+    /// <summary>Campo do modo board: velocidade constante por carro (cada carro perde ~0,004 s por volta para o da frente),
+    /// posicoes pela distancia total, setores em tercos, LastLapTime = tempo exato da volta + variacao deterministica.</summary>
+    static void FillBoardField(ref RawSharedMemory raw, double t)
+    {
+        int n = BoardField.Length;
+        Span<double> total = stackalloc double[n];
+        for (int i = 0; i < n; i++)
+        {
+            double v = BoardSpeed * (1 - 0.0002 * i);
+            double te = i == 12 ? t - Math.Clamp(t - 62, 0, 3) : t;   // carro 12 parado 3 s no box
+            total[i] = 2 * BoardTrackLength - 1.5 * BoardSpeed - BoardGaps[i] * BoardSpeed + v * te - (i == n - 1 ? BoardTrackLength : 0);
+        }
+        for (int i = 0; i < n; i++)
+        {
+            int pos = 1;
+            for (int j = 0; j < n; j++) if (total[j] > total[i] || total[j] == total[i] && j < i) pos++;
+            double v = BoardSpeed * (1 - 0.0002 * i);
+            int laps = (int)Math.Floor(total[i] / BoardTrackLength);
+            double d = total[i] - laps * BoardTrackLength;
+            uint pit = i != 12 ? 0u : t is >= 61 and < 62 ? 1u : t is >= 62 and < 65 ? 2u : t is >= 65 and < 66 ? 3u : 0u;
+            ref var p = ref raw.Participants[i];
+            p.IsActive = 1;
+            p.RacePosition = (uint)pos;
+            p.LapsCompleted = (uint)laps;
+            p.CurrentLap = (uint)laps + 1;
+            p.CurrentLapDistance = (float)d;
+            p.CurrentSector = Math.Min(2, (int)(d / BoardTrackLength * 3));
+            Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), BoardField[i].Name);
+            Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), BoardField[i].Car);
+            Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
+            raw.Nationalities[i] = (uint)(920 + i);
+            raw.Speeds[i] = pit == 2 ? 0f : (float)v;
+            raw.RaceStates[i] = 2;
+            raw.PitModes[i] = pit;
+            double lapTime = BoardTrackLength / v + 0.12 * Math.Sin(laps * 1.7 + i);
+            raw.LastLapTimes[i] = laps >= 1 ? (float)lapTime : -1f;
+            raw.FastestLapTimes[i] = (float)(BoardTrackLength / v - 0.12);
+        }
     }
 
     static void Put<T>(in T buf, string s) where T : struct => Put(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref System.Runtime.CompilerServices.Unsafe.AsRef(in buf), 1)), s);

@@ -21,6 +21,8 @@ namespace Ams2.OverlayHost;
 ///   --edit   inicia no modo de edicao do layout (Ctrl+Alt+E alterna; arraste, roda ou canto para escalar).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
+///   Variaveis do --fake: AMS2_FAKE_PITS=1, AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_BOARD=1 (corrida de
+///   20 carros com volta de ~20 s para o widget rotativo inferior; linha do tempo em ams2/reference/board-spec.md).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
