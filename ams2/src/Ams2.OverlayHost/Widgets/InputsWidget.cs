@@ -53,7 +53,7 @@ public sealed class InputsWidget : IWidget
         if (Analog) { DrawAnalog(c, t, m); return; }
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
-        Chrome.Header(c, "INPUTS", 19, 11, 150, maxRight: !_cfg.ColumnVisible("graph") && _cfg.ColumnVisible("gear") ? L.GearCx - 35 : w - 14);
+        Chrome.Header(c, "INPUTS", 19, 11, 150, maxRight: !_cfg.ColumnVisible("graph") && _cfg.ColumnVisible("gear") ? L.GearCx - 45 : w - 14);
         bool graph = _cfg.ColumnVisible("graph"), bars = _cfg.ColumnVisible("bars"), gear = _cfg.ColumnVisible("gear");
         var lay = L;
         if (graph) { DrawLegend(c, t, lay.GraphX); DrawGraphFrame(c, t, lay.GraphX, GY, GW, GH); }
@@ -161,7 +161,10 @@ public sealed class InputsWidget : IWidget
         c.Text("GEAR", t.Label with { Size = 21 }, GearCx - 50, 11, 100, 30, t.TitleColor, HAlign.Center, t.TextShadow);
         string g = gear switch { < 0 => "R", 0 => "N", _ => gear.ToString(CultureInfo.InvariantCulture) };
         c.FillRoundRect(GearCx - 30, 45, 60, 57, t.BoxRadius, t.AccentFill);
-        c.Text(g, t.Numbers, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
+        // A fonte de numeros do f1-1998 (F1 Broadcast 98 Values) so tem digitos: "N" e "R" caiam numa fonte do sistema fina e
+        // destoante. Letras usam a fonte do titulo (mesma familia/peso do "GEAR" e do "KPH").
+        var gf = g.Length == 1 && !char.IsDigit(g[0]) && t.Numbers.Family.StartsWith("F1 Broadcast", StringComparison.Ordinal) ? t.Title with { Size = 36 } : t.Numbers;
+        c.Text(g, gf, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
         c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
         c.Text("KPH", t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);
     }

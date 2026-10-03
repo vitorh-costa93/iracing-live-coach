@@ -65,6 +65,9 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         raw.FuelCapacity = 95;
         raw.FuelLevel = (float)Math.Max(0.05, 0.34 - t * 0.0004);
         raw.Speed = (float)Speed; raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
+        // Auxilio de teste visual: AMS2_FAKE_GEAR (-1 = R, 0 = N) e AMS2_FAKE_KPH sobrescrevem marcha/velocidade do jogador.
+        if (int.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_GEAR"), out int fg)) raw.Gear = fg;
+        if (double.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_KPH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double fk)) raw.Speed = (float)(fk / 3.6);
         double cyc = (t % 10) / 10 * Math.PI * 2;
         raw.Throttle = (float)Math.Clamp(0.5 + 0.9 * Math.Sin(cyc * 2), 0, 1);
         raw.Brake = (float)Math.Clamp(-0.2 - 1.2 * Math.Sin(cyc * 2 + 0.6), 0, 1);
