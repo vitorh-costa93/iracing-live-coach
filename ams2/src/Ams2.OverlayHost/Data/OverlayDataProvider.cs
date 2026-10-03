@@ -15,7 +15,8 @@ public sealed record OverlayModel(
     FuelEstimate? Fuel,
     IReadOnlyList<StandingRow> Standings,
     IReadOnlyList<InputSample> InputHistory,
-    BroadcastState? Broadcast = null)
+    BroadcastState? Broadcast = null,
+    BoardState? Board = null)
 {
     public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], []);
 }
@@ -64,6 +65,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly GapTracker _gaps = new();
     readonly FuelTracker _fuel = new();
     readonly BroadcastTracker _broadcast = new();
+    readonly BoardTracker _board;
     readonly int _ahead, _behind;
     volatile OverlayModel _current = OverlayModel.Empty;
     CancellationTokenSource? _cts;
@@ -75,9 +77,10 @@ public sealed class OverlayDataProvider : IDisposable
     public const double InputWindowSeconds = 10, InputSampleSeconds = 1.0 / 30;
     bool _wasConnected;
 
-    public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4)
+    public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null)
     {
         _reader = new SharedMemoryReader(source);
+        _board = new BoardTracker(board);
         _clock = clock;
         _ahead = ahead; _behind = behind;
     }
@@ -114,14 +117,16 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); }
             _wasConnected = true;
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
             var fuel = s.InSession ? _fuel.Update(s) : null;
             var standings = s.InSession ? StandingsBuilder.Build(s, _gaps, now) : [];
             var bc = s.InSession ? _broadcast.Update(now, s) : BroadcastState.Empty;
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s), bc);
+            // Board: depois do GapTracker (usa o gap em tempo). Fora de sessão: estado vazio (o tracker se zera sozinho).
+            var board = _board.Update(now, s, _gaps);
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, SampleInputs(now, s), bc, board);
         }
         else
         {
