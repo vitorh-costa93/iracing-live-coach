@@ -117,18 +117,18 @@ public static class ProfileFactory
     public static Profile CreateDefault(string name, string themeId, int screenWidth = 1920, int screenHeight = 1080)
     {
         double fx = screenWidth / 1920.0, fy = screenHeight / 1080.0;
-        var list = WidgetCatalog.All.Select((d, i) => new WidgetSettings
+        var list = WidgetCatalog.All.Select((d, i) => new { d, i, slot = WidgetLayout.Get(themeId, d.Id) }).Select(e => new WidgetSettings
         {
-            Id = d.Id, Visible = d.DefaultVisible, Order = i,
-            X = (int)Math.Round(d.DefaultX * fx), Y = (int)Math.Round(d.DefaultY * fy),
-            Rows = d.DefaultRows, Scale = d.DefaultScale,
+            Id = e.d.Id, Visible = e.d.DefaultVisible, Order = e.i,
+            X = (int)Math.Round(e.slot.X * fx), Y = (int)Math.Round(e.slot.Y * fy),
+            Rows = e.d.DefaultRows, Scale = (float)Math.Round(e.slot.Scale * fy, 3),
             // f1-2004: mini-torre da transmissao (posicao, sigla, bandeira); gap/classe/pneu ficam opcionais.
-            Columns = d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"]
+            Columns = e.d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
-                : d.Id == "standings" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "class", "gap"]
-                : d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
+                : e.d.Id == "standings" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "class", "gap"]
+                : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
                 // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos.
-                : d.Columns.Any(col => col.Id == "always") ? [] : null,
+                : e.d.Columns.Any(col => col.Id == "always") ? [] : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }
