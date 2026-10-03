@@ -1,4 +1,5 @@
 using System.Globalization;
+using Ams2.Core;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
@@ -101,7 +102,13 @@ public sealed class StandingsWidget : IWidget
     void DrawRow2000s(ThemeCanvas c, Theme.Theme t, StandingRow r, Cols L, float y, List<string> classes)
     {
         float h = BoxH, x = X04;
-        if (_cfg.ColumnVisible("pos")) { Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers); x += Pos04; }
+        if (_cfg.ColumnVisible("pos"))
+        {
+            // Bandeirada: o lider mostra a bandeira quadriculada no lugar do numero.
+            if (r.Car.Position == 1 && r.Car.RaceState == RaceState.Finished) Chrome.Checkered(c, x, y, Pos04, h);
+            else Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers);
+            x += Pos04;
+        }
         if (_cfg.ColumnVisible("name")) { Chrome.WhiteCell(c, x, y, Name04, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? Chrome.PlayerInk : null); x += Name04; }
         if (_cfg.ColumnVisible("flag"))
         {

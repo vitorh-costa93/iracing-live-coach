@@ -28,6 +28,10 @@ public static class WidgetCatalog
         new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),
         new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
         new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f),
+        new("drivercaption", "Driver Caption", null, null, null, "", [new("always", "Sempre visível (senão só em eventos)")], 60, 930, DefaultScale: 0.75f),
+        new("pitstops", "Pit Stops", 1, 4, 4, "Linhas por coluna", [new("always", "Sempre visível (senão ao entrar nos boxes)")], 20, 480, DefaultScale: 0.6f),
+        new("pittimer", "Pit Timer", null, null, null, "", [new("always", "Sempre visível (senão só parado)")], 820, 960, DefaultScale: 0.8f),
+        new("winner", "Winner", null, null, null, "", [new("always", "Sempre visível (senão ao fim da corrida)")], 60, 930, DefaultScale: 0.75f),
     ];
 
     public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));

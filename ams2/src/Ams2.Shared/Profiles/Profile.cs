@@ -123,7 +123,9 @@ public static class ProfileFactory
             X = (int)Math.Round(d.DefaultX * fx), Y = (int)Math.Round(d.DefaultY * fy),
             Rows = d.DefaultRows, Scale = d.DefaultScale,
             // f1-2004: mini-torre da transmissao (posicao, sigla, bandeira); gap/classe/pneu ficam opcionais.
-            Columns = d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"] : null,
+            Columns = d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"]
+                // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos.
+                : d.Columns.Any(col => col.Id == "always") ? [] : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }

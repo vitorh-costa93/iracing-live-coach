@@ -77,6 +77,25 @@ public class ProfileTests
     }
 
     [Fact]
+    public void Broadcast_widgets_are_in_the_catalog_and_default_to_event_only_display()
+    {
+        foreach (var id in new[] { "drivercaption", "pitstops", "pittimer", "winner" })
+        {
+            var d = WidgetCatalog.Find(id);
+            Assert.NotNull(d);
+            Assert.Contains(d!.Columns, c => c.Id == "always");
+            foreach (var theme in new[] { "f1-1998", "f1-2004", "f1-2010s" })
+            {
+                var w = ProfileFactory.CreateDefault("x", theme).Get(id)!.Normalized();
+                Assert.False(w.ColumnVisible("always"));      // padrao: so aparece nos eventos
+                Assert.True(w with { Columns = null } is { } all && all.ColumnVisible("always"));
+            }
+        }
+        Assert.Equal(4, WidgetCatalog.Find("pitstops")!.MaxRows);
+        Assert.Equal(WidgetCatalog.All.Count, WidgetCatalog.All.Select(w => w.Id).Distinct().Count());
+    }
+
+    [Fact]
     public void Missing_widgets_are_filled_in_on_load()
     {
         using var t = new TempStore();
