@@ -36,6 +36,7 @@ internal static class Program
         Win32.AttachConsole(-1);
         try
         {
+            if (args.Contains("--dump-sizes")) return DumpSizes();
             var o = Parse(args);
             return o.Png is not null ? RenderPng(o) : RunOverlay(o);
         }
@@ -69,6 +70,23 @@ internal static class Program
             Rows: Val("--rows") is { } rw ? int.Parse(rw) : null,
             Font: Val("--font"),
             Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null);
+    }
+
+    /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
+    static int DumpSizes()
+    {
+        foreach (var theme in Themes.All)
+        {
+            var profile = ProfileFactory.CreateDefault("Padrão", theme.Id);
+            foreach (var s in profile.Widgets)
+            {
+                var widget = WidgetRegistry.Create(s.Id);
+                widget.UseTheme(theme);
+                widget.Configure(s.Normalized());
+                Console.WriteLine($"{theme.Id} {s.Id} {widget.DesignSize.Width.ToString(CultureInfo.InvariantCulture)} {widget.DesignSize.Height.ToString(CultureInfo.InvariantCulture)}");
+            }
+        }
+        return 0;
     }
 
     static IRawMemorySource FakeOrReal(bool fake, Func<double> clock) => fake ? new FakeRawSource(clock) : new MemoryMappedSource();
