@@ -15,7 +15,7 @@ public sealed class StandingsWidget : IWidget
     public int Rows { get; set; } = 8;
     WidgetSettings _cfg = new() { Id = "standings" };
     public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
-    public (float Width, float Height) DesignSize => (Layout().Width, 12 + Rows * Pitch + 2);
+    public (float Width, float Height) DesignSize => (_b04 ? Width2004 : Layout().Width, 12 + Rows * Pitch + 2);
     bool _b04;
     public void UseTheme(Theme.Theme theme) => _b04 = theme.Style == ThemeStyle.Broadcast2000s;
     float Pitch => _b04 ? RowPitch2000s : RowPitch;
@@ -80,28 +80,47 @@ public sealed class StandingsWidget : IWidget
         }
     }
 
-    /// <summary>Linha flutuante 2004–2008: caixa vermelha, célula branca, selo escuro e célula preta, coladas.</summary>
+    // Mini-torre 2004-2008 (transmissao): [pos][sigla][bandeira][pneu][classe][gap], celulas coladas. O lider mostra "Lap N" em celula preta.
+    const float X04 = 4, Pos04 = 40, Name04 = 82, Flag04 = 46, Tyre04 = 30, Class04 = 40, Gap04 = 112, Lead04 = 100;
+    float Width2004
+    {
+        get
+        {
+            float x = X04;
+            if (_cfg.ColumnVisible("pos")) x += Pos04;
+            if (_cfg.ColumnVisible("name")) x += Name04;
+            if (_cfg.ColumnVisible("flag")) x += Flag04;
+            if (_cfg.ColumnVisible("tyre")) x += Tyre04;
+            if (_cfg.ColumnVisible("class")) x += Class04;
+            x += _cfg.ColumnVisible("gap") ? Gap04 : Lead04;
+            return x + 6;
+        }
+    }
+
+    /// <summary>Linha flutuante 2004–2008: caixa de posição (líder vermelho), sigla em célula branca, bandeira, pneu, selo de classe e célula preta, coladas.</summary>
     void DrawRow2000s(ThemeCanvas c, Theme.Theme t, StandingRow r, Cols L, float y, List<string> classes)
     {
-        float h = BoxH;
-        if (_cfg.ColumnVisible("pos"))
-            Chrome.PositionBox(c, L.PosX, y, BoxW, h, r.Car.Position, t.Numbers);
-        if (_cfg.ColumnVisible("name"))
+        float h = BoxH, x = X04;
+        if (_cfg.ColumnVisible("pos")) { Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers); x += Pos04; }
+        if (_cfg.ColumnVisible("name")) { Chrome.WhiteCell(c, x, y, Name04, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? Chrome.PlayerInk : null); x += Name04; }
+        if (_cfg.ColumnVisible("flag"))
         {
-            float x0 = _cfg.ColumnVisible("pos") ? L.PosX + BoxW : L.NameCellX;
-            float x1 = L.NameCellX + NameCellW + (_cfg.ColumnVisible("class") || _cfg.ColumnVisible("gap") ? ColSpacing : 0);
-            Chrome.WhiteCell(c, x0, y, x1 - x0, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? Chrome.PlayerInk : null);
+            Chrome.Box(c, x, y, Flag04, h, "", t.Text, Chrome.CellKind.White);
+            c.Flag(r.Car.Nationality, x + 8, y + 4, Flag04 - 16, h - 8);
+            x += Flag04;
+        }
+        if (_cfg.ColumnVisible("tyre"))
+        {
+            if (!Chrome.TyreBox(c, x, y, Tyre04, h, r.Car.TyreSupplier, t.Text with { Size = 20 })) Chrome.Box(c, x, y, Tyre04, h, "", t.Text, Chrome.CellKind.Navy);
+            x += Tyre04;
         }
         if (_cfg.ColumnVisible("class"))
         {
-            float bx = L.BadgeCx - BadgeW / 2 - 1;
-            Chrome.Box(c, bx, y, BadgeW + 1, h, ((char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25))).ToString(), t.Text, Chrome.CellKind.Navy, HAlign.Center, 0);
+            Chrome.Box(c, x, y, Class04, h, ((char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25))).ToString(), t.Text, Chrome.CellKind.Navy, HAlign.Center, 0);
+            x += Class04;
         }
-        if (_cfg.ColumnVisible("gap"))
-        {
-            float gx = _cfg.ColumnVisible("class") ? L.BadgeCx + BadgeW / 2 : _cfg.ColumnVisible("name") ? L.NameCellX + NameCellW + ColSpacing : L.PosX + (_cfg.ColumnVisible("pos") ? BoxW : 0);
-            Chrome.BlackCell(c, gx, y, L.GapRight + 8 - gx, h, LeaderLap(r) ?? FormatGap(r), t.Numbers);
-        }
+        if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? FormatGap(r), t.Numbers);
+        else if (LeaderLap(r) is { } lap) Chrome.BlackCell(c, x, y, Lead04, h, lap, t.Numbers);
     }
 
     /// <summary>2004–2008: a célula do líder mostra a volta atual ("Lap 26"), como na transmissão.</summary>
