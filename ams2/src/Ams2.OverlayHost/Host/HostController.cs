@@ -74,7 +74,12 @@ internal sealed class HostController : IDisposable
 
     public void SetEditModeDirect(bool edit) => SetEditMode(edit);
 
-    public void StartIpc(string pipeName) => _ipc = new IpcServer(pipeName, HandleOnIpcThread);
+    public void StartIpc(string pipeName)
+    {
+        _ipc = new IpcServer(pipeName, HandleOnIpcThread);
+        // Lista de modelos/nomes mudou (novo carro detectado, edicao do arquivo, comando): avisa o Control Center.
+        if (_provider.Names is { } names) names.Changed += () => _queue.Enqueue(() => _ipc?.Broadcast(new IpcMessage { Event = IpcEvents.StateChanged, State = BuildState() }));
+    }
 
     // ---- IPC ----
 
@@ -122,6 +127,25 @@ internal sealed class HostController : IDisposable
             }
             case IpcCommands.SetEditMode:
                 SetEditMode(req.Edit ?? false);
+                break;
+            case IpcCommands.GetPlayerNames:
+                break;
+            case IpcCommands.SetPlayerName:
+            {
+                if (_provider.Names is not { } names) return Fail("Nomes de exibicao indisponiveis.");
+                if (string.IsNullOrWhiteSpace(req.Model)) return Fail("setPlayerName exige Model.");
+                names.Set(req.Model, req.Name);
+                break;
+            }
+            case IpcCommands.ClearPlayerName:
+            {
+                if (_provider.Names is not { } names) return Fail("Nomes de exibicao indisponiveis.");
+                if (string.IsNullOrWhiteSpace(req.Model)) return Fail("clearPlayerName exige Model.");
+                names.Clear(req.Model);
+                break;
+            }
+            case IpcCommands.ApplySuggestedNames:
+                _provider.Names?.ApplySuggestedToUnnamed();
                 break;
             default:
                 return Fail($"Comando desconhecido: {req.Cmd}.");
@@ -199,6 +223,7 @@ internal sealed class HostController : IDisposable
             EditMode = _edit,
             Widgets = _profile.Ordered.ToList(),
             Themes = ThemeCatalog.All.Select(t => t with { Available = t.Available && Themes.All.Any(x => x.Id == t.Id) }).ToList(),
+            PlayerNames = _provider.Names?.State() ?? new(),
         };
     }
 

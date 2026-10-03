@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
 
 namespace Ams2.Shared.Ipc;
@@ -14,6 +15,14 @@ public static class IpcCommands
     public const string SetWidget = "setWidget";
     public const string SetTheme = "setTheme";
     public const string SetEditMode = "setEditMode";
+    /// <summary>Responde com o estado (incl. PlayerNames); o mesmo que GetState, explicito para o Control Center.</summary>
+    public const string GetPlayerNames = "getPlayerNames";
+    /// <summary>Define o nome de exibicao do jogador para um modelo de carro (Model + Name); Name vazio limpa.</summary>
+    public const string SetPlayerName = "setPlayerName";
+    /// <summary>Remove o nome de exibicao do modelo (Model).</summary>
+    public const string ClearPlayerName = "clearPlayerName";
+    /// <summary>Aplica o nome sugerido a todo modelo visto que ainda nao tem nome.</summary>
+    public const string ApplySuggestedNames = "applySuggestedNames";
 }
 
 public static class IpcEvents
@@ -33,6 +42,8 @@ public sealed record HostState
     public bool EditMode { get; init; }
     public List<WidgetSettings> Widgets { get; init; } = [];
     public List<ThemeDef> Themes { get; init; } = [];
+    /// <summary>Nome de exibicao do jogador por modelo de carro: carro atual detectado e modelos ja vistos.</summary>
+    public PlayerNamesState PlayerNames { get; init; } = new();
 }
 
 /// <summary>
@@ -53,6 +64,10 @@ public sealed record IpcMessage
     public string? Widget { get; init; }
     public WidgetPatch? Patch { get; init; }
     public bool? Edit { get; init; }
+    /// <summary>Modelo de carro (CarName sem sufixo) de setPlayerName/clearPlayerName.</summary>
+    public string? Model { get; init; }
+    /// <summary>Nome de exibicao de setPlayerName.</summary>
+    public string? Name { get; init; }
     public Profile? Data { get; init; }
     public HostState? State { get; init; }
 }

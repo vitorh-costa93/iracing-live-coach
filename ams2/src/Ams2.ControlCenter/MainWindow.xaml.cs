@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Ams2.Shared.Ipc;
+using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
 
 namespace Ams2.ControlCenter;
@@ -27,6 +28,8 @@ public partial class MainWindow : Window
     readonly IpcClient _client;
     readonly ObservableCollection<WidgetVm> _widgets = [];
     readonly ObservableCollection<ProfileItem> _profiles = [];
+    readonly PlayerNameStore _names;
+    readonly ObservableCollection<PlayerNameVm> _nameRows = [];
     readonly Dictionary<string, WidgetPatch> _pending = [];
     readonly DispatcherTimer _flushTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
@@ -54,11 +57,14 @@ public partial class MainWindow : Window
         var args = Environment.GetCommandLineArgs();
         string? Val(string n) { int i = Array.IndexOf(args, n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
         _store = new ProfileStore(Val("--profiles-dir"));
+        _names = new PlayerNameStore(Val("--profiles-dir")); // so usado com o host fechado; com ele aberto os nomes vao por IPC
         _client = new IpcClient(Val("--pipe") ?? IpcProtocol.DefaultPipeName);
 
         FontCombo.ItemsSource = new[] { WidgetVm.FontDefault }.Concat(Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)).ToList();
         WidgetsList.ItemsSource = _widgets;
         ProfilesList.ItemsSource = _profiles;
+        NamesList.ItemsSource = _nameRows;
+        ApplyNames(_names.State());
 
         _flushTimer.Tick += async (_, _) => { _flushTimer.Stop(); await FlushPendingAsync(); };
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveNow(); };
@@ -530,6 +536,81 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // ---------------------------------------------------------------- nome do piloto (um nome de exibicao por modelo de carro)
+
+    void NamesToggle_Click(object sender, RoutedEventArgs e)
+        => NamesPanel.Visibility = NamesToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Host fechado: a lista vem do arquivo (e edicoes manuais dele aparecem).</summary>
+    void RefreshNamesOffline()
+    {
+        _names.Refresh();
+        ApplyNames(_names.State());
+    }
+
+    void ApplyNames(PlayerNamesState st)
+    {
+        bool Same(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        foreach (var e in st.Entries)
+        {
+            var vm = _nameRows.FirstOrDefault(r => Same(r.Model, e.Model));
+            if (vm is null) { vm = new PlayerNameVm(e.Model); _nameRows.Add(vm); }
+            vm.Load(e, st.CurrentModel.Length > 0 && Same(e.Model, st.CurrentModel));
+        }
+        for (int i = _nameRows.Count - 1; i >= 0; i--)
+            if (!_nameRows[i].Editing && !st.Entries.Any(e => Same(e.Model, _nameRows[i].Model))) _nameRows.RemoveAt(i);
+        NamesEmpty.Visibility = _nameRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var cur = st.Entries.FirstOrDefault(e => st.CurrentModel.Length > 0 && Same(e.Model, st.CurrentModel));
+        NamesCurrent.Text = cur is null
+            ? "Carro atual: nenhum detectado (entre numa sessão no AMS2)"
+            : $"Carro atual: {cur.Model}   ·   no jogo: {(cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}   ·   nos widgets: {(cur.Name.Length > 0 ? cur.Name : cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}";
+    }
+
+    async Task SetNameAsync(string model, string name)
+    {
+        if (_client.Connected && await TrySend(IpcCommands.SetPlayerName, m => m with { Model = model, Name = name })) return;
+        _names.Refresh();
+        _names.Set(model, name);
+        ApplyNames(_names.State());
+    }
+
+    void NameBox_GotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: PlayerNameVm vm }) vm.Editing = true;
+    }
+
+    async void NameBox_LostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: PlayerNameVm vm } tb) return;
+        vm.Editing = false;
+        string text = tb.Text.Trim();
+        if (text == vm.Name) { tb.Text = vm.Name; return; }
+        vm.Name = text;                       // otimista; o estado do host confirma em seguida
+        await SetNameAsync(vm.Model, text);
+    }
+
+    void NameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: PlayerNameVm vm } tb) return;
+        if (e.Key == Key.Enter) { Keyboard.ClearFocus(); e.Handled = true; }          // perder o foco aplica
+        else if (e.Key == Key.Escape) { tb.Text = vm.Name; Keyboard.ClearFocus(); e.Handled = true; }
+    }
+
+    async void UseSuggested_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: PlayerNameVm { HasSuggestion: true } vm }) return;
+        vm.Name = vm.Suggested;
+        await SetNameAsync(vm.Model, vm.Suggested);
+    }
+
+    async void ApplySuggested_Click(object sender, RoutedEventArgs e)
+    {
+        if (_client.Connected && await TrySend(IpcCommands.ApplySuggestedNames)) return;
+        _names.Refresh();
+        _names.ApplySuggestedToUnnamed();
+        ApplyNames(_names.State());
+    }
+
     // ---------------------------------------------------------------- host
 
     async Task<bool> TrySend(string cmd, Func<IpcMessage, IpcMessage>? fill = null)
@@ -546,7 +627,7 @@ public partial class MainWindow : Window
 
     async Task OnConnectionChanged(bool connected)
     {
-        if (!connected) { _host = null; _adopted = false; }
+        if (!connected) { _host = null; _adopted = false; RefreshNamesOffline(); }
         RefreshIndicators();
         UpdateActiveMarkers();
         UpdateBanner();
@@ -555,7 +636,7 @@ public partial class MainWindow : Window
 
     async Task PollAsync()
     {
-        if (!_client.Connected) return;
+        if (!_client.Connected) { RefreshNamesOffline(); return; }
         try { var st = await _client.SendAsync(IpcCommands.GetState); if (st is not null) ApplyHostState(st); }
         catch (Exception) { }
     }
@@ -566,6 +647,7 @@ public partial class MainWindow : Window
     void ApplyHostState(HostState s, bool force = false)
     {
         _host = s;
+        ApplyNames(s.PlayerNames);
         // Ao conectar pela primeira vez, assume o perfil/tema que o host está usando.
         if (!_adopted)
         {

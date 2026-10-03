@@ -9,6 +9,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- ===== Cabecalho ===== -->
@@ -32,6 +33,8 @@
                             <TextBlock x:Name="GameText" Text="AMS2: sem dados" Margin="8,0,0,0" FontSize="12"/>
                         </StackPanel>
                     </Border>
+                    <ToggleButton x:Name="NamesToggle" Style="{StaticResource ToggleButtonStyle}" Content="Nome do piloto" Margin="0,0,8,0" Click="NamesToggle_Click"
+                                  ToolTip="Nome de exibição do seu carro nos widgets, um por modelo de carro (o jogo usa o nome do perfil)."/>
                     <ToggleButton x:Name="EditToggle" Style="{StaticResource ToggleButtonStyle}" Content="Editar layout" Click="EditToggle_Click"
                                   ToolTip="Torna as janelas arrastáveis: arraste para mover (grade/encaixe, Alt desliga), roda do mouse ou canto inferior direito para a escala. Atalho no jogo: Ctrl+Alt+E."/>
                 </StackPanel>
@@ -219,5 +222,53 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- ===== Nome do piloto (um nome de exibicao por modelo de carro) ===== -->
+        <Border x:Name="NamesPanel" Grid.Row="3" Visibility="Collapsed" Padding="24,12,24,14" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Aplicar sugeridos aos sem nome" Padding="10,3" Click="ApplySuggested_Click"
+                            ToolTip="Para cada carro sem nome de exibição, usa o nome de outro piloto com o mesmo carro."/>
+                    <TextBlock Text="NOME DO PILOTO" Style="{StaticResource SectionTitle}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="NamesCurrent" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Modelo do carro" Style="{StaticResource Muted}"/>
+                    <TextBlock Grid.Column="1" Text="Nome no jogo" Style="{StaticResource Muted}"/>
+                    <TextBlock Grid.Column="2" Text="Nome nos widgets (Enter aplica; vazio = o do jogo)" Style="{StaticResource Muted}"/>
+                </Grid>
+                <TextBlock x:Name="NamesEmpty" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,4,0,0"
+                           Text="Nenhum carro visto ainda: entre numa sessão no AMS2 com o overlay aberto."/>
+                <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="NamesList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="230"/><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding Model}" TextTrimming="CharacterEllipsis" MaxWidth="190" ToolTip="{Binding Model}"/>
+                                        <Border Background="{StaticResource AccentDimBrush}" CornerRadius="3" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="ATUAL" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding OriginalLabel}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
+                                               ToolTip="Somente leitura: o nome que o jogo dá ao seu carro"/>
+                                    <TextBox Grid.Column="2" Text="{Binding Name, Mode=OneWay}" Margin="0,0,8,0" Padding="8,3"
+                                             GotKeyboardFocus="NameBox_GotFocus" LostKeyboardFocus="NameBox_LostFocus" PreviewKeyDown="NameBox_KeyDown"/>
+                                    <Button Grid.Column="3" Content="Usar sugerido" Padding="8,3" IsEnabled="{Binding HasSuggestion}" ToolTip="{Binding SuggestionTip}" Click="UseSuggested_Click"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>

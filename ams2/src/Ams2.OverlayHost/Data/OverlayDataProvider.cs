@@ -79,8 +79,9 @@ public sealed class OverlayDataProvider : IDisposable
     double _namesRefreshAt;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
-        Func<IRawMemorySource>? inputSource = null)
+        Func<IRawMemorySource>? inputSource = null, PlayerNameStore? names = null)
     {
+        _names = names;
         Inputs = new InputRing(clock);
         if (inputSource is not null) _sampler = new InputSampler(inputSource(), Inputs, clock, InputStats);
         _reader = new SharedMemoryReader(source);
@@ -153,14 +154,6 @@ public sealed class OverlayDataProvider : IDisposable
         return model;
     }
 
-    /// <summary>Caminho sem amostrador (relógio simulado): uma amostra por passo do provider.</summary>
-    void SampleFromSnapshot(double now, InputsSnapshot i)
-    {
-        if (now < Inputs.LastT) Inputs.Clear();
-        Inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
-        InputStats.Mark();
-    }
-
     /// <summary>Registra o carro do jogador no store (modelo, nome do jogo, sugestao) e troca o nome dele pelo de exibicao.
     /// So o Name muda: indices e distancias intactos, o GapTracker nao e afetado.</summary>
     SessionSnapshot ApplyPlayerName(double now, SessionSnapshot s)
@@ -170,6 +163,14 @@ public sealed class OverlayDataProvider : IDisposable
         var pc = s.PlayerCar;
         _names.Observe(pc?.CarName ?? "", pc?.Name ?? "", PlayerIdentity.Suggest(s));
         return PlayerIdentity.Apply(s, _names.Get);
+    }
+
+    /// <summary>Caminho sem amostrador (relógio simulado): uma amostra por passo do provider.</summary>
+    void SampleFromSnapshot(double now, InputsSnapshot i)
+    {
+        if (now < Inputs.LastT) Inputs.Clear();
+        Inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
+        InputStats.Mark();
     }
 
     public void Dispose()

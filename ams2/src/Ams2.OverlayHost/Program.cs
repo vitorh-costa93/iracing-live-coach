@@ -4,6 +4,7 @@ using Ams2.Core.Reading;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Host;
 using Ams2.Shared.Ipc;
+using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
 using Ams2.OverlayHost.Gfx;
 using Ams2.OverlayHost.Native;
@@ -20,6 +21,7 @@ namespace Ams2.OverlayHost;
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
 ///   --edit   inicia no modo de edicao do layout (Ctrl+Alt+E alterna; arraste, roda ou canto para escalar).
+///   --player-name NOME   forca o nome de exibicao do carro do jogador (so em memoria: nao grava player-names.json); sem ele o host usa os nomes por modelo do Control Center.
 ///   --measure (so com --fake e --seconds): ao sair imprime fps de render por janela, passos do provider e taxa de amostragem das entradas ([FPS] ...).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
@@ -30,7 +32,7 @@ namespace Ams2.OverlayHost;
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure, string? PlayerName = null);
 
     [STAThread]
     static int Main(string[] args)
@@ -76,7 +78,8 @@ internal static class Program
             Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null,
             Top: Val("--top") is { } tp ? int.Parse(tp) : null,
             Near: Val("--near") is { } nr ? int.Parse(nr) : null,
-            Measure: a.Contains("--measure"));
+            Measure: a.Contains("--measure"),
+            PlayerName: Val("--player-name"));
     }
 
     /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
@@ -106,7 +109,9 @@ internal static class Program
         double simNow = 0;
         var wall = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
-        using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock);
+        var names = PlayerNameStore.InMemory(); // a previa nunca toca no player-names.json do usuario
+        using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
+        if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
         if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
 
@@ -140,6 +145,17 @@ internal static class Program
         return 0;
     }
 
+    /// <summary>--player-name: espera o primeiro quadro com o jogador (ate ~3 s) e define o nome para o modelo dele.</summary>
+    static void ForceName(OverlayDataProvider provider, PlayerNameStore names, string name)
+    {
+        var until = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < until)
+        {
+            if (provider.Current.Session?.PlayerCar is { } me) { names.Set(me.CarName, name); return; }
+            Thread.Sleep(20);
+        }
+    }
+
     /// <summary>Relatório do --measure (descarta 1 s de aquecimento). Só faz sentido com o escritor falso.</summary>
     static void PrintMeasure(Options o, HostController host, OverlayDataProvider provider, double fromT)
     {
@@ -158,8 +174,11 @@ internal static class Program
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = () => sw.Elapsed.TotalSeconds;
         // Amostrador de entradas dedicado (fonte propria): grava na taxa do jogo, independente do passo de 60 Hz do provider.
-        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock));
+        // Nomes por modelo: arquivo em --profiles-dir (ou %AppData%). O --fake sem --profiles-dir e o --player-name ficam so em memoria.
+        var names = o.PlayerName is not null || (o.Fake && o.ProfilesDir is null) ? PlayerNameStore.InMemory() : new PlayerNameStore(o.ProfilesDir);
+        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock), names: names);
         provider.Start(60);
+        if (o.PlayerName is not null) ForceName(provider, names, o.PlayerName);
 
         var store = new ProfileStore(o.ProfilesDir);
         bool single = o.Widget is not null;
