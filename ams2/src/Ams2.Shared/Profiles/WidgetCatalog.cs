@@ -1,4 +1,4 @@
-namespace Ams2.Shared.Profiles;
+﻿namespace Ams2.Shared.Profiles;
 
 /// <summary>Coluna/elemento que o usuario pode ocultar num widget.</summary>
 public sealed record ColumnDef(string Id, string Label);
@@ -25,7 +25,7 @@ public static class WidgetCatalog
         new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap")], 1430, 925, DefaultScale: 0.58f),
         new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1133, 931, DefaultScale: 0.66f),
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
-        new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.92f),
+        new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),
         new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
     ];
 
