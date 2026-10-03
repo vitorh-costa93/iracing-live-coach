@@ -2,8 +2,9 @@ namespace Ams2.Shared.Profiles;
 
 /// <summary>
 /// Composicao padrao de cada tema, copiada da transmissao da epoca (tela de referencia 1920x1080): contador de voltas topo-centro,
-/// mini-torre no canto superior esquerdo, legenda/vencedor embaixo a esquerda, barra de gap embaixo ao centro, lista de pit stops
-/// e cronometro de box a meia altura; Weather/Tyres/Fuel (que a TV nao tem) numa coluna discreta a direita e Inputs no canto inferior direito.
+/// mini-torre (posicao + sigla) no canto superior esquerdo, vencedor embaixo a esquerda, o widget "board" (torre da linha, gap de setor,
+/// comparativo de voltas e legenda do piloto) embaixo ao centro no lugar de Relative e Driver Caption (que seguem no catalogo, desligados),
+/// lista de pit stops e cronometro de box a meia altura; Weather/Tyres/Fuel (que a TV nao tem) numa coluna discreta a direita e Inputs no canto inferior direito.
 /// Tambem guarda o tamanho de projeto de cada widget no perfil padrao do tema, para o teste de sobreposicao
 /// (conferido contra os widgets reais por --dump-sizes no teste de integracao).
 /// </summary>
@@ -21,21 +22,21 @@ public static class WidgetLayout
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["standings"] = new(32, 24, 1.15f), ["lapcounter"] = new(867, 24, 1.4f),
-            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f),
+            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f), ["board"] = new(660, 872, 1f),
             ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(744, 780, 1.2f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 957, 0.5f),
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["standings"] = new(32, 24, 1.4f), ["lapcounter"] = new(867, 24, 1.4f),
-            ["relative"] = new(640, 905, 1.25f), ["drivercaption"] = new(32, 926, 1.3f), ["winner"] = new(32, 926, 1.3f),
+            ["relative"] = new(640, 905, 1.25f), ["drivercaption"] = new(32, 926, 1.3f), ["winner"] = new(32, 926, 1.3f), ["board"] = new(650, 866, 1.2f),
             ["pitstops"] = new(32, 560, 1f), ["pittimer"] = new(769, 790, 1.3f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 770, 0.6f),
         },
         ["f1-2010s"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["standings"] = new(32, 24, 0.95f), ["lapcounter"] = new(867, 24, 1.4f),
-            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f),
+            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f), ["board"] = new(600, 845, 1.1f),
             ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(744, 780, 1.2f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 957, 0.5f),
         },
@@ -47,18 +48,18 @@ public static class WidgetLayout
         {
             ["f1-1998"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (386, 358), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 144), ["inputs"] = (692, 197),
-                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (360, 42), ["winner"] = (500, 94),
+                ["standings"] = (191, 372), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 144), ["inputs"] = (692, 197),
+                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (360, 42), ["winner"] = (500, 94), ["board"] = (840, 196),
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (278, 302), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490),
-                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94),
+                ["standings"] = (178, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490),
+                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (590, 164),
             },
             ["f1-2010s"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (434, 394), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
-                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94),
+                ["standings"] = (191, 408), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
+                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (760, 210),
             },
         };
 

@@ -73,8 +73,8 @@ public sealed class HostIpcTests : IDisposable
         Assert.Equal("Segoe UI", fuel.Font);
         Assert.Equal(["laps"], fuel.Columns);
 
-        st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "standings", Patch = new WidgetPatch { Rows = 12 } }))!;
-        Assert.Equal(12, st.Widgets.Single(w => w.Id == "standings").Rows);
+        st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "standings", Patch = new WidgetPatch { TopCount = 7, NearCount = 4 } }))!;
+        Assert.Equal((7, 4), (st.Widgets.Single(w => w.Id == "standings").TopCount, st.Widgets.Single(w => w.Id == "standings").NearCount));
         st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "relative", Patch = new WidgetPatch { Order = 0 } }))!;
         Assert.Equal("relative", st.Widgets[0].Id);
 
@@ -100,7 +100,7 @@ public sealed class HostIpcTests : IDisposable
         await WaitFor(() => store.Load("f1-1998", "Corrida")?.Get("fuel")?.X == 100, 4000, "alteracao nao foi salva no perfil");
         var saved = store.Load("f1-1998", "Corrida")!;
         Assert.Equal(1.5f, saved.Get("fuel")!.Scale);
-        Assert.Equal(12, saved.Get("standings")!.Rows);
+        Assert.Equal((7, 4), (saved.Get("standings")!.TopCount, saved.Get("standings")!.NearCount));
         Assert.Equal("Corrida", store.GetActiveProfile("f1-1998"));
 
         // Reconexao: um segundo cliente novo ve o mesmo estado.

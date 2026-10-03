@@ -19,12 +19,15 @@ public class ProfileTests
     {
         var p = ProfileFactory.CreateDefault("A", Theme);
         Assert.Equal(WidgetCatalog.All.Select(w => w.Id), p.Ordered.Select(w => w.Id));
-        Assert.All(p.Widgets, w => { Assert.True(w.Visible); Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale); });
-        // composicao da TV: standings no canto superior esquerdo, relative (barra de gap) embaixo ao centro
+        Assert.All(p.Widgets, w => Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale));
+        // o board substitui Relative e Driver Caption no layout padrao (continuam no catalogo, desligados)
+        Assert.All(p.Widgets, w => Assert.Equal(w.Id is not ("relative" or "drivercaption"), w.Visible));
+        // composicao da TV: standings no canto superior esquerdo, board embaixo ao centro
         Assert.Equal((32, 24), (p.Get("standings")!.X, p.Get("standings")!.Y));
-        Assert.Equal(900, p.Get("relative")!.Y);
-        Assert.InRange(p.Get("relative")!.X, 600, 700);
-        Assert.Equal(8, p.Get("standings")!.Rows);
+        Assert.Equal(872, p.Get("board")!.Y);
+        Assert.InRange(p.Get("board")!.X, 600, 700);
+        Assert.Equal((5, 3), (p.Get("standings")!.TopCount, p.Get("standings")!.NearCount));
+        Assert.Null(p.Get("standings")!.Rows);
         Assert.Equal(3, p.Get("relative")!.Rows);
         Assert.Null(p.Get("fuel")!.Rows);
     }
@@ -43,14 +46,14 @@ public class ProfileTests
     {
         using var t = new TempStore();
         var p = ProfileFactory.CreateDefault("Corrida", Theme);
-        var s = p.Get("standings")! with { Visible = false, X = 12, Y = 34, Scale = 1.25f, Opacity = 0.7f, Font = "Segoe UI", Rows = 12, Columns = ["pos", "gap"], Order = 5 };
+        var s = p.Get("standings")! with { Visible = false, X = 12, Y = 34, Scale = 1.25f, Opacity = 0.7f, Font = "Segoe UI", TopCount = 7, NearCount = 4, Columns = ["pos", "gap"], Order = 5 };
         t.Store.Save(p.WithWidget(s));
         var back = t.Store.Load(Theme, "Corrida")!;
         var r = back.Get("standings")!;
         Assert.False(r.Visible);
         Assert.Equal((12, 34), (r.X, r.Y));
         Assert.Equal(1.25f, r.Scale); Assert.Equal(0.7f, r.Opacity);
-        Assert.Equal("Segoe UI", r.Font); Assert.Equal(12, r.Rows);
+        Assert.Equal("Segoe UI", r.Font); Assert.Equal((7, 4), (r.TopCount, r.NearCount));
         Assert.Equal(["pos", "gap"], r.Columns);
         Assert.Equal(Profile.CurrentSchemaVersion, back.SchemaVersion);
     }
@@ -64,6 +67,48 @@ public class ProfileTests
         Assert.Equal(4, s.Rows);
         Assert.Equal(["gap"], s.Columns);
         Assert.Null(new WidgetSettings { Id = "fuel", Rows = 5 }.Normalized().Rows);
+        // Standings: topo/janela limitados; o jogador nunca fica sem linha
+        var st = new WidgetSettings { Id = "standings", TopCount = 99, NearCount = -4 }.Normalized();
+        Assert.Equal((WidgetCatalog.MaxTopCount, 0), (st.TopCount, st.NearCount));
+        var zero = new WidgetSettings { Id = "standings", TopCount = 0, NearCount = 0 }.Normalized();
+        Assert.Equal((0, 1), (zero.TopCount, zero.NearCount));
+        Assert.Null(new WidgetSettings { Id = "fuel", TopCount = 4 }.Normalized().TopCount);
+    }
+
+    [Fact]
+    public void Old_schema_profiles_load_with_default_standings_selection_and_the_new_board_widget()
+    {
+        using var t = new TempStore();
+        var dir = Path.Combine(t.Dir, "profiles", Theme);
+        Directory.CreateDirectory(dir);
+        // perfil v1: Standings com Rows=8, sem TopCount/NearCount e sem o widget "board"
+        File.WriteAllText(Path.Combine(dir, "antigo.json"),
+            "{\"schemaVersion\":1,\"name\":\"Antigo\",\"themeId\":\"f1-1998\",\"widgets\":[{\"id\":\"standings\",\"visible\":true,\"x\":10,\"y\":20,\"scale\":1,\"opacity\":1,\"order\":0,\"rows\":12,\"columns\":[\"pos\",\"name\",\"gap\"]}]}");
+        var p = t.Store.Load(Theme, "Antigo")!;
+        var s = p.Get("standings")!;
+        Assert.Equal((10, 20), (s.X, s.Y));
+        Assert.Equal(["pos", "name", "gap"], s.Columns);                      // escolhas antigas preservadas
+        Assert.Equal((5, 3), (s.TopCount, s.NearCount));                      // padroes novos
+        Assert.NotNull(p.Get("board"));
+        Assert.Equal(Profile.CurrentSchemaVersion, p.SchemaVersion);
+    }
+
+    [Fact]
+    public void Patch_changes_standings_top_and_near_live()
+    {
+        var s = new WidgetSettings { Id = "standings" }.Normalized();
+        var r = new WidgetPatch { TopCount = 3 }.ApplyTo(s);
+        Assert.Equal((3, 3), (r.TopCount, r.NearCount));
+        r = new WidgetPatch { NearCount = 5 }.ApplyTo(r);
+        Assert.Equal((3, 5), (r.TopCount, r.NearCount));
+    }
+
+    [Fact]
+    public void Board_defaults_hide_the_flag_in_f1_1998_like_the_2003_band()
+    {
+        Assert.Equal(["tyre", "page"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
+        Assert.Null(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Columns);   // todas visiveis
+        Assert.True(ProfileFactory.CreateDefault("x", "f1-2010s").Get("board")!.Visible);
     }
 
     [Fact]
@@ -73,7 +118,8 @@ public class ProfileTests
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
         Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
         Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
-        Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);
+        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);   // so posicao + sigla, sem gap/classe
+        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2010s").Get("standings")!.Columns);
         Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("relative")!.Columns);
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "table");
         Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Normalized().Columns);

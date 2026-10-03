@@ -1,4 +1,4 @@
-﻿namespace Ams2.Shared.Profiles;
+namespace Ams2.Shared.Profiles;
 
 /// <summary>Coluna/elemento que o usuario pode ocultar num widget.</summary>
 public sealed record ColumnDef(string Id, string Label);
@@ -8,7 +8,7 @@ public sealed record WidgetDef(
     string Id, string DisplayName,
     int? MinRows, int? MaxRows, int? DefaultRows, string RowsLabel,
     IReadOnlyList<ColumnDef> Columns,
-    int DefaultX, int DefaultY, bool DefaultVisible = true, float DefaultScale = 1f)
+    int DefaultX, int DefaultY, bool DefaultVisible = true, float DefaultScale = 1f, bool HasSelection = false)
 {
     public bool SupportsRows => MinRows.HasValue;
 }
@@ -17,20 +17,23 @@ public static class WidgetCatalog
 {
     public const float MinScale = 0.5f, MaxScale = 3f;
     public const float MinOpacity = 0.2f, MaxOpacity = 1f;
+    /// <summary>Standings (como no iRacing): quantos pilotos do TOPO e quantos AO REDOR do jogador (a janela inclui o jogador).</summary>
+    public const int DefaultTopCount = 5, MaxTopCount = 20, DefaultNearCount = 3, MaxNearCount = 10;
 
     /// <summary>Ordem padrao = ordem desta lista. Posicoes e escalas padrao reproduzem o layout do usuario no V3/iRacing (v3-layout.json), em pixels de uma tela 1920x1080 (ajustadas por <see cref="ProfileFactory"/>).</summary>
     public static readonly IReadOnlyList<WidgetDef> All =
     [
-        new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posição"), new("name", "Piloto"), new("flag", "Bandeira (2004-2008)"), new("tyre", "Pneu M/B (2004-2008)"), new("class", "Classe"), new("gap", "Gap"), new("table", "Tabela inferior 2 colunas (1998-2001)")], 0, 0, DefaultScale: 0.6f),
-        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap"), new("bar", "Barra do vizinho (2004-2008) / tempo dividido (1998-2001)")], 1430, 925, DefaultScale: 0.58f),
+        new("standings", "Standings", null, null, null, "", [new("pos", "Posição"), new("name", "Piloto (sigla)"), new("flag", "Bandeira"), new("tyre", "Pneu M/B (2004-2008)"), new("class", "Classe"), new("gap", "Gap"), new("table", "Tabela inferior 2 colunas (1998-2001)")], 0, 0, DefaultScale: 0.6f, HasSelection: true),
+        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap"), new("bar", "Barra do vizinho (2004-2008) / tempo dividido (1998-2001)")], 1430, 925, DefaultVisible: false, DefaultScale: 0.58f),
         new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1133, 931, DefaultScale: 0.66f),
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
         new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),
         new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
         new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f),
-        new("drivercaption", "Driver Caption", null, null, null, "", [new("always", "Sempre visível (senão só em eventos)"), new("flag", "Bandeira (1998-2001)")], 60, 930, DefaultScale: 0.75f),
+        new("drivercaption", "Driver Caption", null, null, null, "", [new("always", "Sempre visível (senão só em eventos)"), new("flag", "Bandeira (1998-2001)")], 60, 930, DefaultVisible: false, DefaultScale: 0.75f),
         new("pitstops", "Pit Stops", 1, 4, 4, "Linhas por coluna", [new("always", "Sempre visível (senão ao entrar nos boxes)")], 20, 480, DefaultScale: 0.6f),
         new("pittimer", "Pit Timer", null, null, null, "", [new("always", "Sempre visível (senão só parado)")], 820, 960, DefaultScale: 0.8f),
+        new("board", "Board (torre, setor, voltas, legenda)", null, null, null, "", [new("flag", "Bandeira"), new("tyre", "Fornecedor de pneus (legenda)"), new("page", "Indicador de página X/Y")], 640, 870),
         new("winner", "Winner", null, null, null, "", [new("always", "Sempre visível (senão ao fim da corrida)"), new("flag", "Bandeira (1998-2001)")], 60, 930, DefaultScale: 0.75f),
     ];
 
