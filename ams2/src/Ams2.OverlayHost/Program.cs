@@ -13,8 +13,8 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner] [--sim N] [--x N] [--y N] [--seconds N]
-///                       [--cols id,id|none|all] [--rows N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
@@ -28,7 +28,7 @@ namespace Ams2.OverlayHost;
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near);
 
     [STAThread]
     static int Main(string[] args)
@@ -71,7 +71,9 @@ internal static class Program
             Cols: Val("--cols"),
             Rows: Val("--rows") is { } rw ? int.Parse(rw) : null,
             Font: Val("--font"),
-            Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null);
+            Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null,
+            Top: Val("--top") is { } tp ? int.Parse(tp) : null,
+            Near: Val("--near") is { } nr ? int.Parse(nr) : null);
     }
 
     /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
@@ -112,7 +114,7 @@ internal static class Program
         // Configuracao do widget como no perfil: --cols = ids das colunas VISIVEIS separados por virgula ("none" = nenhuma, omitido = todas).
         var settings = new WidgetSettings
         {
-            Id = widget.Id, Scale = scale, Rows = o.Rows, Font = o.Font, Opacity = o.Opacity ?? 1f,
+            Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
             Columns = o.Cols is null || o.Cols == "all" ? null : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries),
         }.Normalized();
         widget.Configure(settings);

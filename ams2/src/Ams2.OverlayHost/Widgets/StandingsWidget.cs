@@ -1,5 +1,6 @@
 using System.Globalization;
 using Ams2.Core;
+using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
@@ -7,17 +8,23 @@ using Ams2.Shared.Profiles;
 namespace Ams2.OverlayHost.Widgets;
 
 /// <summary>
-/// Classificação no layout 1998–2001 (torre): caixa amarela com a posição, sigla, selo de classe (A, B...) e gap para o
-/// líder. Geometria em unidades de design = pixels do mockup 1536x1024.
+/// Classificação (canto superior esquerdo): por padrão só posição + SIGLA de 3 letras (bandeira, selo de classe e gap são colunas
+/// opcionais). Quantos pilotos: <c>TopCount</c> no topo + <c>NearCount</c> ao redor do jogador, como no iRacing/V3
+/// (<see cref="Ams2.Core.Calc.StandingsSelector"/>), com "..." entre o topo e a janela quando há salto de posições; o jogador
+/// aparece sempre. Geometria em unidades de design = pixels do mockup 1536x1024.
 /// </summary>
 public sealed class StandingsWidget : IWidget
 {
     public string Id => "standings";
-    public int Rows { get; set; } = 8;
+    /// <summary>Capacidade de linhas: topo + janela (no mínimo o jogador). O tamanho da janela não muda com a posição do jogador.</summary>
+    public int Rows => _cfg.EffectiveTop + Math.Max(_cfg.EffectiveNear, 1);
     WidgetSettings _cfg = new() { Id = "standings" };
-    public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
+    public void Configure(WidgetSettings s) { _cfg = s; }
+    /// <summary>Espaço reservado para o separador "..." (só existe se há topo; o painel só o ocupa quando há salto).</summary>
+    float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
+    const float SepH = 14;
     public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
-        : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + 2);
+        : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
     bool _b04, _b98, _b10;
     public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2010s; }
     /// <summary>2010s: cabecalho "RACE" + "LAP n / N" (mockup v5) empurra as linhas para baixo.</summary>
@@ -29,51 +36,59 @@ public sealed class StandingsWidget : IWidget
 
     const float RowTop = 12, RowPitch = 43, RowPitch2000s = 36;
     const float BoxX = 19, BoxW = 40, BoxH = 34;
-    const float NameCellW = 104, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
+    const float NameCellW = 104, FlagW = 44, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
     const float NameX = 75; // so para a mensagem de espera
 
     /// <summary>Posicoes das colunas visiveis, da esquerda para a direita, sem buracos (todas visiveis = layout do mockup).</summary>
-    readonly record struct Cols(float PosX, float NameCellX, float BadgeCx, float GapRight, float Width);
+    readonly record struct Cols(float PosX, float NameCellX, float FlagX, float BadgeCx, float GapRight, float Width);
 
     Cols Layout()
     {
         float x = BoxX;
-        float posX = x, nameX = 0, badgeCx = 0, gapRight = 0;
+        float posX = x, nameX = 0, flagX = 0, badgeCx = 0, gapRight = 0;
         bool any = false;
         if (_cfg.ColumnVisible("pos")) { x += BoxW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("name")) { nameX = x; x += NameCellW + ColSpacing + 1; any = true; }
+        if (_cfg.ColumnVisible("flag")) { flagX = x; x += FlagW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("class")) { badgeCx = x + BadgeW / 2; x += BadgeW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("gap")) { x += any ? GapW : GapOnlyW; gapRight = x; any = true; }
         else x -= ColSpacing;
         if (!any) x = BoxX + 100;
-        return new Cols(posX, nameX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
+        return new Cols(posX, nameX, flagX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var t = c.Theme;
         var (w, h) = DesignSize;
-        c.Panel(0, 0, w, h);
         if (!m.Connected || m.Standings.Count == 0)
         {
+            c.Panel(0, 0, w, h);
             c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, TableMode ? 24 : NameX, TableMode ? TableTop : RowTop, 340, 30, t.LabelColor, shadow: t.TextShadow);
             return;
         }
 
         // Letra da classe pela ordem de aparição na classificação (líder da classe mais rápida = A).
         var classes = m.Standings.Select(r => r.Car.ClassName).Distinct().ToList();
-        var rows = m.Standings.Take(Rows).ToList();
-        // Jogador fora do top N: substitui a última linha para ele sempre aparecer.
-        var me = m.Standings.FirstOrDefault(r => r.IsPlayer);
-        if (me is not null && !rows.Contains(me) && rows.Count > 0) rows[^1] = me;
+        // Topo + janela ao redor do jogador (mesma regra do V3), com salto de posições marcado.
+        int me = -1;
+        for (int i = 0; i < m.Standings.Count; i++) if (m.Standings[i].IsPlayer) { me = i; break; }
+        var picks = StandingsSelector.Select(m.Standings.Count, me, _cfg.EffectiveTop, _cfg.EffectiveNear);
+        var rows = picks.Select(p => m.Standings[p.Index]).ToList();
+        var jumps = picks.Select(p => p.GapBefore).ToList();
 
-        if (TableMode) { DrawTable(c, t, rows, m); return; }
+        if (TableMode) { c.Panel(0, 0, w, h); DrawTable(c, t, rows, m); return; }
         var L = Layout();
+        int gapCount = jumps.Count(j => j);
+        // Painel só até a última linha usada (o espaço do "..." não ocupado fica transparente).
+        c.Panel(0, 0, w, Math.Min(h, Top + rows.Count * Pitch + gapCount * SepH + 2));
         if (_b10) DrawHeader10(c, t, m, w);
+        float yShift = 0;
         for (int i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
-            float y = Top + i * Pitch;
+            if (jumps[i]) { yShift += SepH; DrawSeparator(c, t, L, Top + i * Pitch + yShift - (SepH + Pitch - BoxH) / 2); }
+            float y = Top + i * Pitch + yShift;
             if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, r, L, y, classes); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
@@ -84,6 +99,7 @@ public sealed class StandingsWidget : IWidget
                 var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
                 c.Text(RelativeWidget.Code(r.Car.Name), t.Text, L.NameCellX + 8, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
+            if (_cfg.ColumnVisible("flag")) c.Flag(r.Car.Nationality, L.FlagX, y + 5, FlagW, BoxH - 10);
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap"))
             {
@@ -98,6 +114,14 @@ public sealed class StandingsWidget : IWidget
                 else c.Text(ListGap(r, t), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
             }
         }
+    }
+
+    /// <summary>Separador "..." entre o topo e a janela do jogador: três pontos na coluna da posição.</summary>
+    void DrawSeparator(ThemeCanvas c, Theme.Theme t, Cols L, float cy)
+    {
+        float cx = _b04 ? X04 + Pos04 / 2 : L.PosX + BoxW / 2;
+        var color = t.Style == ThemeStyle.Modern2010s ? t.LabelColor : t.Style == ThemeStyle.Broadcast98 ? t.NumberColor : t.TextColor;
+        for (int k = -1; k <= 1; k++) c.FillEllipse(cx + k * 8, cy, 2.2f, 2.2f, color);
     }
 
     /// <summary>Gap da lista vertical. 1998-2001 (TV): sem sinal "+" e o lider mostra "LAP n" em amarelo; 2010s: lider "–".</summary>
@@ -118,9 +142,10 @@ public sealed class StandingsWidget : IWidget
 
     // Tabela inferior 1998–2001 (faixa do GP do Brasil 2003): 2 colunas x N linhas, [caixa amarela][NOME][gap amarelo à direita]; o líder mostra "LAP n".
     const float TableX = 22, TableTop = 12, TableBottom = 8, TablePitch = 40, TableBoxW = 36, TableBoxH = 34, TableNameW = 246, TableGapW = 118, TableColGap = 44;
-    const float TableColW = TableBoxW + 14 + TableNameW + TableGapW;
+    /// <summary>Largura de uma coluna da tabela; sem a coluna de gap, só caixa + nome.</summary>
+    float TableColW => TableBoxW + 14 + TableNameW + (_cfg.ColumnVisible("gap") ? TableGapW : 0);
     int TableRows => (Rows + 1) / 2;
-    static float TableWidth => TableX * 2 + TableColW * 2 + TableColGap;
+    float TableWidth => TableX * 2 + TableColW * 2 + TableColGap;
 
     void DrawTable(ThemeCanvas c, Theme.Theme t, List<StandingRow> rows, OverlayModel m)
     {
@@ -134,6 +159,7 @@ public sealed class StandingsWidget : IWidget
             string name = BroadcastUi.ShortName(r.Car, field).ToUpperInvariant();
             c.Text(name, BroadcastUi.Fit(c, name, t.Text, TableNameW), x + TableBoxW + 14, y - 1, TableNameW, TableBoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
             float right = x + TableColW;
+            if (!_cfg.ColumnVisible("gap")) continue;
             if (r.Car.Position == 1 && r.Car.CurrentLap > 0)
             {
                 string n = r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture);
@@ -146,7 +172,7 @@ public sealed class StandingsWidget : IWidget
     }
 
     // Mini-torre 2004-2008 (transmissao): [pos][sigla][bandeira][pneu][classe][gap], celulas coladas. O lider mostra "Lap N" em celula preta.
-    const float X04 = 4, Pos04 = 40, Name04 = 82, Flag04 = 46, Tyre04 = 30, Class04 = 40, Gap04 = 112, Lead04 = 100;
+    const float X04 = 4, Pos04 = 40, Name04 = 82, Flag04 = 46, Tyre04 = 30, Class04 = 40, Gap04 = 112;
     float Width2004
     {
         get
@@ -157,7 +183,7 @@ public sealed class StandingsWidget : IWidget
             if (_cfg.ColumnVisible("flag")) x += Flag04;
             if (_cfg.ColumnVisible("tyre")) x += Tyre04;
             if (_cfg.ColumnVisible("class")) x += Class04;
-            x += _cfg.ColumnVisible("gap") ? Gap04 : Lead04;
+            if (_cfg.ColumnVisible("gap")) x += Gap04;
             return x + 6;
         }
     }
@@ -191,7 +217,6 @@ public sealed class StandingsWidget : IWidget
             x += Class04;
         }
         if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? FormatGap(r), t.Numbers);
-        else if (LeaderLap(r) is { } lap) Chrome.BlackCell(c, x, y, Lead04, h, lap, t.Numbers);
     }
 
     /// <summary>2004–2008: a célula do líder mostra a volta atual ("Lap 26"), como na transmissão.</summary>
