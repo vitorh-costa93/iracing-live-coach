@@ -188,6 +188,27 @@ public sealed unsafe class ThemeCanvas : IDisposable
         Dc->FillRectangle(&r, (ID2D1Brush*)brush.Get());
     }
 
+    /// <summary>Retângulo com gradiente vertical (paradas com posição 0..1 de cima para baixo).</summary>
+    public void VGradientRect(float x, float y, float w, float h, BarStop[] stops)
+    {
+        var d2d = new D2DGradientStop[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            var sc0 = stops[i].Color; var sc = new Color4(sc0.R, sc0.G, sc0.B, sc0.A * Opacity);
+            d2d[i] = new D2DGradientStop { position = stops[i].Position, color = sc };
+        }
+        ComPtr<ID2D1GradientStopCollection> collection = default;
+        fixed (D2DGradientStop* p = d2d)
+            ThrowIfFailed(Dc->CreateGradientStopCollection(p, (uint)d2d.Length, Gamma.Gamma_2_2, ExtendMode.Clamp, collection.GetAddressOf()));
+        using var _c = collection;
+        var props = new LinearGradientBrushProperties { startPoint = new Vector2(0, y), endPoint = new Vector2(0, y + h) };
+        ComPtr<ID2D1LinearGradientBrush> brush = default;
+        ThrowIfFailed(Dc->CreateLinearGradientBrush(&props, null, collection.Get(), brush.GetAddressOf()));
+        using var _b = brush;
+        var r = new RectF(x, y, x + w, y + h);
+        Dc->FillRectangle(&r, (ID2D1Brush*)brush.Get());
+    }
+
     /// <summary>Largura natural do texto em unidades de design.</summary>
     public float Measure(string text, FontToken font)
     {
