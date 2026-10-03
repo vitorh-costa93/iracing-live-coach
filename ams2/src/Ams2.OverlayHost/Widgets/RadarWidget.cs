@@ -7,7 +7,7 @@ using Vortice.Win32.Numerics;
 namespace Ams2.OverlayHost.Widgets;
 
 /// <summary>
-/// Radar de proximidade. Padrao: estilo painel (replica do Radar do V3 + distancia lateral em metros dos carros ao lado, que o SDK do iRacing nao da). Coluna "native": indicador nativo do AMS2 (marcadores so com carro ao lado, cor e distancia lateral). Painel (replica do Radar do V3, ver ams2/reference/radar-notes.md): o jogador no centro de um painel translucido de 120 x 190 dip,
+/// Radar de proximidade. Padrao: estilo painel (replica do Radar do V3). Coluna "native": indicador nativo do AMS2 (marcadores so com carro ao lado, cor e distancia lateral). Painel (replica do Radar do V3, ver ams2/reference/radar-notes.md): o jogador no centro de um painel translucido de 120 x 190 dip,
 /// os carros em volta na posicao REAL (frente/lado em metros, vinda de WorldPosition + yaw), cor por proximidade (cinza / ambar ate 12 m / vermelho ao lado ate 7 m)
 /// e barras vermelhas nas bordas quando ha carro ao lado. Le so <see cref="OverlayModel.Radar"/>. Alta frequencia: redesenha a cada vblank e
 /// extrapola a posicao entre dois passos de 60 Hz do provider pela velocidade relativa. Sem alocacao por quadro.
@@ -228,14 +228,6 @@ public sealed class RadarWidget : IWidget
             // Como no V3: so contorno (aqui, cor esmaecida) para o carro na mesma linha e longe.
             bool faint = car.Zone == RadarZone.Far && car.Side == RadarSide.Center;
             Car(c, x, y, carW, carH, color, look.CarRadius, filled: !faint);
-            // Carro ao lado (sobreposto em frente/tras): distancia lateral borda a borda, em metros.
-            if (Math.Abs(fwd) < f.CarLengthMeters)
-            {
-                double gap = Math.Max(0, Math.Abs(right) - f.CarWidthMeters);
-                string txt = gap.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m";
-                float ty = Math.Max(2f, y - carH / 2 - 14f);
-                c.Text(txt, t.Label with { Size = 11f, Tracking = 0f }, x - 24, ty, 48, 13, new Color4(1f, 1f, 1f, 0.95f), HAlign.Center, t.TextShadow);
-            }
         }
 
         // Alcance, na tipografia do tema.
