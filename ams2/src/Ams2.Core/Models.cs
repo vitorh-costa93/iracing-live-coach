@@ -19,7 +19,6 @@ public sealed record CarSnapshot(
     RaceState RaceState,
     bool LapInvalid,
     bool IsPlayer,
-    string Nationality = "",   // ISO 3166-1 alpha-2 minusculo ("br", "gb"); "" = desconhecida, sem bandeira
     string TyreSupplier = "",   // "M" Michelin, "B" Bridgestone, "" desconhecido (sufixo "(M)"/"(B)" do nome do carro)
     string OriginalName = "")   // so no carro do jogador: nome que o jogo deu (perfil), preservado quando Name e substituido por um nome de exibicao
 {

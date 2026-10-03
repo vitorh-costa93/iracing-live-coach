@@ -110,16 +110,15 @@ public sealed class BoardWidget : IWidget
         finally { c.Opacity = prev; }
     }
 
-    bool Flag => _cfg.ColumnVisible("flag");
     bool TyreCol => _cfg.ColumnVisible("tyre");
     bool PageCol => _cfg.ColumnVisible("page");
 
     // Torre: geometria por estilo.
     const float T98Edge = 20, T98ColW = 380, T98ColGap = 36, T98Box = 36, T98Pitch = 40, T98NameW = 220, T98GapW = 110;
-    const float T04Pos = 38, T04Name = 84, T04Flag = 44, T04Gap = 96, T04Pitch = 33, T04H = 31, T04ColGap = 28;
+    const float T04Pos = 38, T04Name = 84, T04Gap = 96, T04Pitch = 33, T04H = 31, T04ColGap = 28;
     const float T10Edge = 20, T10ColW = 344, T10ColGap = 32, T10Box = 36, T10Pitch = 42, T10NameW = 196, T10GapW = 100;
 
-    float T04ColW => T04Pos + T04Name + (Flag ? T04Flag : 0) + T04Gap;
+    float T04ColW => T04Pos + T04Name + T04Gap;
 
     (float W, float H) ContentSize(BoardState b)
     {
@@ -191,10 +190,9 @@ public sealed class BoardWidget : IWidget
     {
         if (e.IsPlayer) c.FillRect(x - 8, y - 3, T98ColW + 16, T98Pitch, new Color4(1, 1, 1, 0.10f));
         Chrome.AccentBox(c, x, y, T98Box, 34, Num(e.Position), t.Numbers);
-        float nx = x + T98Box + 14, nameW = Flag ? T98NameW - 48 : T98NameW;
+        float nx = x + T98Box + 14, nameW = T98NameW;
         string name = e.ShortName.ToUpperInvariant();
         c.Text(name, BroadcastUi.Fit(c, name, t.Text, nameW), nx, y - 1, nameW + 8, 34, e.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
-        if (Flag) c.Flag(e.Nationality, nx + T98NameW - 40, y + 5, 40, 24);
         float right = x + T98ColW;
         if (e.GapKind == BoardGapKind.Leader)
         {
@@ -213,12 +211,6 @@ public sealed class BoardWidget : IWidget
         x += T04Pos;
         Chrome.WhiteCell(c, x, y, T04Name, T04H, e.Code, t.Text, ink: e.IsPlayer ? Chrome.PlayerInk : null);
         x += T04Name;
-        if (Flag)
-        {
-            Chrome.Box(c, x, y, T04Flag, T04H, "", t.Text, Chrome.CellKind.White);
-            c.Flag(e.Nationality, x + 8, y + 4, T04Flag - 16, T04H - 8);
-            x += T04Flag;
-        }
         Chrome.BlackCell(c, x, y, T04Gap, T04H, e.GapText, t.Numbers);
     }
 
@@ -226,10 +218,9 @@ public sealed class BoardWidget : IWidget
     {
         if (e.IsPlayer) c.FillRoundRect(x - 8, y - 4, T10ColW + 16, 42, 6, new Color4(1, 1, 1, 0.10f));
         Chrome.AccentBox(c, x, y, T10Box, 34, Num(e.Position), t.Numbers);
-        float nx = x + T10Box + 12, nameW = Flag ? T10NameW - 46 : T10NameW;
+        float nx = x + T10Box + 12, nameW = T10NameW;
         string name = e.ShortName.ToUpperInvariant();
         c.Text(name, BroadcastUi.Fit(c, name, t.Text, nameW), nx, y - 1, nameW + 6, 34, e.IsPlayer ? t.PlayerColor : t.TextColor);
-        if (Flag) c.Flag(e.Nationality, nx + T10NameW - 36, y + 5, 36, 24);
         string gap = e.GapKind == BoardGapKind.Leader ? e.GapText.ToUpperInvariant() : e.GapText;
         c.Text(gap, t.Numbers, x + T10ColW - 140, y - 1, 140, 34, t.AccentFill, HAlign.Right);
     }
@@ -413,10 +404,8 @@ public sealed class BoardWidget : IWidget
                 Chrome.Box(c, x, y + headH + rowH, leftW, rowH, team, BroadcastUi.Fit(c, team, t.Text, leftW - 16), Chrome.CellKind.Navy);
                 float rx = x + leftW;
                 var posKind = d.Position == 1 ? Chrome.CellKind.Red : Chrome.CellKind.Navy;
-                Chrome.Box(c, rx, y + headH, 40, rowH, "", t.Text, posKind);
-                if (Flag) c.Flag(d.Nationality, rx + 6, y + headH + 5, 28, rowH - 10);
-                if (!(TyreCol && Chrome.TyreBox(c, rx, y + headH + rowH, 40, rowH, d.TyreSupplier, t.Text with { Size = 22 })))
-                    Chrome.Box(c, rx, y + headH + rowH, 40, rowH, "", t.Text, Chrome.CellKind.Navy);
+                if (!(TyreCol && Chrome.TyreBox(c, rx, y + headH, 40, rowH * 2, d.TyreSupplier, t.Text with { Size = 22 })))
+                    Chrome.Box(c, rx, y + headH, 40, rowH * 2, "", t.Text, Chrome.CellKind.Navy);
                 Chrome.Box(c, rx + 40, y + headH, 56, rowH * 2, Num(d.Position), t.Numbers with { Size = 38 }, posKind, HAlign.Center, 0);
                 break;
             }
@@ -426,7 +415,6 @@ public sealed class BoardWidget : IWidget
                 Chrome.AccentBox(c, ox + 16, oy + 16, 58, h - 32, Num(d.Position), t.Numbers with { Size = 36 });
                 c.Text(name, BroadcastUi.Fit(c, name, t.Text, 165), ox + 90, oy + 14, 170, 34, t.TextColor);
                 c.Text(team, BroadcastUi.Fit(c, team, t.Label, 165), ox + 90, oy + 48, 170, 30, t.LabelColor);
-                if (Flag) c.Flag(d.Nationality, ox + w - 56, oy + 16, 40, 26);
                 if (TyreCol && d.TyreSupplier.Length > 0) c.Text(d.TyreSupplier, t.Label, ox + w - 56, oy + 48, 40, 30, t.ValueColor, HAlign.Center);
                 break;
             }
@@ -438,13 +426,12 @@ public sealed class BoardWidget : IWidget
                 c.FillRect(tagRight - 150, oy + bandTop - tagH, 150, tagH, new Color4(21 / 255f, 150 / 255f, 176 / 255f, 0.97f));
                 c.Text("DRIVER", t.Label with { Size = 20 }, tagRight - 150, oy + bandTop - tagH - 1, 150, tagH, new Color4(1, 1, 1, 1), HAlign.Center, t.TextShadow);
                 float x = ox + 16, y1 = oy + bandTop + 8, y2 = oy + bandTop + 38;
-                float maxW = Flag ? w - 16 - 62 - 62 : w - 16 - 62 - 14;
+                float maxW = w - 16 - 62 - 14;
                 Chrome.Bubble(c, x, y1, 50, 28, CarNumber(d), t.Numbers with { Size = 24, Tracking = 1f });
                 string nm = name.ToUpperInvariant(), tm = team.ToUpperInvariant();
                 c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, maxW), x + 62, y1 - 1, maxW + 8, 30, t.TextColor, shadow: t.TextShadow);
                 if (TyreCol) Chrome.TyreEmblem(c, x + 25, y2 + 14, 12, d.TyreSupplier, t.Text with { Size = 17 });
                 c.Text(tm, BroadcastUi.Fit(c, tm, t.Label, maxW), x + 62, y2, maxW + 8, 28, t.LabelColor, shadow: t.TextShadow);
-                if (Flag) c.Flag(d.Nationality, ox + w - 54, oy + bandTop + 12, 40, 26);
                 break;
             }
         }

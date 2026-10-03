@@ -21,13 +21,6 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
         ("Rubens Barrichello", -1.102), ("Fernando Alonso", -2.481), ("Jarno Trulli", -3.947), ("Ralf Schumacher", -10.337),
     ];
     public const int PlayerIndex = 3;
-    // IDs ficticios (o AMS2 real manda 0): registrados so para o modo --fake mostrar bandeiras.
-    static readonly string[] FakeIso = ["de", "gb", "fi", "br", "br", "es", "it", "de"];
-    static FakeRawSource()
-    {
-        for (int i = 0; i < FakeIso.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(900 + i), FakeIso[i]);
-        for (int i = 0; i < BoardField.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(920 + i), BoardField[i].Iso);
-    }
 
     // Auxilios de teste visual (so --fake): AMS2_FAKE_PITS=1 faz alguns carros pararem nos boxes (jogador entra em t=16 s, parado ~3,4 s);
     // AMS2_FAKE_FINISH=1 encerra a corrida de 1 volta do lider em t=31 s.
@@ -49,18 +42,18 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
     public const double BoardTrackLength = 1400;
     const double BoardSpeed = 70;
     public const int BoardPlayerIndex = 5;
-    static readonly (string Name, string Iso, string Car)[] BoardField =
+    static readonly (string Name, string Car)[] BoardField =
     [
-        ("Michael Schumacher", "de", "Formula Classic Gen2 (B)"), ("Fernando Alonso", "es", "Formula Classic Gen2 (M)"),
-        ("Kimi Raikkonen", "fi", "Formula Classic Gen2 (M)"), ("Giancarlo Fisichella", "it", "Formula Classic Gen2 (M)"),
-        ("Jenson Button", "gb", "Formula Classic Gen2 (M)"), ("Player", "br", "Formula Classic Gen2"),
-        ("Rubens Barrichello", "br", "Formula Classic Gen2 (M)"), ("Felipe Massa", "br", "Formula Classic Gen2 (B)"),
-        ("Juan Pablo Montoya", "co", "Formula Classic Gen2 (M)"), ("Jarno Trulli", "it", "Formula Classic Gen2 (M)"),
-        ("Ralf Schumacher", "de", "Formula Classic Gen2 (M)"), ("Mark Webber", "au", "Formula Classic Gen2 (M)"),
-        ("Nick Heidfeld", "de", "Formula Classic Gen2 (M)"), ("Jacques Villeneuve", "ca", "Formula Classic Gen2 (M)"),
-        ("David Coulthard", "gb", "Formula Classic Gen2 (M)"), ("Christian Klien", "at", "Formula Classic Gen2 (M)"),
-        ("Takuma Sato", "jp", "Formula Classic Gen2 (B)"), ("Vitantonio Liuzzi", "it", "Formula Classic Gen2 (M)"),
-        ("Tiago Monteiro", "pt", "Formula Classic Gen2 (B)"), ("Christijan Albers", "nl", "Formula Classic Gen2 (B)"),
+        ("Michael Schumacher", "Formula Classic Gen2 (B)"), ("Fernando Alonso", "Formula Classic Gen2 (M)"),
+        ("Kimi Raikkonen", "Formula Classic Gen2 (M)"), ("Giancarlo Fisichella", "Formula Classic Gen2 (M)"),
+        ("Jenson Button", "Formula Classic Gen2 (M)"), ("Player", "Formula Classic Gen2"),
+        ("Rubens Barrichello", "Formula Classic Gen2 (M)"), ("Felipe Massa", "Formula Classic Gen2 (B)"),
+        ("Juan Pablo Montoya", "Formula Classic Gen2 (M)"), ("Jarno Trulli", "Formula Classic Gen2 (M)"),
+        ("Ralf Schumacher", "Formula Classic Gen2 (M)"), ("Mark Webber", "Formula Classic Gen2 (M)"),
+        ("Nick Heidfeld", "Formula Classic Gen2 (M)"), ("Jacques Villeneuve", "Formula Classic Gen2 (M)"),
+        ("David Coulthard", "Formula Classic Gen2 (M)"), ("Christian Klien", "Formula Classic Gen2 (M)"),
+        ("Takuma Sato", "Formula Classic Gen2 (B)"), ("Vitantonio Liuzzi", "Formula Classic Gen2 (M)"),
+        ("Tiago Monteiro", "Formula Classic Gen2 (B)"), ("Christijan Albers", "Formula Classic Gen2 (B)"),
     ];
     // Atraso de cada carro para o lider (s) no inicio (pelotao de 2 s para sobrar intervalo livre na volta de 20 s); o ultimo leva +1 volta.
     static readonly double[] BoardGaps = [0, 0.239, 0.33, 0.45, 0.58, 0.66, 0.79, 0.88, 0.97, 1.08, 1.17, 1.29, 1.38, 1.47, 1.55, 1.63, 1.74, 1.83, 1.92, 2.0];
@@ -102,7 +95,6 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
             Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), Field[i].Name);
             Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), i == PlayerIndex ? "Formula Classic Gen2" : "Formula Classic Gen2 (" + (i % 3 == 0 ? "B" : "M") + ")");
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
-            raw.Nationalities[i] = (uint)(900 + i);
             raw.Speeds[i] = (float)speed;
             raw.RaceStates[i] = (uint)(Finish && i == 0 && t >= 31 ? 3 : 2);
             raw.PitModes[i] = FakePit(i, t);
@@ -161,7 +153,6 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
             Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), BoardField[i].Name);
             Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), BoardField[i].Car);
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
-            raw.Nationalities[i] = (uint)(920 + i);
             raw.Speeds[i] = pit == 2 ? 0f : (float)v;
             raw.RaceStates[i] = 2;
             raw.PitModes[i] = pit;

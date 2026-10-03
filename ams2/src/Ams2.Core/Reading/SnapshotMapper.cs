@@ -36,7 +36,6 @@ public static class SnapshotMapper
                 RaceState: MapRace(raw.RaceStates[i]),
                 LapInvalid: raw.LapsInvalidated[i] != 0,
                 IsPlayer: i == playerIdx,
-                Nationality: Nationalities.Resolve(raw.Nationalities[i], Text(raw.Participants[i].Name, 0, Const.StringLen)),
                 TyreSupplier: SupplierFromCarName(Text(raw.CarNames, i * Const.StringLen, Const.StringLen))));
         }
 

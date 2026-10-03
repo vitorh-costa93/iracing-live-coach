@@ -278,7 +278,7 @@ public sealed class BoardTracker
         else if (_roundLap - c.LapsCompleted > 0) { kind = BoardGapKind.Laps; laps = _roundLap - c.LapsCompleted; text = BoardText.Laps(laps); }
         else { kind = BoardGapKind.Time; gap = Math.Max(0, t - _crosses[0].T); text = BoardText.Gap(gap); }
         _entries.Add(new BoardTowerEntry(slot + 1, slot < half ? 0 : 1, slot < half ? slot : slot - half, idx + 1, c.Position, c.Index,
-            c.Name, BoardText.ShortName(c, s.Cars), BoardText.Code(c.Name), kind, gap, laps, text, c.IsPlayer, c.Nationality, c.TyreSupplier, t));
+            c.Name, BoardText.ShortName(c, s.Cars), BoardText.Code(c.Name), kind, gap, laps, text, c.IsPlayer, c.TyreSupplier, t));
         _rev++;
     }
 
@@ -475,7 +475,7 @@ public sealed class BoardTracker
         if (me is null) { _plate = null; _plateSrc = null; return; }
         var p = _plateSrc;
         if (p is not null && p.Index == me.Index && p.Position == me.Position && p.Name == me.Name && p.CarName == me.CarName
-            && p.Nationality == me.Nationality && p.TyreSupplier == me.TyreSupplier) return;
+            && p.TyreSupplier == me.TyreSupplier) return;
         _plateSrc = me;
         _plate = BoardText.Driver(me, s.Cars);
     }

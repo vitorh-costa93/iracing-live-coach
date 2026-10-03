@@ -48,7 +48,6 @@ public sealed unsafe class DeviceResources : IDisposable
     ComPtr<IDWriteFactory> _dwriteFactory;
     ComPtr<ID2D1Bitmap1> _offscreen;
     FontLibrary? _fonts;
-    FlagCache? _flags;
 
     nint _hwnd;
     int _width, _height;
@@ -57,7 +56,6 @@ public sealed unsafe class DeviceResources : IDisposable
     public ID2D1DeviceContext* Context => _dc.Get();
     public IDWriteFactory* DWriteFactory => _dwriteFactory.Get();
     public FontLibrary Fonts => _fonts!;
-    public FlagCache Flags => _flags!;
     public int Width => _width;
     public int Height => _height;
     /// <summary>Muda a cada recuperação de device lost.</summary>
@@ -109,7 +107,6 @@ public sealed unsafe class DeviceResources : IDisposable
         ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwrite.GetAddressOf()));
         _dwriteFactory = dwrite;
         _fonts = FontLibrary.Build(_dwriteFactory.Get());
-        _flags = new FlagCache(_dc.Get());
 
         if (_offscreenMode) CreateOffscreenTarget();
         else CreateWindowChain();
@@ -234,8 +231,6 @@ public sealed unsafe class DeviceResources : IDisposable
     void Release()
     {
         _offscreen.Dispose();
-        _flags?.Dispose();
-        _flags = null;
         _fonts?.Dispose();
         _dwriteFactory.Dispose();
         _dc.Dispose();

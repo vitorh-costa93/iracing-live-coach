@@ -34,11 +34,4 @@
     </Content>
   </ItemGroup>
 
-  <!-- Bandeiras (PNG 80x56): copiadas do V3, sem alterar. Carregadas sob demanda via WIC. -->
-  <ItemGroup>
-    <Content Include="Assets\Flags\*.png" Link="Assets\Flags\%(Filename)%(Extension)">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
 </Project>

@@ -36,38 +36,6 @@ public class RealDumpTests
     }
 }
 
-public class NationalityTests
-{
-    [Fact]
-    public void Real_dump_has_no_nationality_ids_so_names_resolve_the_country()
-    {
-        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Data", "ams2-v14-interlagos.bin"));
-        var raw = MemoryMarshal.Read<RawSharedMemory>(bytes);
-        for (int i = 0; i < 64; i++) Assert.Equal(0u, raw.Nationalities[i]); // o AMS2 nao preenche mNationalities
-        var s = SnapshotMapper.Map(in raw);
-        string Iso(string n) => s.Cars.Single(c => c.Name == n).Nationality;
-        Assert.Equal("br", Iso("Rubens Barrichello"));
-        Assert.Equal("br", Iso("Felipe Massa"));
-        Assert.Equal("br", Iso("Vitor COSTA"));
-        Assert.Equal("it", Iso("Gianni Fisco"));
-        Assert.Equal("au", Iso("Matt Weaver"));
-        Assert.Equal("de", Iso("Rulf Fenstermacher"));
-        Assert.Equal("jp", Iso("Tatsumi Sakai"));
-        Assert.Equal("in", Iso("Naresh Kaushalya"));
-        Assert.Equal("at", Iso("Richard Kern"));        // conferido na tela de classificação do jogo
-        Assert.Equal("ca", Iso("Jake Villain"));
-        Assert.Equal("at", Iso("Pavel Fischer"));
-    }
-
-    [Fact]
-    public void Known_id_wins_and_unknown_id_without_name_has_no_flag()
-    {
-        Assert.Equal("", Ams2.Core.Reading.Nationalities.Resolve(77, "Nobody Known"));
-        Ams2.Core.Reading.Nationalities.RegisterId(901, "fr");
-        Assert.Equal("fr", Ams2.Core.Reading.Nationalities.Resolve(901, "Rubens Barrichello"));
-    }
-}
-
 public class TyreSupplierTests
 {
     [Fact]

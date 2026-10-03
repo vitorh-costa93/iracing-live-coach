@@ -37,25 +37,24 @@ public sealed class StandingsWidget : IWidget
 
     const float RowTop = 12, RowPitch = 43, RowPitch2000s = 36;
     const float BoxX = 19, BoxW = 40, BoxH = 34;
-    const float NameCellW = 104, FlagW = 44, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
+    const float NameCellW = 104, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
     const float NameX = 75; // so para a mensagem de espera
 
     /// <summary>Posicoes das colunas visiveis, da esquerda para a direita, sem buracos (todas visiveis = layout do mockup).</summary>
-    readonly record struct Cols(float PosX, float NameCellX, float FlagX, float BadgeCx, float GapRight, float Width);
+    readonly record struct Cols(float PosX, float NameCellX, float BadgeCx, float GapRight, float Width);
 
     Cols Layout()
     {
         float x = BoxX;
-        float posX = x, nameX = 0, flagX = 0, badgeCx = 0, gapRight = 0;
+        float posX = x, nameX = 0, badgeCx = 0, gapRight = 0;
         bool any = false;
         if (_cfg.ColumnVisible("pos")) { x += BoxW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("name")) { nameX = x; x += NameCellW + ColSpacing + 1; any = true; }
-        if (_cfg.ColumnVisible("flag")) { flagX = x; x += FlagW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("class")) { badgeCx = x + BadgeW / 2; x += BadgeW + ColSpacing; any = true; }
         if (_cfg.ColumnVisible("gap")) { x += any ? GapW : GapOnlyW; gapRight = x; any = true; }
         else x -= ColSpacing;
         if (!any) x = BoxX + 100;
-        return new Cols(posX, nameX, flagX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
+        return new Cols(posX, nameX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
@@ -100,7 +99,6 @@ public sealed class StandingsWidget : IWidget
                 var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
                 c.Text(RelativeWidget.Code(r.Car.Name), t.Text, L.NameCellX + 8, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
-            if (_cfg.ColumnVisible("flag")) c.Flag(r.Car.Nationality, L.FlagX, y + 5, FlagW, BoxH - 10);
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap"))
             {
@@ -172,8 +170,8 @@ public sealed class StandingsWidget : IWidget
         }
     }
 
-    // Mini-torre 2004-2008 (transmissao): [pos][sigla][bandeira][pneu][classe][gap], celulas coladas. O lider mostra "Lap N" em celula preta.
-    const float X04 = 4, Pos04 = 40, Name04 = 82, Flag04 = 46, Tyre04 = 30, Class04 = 40, Gap04 = 112;
+    // Mini-torre 2004-2008 (transmissao): [pos][sigla][pneu][classe][gap], celulas coladas. O lider mostra "Lap N" em celula preta.
+    const float X04 = 4, Pos04 = 40, Name04 = 82, Tyre04 = 30, Class04 = 40, Gap04 = 112;
     float Width2004
     {
         get
@@ -181,7 +179,6 @@ public sealed class StandingsWidget : IWidget
             float x = X04;
             if (_cfg.ColumnVisible("pos")) x += Pos04;
             if (_cfg.ColumnVisible("name")) x += Name04;
-            if (_cfg.ColumnVisible("flag")) x += Flag04;
             if (_cfg.ColumnVisible("tyre")) x += Tyre04;
             if (_cfg.ColumnVisible("class")) x += Class04;
             if (_cfg.ColumnVisible("gap")) x += Gap04;
@@ -189,7 +186,7 @@ public sealed class StandingsWidget : IWidget
         }
     }
 
-    /// <summary>Linha flutuante 2004–2008: caixa de posição (líder vermelho), sigla em célula branca, bandeira, pneu, selo de classe e célula preta, coladas.</summary>
+    /// <summary>Linha flutuante 2004–2008: caixa de posição (líder vermelho), sigla em célula branca, pneu, selo de classe e célula preta, coladas.</summary>
     void DrawRow2000s(ThemeCanvas c, Theme.Theme t, StandingRow r, Cols L, float y, List<string> classes)
     {
         float h = BoxH, x = X04;
@@ -201,12 +198,6 @@ public sealed class StandingsWidget : IWidget
             x += Pos04;
         }
         if (_cfg.ColumnVisible("name")) { Chrome.WhiteCell(c, x, y, Name04, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? Chrome.PlayerInk : null); x += Name04; }
-        if (_cfg.ColumnVisible("flag"))
-        {
-            Chrome.Box(c, x, y, Flag04, h, "", t.Text, Chrome.CellKind.White);
-            c.Flag(r.Car.Nationality, x + 8, y + 4, Flag04 - 16, h - 8);
-            x += Flag04;
-        }
         if (_cfg.ColumnVisible("tyre"))
         {
             if (!Chrome.TyreBox(c, x, y, Tyre04, h, r.Car.TyreSupplier, t.Text with { Size = 20 })) Chrome.Box(c, x, y, Tyre04, h, "", t.Text, Chrome.CellKind.Navy);

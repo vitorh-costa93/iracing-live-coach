@@ -110,6 +110,5 @@ public class PlayerIdentityTests
         Assert.Equal("Vitor COSTA", r.PlayerCar.OriginalName);
         Assert.Equal(s.Cars.Count, r.Cars.Count);
         Assert.Equal(s.PlayerCar!.Position, r.PlayerCar.Position);
-        Assert.Equal("br", s.PlayerCar.Nationality); // a bandeira continua a do nome do jogo (calculada no mapper)
     }
 }

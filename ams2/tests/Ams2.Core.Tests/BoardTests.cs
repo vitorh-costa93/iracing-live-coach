@@ -406,17 +406,16 @@ public class BoardTrackerTests
     }
 
     [Fact]
-    public void Driver_plate_has_team_flag_tyre_and_position()
+    public void Driver_plate_has_team_tyre_and_position()
     {
         var sim = new Sim(3000, (600, 100), (500, 100)) { PlayerIndex = 1, AutoPositions = true };
         sim.Names = ["Michael Schumacher", "Fernando Alonso"];
         sim.CarNames = ["Formula Classic Gen2 (B)", "Formula Classic Gen2 (M)"];
-        sim.Nations = ["de", "es"];
         var st = new BoardRig(sim).State;
         Assert.Equal(BoardMode.DriverPlate, st.Mode);
         var p = st.Plate!;
-        Assert.Equal(("Fernando Alonso", "Alonso", "ALO", "Formula Classic Gen2", "es", "M", 2, true),
-            (p.Name, p.ShortName, p.Code, p.Team, p.Nationality, p.TyreSupplier, p.Position, p.IsPlayer));
+        Assert.Equal(("Fernando Alonso", "Alonso", "ALO", "Formula Classic Gen2", "M", 2, true),
+            (p.Name, p.ShortName, p.Code, p.Team, p.TyreSupplier, p.Position, p.IsPlayer));
         Assert.Equal(1, st.ItemCount);
     }
 

@@ -43,7 +43,6 @@ public sealed record BoardDriver(
     string ShortName,     // sobrenome ("Alonso"); com sobrenome repetido no grid, "M Schumacher"
     string Code,          // sigla de 3 letras ("ALO")
     string Team,          // nome do carro sem "(M)"/"(B)" e sem o nome da classe
-    string Nationality,   // ISO alpha-2 minúsculo; "" = sem bandeira
     string TyreSupplier,  // "M", "B" ou ""
     bool IsPlayer);
 
@@ -69,7 +68,6 @@ public sealed record BoardTowerEntry(
     int GapLaps,
     string GapText,
     bool IsPlayer,
-    string Nationality,
     string TyreSupplier,
     double CrossedT);
 
@@ -184,7 +182,7 @@ public static class BoardText
     }
 
     public static BoardDriver Driver(CarSnapshot c, IEnumerable<CarSnapshot> field) =>
-        new(c.Index, c.Position, c.Name, ShortName(c, field), Code(c.Name), Team(c), c.Nationality, c.TyreSupplier, c.IsPlayer);
+        new(c.Index, c.Position, c.Name, ShortName(c, field), Code(c.Name), Team(c), c.TyreSupplier, c.IsPlayer);
 
     /// <summary>"+0.239", "+12.345"; a partir de 60 s "+1:02.345". Negativos com "-".</summary>
     public static string Gap(double seconds)
