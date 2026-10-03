@@ -65,3 +65,11 @@ Ou seja, a posicao lateral e REAL: nao precisa inferir lado. Para o jogador (par
   Cores/tipografia por tema (1998, 2004, 2010s); alertas sempre vermelho/ambar/cinza.
 * **Posicao padrao**: igual ao V3 em x (900, centrado), y = 585 (o V3 usa 640, mas o Pit Timer padrao ocupa y 780-831 e o teste de layout proibe sobreposicao).
 * **Render**: `IWidget.HighFrequency = true` (a cada vblank, ver `fps-notes.md`); entre dois passos de 60 Hz do provider as posicoes sao extrapoladas pela velocidade relativa (ate 50 ms).
+
+## 4. Validacao (03/10/2026)
+
+* Fake: `AMS2_FAKE_RADAR=1` (so `--fake`/`--png`): o jogador segue em reta e 4 carros orbitam numa elipse de 20 x 3,6 m (12 s por volta, defasados de 90 graus). Em t = 3 s um esta a direita e outro a esquerda (os dois em Alert, barras vermelhas); os de +/-20 m ficam fora do alcance de 15 m. Exemplo:
+  `AMS2_FAKE_RADAR=1 Ams2.OverlayHost.exe --png radar.png --widget radar --theme f1-2010s --sim 3 --scale 1.5` (imprime `[RADAR] ...` com frente/direita/zona de cada carro). `--cols none` = modo "so com carro proximo"; `--radar-range 10..40` e `--radar-sens 1..5`.
+* Contact sheet (3 temas x 4 instantes, 1,5 / 3 / 4,5 / 7,5 s) conferida visualmente; nao versionada (preview-*.png nao entra no repositorio). O V3 nao tem print/mockup do Radar no repositorio, a comparacao foi pela geometria e cores da secao 1 (painel 120 x 190, jogador no centro, guias a cada 5 m, barras de 4 dip, cores #FF5252 / #FFCC00 / cinza).
+* Taxa (`--fake --widget radar --seconds 5 --measure`, monitor de 165 Hz): render do radar ~153 fps; provider 60 passos/s; CPU ~4% de 1 nucleo. Sem carro por perto (modo padrao) o widget e "ocioso" (`IWidget.IsIdle`): o host o redesenha so a 60 Hz (limpando a janela) e nao pede o ritmo de vblank.
+* Testes: `RadarTests` (esquerda/direita, atras, a frente, rotacao do jogador em varios yaw, retardatarios, pit lane/garagem, alcance e sensibilidade configuraveis, pista paralela/viaduto, sem dados, ordem/capacidade, zero alocacao em 5000 chamadas, quadro imutavel no anel, dump real: rumo = yaw + pi e carro a 27 m a frente), `RadarSettingsTests`, `RadarFakeTests` (--png com o fake) e as tabelas de layout/tamanho de projeto.
