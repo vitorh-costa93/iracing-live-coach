@@ -211,6 +211,12 @@ public class BoardTrackerTests
         // Próxima marca (S2) abre nova janela.
         st = rig.RunTo((8000.0 / 3 - 300) / 100 + 0.1);
         Assert.Equal(2, st.SectorGap!.Sector);
+
+        // S1 da volta seguinte (40 s depois): o cruzamento antigo do jogador não pode virar split.
+        st = rig.RunTo(s1 + 40 + 0.1);
+        Assert.Equal(1, st.SectorGap!.Sector);
+        Assert.False(st.SectorGap.IsSplit);
+        Assert.Equal(0.5, rig.RunTo(s1 + 41.6).SectorGap!.GapSeconds, 3);
     }
 
     [Fact]
@@ -222,6 +228,20 @@ public class BoardTrackerTests
         Assert.Equal(BoardMode.DriverPlate, rig.RunTo(s1 + 1.55).Mode);
         // Os que cruzam depois do fechamento não reabrem a janela (não são o primeiro do campo).
         rig.RunTo(s1 + 4, s => Assert.NotEqual(BoardMode.SectorGap, s.Mode));
+    }
+
+    [Fact]
+    public void Sector_window_hidden_by_the_tower_is_skipped_when_too_little_is_left()
+    {
+        // 8 carros a 0,3 s: torre cheia em 2,47 s; hold 1,6 s → termina em 4,07. Janela S3 (linha) fecha em 2,47 + 2 = 4,47.
+        var o = new BoardOptions { PageHoldSeconds = 1.6 };
+        var st = new BoardRig(Train(8, 4000, 0.37, spacing: 0.3, player: 3), o).RunTo(4.2);
+        Assert.Equal(BoardMode.DriverPlate, st.Mode);              // só 0,27 s restantes: não pisca
+        Assert.NotNull(st.SectorGap);
+
+        st = new BoardRig(Train(8, 4000, 0.37, spacing: 0.3, player: 3), o with { SectorMinShowSeconds = 0 }).RunTo(4.2);
+        Assert.Equal(BoardMode.SectorGap, st.Mode);
+        Assert.Equal(3, st.SectorGap!.Sector);
     }
 
     [Fact]

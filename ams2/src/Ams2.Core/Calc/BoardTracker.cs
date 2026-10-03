@@ -360,7 +360,8 @@ public sealed class BoardTracker
         foreach (int k in (ReadOnlySpan<int>)[me.Index, nb.Index])
         {
             double prevT = _markT[k, marker];
-            if (k != c.Index && !double.IsNaN(prevT) && prevT <= t && t - prevT < _o.SectorMaxWindowSeconds) _secCross[k] = prevT;
+            // Só vale se esta marca foi a última que o carro cruzou (não é o cruzamento da volta anterior).
+            if (k != c.Index && !double.IsNaN(prevT) && _segMarker[k] == marker && prevT <= t && t - prevT < _o.SectorMaxWindowSeconds) _secCross[k] = prevT;
         }
         _sectorGap = null;
         _rev++;
@@ -483,8 +484,9 @@ public sealed class BoardTracker
 
     BoardState Compose(double now, bool race)
     {
+        bool sector = _sectorGap is not null && (_mode == BoardMode.SectorGap || _sectorGap.CloseT - now >= _o.SectorMinShowSeconds);
         BoardMode mode = _tower is not null ? BoardMode.LineTower
-            : _sectorGap is not null ? BoardMode.SectorGap
+            : sector ? BoardMode.SectorGap
             : _cmp is not null ? BoardMode.LapComparison
             : _plate is not null ? BoardMode.DriverPlate
             : BoardMode.None;

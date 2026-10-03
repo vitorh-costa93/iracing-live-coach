@@ -21,6 +21,8 @@ public sealed record BoardOptions
     public double SectorCloseDelaySeconds { get; init; } = 2;
     /// <summary>Teto de segurança da janela de setor, contado da abertura.</summary>
     public double SectorMaxWindowSeconds { get; init; } = 40;
+    /// <summary>Anti-pisca: uma janela de setor que ficou escondida (atrás da torre) só aparece se ainda tiver pelo menos isto.</summary>
+    public double SectorMinShowSeconds { get; init; } = 1;
     /// <summary>Diferença de |gap| abaixo da qual o vizinho da frente é preferido ao de trás.</summary>
     public double NeighborTieSeconds { get; init; } = 0.05;
     /// <summary>O comparativo aparece quando as voltas completas do jogador são múltiplas deste valor (e ≥ ele).</summary>
