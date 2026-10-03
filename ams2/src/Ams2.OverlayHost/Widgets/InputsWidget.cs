@@ -169,106 +169,147 @@ public sealed class InputsWidget : IWidget
         c.Text("KPH", t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);
     }
 
-    // ---- Estilo 2004-2008: velocímetro analógico com pedais embutidos ----
-    const float DialCx = 150, DialCy = 150, DialR = 142, DialMaxKph = 360;
-    const float RpX = 322, RpW = 302;
+    // ---- Estilo 2004-2008: cluster tacômetro + marcha/pedais + barra de velocidade em arco (ref. f1-2000s-speedo-dial) ----
+    // Coordenadas de projeto = pixels da referência ampliados 4x (origem no canto do tacômetro).
+    const float TCx = 172, TCy = 170, TDiscR = 170;           // tacômetro
+    const float CellX = 202, CellW = 148, CellH = 38, CellPitch = 44, CellY0 = 175;
+    const float ACx = 182, ACy = 328, ARin = 66, ARout = 114; // arco da barra de velocidade (centro, raios interno/externo)
+    const float BarX0 = 10, SpdY = 394, SpdH = 48;            // trecho reto da barra (12 segmentos verdes, 0-240 km/h)
+    const float ClusterW = 360, ClusterH = 490, GraphW = 342, GraphH = 84, GraphSectionH = 8 + GraphH + 26;
 
-    static (float X, float Y) Polar(float r, double deg) =>
-        (DialCx + r * (float)Math.Cos(deg * Math.PI / 180), DialCy + r * (float)Math.Sin(deg * Math.PI / 180));
+    static Color4 Rgb(int r, int g, int b, float a = 1f) => new(r / 255f, g / 255f, b / 255f, a);
+    static readonly Color4 PanelDark = new(0.04f, 0.04f, 0.05f, 0.72f);
+    static readonly Color4 SegOff = new(0.26f, 0.27f, 0.29f, 0.55f);
 
-    static double DialAngle(double kph) => 135 + Math.Clamp(kph / DialMaxKph, 0, 1) * 270;
+    static (float X, float Y) Pol(float cx, float cy, float r, double deg) =>
+        (cx + r * (float)Math.Cos(deg * Math.PI / 180), cy + r * (float)Math.Sin(deg * Math.PI / 180));
+
+    /// <summary>Setor anular (raios r0..r1, ângulos de tela em graus) preenchido por raios finos sobrepostos.</summary>
+    static void Wedge(ThemeCanvas c, float cx, float cy, float r0, float r1, double a0, double a1, Color4 col)
+    {
+        double lo = Math.Min(a0, a1), hi = Math.Max(a0, a1);
+        double step = Math.Max(0.15, 1.0 / r1 * 180 / Math.PI);
+        for (double a = lo; a <= hi + 1e-6; a += step)
+        {
+            var (x1, y1) = Pol(cx, cy, r0, a); var (x2, y2) = Pol(cx, cy, r1, a);
+            c.Line(x1, y1, x2, y2, col, 1.6f);
+        }
+        var (ex1, ey1) = Pol(cx, cy, r0, hi); var (ex2, ey2) = Pol(cx, cy, r1, hi);
+        c.Line(ex1, ey1, ex2, ey2, col, 1.6f);
+    }
+
+    /// <summary>Ponteiro afilado do cubo até <paramref name="len"/> (largura w0 no cubo, w1 na ponta).</summary>
+    static void Needle(ThemeCanvas c, float cx, float cy, double deg, float len, float w0, float w1, Color4 col)
+    {
+        const int n = 40;
+        for (int i = 0; i < n; i++)
+        {
+            float f0 = (float)i / n, f1 = (i + 1.4f) / n;
+            var (x1, y1) = Pol(cx, cy, len * f0, deg); var (x2, y2) = Pol(cx, cy, Math.Min(len, len * f1), deg);
+            c.Line(x1, y1, x2, y2, col, w0 + (w1 - w0) * (f0 + f1) / 2);
+        }
+    }
+
+    /// <summary>Fim da escala do tacômetro em milhares de rpm: 18900 -> 20 (como na referência); sem dado, 20.</summary>
+    static int ScaleEnd(double maxRpm) => maxRpm > 1000 ? Math.Clamp((int)Math.Ceiling(maxRpm / 1000.0) + 1, 8, 30) : 20;
+    static int ScaleStart(int end) => end >= 12 ? 6 : 0;
 
     void DrawAnalog(ThemeCanvas c, Theme.Theme t, OverlayModel m)
     {
-        var (w, h) = DesignSize;
-        c.Panel(0, 0, w, h);
         var p = m.Session?.Player;
         bool live = m.Connected && p is not null;
         double kph = live ? p!.SpeedMps * 3.6 : 0;
-        var black = new Color4(0.03f, 0.03f, 0.05f, 1f);
+        double rpm = live ? p!.Rpm : 0;
+        var white = new Color4(1, 1, 1, 1);
+        var shadow = new ShadowToken(1.5f, 1.5f, new Color4(0, 0, 0, 0.7f));
 
-        // Mostrador: aro claro, fundo preto, marcas e números da escala.
-        c.FillEllipse(DialCx, DialCy, DialR, DialR, t.GraphAxis);
-        c.FillEllipse(DialCx, DialCy, DialR - 5, DialR - 5, black);
-        for (int v = 0; v <= (int)DialMaxKph; v += 10)
+        // Painéis translúcidos: disco do tacômetro e placa da barra de velocidade.
+        c.FillEllipse(TCx, TCy, TDiscR, TDiscR, PanelDark);
+        c.FillRoundRect(0, 330, 346, ClusterH - 330, 28, PanelDark);
+
+        // ---- Tacômetro ----
+        int end = ScaleEnd(live ? p!.MaxRpm : 0), start = ScaleStart(end);
+        double step = 270.0 / (end - start);
+        double AngleOf(double r) => 90 + Math.Clamp(r / 1000.0 - start, 0, end - start) * step;
+        Wedge(c, TCx, TCy, 101, 113, 90, 360, white);   // anel grosso
+        Wedge(c, TCx, TCy, 92, 94.6f, 90, 360, white);  // anéis finos
+        Wedge(c, TCx, TCy, 85, 87.6f, 90, 360, white);
+        var nf = t.Label with { Size = 22 };
+        for (int k = start; k <= end; k++)
         {
-            bool major = v % 40 == 0;
-            var (x1, y1) = Polar(DialR - 10, DialAngle(v));
-            var (x2, y2) = Polar(DialR - (major ? 26 : 18), DialAngle(v));
-            c.Line(x1, y1, x2, y2, v >= 300 ? t.BrakeColor : t.TitleColor, major ? 2.6f : 1.4f);
-            if (major)
-            {
-                var (tx, ty) = Polar(DialR - 45, DialAngle(v));
-                c.Text(v.ToString(CultureInfo.InvariantCulture), t.Label with { Size = 17 }, tx - 24, ty - 12, 48, 24, t.TitleColor, HAlign.Center);
-            }
+            double a = 90 + (k - start) * step;
+            var (x1, y1) = Pol(TCx, TCy, 118, a); var (x2, y2) = Pol(TCx, TCy, 130, a);
+            c.Line(x1, y1, x2, y2, white, 3f);
+            var (tx, ty) = Pol(TCx, TCy, 148, a);
+            c.Text(k.ToString(CultureInfo.InvariantCulture), nf, tx - 24, ty - 14, 48, 28, white, HAlign.Center, shadow);
         }
-        c.Text("km/h", t.Label with { Size = 16 }, DialCx - 40, DialCy + 52, 80, 22, t.LabelColor, HAlign.Center);
-        c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture), t.Numbers with { Size = 30 }, DialCx - 50, DialCy + 74, 100, 36, t.TitleColor, HAlign.Center);
+        double na = AngleOf(rpm);
+        var (tailX, tailY) = Pol(TCx, TCy, 30, na + 180);
+        Needle(c, TCx, TCy, na + 180, 30, 17, 17, white);            // contrapeso
+        c.FillEllipse(tailX, tailY, 11, 11, white);
+        Needle(c, TCx, TCy, na, 112, 15, 3.5f, white);                // agulha
+        c.FillEllipse(TCx, TCy, 21, 21, white);
+        c.FillEllipse(TCx, TCy, 13, 13, Rgb(225, 228, 232));
 
-        // Ponteiro (com contrapeso) e cubo.
-        double a = DialAngle(kph);
-        var (nx, ny) = Polar(DialR - 22, a);
-        var (bx, by) = Polar(-26, a);
-        c.Line(bx, by, nx, ny, t.TitleColor, 4.5f);
-        c.FillEllipse(DialCx, DialCy, 13, 13, t.TitleColor);
-        c.FillEllipse(DialCx, DialCy, 5, 5, black);
-
-        // Coluna da direita: blocos visíveis (marcha+RPM, pedais, gráfico) empilhados sem buracos.
-        float y = 16;
+        // ---- Marcha e pedais (pilha de células à direita do tacômetro) ----
+        float y = CellY0;
+        var cf = t.Label with { Size = 26 };
         if (_cfg.ColumnVisible("gear"))
         {
-            // RPM em LEDs (20 segmentos: verde, amarelo, vermelho).
-            const int leds = 20;
-            double frac = live && p!.MaxRpm > 0 ? Math.Clamp(p.Rpm / p.MaxRpm, 0, 1) : 0;
-            int lit = (int)Math.Round(frac * leds);
-            float lw = (RpW - (leds - 1) * 2) / leds;
-            for (int i = 0; i < leds; i++)
-            {
-                var col = i < 12 ? t.ThrottleColor : i < 17 ? new Color4(0.95f, 0.8f, 0.1f, 1f) : t.BrakeColor;
-                if (i >= lit) col = new Color4(col.R * 0.22f, col.G * 0.22f, col.B * 0.22f, 1f);
-                c.FillRect(RpX + i * (lw + 2), y, lw, 20, col);
-            }
-            Chrome.Caption(c, RpX, y + 24, "RPM", 18, t.Label with { Size = 13 });
             string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
-            Chrome.WhiteCell(c, RpX, y + 46, 90, 36, "Gear", t.Text);
-            Chrome.Box(c, RpX + 90, y + 46, 50, 36, g, t.Numbers, Chrome.CellKind.Navy, HAlign.Center, 0);
-            y += GearSectionH;
+            Chrome.WhiteCell(c, CellX, y, CellW, CellH, "", cf);
+            c.Text("Gear", cf, CellX, y - 1, CellW * 0.62f, CellH, t.NameCellInk, HAlign.Center);
+            c.Text(g, cf, CellX + CellW * 0.62f, y - 1, CellW * 0.38f - 12, CellH, t.NameCellInk, HAlign.Right);
+            y += CellPitch;
         }
         if (_cfg.ColumnVisible("bars"))
         {
-            PedalBar(c, t, y, "THROTTLE", live ? p!.Inputs.Throttle : 0, t.ThrottleColor);
-            PedalBar(c, t, y + 34, "BRAKE", live ? p!.Inputs.Brake : 0, t.BrakeColor);
-            y += BarsSectionH;
+            PedalCell(c, y, "Throttle", live ? p!.Inputs.Throttle : 0, [new(0f, Rgb(96, 230, 96)), new(0.35f, Rgb(26, 185, 23)), new(1f, Rgb(12, 112, 20))], cf, shadow);
+            PedalCell(c, y + CellPitch, "Brake", live ? p!.Inputs.Brake : 0, [new(0f, Rgb(244, 84, 64)), new(0.35f, Rgb(210, 28, 20)), new(1f, Rgb(120, 8, 8))], cf, shadow);
         }
+
+        // ---- Barra de velocidade em arco: 12 verdes (0-240), 3 amarelos (240-280), 3 laranjas (280-320), 1 vermelho (320-340) ----
+        Color4 green = Rgb(52, 208, 82), yellow = Rgb(226, 202, 31), orange = Rgb(205, 122, 24), red = Rgb(128, 12, 16);
+        float pitch = (ACx - BarX0) / 12f;
+        for (int i = 0; i < 12; i++)
+            c.FillRect(BarX0 + i * pitch, SpdY, pitch - 3, SpdH, kph > i * 20 ? green : SegOff);
+        const double seg = 14.2, gap = 1.6;
+        for (int i = 0; i < 6; i++)
+        {
+            double a0 = 90 - i * seg, a1 = 90 - (i + 1) * seg;
+            double startKph = 240 + i * (40.0 / 3);
+            Wedge(c, ACx, ACy, ARin, ARout, a1 + gap / 2, a0 - gap / 2, kph > startKph ? (i < 3 ? yellow : orange) : SegOff);
+        }
+        Wedge(c, ACx, ACy, ARin, ARout, -24, 3.6, kph > 320 ? red : SegOff);
+        var lf = t.Label with { Size = 20 };
+        (string, double)[] marks = [("240", 85), ("280", 47), ("320", 16), ("340", -8)];
+        foreach (var (txt, a) in marks)
+        {
+            var (lx, ly) = Pol(ACx, ACy, 140, a);
+            c.Text(txt, lf, lx - 30, ly - 13, 60, 26, white, HAlign.Center, shadow);
+        }
+        c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture) + " km/h", lf, BarX0, 455, 130, 26, white, HAlign.Left, shadow);
+
         if (_cfg.ColumnVisible("graph"))
         {
-            // Gráfico dos últimos 10 s (mesmos dados do estilo padrão).
-            const float gh = 84;
-            DrawGraphFrame(c, t, RpX, y, RpW, gh);
-            if (live) DrawTrace(c, t, m.InputHistory, m.Now, RpX, y, RpW, gh);
-            else Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", RpX + 10, y + 24, 280);
+            // Gráfico opcional dos últimos 10 s (mesmos dados do estilo padrão).
+            float gy = ClusterH + 8;
+            DrawGraphFrame(c, t, 0, gy, GraphW, GraphH);
+            if (live) DrawTrace(c, t, m.InputHistory, m.Now, 0, gy, GraphW, GraphH);
+            else Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", 10, gy + 24, 280);
         }
     }
 
-    // Alturas dos blocos da coluna da direita (incluem a folga até o próximo; todos visíveis = mockup 640x300).
-    const float GearSectionH = 92, BarsSectionH = 78, GraphSectionH = 84 + 26, AnalogPad = 4, DialW = 300;
-
     (float Width, float Height) AnalogSize()
-    {
-        float y = 16;
-        bool any = false;
-        if (_cfg.ColumnVisible("gear")) { y += GearSectionH; any = true; }
-        if (_cfg.ColumnVisible("bars")) { y += BarsSectionH; any = true; }
-        if (_cfg.ColumnVisible("graph")) { y += GraphSectionH; any = true; }
-        return (any ? 640 : DialW, Math.Max(300, y + AnalogPad));
-    }
+        => (ClusterW, ClusterH + (_cfg.ColumnVisible("graph") ? GraphSectionH : 0));
 
-    static void PedalBar(ThemeCanvas c, Theme.Theme t, float y, string label, double value, Color4 color)
+    /// <summary>Célula escura que enche (verde/vermelho) proporcionalmente ao valor, com o rótulo branco por cima.</summary>
+    static void PedalCell(ThemeCanvas c, float y, string label, double value, BarStop[] stops, FontToken font, ShadowToken shadow)
     {
-        // Rótulo em célula branca e barra em célula preta (estilo 2004–2008).
-        const float lw = 104;
-        Chrome.WhiteCell(c, RpX, y, lw, 28, label, t.Label with { Size = 17 });
-        Chrome.Box(c, RpX + lw, y, RpW - lw, 28, "", t.Label, Chrome.CellKind.Black);
-        c.FillRect(RpX + lw + 2, y + 2, (float)Math.Clamp(value, 0, 1) * (RpW - lw - 4), 24, color);
+        c.FillRect(CellX, y + CellH, CellW, 1.5f, new Color4(0.04f, 0.04f, 0.08f, 0.6f));
+        c.FillRect(CellX, y, CellW, CellH, new Color4(0.09f, 0.1f, 0.11f, 0.9f));
+        float fw = (float)Math.Clamp(value, 0, 1) * CellW;
+        if (fw > 0.5f) c.VGradientRect(CellX, y, fw, CellH, stops);
+        c.Text(label, font, CellX, y - 1, CellW, CellH, new Color4(1, 1, 1, 1), HAlign.Center, shadow);
     }
 }

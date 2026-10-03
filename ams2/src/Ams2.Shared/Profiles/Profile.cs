@@ -124,6 +124,8 @@ public static class ProfileFactory
             Rows = e.d.DefaultRows, Scale = (float)Math.Round(e.slot.Scale * fy, 3),
             // f1-2004: mini-torre da transmissao (posicao, sigla, bandeira); gap/classe/pneu ficam opcionais.
             Columns = e.d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"]
+                // f1-2004: o cluster (tacometro + marcha/pedais + barra de velocidade) e fiel a transmissao; o grafico de 10 s e opcional.
+                : e.d.Id == "inputs" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["bars", "gear"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "standings" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
