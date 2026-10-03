@@ -54,7 +54,9 @@ public class NationalityTests
         Assert.Equal("de", Iso("Rulf Fenstermacher"));
         Assert.Equal("jp", Iso("Tatsumi Sakai"));
         Assert.Equal("in", Iso("Naresh Kaushalya"));
-        Assert.Equal("", Iso("Richard Kern"));
+        Assert.Equal("at", Iso("Richard Kern"));        // conferido na tela de classificação do jogo
+        Assert.Equal("ca", Iso("Jake Villain"));
+        Assert.Equal("at", Iso("Pavel Fischer"));
     }
 
     [Fact]

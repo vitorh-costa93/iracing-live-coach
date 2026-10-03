@@ -16,10 +16,10 @@ public static class Nationalities
     {
         ["Rubens Barrichello"] = "br", ["Felipe Massa"] = "br", ["Vitor COSTA"] = "br",
         ["Gianni Fisco"] = "it", ["Jovanni Torio"] = "it",
-        ["Matt Weaver"] = "au", ["Jake Villain"] = "au",
+        ["Matt Weaver"] = "au", ["Jake Villain"] = "ca", ["Richard Kern"] = "at",
         ["Markell Fenstermacher"] = "de", ["Rulf Fenstermacher"] = "de", ["Nick Heinrich"] = "de",
         ["Tatsumi Sakai"] = "jp", ["Naresh Kaushalya"] = "in",
-        ["Chris Arends"] = "nl", ["Pavel Fischer"] = "cz", ["Telmo Moreira"] = "pt",
+        ["Chris Arends"] = "nl", ["Pavel Fischer"] = "at", ["Telmo Moreira"] = "pt",
         ["Dave Coulter"] = "gb", ["Tony Davis"] = "gb",
     };
 
