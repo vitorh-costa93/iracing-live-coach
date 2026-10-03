@@ -16,9 +16,12 @@ public sealed class StandingsWidget : IWidget
     public int Rows { get; set; } = 8;
     WidgetSettings _cfg = new() { Id = "standings" };
     public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 8; }
-    public (float Width, float Height) DesignSize => (_b04 ? Width2004 : Layout().Width, 12 + Rows * Pitch + 2);
-    bool _b04;
-    public void UseTheme(Theme.Theme theme) => _b04 = theme.Style == ThemeStyle.Broadcast2000s;
+    public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
+        : (_b04 ? Width2004 : Layout().Width, 12 + Rows * Pitch + 2);
+    bool _b04, _b98;
+    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; }
+    /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
+    bool TableMode => _b98 && _cfg.ColumnVisible("table");
     float Pitch => _b04 ? RowPitch2000s : RowPitch;
 
     const float RowTop = 12, RowPitch = 43, RowPitch2000s = 36;
@@ -50,7 +53,7 @@ public sealed class StandingsWidget : IWidget
         c.Panel(0, 0, w, h);
         if (!m.Connected || m.Standings.Count == 0)
         {
-            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, NameX, RowTop, 340, 30, t.LabelColor, shadow: t.TextShadow);
+            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, TableMode ? 24 : NameX, TableMode ? TableTop : RowTop, 340, 30, t.LabelColor, shadow: t.TextShadow);
             return;
         }
 
@@ -61,6 +64,7 @@ public sealed class StandingsWidget : IWidget
         var me = m.Standings.FirstOrDefault(r => r.IsPlayer);
         if (me is not null && !rows.Contains(me) && rows.Count > 0) rows[^1] = me;
 
+        if (TableMode) { DrawTable(c, t, rows, m); return; }
         var L = Layout();
         for (int i = 0; i < rows.Count; i++)
         {
@@ -78,6 +82,35 @@ public sealed class StandingsWidget : IWidget
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(r), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+        }
+    }
+
+    // Tabela inferior 1998–2001 (faixa do GP do Brasil 2003): 2 colunas x N linhas, [caixa amarela][NOME][gap amarelo à direita]; o líder mostra "LAP n".
+    const float TableX = 22, TableTop = 12, TableBottom = 8, TablePitch = 40, TableBoxW = 36, TableBoxH = 34, TableNameW = 246, TableGapW = 118, TableColGap = 44;
+    const float TableColW = TableBoxW + 14 + TableNameW + TableGapW;
+    int TableRows => (Rows + 1) / 2;
+    static float TableWidth => TableX * 2 + TableColW * 2 + TableColGap;
+
+    void DrawTable(ThemeCanvas c, Theme.Theme t, List<StandingRow> rows, OverlayModel m)
+    {
+        var field = m.Standings.Select(r => r.Car).ToList();
+        int per = TableRows;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            float x = TableX + (i / per) * (TableColW + TableColGap), y = TableTop + (i % per) * TablePitch;
+            Chrome.AccentBox(c, x, y, TableBoxW, TableBoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
+            string name = BroadcastUi.ShortName(r.Car, field).ToUpperInvariant();
+            c.Text(name, BroadcastUi.Fit(c, name, t.Text, TableNameW), x + TableBoxW + 14, y - 1, TableNameW, TableBoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+            float right = x + TableColW;
+            if (r.Car.Position == 1 && r.Car.CurrentLap > 0)
+            {
+                string n = r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture);
+                float nw = c.Measure(n, t.Numbers) + t.Numbers.Tracking * n.Length;
+                c.Text(n, t.Numbers, right - nw, y, nw + 4, TableBoxH, t.ValueColor, shadow: t.ValueShadow);
+                c.Text("LAP", t.Label, right - nw - 70, y, 66, TableBoxH, t.ValueColor, HAlign.Right, t.TextShadow);
+            }
+            else c.Text(FormatGap(r).TrimStart('+'), t.Numbers, right - 160, y, 160, TableBoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 

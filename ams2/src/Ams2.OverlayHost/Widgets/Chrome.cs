@@ -135,6 +135,41 @@ public static class Chrome
         else c.Text(text, t.Label, x, y, w, 30, t.LabelColor, shadow: t.TextShadow);
     }
 
+    // ---- Vocabulário 1998–2001 (GP do Brasil 2003): bolha ciana, emblema circular do fornecedor de pneus, selo preto, barra de tempo dividido ----
+
+    /// <summary>Bolha ciana arredondada (pílula) com o número do carro; tinta escura.</summary>
+    public static void Bubble(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font)
+    {
+        var t = c.Theme;
+        c.FillRoundRect(x, y, w, h, h / 2, t.BadgeFill);
+        c.Text(text, font, x, y - 1, w, h, t.BadgeInk, HAlign.Center);
+    }
+
+    /// <summary>Emblema circular do fornecedor de pneus: disco azul "M" ou vermelho "B" num círculo branco. Desconhecido: não desenha. Devolve se desenhou.</summary>
+    public static bool TyreEmblem(ThemeCanvas c, float cx, float cy, float r, string supplier, FontToken font)
+    {
+        if (supplier is not ("M" or "B")) return false;
+        c.FillEllipse(cx, cy, r, r, C(250, 250, 252));
+        c.FillEllipse(cx, cy, r - 2.5f, r - 2.5f, supplier == "M" ? C(24, 74, 184) : C(204, 24, 32));
+        c.Text(supplier, font, cx - r, cy - r - 1, 2 * r, 2 * r, C(255, 255, 255), HAlign.Center);
+        return true;
+    }
+
+    /// <summary>Selo preto de canto ("TIMING"), sem marcas.</summary>
+    public static void BlackTag(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font)
+    {
+        c.FillRect(x, y, w, h, new Color4(0.02f, 0.02f, 0.02f, 0.96f));
+        c.Text(text, font, x, y - 1, w, h, C(255, 255, 255), HAlign.Center);
+    }
+
+    /// <summary>Barra fina de degradê preto/amarelo/branco do tempo dividido; <paramref name="mirror"/> inverte (branco à esquerda).</summary>
+    public static void SplitBar(ThemeCanvas c, float x, float y, float w, float h, bool mirror)
+    {
+        var stops = c.Theme.TitleBar;
+        if (mirror) stops = stops.Reverse().Select(s => new BarStop(1f - s.Position, s.Color)).ToArray();
+        c.GradientBar(x, y, w, h, stops);
+    }
+
     /// <summary>Caixa de destaque do tema (posição, marcha): retângulo reto no 1998/2004, cantos suaves no 2010s.</summary>
     public static void AccentBox(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, Color4? fill = null)
     {
