@@ -40,7 +40,7 @@ public static class Chrome
     }
 
     /// <summary>Tipos de célula do vocabulário 2004–2008 (cores amostradas das capturas de 2005).</summary>
-    public enum CellKind { White, Black, Red, Navy, Green, Orange }
+    public enum CellKind { White, Black, Red, Navy, Green, Orange, Blue }
 
     static Color4 C(int r, int g, int b) => new(r / 255f, g / 255f, b / 255f, 1f);
 
@@ -52,6 +52,7 @@ public static class Chrome
         CellKind.Red => [new(0f, C(222, 44, 28)), new(0.18f, C(200, 20, 4)), new(0.7f, C(196, 18, 0)), new(1f, C(140, 12, 2))],
         CellKind.Navy => [new(0f, C(78, 76, 102)), new(0.2f, C(66, 64, 88)), new(0.7f, C(60, 58, 82)), new(1f, C(40, 38, 63))],
         CellKind.Green => [new(0f, C(16, 140, 34)), new(0.2f, C(1, 118, 13)), new(1f, C(0, 96, 10))],
+        CellKind.Blue => [new(0f, C(40, 110, 200)), new(0.2f, C(22, 88, 178)), new(1f, C(12, 56, 128))],
         _ => [new(0f, C(232, 146, 22)), new(0.2f, C(217, 130, 11)), new(1f, C(184, 104, 6))],
     };
 
@@ -83,6 +84,14 @@ public static class Chrome
     /// <summary>Caixa de posição: vermelha só para o líder, azul-ardósia para os demais.</summary>
     public static void PositionBox(ThemeCanvas c, float x, float y, float w, float h, int position, FontToken font)
         => Box(c, x, y, w, h, position.ToString(System.Globalization.CultureInfo.InvariantCulture), font, position == 1 ? CellKind.Red : CellKind.Navy, HAlign.Center, 0);
+
+    /// <summary>Caixinha do fornecedor de pneus como na transmissao: azul "M" (Michelin) ou vermelha "B" (Bridgestone). Desconhecido: nao desenha. Devolve se desenhou.</summary>
+    public static bool TyreBox(ThemeCanvas c, float x, float y, float w, float h, string supplier, FontToken font)
+    {
+        if (supplier is not ("M" or "B")) return false;
+        Box(c, x, y, w, h, supplier, font, supplier == "M" ? CellKind.Blue : CellKind.Red, HAlign.Center, 0);
+        return true;
+    }
 
     /// <summary>Tinta do nome do jogador (vermelho escuro sobre a célula branca).</summary>
     public static Color4 PlayerInk => C(176, 12, 24);

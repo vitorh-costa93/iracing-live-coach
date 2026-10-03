@@ -36,7 +36,8 @@ public static class SnapshotMapper
                 RaceState: MapRace(raw.RaceStates[i]),
                 LapInvalid: raw.LapsInvalidated[i] != 0,
                 IsPlayer: i == playerIdx,
-                Nationality: Nationalities.Resolve(raw.Nationalities[i], Text(raw.Participants[i].Name, 0, Const.StringLen))));
+                Nationality: Nationalities.Resolve(raw.Nationalities[i], Text(raw.Participants[i].Name, 0, Const.StringLen)),
+                TyreSupplier: SupplierFromCarName(Text(raw.CarNames, i * Const.StringLen, Const.StringLen))));
         }
 
         cars = AssignClassPositions(cars);
@@ -81,6 +82,16 @@ public static class SnapshotMapper
             foreach (var c in g.OrderBy(c => c.Position == 0 ? int.MaxValue : c.Position)) rank[c.Index] = pos++;
         }
         return cars.Select(c => c with { ClassPosition = rank[c.Index] }).ToList();
+    }
+
+    /// <summary>Sufixo do nome do carro: "(M)" = Michelin, "(B)" = Bridgestone. Sem sufixo (ex.: carro do jogador) = desconhecido:
+    /// nenhum outro campo (TyreCompound = "Slick Macio", classe) traz o fornecedor.</summary>
+    public static string SupplierFromCarName(string carName)
+    {
+        var n = carName.TrimEnd();
+        if (n.EndsWith("(M)", StringComparison.Ordinal)) return "M";
+        if (n.EndsWith("(B)", StringComparison.Ordinal)) return "B";
+        return "";
     }
 
     static PitState MapPit(uint v) => v <= 5 ? (PitState)v : PitState.None;

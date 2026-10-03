@@ -19,7 +19,8 @@ public sealed record CarSnapshot(
     RaceState RaceState,
     bool LapInvalid,
     bool IsPlayer,
-    string Nationality = "")   // ISO 3166-1 alpha-2 minusculo ("br", "gb"); "" = desconhecida, sem bandeira
+    string Nationality = "",
+    string TyreSupplier = "")   // "M" Michelin, "B" Bridgestone, "" desconhecido (sufixo "(M)"/"(B)" do nome do carro)   // ISO 3166-1 alpha-2 minusculo ("br", "gb"); "" = desconhecida, sem bandeira
 {
     /// <summary>Progresso total na corrida em metros (voltas completas + distância na volta).</summary>
     public double TotalDistance(double trackLength) => LapsCompleted * trackLength + LapDistance;

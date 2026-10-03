@@ -65,3 +65,19 @@ public class NationalityTests
         Assert.Equal("fr", Ams2.Core.Reading.Nationalities.Resolve(901, "Rubens Barrichello"));
     }
 }
+
+public class TyreSupplierTests
+{
+    [Fact]
+    public void Supplier_comes_from_car_name_suffix_in_real_dump()
+    {
+        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Data", "ams2-v14-interlagos.bin"));
+        var raw = MemoryMarshal.Read<RawSharedMemory>(bytes);
+        var s = SnapshotMapper.Map(in raw);
+        Assert.Equal("", s.PlayerCar!.TyreSupplier);                       // Model2, sem sufixo
+        Assert.Equal(10, s.Cars.Count(c => c.TyreSupplier == "M"));
+        Assert.Equal(6, s.Cars.Count(c => c.TyreSupplier == "B"));
+        Assert.Equal("M", SnapshotMapper.SupplierFromCarName("Formula V10 Gen3 Model1 (M)"));
+        Assert.Equal("B", SnapshotMapper.SupplierFromCarName("Formula V10 Gen3 Model1 (B)"));
+    }
+}

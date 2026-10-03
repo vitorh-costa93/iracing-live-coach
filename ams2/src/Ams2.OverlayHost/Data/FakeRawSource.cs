@@ -57,7 +57,7 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
             p.CurrentLapDistance = (float)(total - laps * TrackLength);
             p.CurrentSector = (int)((total - laps * TrackLength) / TrackLength * 3);
             Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), Field[i].Name);
-            Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), "Formula Classic Gen2");
+            Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), i == PlayerIndex ? "Formula Classic Gen2" : "Formula Classic Gen2 (" + (i % 3 == 0 ? "B" : "M") + ")");
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
             raw.Nationalities[i] = (uint)(900 + i);
             raw.Speeds[i] = (float)speed;
