@@ -26,10 +26,30 @@ public sealed class RadarFakeTests
     }
 
     [Fact]
-    public void Fake_radar_puts_one_car_on_each_side_at_3_s_and_renders_a_png()
+    public void Fake_radar_native_style_is_the_default_and_only_sees_the_two_cars_alongside_at_3_s()
     {
-        // t = 3 s: o carro 1 esta a direita e o carro 3 a esquerda, os dois ao lado (frente ~0); os outros dois ficam a +/-20 m, fora do alcance de 15 m.
+        // t = 3 s: carros a direita (lateral 3,2 m -> gap 1,2 m) e a esquerda (4,4 m -> gap 2,4 m), os dois ao lado; os outros a +/-20 m nao entram (alcance minimo).
         string o = Run("--widget radar --sim 3", out var png);
+        try
+        {
+            Assert.Contains("[RADAR] valido=True alcance=10m carros=2 alertaE=True alertaD=True aoLadoE=True aoLadoD=True distE=2.4 distD=1.2", o);
+            Assert.True(new FileInfo(png).Length > 500);
+        }
+        finally { File.Delete(png); }
+    }
+
+    [Fact]
+    public void Fake_radar_at_6_s_shows_a_yellow_and_a_green_gap()
+    {
+        string o = Run("--widget radar --sim 6", out var png);
+        try { Assert.Contains("aoLadoE=True aoLadoD=True distE=3.5 distD=5.5", o); }
+        finally { File.Delete(png); }
+    }
+
+    [Fact]
+    public void Fake_radar_panel_style_keeps_the_old_range_and_alerts()
+    {
+        string o = Run("--widget radar --sim 3 --cols panel", out var png);
         try
         {
             Assert.Contains("[RADAR] valido=True alcance=15m carros=2 alertaE=True alertaD=True", o);
@@ -40,9 +60,9 @@ public sealed class RadarFakeTests
     }
 
     [Fact]
-    public void Fake_radar_range_option_brings_the_far_cars_in()
+    public void Fake_radar_range_option_brings_the_far_cars_in_on_the_panel_style()
     {
-        string o = Run("--widget radar --sim 3 --radar-range 25", out var png);
+        string o = Run("--widget radar --sim 3 --cols panel --radar-range 25", out var png);
         try { Assert.Contains("alcance=25m carros=4", o); }
         finally { File.Delete(png); }
     }

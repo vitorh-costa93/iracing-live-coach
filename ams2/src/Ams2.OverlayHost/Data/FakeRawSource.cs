@@ -60,11 +60,13 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     static readonly bool BoardEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_BOARD") == "1";
     readonly bool _board = board ?? BoardEnv;
 
-    // AMS2_FAKE_RADAR=1 (so --fake): o jogador (indice 0) segue em reta a 60 m/s e 4 carros orbitam em torno dele numa elipse de 20 m (frente/tras) x 3,6 m (lados),
+    // AMS2_FAKE_RADAR=1 (so --fake): o jogador (indice 0) segue em reta a 60 m/s e 4 carros orbitam em torno dele numa elipse de 20 m (frente/tras) x 3,2 a 7,5 m (lados, uma amplitude por carro),
     // 12 s por volta, defasados de 90 graus: a cada instante um esta a frente, um a direita (ao lado), um atras e um a esquerda. Posicao de mundo e yaw coerentes
     // com a convencao do jogo (rumo = yaw + pi; avanco (sin h, cos h); direita (cos h, -sin h)); o yaw do jogador oscila de leve para exercitar a rotacao.
     public const double RadarTrackLength = 4000, RadarPeriod = 12;
-    const double RadarForwardAmp = 20, RadarLateralAmp = 3.6;
+    const double RadarForwardAmp = 20;
+    /// <summary>Amplitude lateral de cada orbitante (m, centro a centro): passam ao lado a distancias diferentes (gap = amplitude - 2 m: 1,2 / 3,5 / 2,4 / 5,5 m).</summary>
+    static readonly double[] RadarLateralAmps = [0, 3.2, 5.5, 4.4, 7.5];
     static readonly string[] RadarNames = ["Player", "Michael Schumacher", "David Coulthard", "Mika Hakkinen", "Rubens Barrichello"];
     static readonly bool RadarEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_RADAR") == "1";
     readonly bool _radar = radar ?? RadarEnv;
@@ -148,8 +150,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
             if (i > 0)
             {
                 double th = w * t + (i - 1) * Math.PI / 2;
-                fwd = RadarForwardAmp * Math.Cos(th); right = RadarLateralAmp * Math.Sin(th);
-                double vF = speed - RadarForwardAmp * w * Math.Sin(th), vR = RadarLateralAmp * w * Math.Cos(th);
+                fwd = RadarForwardAmp * Math.Cos(th); right = RadarLateralAmps[i] * Math.Sin(th);
+                double vF = speed - RadarForwardAmp * w * Math.Sin(th), vR = RadarLateralAmps[i] * w * Math.Cos(th);
                 v = Math.Sqrt(vF * vF + vR * vR);
                 carYaw = yaw + Math.Atan2(vR, vF);
             }

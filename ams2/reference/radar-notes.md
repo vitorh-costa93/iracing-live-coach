@@ -73,3 +73,17 @@ Ou seja, a posicao lateral e REAL: nao precisa inferir lado. Para o jogador (par
 * Contact sheet (3 temas x 4 instantes, 1,5 / 3 / 4,5 / 7,5 s) conferida visualmente; nao versionada (preview-*.png nao entra no repositorio). O V3 nao tem print/mockup do Radar no repositorio, a comparacao foi pela geometria e cores da secao 1 (painel 120 x 190, jogador no centro, guias a cada 5 m, barras de 4 dip, cores #FF5252 / #FFCC00 / cinza).
 * Taxa (`--fake --widget radar --seconds 5 --measure`, monitor de 165 Hz): render do radar ~153 fps; provider 60 passos/s; CPU ~4% de 1 nucleo. Sem carro por perto (modo padrao) o widget e "ocioso" (`IWidget.IsIdle`): o host o redesenha so a 60 Hz (limpando a janela) e nao pede o ritmo de vblank.
 * Testes: `RadarTests` (esquerda/direita, atras, a frente, rotacao do jogador em varios yaw, retardatarios, pit lane/garagem, alcance e sensibilidade configuraveis, pista paralela/viaduto, sem dados, ordem/capacidade, zero alocacao em 5000 chamadas, quadro imutavel no anel, dump real: rumo = yaw + pi e carro a 27 m a frente), `RadarSettingsTests`, `RadarFakeTests` (--png com o fake) e as tabelas de layout/tamanho de projeto.
+
+## 5. Estilo nativo (padrao desde 03/10/2026)
+
+Feedback: o radar deve seguir o "Indicador de proximidade" do HUD do AMS2 (Jogo > Exibicao). Observado no jogo (so leitura de memoria + capturas): dois pequenos triangulos vermelhos
+(chevron) na parte baixa-central, do lado do carro vizinho; marcador com carro a 0,2 e 3,3 m a frente (lat ~3-5 m), SEM marcador com 4,3 a 7,8 m a frente/atras.
+
+* Tracker: `RadarFrame.LeftGap/RightGap` (NaN = nenhum) = menor distancia lateral borda a borda (centro a centro - 2 m, min 0) entre carros com |frente| <= 4 m x sensibilidade (1,5 a 6 m;
+  padrao 4 m) e lateral <= 9 m. Zonas Warn/Alert/Far e `AlertLeft/Right` continuam para o estilo painel.
+* Widget: `RadarWidget` desenha so os marcadores (280 x 72 dip, sem painel), um por lado, par de triangulos; mais perto = mais proximo do centro e maior; cor verde (>= 6 m) -> amarelo (3,5) -> vermelho (<= 1,5),
+  com "x.x m" ao lado; some com fade de 0,3 s. Coluna `panel` (Control Center: "Estilo painel") volta ao painel 120 x 190 (alcance/sensibilidade/sempre visivel valem so nele).
+  Posicao padrao (820, 700), acima do Pit Timer/Board.
+* INFERIDO: a faixa de cores e a distancia numerica (o jogo so descreve "verde = longe, vermelho = perto"; nas capturas todos os marcadores eram vermelhos); o limiar de 4 m (entre 3,3 e 4,3 observados);
+  forma exata dos triangulos; distancia borda a borda (nao se sabe se o jogo usa centro a centro).
+* Fake: `AMS2_FAKE_RADAR=1` com amplitudes laterais 3,2 / 5,5 / 4,4 / 7,5 m por orbitante (t = 3 s: gaps 1,2 e 2,4; t = 6 s: 3,5 e 5,5); `--cols panel` valida o estilo painel.

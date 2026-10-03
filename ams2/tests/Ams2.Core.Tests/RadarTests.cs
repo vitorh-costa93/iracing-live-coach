@@ -84,6 +84,68 @@ public class RadarTests
         Assert.Equal(70 * Math.Cos(0.2) - 60, c.VForward, 2);
     }
 
+
+    // ---- Estilo nativo (indicador de proximidade): so carro realmente ao lado, com a distancia lateral borda a borda ----
+
+    [Fact]
+    public void Native_car_alongside_on_the_left_or_right_gives_the_lateral_gap_of_that_side_only()
+    {
+        var left = Run(Scene(1.327, (0.5, -3.5)));
+        Assert.True(left.AlongLeft); Assert.False(left.AlongRight);
+        Assert.Equal(1.5, left.LeftGap, 3);                         // 3,5 m centro a centro - 2,0 m de largura
+        var right = Run(Scene(-2.88, (-2, 4.1)));
+        Assert.True(right.AlongRight); Assert.False(right.AlongLeft);
+        Assert.Equal(2.1, right.RightGap, 3);
+    }
+
+    [Theory]
+    [InlineData(3.9, true)] [InlineData(4.3, false)] [InlineData(-3.9, true)] [InlineData(-4.3, false)] [InlineData(7.8, false)] [InlineData(0.2, true)]
+    public void Native_marker_needs_longitudinal_overlap_a_car_4_m_ahead_or_behind_is_not_alongside(double fwd, bool alongside)
+    {
+        // Observado no AMS2: marcador com 3,3 m a frente; sem marcador com 4,3 m (lateral ~4 m).
+        var f = Run(Scene(0.7, (fwd, 4.0)));
+        Assert.Equal(alongside, f.AlongRight);
+        Assert.False(f.AlongLeft);
+    }
+
+    [Fact]
+    public void Native_cars_on_both_sides_are_reported_simultaneously_with_their_own_gaps_and_the_nearest_wins()
+    {
+        var f = Run(Scene(2.0, (1, -5.0), (-1, 3.2), (2, 7.0)));
+        Assert.True(f.AlongLeft && f.AlongRight);
+        Assert.Equal(3.0, f.LeftGap, 3);
+        Assert.Equal(1.2, f.RightGap, 3);                           // dois carros a direita: o de 3,2 m (gap 1,2) vence o de 7 m
+    }
+
+    [Fact]
+    public void Native_lateral_window_is_9_m_and_overlapping_cars_have_gap_zero()
+    {
+        Assert.False(Run(Scene(0.0, (0, 9.5)), new RadarOptions { LateralMeters = 12 }).AlongRight);
+        Assert.Equal(7.0, Run(Scene(0.0, (0, 9.0)), new RadarOptions { LateralMeters = 12 }).RightGap, 3);
+        Assert.Equal(0.0, Run(Scene(0.0, (1, 1.2))).RightGap, 3);
+    }
+
+    [Fact]
+    public void Native_alongside_window_follows_the_sensitivity_and_never_comes_from_far_cars()
+    {
+        var sim = Scene(0.0, (5.5, 4.0));
+        Assert.False(Run(sim).AlongRight);
+        Assert.True(Run(sim, new RadarOptions { Sensitivity = 1.5 }).AlongRight);                  // 4 x 1,5 = 6 m
+        Assert.False(Run(Scene(0.0, (3.0, 4.0)), new RadarOptions { Sensitivity = 0.5 }).AlongRight);   // 4 x 0,5 = 2 m
+        Assert.False(Run(Scene(0.0, (12, 0.5), (-10, -1))).AlongLeft);                              // proximos a frente/atras, nunca ao lado
+    }
+
+    [Fact]
+    public void Native_lapped_car_alongside_still_counts_and_a_car_ahead_in_the_same_lane_does_not()
+    {
+        var sim = new Sim(Len, (3 * Len + 1000, 60), (1000, 55), (1000, 55)) { PlayerIndex = 0 };
+        sim.Poses[0] = (0, 0, 0, Math.PI);
+        sim.Poses[1] = (-3.4, 0, 0.5, Math.PI);                      // retardatario a esquerda, ao lado
+        sim.Poses[2] = (0, 0, 8, Math.PI);                           // outro, 8 m a frente na mesma linha
+        var f = Run(sim);
+        Assert.True(f.AlongLeft); Assert.Equal(1.4, f.LeftGap, 3);
+        Assert.False(f.AlongRight);
+    }
     [Fact]
     public void Lapped_cars_count_because_the_radar_is_geometric()
     {

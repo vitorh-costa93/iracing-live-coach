@@ -196,13 +196,13 @@
                             </StackPanel>
 
                             <StackPanel x:Name="RadarPanel" Margin="0,0,0,14">
-                                <TextBlock Text="Alcance (metros à frente e atrás)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Quanto da pista cabe no radar: de 10 a 40 m (o V3 usa 15 m)."/>
+                                <TextBlock Text="Alcance do painel (metros à frente e atrás)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Só vale no estilo painel (coluna &quot;Estilo painel&quot;). O indicador nativo do AMS2 só aparece com carro ao lado."/>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <Button Content="−" Width="34" Click="RadarRangeMinus_Click"/>
                                     <TextBlock Text="{Binding RadarRange, StringFormat={}{0} m}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
                                     <Button Content="+" Width="34" Click="RadarRangePlus_Click"/>
                                 </StackPanel>
-                                <TextBlock Text="Sensibilidade do aviso" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Distância em que o carro fica âmbar (12 m no V3) ou vermelho ao lado (7 m no V3). 1 = metade, 5 = uma vez e meia."/>
+                                <TextBlock Text="Sensibilidade (carro ao lado)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Quão longe à frente/atrás ainda conta como &quot;ao lado&quot; (padrão 4 m; 1 = metade, 5 = uma vez e meia). No estilo painel também escala as janelas de aviso."/>
                                 <StackPanel Orientation="Horizontal">
                                     <Button Content="−" Width="34" Click="RadarSensMinus_Click"/>
                                     <TextBlock Text="{Binding RadarSensitivity}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>

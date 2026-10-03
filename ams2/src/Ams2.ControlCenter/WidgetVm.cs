@@ -85,7 +85,7 @@ public sealed class WidgetVm : Notify
     public int NearCount { get => _near; set => Edit(ref _near, Math.Clamp(value, 0, WidgetCatalog.MaxNearCount), nameof(NearCount)); }
     public int RadarRange { get => _radarRange; set => Edit(ref _radarRange, Math.Clamp(value, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange), nameof(RadarRange)); }
     public int RadarSensitivity { get => _radarSens; set => Edit(ref _radarSens, Math.Clamp(value, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity), nameof(RadarSensitivity)); }
-    public string RadarSensitivityText => RadarSensitivity switch { 1 => "1 (so quase encostado)", 2 => "2", 3 => "3 (como o V3)", 4 => "4", _ => "5 (avisa cedo)" };
+    public string RadarSensitivityText => RadarSensitivity switch { 1 => "1 (só lado a lado)", 2 => "2", 3 => "3 (padrão: ~4 m de sobreposição)", 4 => "4", _ => "5 (avisa cedo)" };
     public string FontChoice { get => _font; set => Edit(ref _font, value, nameof(FontChoice)); }
     public bool DropTarget { get => _dropTarget; set => Set(ref _dropTarget, value); }
 

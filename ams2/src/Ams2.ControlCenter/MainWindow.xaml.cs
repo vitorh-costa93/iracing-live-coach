@@ -435,7 +435,7 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(_previewDir);
         string png = Path.Combine(_previewDir, $"{seq}.png");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
+        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
             psi.ArgumentList.Add(a);
         if (vm.SupportsRows) { psi.ArgumentList.Add("--rows"); psi.ArgumentList.Add(vm.Rows.ToString()); }
         // Radar: carros orbitando o jogador (instante 3 s = um de cada lado); o alcance e a sensibilidade do widget valem na previa.

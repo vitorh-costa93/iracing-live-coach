@@ -18,11 +18,18 @@ public sealed record RadarOptions
     public const double AlertLongMeters = 7.0, WarnLongMeters = 12.0;
     /// <summary>Lateral (centro a centro): menor que SideMin = na mesma linha; ate AlertLateralMeters conta como "ao lado".</summary>
     public const double SideMinMeters = 1.2, AlertLateralMeters = 4.5;
+    /// <summary>
+    /// Estilo nativo do AMS2 ("Indicador de proximidade"): so ha marcador com carro realmente ao lado, isto e, sobreposicao longitudinal
+    /// |frente| ate AlongsideLongMeters (x sensibilidade; observado no jogo: marcador com 3,3 m, sem marcador com 4,3 m) e lateral (centro a centro) ate AlongsideLateralMeters.
+    /// </summary>
+    public const double AlongsideLongMeters = 4.0, AlongsideLateralMeters = 9.0;
 
     public double RangeMeters { get; init; } = DefaultRange;
     /// <summary>Meia-largura lateral do painel (m): carros mais afastados nao entram.</summary>
     public double LateralMeters { get; init; } = 7.5;
     public double Sensitivity { get; init; } = 1.0;
+    /// <summary>Janela longitudinal (m) do "carro ao lado" do estilo nativo (<see cref="AlongsideLongMeters"/> x sensibilidade).</summary>
+    public double AlongsideLong => AlongsideLongMeters * Sensitivity;
     /// <summary>Tamanho do carro (m). O AMS2 nao informa dimensoes: valor unico (~5,0 x 2,0 m).</summary>
     public double CarLengthMeters { get; init; } = 5.0;
     public double CarWidthMeters { get; init; } = 2.0;
@@ -87,6 +94,15 @@ public sealed class RadarFrame
     /// <summary>Distancia a frente (m, + = a frente) do carro Alert mais proximo de cada lado; NaN = nenhum.</summary>
     public double LeftOffset { get; private set; } = double.NaN;
     public double RightOffset { get; private set; } = double.NaN;
+    /// <summary>
+    /// Estilo nativo: distancia lateral (m, borda a borda = centro a centro menos a largura do carro, minimo 0) do carro realmente ao lado
+    /// (|frente| ate a janela de sobreposicao, lateral ate 9 m) mais proximo de cada lado; NaN = nenhum carro ao lado.
+    /// </summary>
+    public double LeftGap { get; private set; } = double.NaN;
+    public double RightGap { get; private set; } = double.NaN;
+    public bool AlongLeft => !double.IsNaN(LeftGap);
+    public bool AlongRight => !double.IsNaN(RightGap);
+    double _alongLong = RadarOptions.AlongsideLongMeters;
     /// <summary>Velocidade do jogador (m/s).</summary>
     public double PlayerSpeed { get; private set; }
 
@@ -99,6 +115,7 @@ public sealed class RadarFrame
         Valid = valid; Time = time; Count = 0;
         RangeMeters = o.RangeMeters; LateralMeters = o.LateralMeters; CarLengthMeters = o.CarLengthMeters; CarWidthMeters = o.CarWidthMeters;
         AlertLeft = AlertRight = false; LeftOffset = RightOffset = double.NaN; PlayerSpeed = 0;
+        LeftGap = RightGap = double.NaN; _alongLong = o.AlongsideLong;
     }
 
     internal void Set(ReadOnlySpan<RadarCar> cars, double playerSpeed)
@@ -108,6 +125,13 @@ public sealed class RadarFrame
         PlayerSpeed = playerSpeed;
         foreach (ref readonly var c in cars)
         {
+            double lat = Math.Abs(c.Right);
+            if (Math.Abs(c.Forward) <= _alongLong && lat <= RadarOptions.AlongsideLateralMeters)
+            {
+                double gap = Math.Max(0, lat - CarWidthMeters);
+                if (c.Right < 0) { if (double.IsNaN(LeftGap) || gap < LeftGap) LeftGap = gap; }
+                else if (double.IsNaN(RightGap) || gap < RightGap) RightGap = gap;
+            }
             if (c.Zone != RadarZone.Alert) continue;
             if (c.Side == RadarSide.Left) { AlertLeft = true; if (double.IsNaN(LeftOffset) || Math.Abs(c.Forward) < Math.Abs(LeftOffset)) LeftOffset = c.Forward; }
             else if (c.Side == RadarSide.Right) { AlertRight = true; if (double.IsNaN(RightOffset) || Math.Abs(c.Forward) < Math.Abs(RightOffset)) RightOffset = c.Forward; }

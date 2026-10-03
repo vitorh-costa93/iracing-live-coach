@@ -115,7 +115,9 @@ internal static class Program
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
         var names = PlayerNameStore.InMemory(); // a previa nunca toca no player-names.json do usuario
         using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
-        provider.Radar.Options = RadarWidget.OptionsFor(new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens }.Normalized());
+        // Radar: sem --cols o previa usa o padrao do perfil (indicador nativo; "panel" liga o estilo painel).
+        string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        provider.Radar.Options = RadarWidget.OptionsFor(new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
         if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
@@ -129,7 +131,7 @@ internal static class Program
         {
             Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
             RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens,
-            Columns = o.Cols is null || o.Cols == "all" ? null : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries),
+            Columns = cols,
         }.Normalized();
         widget.Configure(settings);
         int w = (int)Math.Ceiling(widget.DesignSize.Width * scale), h = (int)Math.Ceiling(widget.DesignSize.Height * scale);
@@ -149,7 +151,7 @@ internal static class Program
         Console.WriteLine($"[PNG] {o.Png} {w}x{h} tema={theme.Id} conectado={m.Connected} linhas={m.Relative.Count}");
         if (m.Radar is { } rf)
         {
-            Console.WriteLine($"[RADAR] valido={rf.Valid} alcance={rf.RangeMeters:0}m carros={rf.Count} alertaE={rf.AlertLeft} alertaD={rf.AlertRight}");
+            Console.WriteLine($"[RADAR] valido={rf.Valid} alcance={rf.RangeMeters:0}m carros={rf.Count} alertaE={rf.AlertLeft} alertaD={rf.AlertRight} aoLadoE={rf.AlongLeft} aoLadoD={rf.AlongRight} distE={rf.LeftGap:0.0} distD={rf.RightGap:0.0}");
             foreach (var rc in rf.Cars) Console.WriteLine($"   #{rc.Index} frente={rc.Forward:0.0} direita={rc.Right:0.0} {rc.Side} {rc.Zone} velRel={rc.RelSpeed:0.0}");
         }
         foreach (var r in m.Relative) Console.WriteLine($"   P{r.Car.Position} {RelativeWidget.Code(r.Car.Name)} {(r.IsPlayer ? "(voce)" : RelativeWidget.FormatGap(r))}");
