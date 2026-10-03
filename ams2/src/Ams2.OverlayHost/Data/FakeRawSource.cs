@@ -21,6 +21,9 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         ("Rubens Barrichello", -1.102), ("Fernando Alonso", -2.481), ("Jarno Trulli", -3.947), ("Ralf Schumacher", -10.337),
     ];
     public const int PlayerIndex = 3;
+    // IDs ficticios (o AMS2 real manda 0): registrados so para o modo --fake mostrar bandeiras.
+    static readonly string[] FakeIso = ["de", "gb", "fi", "br", "br", "es", "it", "de"];
+    static FakeRawSource() { for (int i = 0; i < FakeIso.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(900 + i), FakeIso[i]); }
 
     uint _seq;
 
@@ -56,6 +59,7 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
             Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), Field[i].Name);
             Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), "Formula Classic Gen2");
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
+            raw.Nationalities[i] = (uint)(900 + i);
             raw.Speeds[i] = (float)speed;
             raw.RaceStates[i] = 2;
             raw.FastestLapTimes[i] = 103.972f + i * 0.31f;

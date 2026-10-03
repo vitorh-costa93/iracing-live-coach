@@ -35,7 +35,8 @@ public static class SnapshotMapper
                 PitState: MapPit(raw.PitModes[i]),
                 RaceState: MapRace(raw.RaceStates[i]),
                 LapInvalid: raw.LapsInvalidated[i] != 0,
-                IsPlayer: i == playerIdx));
+                IsPlayer: i == playerIdx,
+                Nationality: Nationalities.Resolve(raw.Nationalities[i], Text(raw.Participants[i].Name, 0, Const.StringLen))));
         }
 
         cars = AssignClassPositions(cars);

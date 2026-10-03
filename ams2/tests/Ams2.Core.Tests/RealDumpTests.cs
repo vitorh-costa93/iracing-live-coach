@@ -35,3 +35,33 @@ public class RealDumpTests
         Assert.Equal(76.464, leader.LastLapTime, 3);          // menu de pausa: 1:16.464
     }
 }
+
+public class NationalityTests
+{
+    [Fact]
+    public void Real_dump_has_no_nationality_ids_so_names_resolve_the_country()
+    {
+        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Data", "ams2-v14-interlagos.bin"));
+        var raw = MemoryMarshal.Read<RawSharedMemory>(bytes);
+        for (int i = 0; i < 64; i++) Assert.Equal(0u, raw.Nationalities[i]); // o AMS2 nao preenche mNationalities
+        var s = SnapshotMapper.Map(in raw);
+        string Iso(string n) => s.Cars.Single(c => c.Name == n).Nationality;
+        Assert.Equal("br", Iso("Rubens Barrichello"));
+        Assert.Equal("br", Iso("Felipe Massa"));
+        Assert.Equal("br", Iso("Vitor COSTA"));
+        Assert.Equal("it", Iso("Gianni Fisco"));
+        Assert.Equal("au", Iso("Matt Weaver"));
+        Assert.Equal("de", Iso("Rulf Fenstermacher"));
+        Assert.Equal("jp", Iso("Tatsumi Sakai"));
+        Assert.Equal("in", Iso("Naresh Kaushalya"));
+        Assert.Equal("", Iso("Richard Kern"));
+    }
+
+    [Fact]
+    public void Known_id_wins_and_unknown_id_without_name_has_no_flag()
+    {
+        Assert.Equal("", Ams2.Core.Reading.Nationalities.Resolve(77, "Nobody Known"));
+        Ams2.Core.Reading.Nationalities.RegisterId(901, "fr");
+        Assert.Equal("fr", Ams2.Core.Reading.Nationalities.Resolve(901, "Rubens Barrichello"));
+    }
+}

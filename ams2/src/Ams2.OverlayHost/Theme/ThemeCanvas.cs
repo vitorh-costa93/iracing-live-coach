@@ -209,6 +209,21 @@ public sealed unsafe class ThemeCanvas : IDisposable
         Dc->FillRectangle(&r, (ID2D1Brush*)brush.Get());
     }
 
+    /// <summary>Bandeira do pais (ISO minusculo) ajustada em "contain" dentro da caixa, sem deformar. Sem imagem: nao desenha. Devolve se desenhou.</summary>
+    public bool Flag(string? iso, float x, float y, float w, float h)
+    {
+        var bmp = _gfx.Flags.Find(iso);
+        if (bmp == null) return false;
+        var size = bmp->GetSize();
+        if (size.Width <= 0 || size.Height <= 0) return false;
+        float k = Math.Min(w / size.Width, h / size.Height);
+        float fw = size.Width * k, fh = size.Height * k;
+        float ox = x + (w - fw) / 2, oy = y + (h - fh) / 2;
+        var dest = new RectF(ox, oy, ox + fw, oy + fh);
+        Dc->DrawBitmap(bmp, &dest, Opacity, InterpolationMode.HighQualityCubic, null, null);
+        return true;
+    }
+
     /// <summary>Largura natural do texto em unidades de design.</summary>
     public float Measure(string text, FontToken font)
     {
