@@ -115,7 +115,7 @@ internal static class Program
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
         var names = PlayerNameStore.InMemory(); // a previa nunca toca no player-names.json do usuario
         using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
-        // Radar: sem --cols o previa usa o padrao do perfil (indicador nativo; "panel" liga o estilo painel).
+        // Radar: sem --cols o previa usa o padrao do perfil (painel estilo V3; "native" liga o indicador nativo).
         string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
         provider.Radar.Options = RadarWidget.OptionsFor(new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }

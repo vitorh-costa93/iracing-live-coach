@@ -6,11 +6,11 @@ public class RadarSettingsTests
 {
     [Theory]
     [InlineData("f1-1998")] [InlineData("f1-2004")] [InlineData("f1-2010s")]
-    public void Radar_is_in_every_default_profile_visible_in_native_style_at_the_lower_centre(string theme)
+    public void Radar_is_in_every_default_profile_visible_in_v3_panel_style_at_the_lower_centre(string theme)
     {
         var r = ProfileFactory.CreateDefault("x", theme).Get("radar")!;
         Assert.True(r.Visible);
-        Assert.Equal((820, 700, 1f), (r.X, r.Y, r.Scale));
+        Assert.Equal((900, 585, 1f), (r.X, r.Y, r.Scale));
         Assert.Equal((15, 3), (r.EffectiveRadarRange, r.EffectiveRadarSensitivity));
         Assert.Equal([], r.Columns);                                   // "Sempre visivel" desligado: so com carro proximo
         Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("fuel")!.RadarRange);
@@ -39,6 +39,6 @@ public class RadarSettingsTests
         var old = ProfileFactory.CreateDefault("x", "f1-2004") with { Widgets = ProfileFactory.CreateDefault("x", "f1-2004").Widgets.Where(w => w.Id != "radar").ToList() };
         Assert.Null(old.Get("radar"));
         var n = old.Normalized();
-        Assert.Equal((820, 700, 15), (n.Get("radar")!.X, n.Get("radar")!.Y, n.Get("radar")!.EffectiveRadarRange));
+        Assert.Equal((900, 585, 15), (n.Get("radar")!.X, n.Get("radar")!.Y, n.Get("radar")!.EffectiveRadarRange));
     }
 }

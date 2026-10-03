@@ -33,7 +33,7 @@ public static class WidgetCatalog
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
         new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),
         new("inputs", "Inputs", null, null, null, "", [new("graph", "Gráfico"), new("bars", "Barras"), new("gear", "Marcha e velocidade")], 745, 905, DefaultScale: 0.55f),
-        new("radar", "Radar", null, null, null, "", [new("panel", "Estilo painel (senão: indicador nativo do AMS2)"), new("always", "Painel: sempre visível (senão só com carro próximo)")], 820, 700, DefaultScale: 1f, HasRadarOptions: true),
+        new("radar", "Radar", null, null, null, "", [new("native", "Indicador nativo do AMS2 (senão: painel estilo V3)"), new("always", "Sempre visível (senão só com carro próximo)")], 900, 585, DefaultScale: 1f, HasRadarOptions: true),
         new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f),
         new("drivercaption", "Driver Caption", null, null, null, "", [new("always", "Sempre visível (senão só em eventos)")], 60, 930, DefaultVisible: false, DefaultScale: 0.75f),
         new("pitstops", "Pit Stops", 1, 4, 4, "Linhas por coluna", [new("always", "Sempre visível (senão ao entrar nos boxes)")], 20, 480, DefaultScale: 0.6f),
