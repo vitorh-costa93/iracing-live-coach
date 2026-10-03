@@ -74,8 +74,8 @@ public sealed class RelativeWidget : IWidget
             c.Text("AHEAD", t.Label, AheadX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
             c.Text("BEHIND", t.Label, BehindX, 44, 200, 26, t.LabelColor, shadow: t.TextShadow);
         }
-        DrawColumn(c, t, ahead, AheadX, Ahead);
-        DrawColumn(c, t, behind, BehindX, Behind);
+        DrawColumn(c, t, ahead, AheadX, Ahead, true);
+        DrawColumn(c, t, behind, BehindX, Behind, false);
     }
 
     static void DrawHeader(ThemeCanvas c, Theme.Theme t)
@@ -103,14 +103,14 @@ public sealed class RelativeWidget : IWidget
         c.FillRect(cx - 2, y + 3, 4, h - 6, t.AccentInk);
     }
 
-    void DrawColumn(ThemeCanvas c, Theme.Theme t, List<RelativeRow> rows, float x, Side side)
+    void DrawColumn(ThemeCanvas c, Theme.Theme t, List<RelativeRow> rows, float x, Side side, bool ahead)
     {
         for (int i = 0; i < rows.Count; i++)
         {
             var row = rows[i];
             float y = RowsTop + i * RowPitch;
             string pos = row.Car.Position.ToString(CultureInfo.InvariantCulture);
-            if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, row, pos, x, y, side); continue; }
+            if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, row, pos, x, y, side, ahead); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
                 if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
@@ -126,19 +126,20 @@ public sealed class RelativeWidget : IWidget
         }
     }
 
-    /// <summary>Linha flutuante 2004–2008: caixa vermelha com a posição, célula branca com a sigla, célula preta com o gap.</summary>
-    void DrawRow2000s(ThemeCanvas c, Theme.Theme t, RelativeRow row, string pos, float x, float y, Side side)
+    /// <summary>Linha flutuante 2004–2008: caixa de posição, célula branca com a sigla e célula do gap: laranja para quem está à frente do jogador (perde-se tempo para ele), verde para quem está atrás.</summary>
+    void DrawRow2000s(ThemeCanvas c, Theme.Theme t, RelativeRow row, string pos, float x, float y, Side side, bool ahead)
     {
-        const float h = 28;
+        const float h = 29;
         bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
         float cx = x;
-        if (p) { Chrome.Cell(c, cx, y + 1, 34, h, pos, t.Numbers, t.AccentFill, t.AccentInk, HAlign.Center, 0); cx += 34; }
+        if (p) { Chrome.PositionBox(c, cx, y + 1, 34, h, row.Car.Position, t.Numbers); cx += 34; }
         if (n)
         {
-            Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, Code(row.Car.Name), t.Text, ink: row.IsPlayer ? t.AccentFill : null);
+            Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, Code(row.Car.Name), t.Text, ink: row.IsPlayer ? Chrome.PlayerInk : null);
             cx += NameCellW;
         }
-        if (g) Chrome.BlackCell(c, cx, y + 1, 112, h, FormatGap(row), t.Numbers);
+        if (g) Chrome.BlackCell(c, cx, y + 1, 112, h, FormatGap(row), t.Numbers,
+            kind: row.GapSeconds is null && row.LapDelta == 0 ? Chrome.CellKind.Black : ahead ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
     }
 
     /// <summary>Sigla de 3 letras: início do sobrenome (última palavra do nome), em maiúsculas.</summary>
