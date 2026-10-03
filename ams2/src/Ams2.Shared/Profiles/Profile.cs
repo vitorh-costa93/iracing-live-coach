@@ -122,6 +122,8 @@ public static class ProfileFactory
             Id = d.Id, Visible = d.DefaultVisible, Order = i,
             X = (int)Math.Round(d.DefaultX * fx), Y = (int)Math.Round(d.DefaultY * fy),
             Rows = d.DefaultRows, Scale = d.DefaultScale,
+            // f1-2004: mini-torre da transmissao (posicao, sigla, bandeira); gap/classe/pneu ficam opcionais.
+            Columns = d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"] : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }

@@ -22,7 +22,7 @@ public static class WidgetCatalog
     public static readonly IReadOnlyList<WidgetDef> All =
     [
         new("standings", "Standings", 3, 20, 8, "Linhas", [new("pos", "Posição"), new("name", "Piloto"), new("flag", "Bandeira (2004-2008)"), new("tyre", "Pneu M/B (2004-2008)"), new("class", "Classe"), new("gap", "Gap")], 0, 0, DefaultScale: 0.6f),
-        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap")], 1430, 925, DefaultScale: 0.58f),
+        new("relative", "Relative", 1, 4, 3, "Linhas por lado", [new("pos", "Posição"), new("name", "Piloto"), new("gap", "Gap"), new("bar", "Barra do vizinho (2004-2008)")], 1430, 925, DefaultScale: 0.58f),
         new("fuel", "Fuel", null, null, null, "", [new("laps", "Voltas"), new("use", "Consumo"), new("add", "Adicionar")], 1133, 931, DefaultScale: 0.66f),
         new("tyres", "Tyres", null, null, null, "", [new("temp", "Temperatura"), new("wear", "Desgaste")], 1139, 690, DefaultScale: 0.6f),
         new("weather", "Weather", null, null, null, "", [], 1139, 812, DefaultScale: 0.86f),

@@ -14,9 +14,13 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class RelativeWidget : IWidget
 {
     public string Id => "relative";
-    public (float Width, float Height) DesignSize => (Math.Max(MinWidth, BlockEnd(Ahead, AheadX) + BlockGap + BlockWidth(Behind) + EdgeRight), RowsTop + RowsPerSide * RowPitch + 15);
+    public (float Width, float Height) DesignSize => BarMode ? (BarWidth, BarTop + 2 * BarPitch + 8) : (Math.Max(MinWidth, BlockEnd(Ahead, AheadX) + BlockGap + BlockWidth(Behind) + EdgeRight), RowsTop + RowsPerSide * RowPitch + 15);
 
     public int RowsPerSide { get; set; } = 3;
+    bool _b04;
+    public void UseTheme(Theme.Theme theme) => _b04 = theme.Style == ThemeStyle.Broadcast2000s;
+    /// <summary>2004–2008 com a coluna "bar": barras de gap do vídeo (vizinho imediato à frente e atrás). Sem ela, a lista por lado.</summary>
+    bool BarMode => _b04 && _cfg.ColumnVisible("bar");
     WidgetSettings _cfg = new() { Id = "relative" };
     public void Configure(WidgetSettings s) { _cfg = s; RowsPerSide = s.Rows ?? 3; }
 
@@ -53,6 +57,7 @@ public sealed class RelativeWidget : IWidget
         var t = c.Theme;
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
+        if (BarMode) { DrawBars(c, t, m); return; }
         DrawHeader(c, t);
 
         if (!m.Connected || m.Session is null || m.Relative.Count == 0)
@@ -76,6 +81,57 @@ public sealed class RelativeWidget : IWidget
         }
         DrawColumn(c, t, ahead, AheadX, Ahead, true);
         DrawColumn(c, t, behind, BehindX, Behind, false);
+    }
+
+    // Barra de gap (transmissão 2004–2008): [pos][nome à direita][gap preto][nome à esquerda][pos], células coladas.
+    const float BarPos = 34, BarName = 176, BarGap = 118, BarTop = 38, BarPitch = 31, BarH = 29;
+    float BarWidth => 2 * (_cfg.ColumnVisible("pos") ? BarPos : 0) + 2 * (_cfg.ColumnVisible("name") ? BarName : 0) + (_cfg.ColumnVisible("gap") ? BarGap : 0) + 8;
+
+    void DrawBars(ThemeCanvas c, Theme.Theme t, OverlayModel m)
+    {
+        var (w, h) = DesignSize;
+        // Cabeçalho branco com o nome do widget em teal (no lugar da legenda do patrocinador do vídeo).
+        Chrome.Caption(c, 4, 7, "RELATIVE", 26, t.Label, ink: Chrome.HeaderTeal);
+        if (!m.Connected || m.Session is null || m.Relative.Count == 0)
+        {
+            Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", 4, BarTop, 360);
+            return;
+        }
+        var me = m.Relative.FirstOrDefault(r => r.IsPlayer);
+        var ahead = m.Relative.TakeWhile(r => !r.IsPlayer).LastOrDefault();
+        var behind = m.Relative.SkipWhile(r => !r.IsPlayer).Skip(1).FirstOrDefault();
+        if (me is null) return;
+        if (ahead is not null) DrawBar(c, t, 4, BarTop, ahead, me, true);
+        if (behind is not null) DrawBar(c, t, 4, BarTop + BarPitch, me, behind, false);
+    }
+
+    /// <summary>Uma barra entre dois carros: o da frente à esquerda, o de trás à direita; <paramref name="neighbor"/> é quem o gap descreve.</summary>
+    void DrawBar(ThemeCanvas c, Theme.Theme t, float x, float y, RelativeRow left, RelativeRow right, bool neighborIsLeft)
+    {
+        var neighbor = neighborIsLeft ? left : right;
+        bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
+        var nf = t.Text with { Size = 22 };
+        if (p) { Chrome.PositionBox(c, x, y, BarPos, BarH, left.Car.Position, t.Numbers); x += BarPos; }
+        if (n) { Chrome.WhiteCell(c, x, y, BarName, BarH, ShortName(left.Car.Name), nf, HAlign.Right, left.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
+        if (g)
+        {
+            Chrome.BlackCell(c, x, y, BarGap, BarH, FormatGap(neighbor), t.Numbers with { Size = 22 }, HAlign.Center,
+                kind: neighbor.GapSeconds is null && neighbor.LapDelta == 0 ? Chrome.CellKind.Black : neighborIsLeft ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
+            x += BarGap;
+        }
+        if (n) { Chrome.WhiteCell(c, x, y, BarName, BarH, ShortName(right.Car.Name), nf, HAlign.Left, right.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
+        if (p) Chrome.PositionBox(c, x, y, BarPos, BarH, right.Car.Position, t.Numbers);
+    }
+
+    /// <summary>"M Schumacher": inicial do primeiro nome + sobrenome (como na barra da transmissão).</summary>
+    public static string ShortName(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) return name;
+        string last = string.Join(' ', parts.Skip(1));
+        // sobrenome em caixa alta no AMS2 ("Vitor COSTA"): capitaliza só a primeira letra.
+        if (last.All(ch => !char.IsLetter(ch) || char.IsUpper(ch)) && last.Length > 1) last = char.ToUpperInvariant(last[0]) + last[1..].ToLowerInvariant();
+        return char.ToUpperInvariant(parts[0][0]) + " " + last;
     }
 
     static void DrawHeader(ThemeCanvas c, Theme.Theme t)

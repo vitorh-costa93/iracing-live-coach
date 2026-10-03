@@ -93,15 +93,18 @@ public static class Chrome
         return true;
     }
 
+    /// <summary>Teal do nome do widget no cabeçalho branco (no lugar do logotipo do patrocinador do vídeo).</summary>
+    public static Color4 HeaderTeal => C(0, 154, 166);
+
     /// <summary>Tinta do nome do jogador (vermelho escuro sobre a célula branca).</summary>
     public static Color4 PlayerInk => C(176, 12, 24);
 
     /// <summary>Legenda pequena em caixa ("30/56", títulos de widget). Branca por padrão, azul-ardósia com texto branco para cabeçalhos. Devolve a largura.</summary>
-    public static float Caption(ThemeCanvas c, float x, float y, string text, float h = 26, FontToken? font = null, CellKind kind = CellKind.White)
+    public static float Caption(ThemeCanvas c, float x, float y, string text, float h = 26, FontToken? font = null, CellKind kind = CellKind.White, Color4? ink = null)
     {
         var f = font ?? c.Theme.Label;
         float w = c.Measure(text, f) + 18;
-        Box(c, x, y, w, h, text, f, kind, HAlign.Center, 9);
+        Box(c, x, y, w, h, text, f, kind, HAlign.Center, 9, ink);
         return w;
     }
 

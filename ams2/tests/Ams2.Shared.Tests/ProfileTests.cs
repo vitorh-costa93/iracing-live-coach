@@ -66,6 +66,17 @@ public class ProfileTests
     }
 
     [Fact]
+    public void New_widgets_exist_and_f1_2004_standings_defaults_to_mini_tower_columns()
+    {
+        Assert.NotNull(WidgetCatalog.Find("lapcounter"));
+        Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
+        Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
+        Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
+        Assert.Null(ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);
+        Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Normalized().Columns);
+    }
+
+    [Fact]
     public void Missing_widgets_are_filled_in_on_load()
     {
         using var t = new TempStore();
