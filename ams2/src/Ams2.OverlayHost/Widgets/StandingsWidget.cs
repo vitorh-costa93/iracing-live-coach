@@ -24,12 +24,13 @@ public sealed class StandingsWidget : IWidget
     float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
     const float SepH = 14;
     public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
-        : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
+        
+        : (_b04 ? Width2004 : _b10 ? Math.Max(Layout().Width, MinWidth10) : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
     bool _b04, _b98, _b10;
     public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2010s; }
     /// <summary>2010s: cabecalho "RACE" + "LAP n / N" (mockup v5) empurra as linhas para baixo.</summary>
     float Top => _b10 && !TableMode ? RowTop + HeaderH10 : RowTop;
-    const float HeaderH10 = 36;
+    const float HeaderH10 = 36, MinWidth10 = 240; // cabecalho "RACE" + "LAP n / N" precisa de largura mesmo sem a coluna de gap
     /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
     bool TableMode => _b98 && _cfg.ColumnVisible("table");
     float Pitch => _b04 ? RowPitch2000s : RowPitch;

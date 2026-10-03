@@ -107,6 +107,13 @@
                             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Height="190">
                         <Grid>
                             <TextBlock x:Name="PreviewCaption" Text="PRÉVIA" Style="{StaticResource SectionTitle}" VerticalAlignment="Top" Margin="0"/>
+                            <StackPanel x:Name="BoardModeBar" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"
+                                        ToolTip="Modo do board na prévia (dados simulados de uma corrida de 20 carros)">
+                                <ToggleButton Content="Torre" Tag="0" IsChecked="True" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Setor" Tag="1" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Voltas" Tag="2" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Legenda" Tag="3" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1"/>
+                            </StackPanel>
                             <Image x:Name="PreviewImage" Margin="0,22,0,0" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                             <TextBlock x:Name="PreviewStatus" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,22,0,0"/>
@@ -166,6 +173,22 @@
                                     <Button Content="−" Width="34" Click="RowsMinus_Click"/>
                                     <TextBlock Text="{Binding Rows}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
                                     <Button Content="+" Width="34" Click="RowsPlus_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="SelectionPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Pilotos no topo" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Primeiros N da classificação, sempre visíveis."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Button Content="−" Width="34" Click="TopMinus_Click"/>
+                                    <TextBlock Text="{Binding TopCount}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="TopPlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="Perto de mim (ao redor do jogador)" Style="{StaticResource Muted}" Margin="0,0,0,4"
+                                           ToolTip="Janela centrada no jogador, incluindo ele. Entre o topo e a janela aparece &quot;...&quot; quando há salto de posições."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="−" Width="34" Click="NearMinus_Click"/>
+                                    <TextBlock Text="{Binding NearCount}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="NearPlus_Click"/>
                                 </StackPanel>
                             </StackPanel>
 

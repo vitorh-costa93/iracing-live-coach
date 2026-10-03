@@ -171,3 +171,12 @@ Exemplo (PowerShell), quando o widget existir:
 ```
 $env:AMS2_FAKE_BOARD = "1"; .\Ams2.OverlayHost.exe --png preview-board.png --widget board --sim 12
 ```
+
+## 12. Widget `board` (UI)
+
+`ams2/src/Ams2.OverlayHost/Widgets/BoardWidget.cs` (id `board`, embaixo ao centro nos 3 temas; substitui Relative e Driver Caption, que ficam
+no catálogo desligados). Colunas opcionais: `flag` (bandeira), `tyre` (fornecedor de pneus na legenda), `page` (indicador X/Y). Padrão do
+f1-1998: sem bandeira (como a faixa do GP do Brasil 2003). Janela de tamanho fixo por tema (maior modo); conteúdo centralizado e encostado
+embaixo. Transições: crossfade de ~0,25 s ao trocar modo/página/janela; legenda e comparativo só aparecem depois de 0,25 s estáveis (anti-pisca);
+fade-out quando `RemainingSeconds` < 0,4 s; cada piloto da torre entra por `CrossedT`. Prévia no Control Center: botões Torre/Setor/Voltas/Legenda
+(`--sim` 5/16/40/20 com `AMS2_FAKE_BOARD=1`).

@@ -58,7 +58,7 @@ public static class WidgetLayout
             },
             ["f1-2010s"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (191, 408), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
+                ["standings"] = (240, 408), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (760, 210),
             },
         };

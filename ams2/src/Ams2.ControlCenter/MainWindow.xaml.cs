@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -304,6 +305,8 @@ public partial class MainWindow : Window
         SchedulePreview();
         if (vm is null) return;
         RowsPanel.Visibility = vm.SupportsRows ? Visibility.Visible : Visibility.Collapsed;
+        SelectionPanel.Visibility = vm.HasSelection ? Visibility.Visible : Visibility.Collapsed;
+        BoardModeBar.Visibility = vm.IsBoard ? Visibility.Visible : Visibility.Collapsed;
         ColumnsPanel.Visibility = vm.HasColumns ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -329,7 +332,7 @@ public partial class MainWindow : Window
         Order = b.Order ?? a.Order,
         Font = b.ClearFont == true ? null : b.Font ?? (a.ClearFont == true ? null : a.Font),
         ClearFont = b.Font is not null ? null : b.ClearFont ?? a.ClearFont,
-        Rows = b.Rows ?? a.Rows,
+        Rows = b.Rows ?? a.Rows, TopCount = b.TopCount ?? a.TopCount, NearCount = b.NearCount ?? a.NearCount,
         Columns = b.AllColumns == true ? null : b.Columns ?? (a.AllColumns == true ? null : a.Columns),
         AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
     };
@@ -353,6 +356,23 @@ public partial class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(this, "Não foi possível salvar o perfil: " + ex.Message, "Perfis"); }
     }
 
+    void TopMinus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.TopCount--; }
+    void TopPlus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.TopCount++; }
+    void NearMinus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.NearCount--; }
+    void NearPlus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.NearCount++; }
+
+    // Previa do board: um modo por vez (segundos do --sim da corrida simulada de 20 carros; tabela em ams2/reference/board-spec.md).
+    static readonly double[] BoardSimSeconds = [5, 16, 40, 20];   // torre (pagina 1 cheia), setor S2, comparativo, legenda
+    int _boardMode;
+
+    void BoardMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton { Tag: string tag } || !int.TryParse(tag, out int mode)) return;
+        _boardMode = mode;
+        foreach (var b in BoardModeBar.Children.OfType<ToggleButton>()) b.IsChecked = b.Tag is string t && t == tag;
+        SchedulePreview();
+    }
+
     void RowsMinus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.Rows--; }
     void RowsPlus_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.Rows++; }
 
@@ -363,6 +383,7 @@ public partial class MainWindow : Window
         var d = ProfileFactory.CreateDefault("", _themeId, sw, sh).Get(vm.Id)!;
         vm.Visible = d.Visible; vm.Scale = 1; vm.OpacityPct = 100; vm.FontChoice = WidgetVm.FontDefault;
         if (vm.SupportsRows) vm.Rows = vm.Def.DefaultRows ?? vm.Rows;
+        if (vm.HasSelection) { vm.TopCount = WidgetCatalog.DefaultTopCount; vm.NearCount = WidgetCatalog.DefaultNearCount; }
         foreach (var c in vm.Columns) c.IsVisible = true;
         vm.X = d.X; vm.Y = d.Y;
     }
@@ -401,9 +422,12 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(_previewDir);
         string png = Path.Combine(_previewDir, $"{seq}.png");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", "20", "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
+        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
             psi.ArgumentList.Add(a);
         if (vm.SupportsRows) { psi.ArgumentList.Add("--rows"); psi.ArgumentList.Add(vm.Rows.ToString()); }
+        if (vm.HasSelection) { psi.ArgumentList.Add("--top"); psi.ArgumentList.Add(vm.TopCount.ToString()); psi.ArgumentList.Add("--near"); psi.ArgumentList.Add(vm.NearCount.ToString()); }
+        // Standings e board: corrida simulada de 20 carros (o campo padrao de 8 nao mostra o topo + janela nem a torre em paginas).
+        if (vm.HasSelection || vm.IsBoard) psi.Environment["AMS2_FAKE_BOARD"] = "1";
         if (vm.FontChoice != WidgetVm.FontDefault) { psi.ArgumentList.Add("--font"); psi.ArgumentList.Add(vm.FontChoice); }
         if (vm.HasColumns && !vm.Columns.All(c => c.IsVisible))
         {
@@ -427,7 +451,7 @@ public partial class MainWindow : Window
             bmp.Freeze();
             PreviewImage.Source = bmp;
             PreviewStatus.Text = "";
-            PreviewCaption.Text = $"PRÉVIA · {vm.Name} · dados simulados";
+            PreviewCaption.Text = vm.IsBoard ? $"PRÉVIA · board · {new[] { "torre da linha", "gap de setor", "comparativo de voltas", "legenda" }[_boardMode]} · dados simulados" : $"PRÉVIA · {vm.Name} · dados simulados";
             TryDelete(png);
         }
         catch (Exception) { if (seq == _previewSeq) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; } }

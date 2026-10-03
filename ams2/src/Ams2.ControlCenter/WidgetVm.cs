@@ -36,7 +36,7 @@ public sealed class WidgetVm : Notify
 
     bool _visible = true, _dropTarget;
     double _scale = 1, _opacity = 1;
-    int _x, _y, _rows;
+    int _x, _y, _rows, _top = WidgetCatalog.DefaultTopCount, _near = WidgetCatalog.DefaultNearCount;
     string _font = FontDefault;
     bool _loading;
 
@@ -57,6 +57,9 @@ public sealed class WidgetVm : Notify
     public string RowsLabel => Def.RowsLabel;
     public int MinRows => Def.MinRows ?? 0;
     public int MaxRows => Def.MaxRows ?? 0;
+    /// <summary>Standings: passos de "pilotos no topo" e "perto de mim".</summary>
+    public bool HasSelection => Def.HasSelection;
+    public bool IsBoard => Def.Id == "board";
 
     public event Action<WidgetVm, string>? Edited;
 
@@ -74,10 +77,12 @@ public sealed class WidgetVm : Notify
     public int X { get => _x; set => Edit(ref _x, value, nameof(X)); }
     public int Y { get => _y; set => Edit(ref _y, value, nameof(Y)); }
     public int Rows { get => _rows; set => Edit(ref _rows, Math.Clamp(value, MinRows, Math.Max(MinRows, MaxRows)), nameof(Rows)); }
+    public int TopCount { get => _top; set => Edit(ref _top, Math.Clamp(value, 0, WidgetCatalog.MaxTopCount), nameof(TopCount)); }
+    public int NearCount { get => _near; set => Edit(ref _near, Math.Clamp(value, 0, WidgetCatalog.MaxNearCount), nameof(NearCount)); }
     public string FontChoice { get => _font; set => Edit(ref _font, value, nameof(FontChoice)); }
     public bool DropTarget { get => _dropTarget; set => Set(ref _dropTarget, value); }
 
-    public string Summary => (Visible ? "" : "oculto · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "");
+    public string Summary => (Visible ? "" : "oculto · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "") + (HasSelection ? $" · top {TopCount} + perto {NearCount}" : "");
 
     /// <summary>Carrega do modelo sem disparar <see cref="Edited"/>.</summary>
     public void Load(WidgetSettings s)
@@ -87,6 +92,7 @@ public sealed class WidgetVm : Notify
         {
             Visible = s.Visible; Scale = s.Scale; OpacityPct = s.Opacity * 100; X = s.X; Y = s.Y;
             Rows = s.Rows ?? Def.DefaultRows ?? 0;
+            TopCount = s.EffectiveTop; NearCount = s.EffectiveNear;
             FontChoice = s.Font ?? FontDefault;
             foreach (var c in Columns) c.Load(s.ColumnVisible(c.Def.Id));
             Raise(nameof(Summary));
@@ -99,6 +105,7 @@ public sealed class WidgetVm : Notify
         Id = Id, Visible = Visible, X = X, Y = Y, Scale = (float)Scale, Opacity = (float)(OpacityPct / 100), Order = order,
         Font = FontChoice == FontDefault ? null : FontChoice,
         Rows = SupportsRows ? Rows : null,
+        TopCount = HasSelection ? TopCount : null, NearCount = HasSelection ? NearCount : null,
         Columns = Columns.All(c => c.IsVisible) ? null : Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray(),
     }.Normalized();
 
@@ -110,6 +117,7 @@ public sealed class WidgetVm : Notify
         nameof(OpacityPct) => new WidgetPatch { Opacity = (float)(OpacityPct / 100) },
         nameof(X) or nameof(Y) => new WidgetPatch { X = X, Y = Y },
         nameof(Rows) => new WidgetPatch { Rows = Rows },
+        nameof(TopCount) or nameof(NearCount) => new WidgetPatch { TopCount = TopCount, NearCount = NearCount },
         nameof(FontChoice) => FontChoice == FontDefault ? new WidgetPatch { ClearFont = true } : new WidgetPatch { Font = FontChoice },
         nameof(Columns) => Columns.All(c => c.IsVisible) ? new WidgetPatch { AllColumns = true } : new WidgetPatch { Columns = Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray() },
         _ => null,
