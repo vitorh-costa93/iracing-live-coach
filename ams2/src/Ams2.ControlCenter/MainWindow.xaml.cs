@@ -76,6 +76,23 @@ public partial class MainWindow : Window
         _client.Start();
         _pollTimer.Start();
         RefreshIndicators();
+
+        // As janelas do overlay sao topmost (e se reempilham ao trocar perfil/modo de edicao): o CC e topmost tambem e se reafirma
+        // acima delas enquanto estiver aberto. SWP_NOACTIVATE = nao rouba o foco do jogo. Em modo de edicao nao reafirma, para o
+        // overlay (que sobe ao topo nesse modo) ficar manipulavel; clicar no CC o traz de volta a frente.
+        _keepAboveTimer.Tick += (_, _) => KeepAboveOverlay();
+        _keepAboveTimer.Start();
+    }
+
+    readonly DispatcherTimer _keepAboveTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+
+    void KeepAboveOverlay()
+    {
+        if (!IsVisible || WindowState == WindowState.Minimized || _host?.EditMode == true) return;
+        var h = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (h != 0) SetWindowPos(h, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
     }
 
     // ---------------------------------------------------------------- temas e perfis

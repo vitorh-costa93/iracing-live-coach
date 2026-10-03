@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="AMS2 Live Coach - Control Center" Icon="pack://application:,,,/Assets/ams2-live-coach.ico" Width="1100" Height="700" MinWidth="980" MinHeight="620"
         Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" WindowStartupLocation="CenterScreen"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        Topmost="True" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
