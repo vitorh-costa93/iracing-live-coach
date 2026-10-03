@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Ams2.Shared.Profiles;
 
 namespace Ams2.Shared.Tests;
@@ -172,14 +172,14 @@ public class CustomizationProfileTests
     public void Customization_roundtrips_through_the_store()
     {
         using var t = new TempStore();
-        var p = ProfileFactory.CreateDefault("Custom", "f1-2010s");
+        var p = ProfileFactory.CreateDefault("Custom", "f1-2018");
         var s = p.Get("board")! with
         {
             ColumnWidths = new() { ["name"] = 130, ["time"] = 90 }, TextScale = 1.1f, FontWeight = 700, ValueColor = "#AABBCC",
             Display = new DisplayOptions { Name = NameStyle.FullName, LapTime = LapTimeStyle.Seconds, LapDecimals = 1, GapSign = false },
         };
         t.Store.Save(p.WithWidget(s));
-        var r = t.Store.Load("f1-2010s", "Custom")!.Get("board")!;
+        var r = t.Store.Load("f1-2018", "Custom")!.Get("board")!;
         Assert.Equal(130, r.ColumnWidths!["name"]);
         Assert.Equal(90, r.ColumnWidths!["time"]);
         Assert.Equal((1.1f, 700, "#AABBCC"), (r.TextScale!.Value, r.FontWeight!.Value, r.ValueColor));

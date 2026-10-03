@@ -1,9 +1,9 @@
-using Vortice.Win32.Numerics;
+﻿using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Theme;
 
 /// <summary>Fonte de um papel tipográfico do tema. Tamanho em unidades de design (escalado na renderização).</summary>
-public sealed record FontToken(string Family, int Weight, float Size, float Tracking = 0f);
+public sealed record FontToken(string Family, int Weight, float Size, float Tracking = 0f, bool Italic = false);
 
 /// <summary>Sombra projetada do texto: deslocamento em unidades de design e cor (com a opacidade).</summary>
 public sealed record ShadowToken(float OffsetX, float OffsetY, Color4 Color);
@@ -16,7 +16,7 @@ public readonly record struct BarStop(float Position, Color4 Color);
 /// pedem tudo ao tema, então trocar de tema muda o visual sem tocar nos widgets.
 /// </summary>
 /// <summary>Família visual do tema: só escolhe como o chrome (cabeçalho, caixas, mostradores) é desenhado, nunca o que o widget mostra.</summary>
-public enum ThemeStyle { Broadcast98, Broadcast2000s, Modern2010s }
+public enum ThemeStyle { Broadcast98, Broadcast2000s, Modern2018 }
 
 public sealed record Theme(
     string Id,
@@ -57,10 +57,18 @@ public sealed record Theme(
     Color4 ReadoutColor = default,      // valores de Fuel/Tyres/Weather (no 1998 é a cor de rótulo)
     Color4 NameCellFill = default,      // célula atrás do nome (alfa 0 = sem célula)
     Color4 NameCellInk = default,
-    Color4 AccentBar = default,         // faixa vermelha (sublinhado 2004, barra inclinada 2010s)
+    Color4 AccentBar = default,         // faixa vermelha (sublinhado 2004, filete 2018)
     float BoxRadius = 0f,               // canto das caixas de posição
     float TitleBarHeight = 15f,
-    Color4 ValueCellFill = default);   // célula preta atrás de valores (2004–2008; alfa 0 = sem célula)
+    Color4 ValueCellFill = default,    // célula preta atrás de valores (2004–2008; alfa 0 = sem célula)
+    // Vocabulário 2018–2021 (alfa 0 nos outros temas)
+    Color4 GapCellFill = default,      // coluna de gap da torre, um pouco mais clara que o painel
+    Color4 FastestFill = default,      // roxo da melhor volta
+    Color4 PitTimeColor = default,     // ciano do tempo de parada
+    Color4 FlagColor = default,        // amarelo de Safety Car / bandeira
+    Color4 OutFill = default,          // bloco cinza dos pilotos fora da corrida
+    Color4 OutInk = default,
+    Color4 SubPanelFill = default);    // corpo cinza-azulado do gráfico PIT LANE / faixa clara de sub-painel
 
 public static class Themes
 {
@@ -155,49 +163,58 @@ public static class Themes
         ValueCellFill: Rgb(6, 6, 8, 0.97f));
 
     /// <summary>
-    /// F1 2010s: painéis escuros arredondados, Barlow Semi Condensed, caixas de posição amarelas com número preto,
-    /// barra inclinada vermelha antes do título (mockup v5/2010s). Sem sombra de texto.
+    /// F1 2018–2021 (gráfico de TV da F1 a partir de 2018; ref. ams2\reference\f1-2018-analysis.md): painéis pretos translúcidos de
+    /// cantos retos, texto branco sem sombra, caixa de posição branca arredondada com número preto, filete vermelho F1, roxo de melhor
+    /// volta, ciano dos tempos de pit e amarelo de Safety Car. Fonte: Verdana (sistema), a mais próxima da Formula1 Display (proprietária)
+    /// entre as disponíveis: larga e firme; regular nos valores e no nome próprio, negrito nas siglas e sobrenomes, itálico no número.
     /// </summary>
-    public static readonly Theme F1_2010s = new(
-        Id: "f1-2010s",
-        DisplayName: "F1 2010s",
-        Title: new FontToken("Barlow Semi Condensed", 600, 27f, 0.5f),
-        Label: new FontToken("Barlow Semi Condensed", 400, 23f, 0.4f),
-        Text: new FontToken("Barlow Semi Condensed", 600, 27f, 0.4f),
-        Numbers: new FontToken("Barlow Semi Condensed", 600, 27f),
-        PanelFill: Rgb(12, 20, 35, 0.94f),
-        PanelBorder: Rgb(255, 255, 255, 0.07f),
+    public static readonly Theme F1_2018 = new(
+        Id: "f1-2018",
+        DisplayName: "F1 2018",
+        Title: new FontToken("Verdana", 700, 22f, 1.5f),
+        Label: new FontToken("Verdana", 400, 18f),
+        Text: new FontToken("Verdana", 700, 22f),
+        Numbers: new FontToken("Verdana", 400, 21f),
+        PanelFill: Rgb(5, 6, 10, 0.88f),
+        PanelBorder: Rgb(0, 0, 0, 0f),
         TitleColor: Rgb(255, 255, 255),
-        LabelColor: Rgb(152, 163, 182),
-        TextColor: Rgb(246, 248, 252),
-        NumberColor: Rgb(246, 248, 252),
-        ValueColor: Rgb(246, 248, 252),
-        PlayerColor: Rgb(255, 214, 0),
-        AccentFill: Rgb(255, 214, 0),
-        AccentInk: Rgb(12, 14, 20),
+        LabelColor: Rgb(196, 198, 204),
+        TextColor: Rgb(255, 255, 255),
+        NumberColor: Rgb(255, 255, 255),
+        ValueColor: Rgb(255, 255, 255),
+        PlayerColor: Rgb(245, 210, 10),
+        AccentFill: Rgb(250, 250, 250),
+        AccentInk: Rgb(12, 12, 14),
         TitleBar:
         [
-            new(0.00f, Rgb(255, 255, 255, 0.22f)),
-            new(1.00f, Rgb(255, 255, 255, 0f)),
+            new(0.00f, Rgb(225, 6, 0)),
+            new(1.00f, Rgb(225, 6, 0)),
         ],
-        ThrottleColor: Rgb(46, 204, 74),
-        BrakeColor: Rgb(236, 44, 44),
+        ThrottleColor: Rgb(37, 194, 58),
+        BrakeColor: Rgb(216, 38, 44),
         SteeringColor: Rgb(255, 255, 255),
-        GraphAxis: Rgb(255, 255, 255, 0.55f),
-        Divider: Rgb(255, 255, 255, 0.14f),
-        BadgeFill: Rgb(110, 34, 150),
+        GraphAxis: Rgb(255, 255, 255, 0.45f),
+        Divider: Rgb(255, 255, 255, 0.12f),
+        BadgeFill: Rgb(44, 46, 54),
         BadgeInk: Rgb(255, 255, 255),
-        CornerRadius: 9f,
-        BorderWidth: 1f,
+        CornerRadius: 0f,
+        BorderWidth: 0f,
         TextShadow: new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)),
         ValueShadow: new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)),
-        Style: ThemeStyle.Modern2010s,
-        ReadoutColor: Rgb(246, 248, 252),
-        AccentBar: Rgb(228, 10, 0),
-        BoxRadius: 3f,
-        TitleBarHeight: 2f);
+        Style: ThemeStyle.Modern2018,
+        ReadoutColor: Rgb(255, 255, 255),
+        AccentBar: Rgb(225, 6, 0),
+        BoxRadius: 4f,
+        TitleBarHeight: 3f,
+        GapCellFill: Rgb(20, 21, 28, 0.80f),
+        FastestFill: Rgb(160, 32, 200),
+        PitTimeColor: Rgb(53, 230, 220),
+        FlagColor: Rgb(245, 210, 10),
+        OutFill: Rgb(58, 58, 63, 0.70f),
+        OutInk: Rgb(170, 172, 178),
+        SubPanelFill: Rgb(46, 58, 60, 0.92f));
 
-    public static IReadOnlyList<Theme> All { get; } = [F1_1998, F1_2004, F1_2010s];
+    public static IReadOnlyList<Theme> All { get; } = [F1_1998, F1_2004, F1_2018];
 
-    public static Theme Get(string? id) => All.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase)) ?? F1_1998;
+    public static Theme Get(string? id) => id is null ? F1_1998 : All.FirstOrDefault(t => string.Equals(t.Id, Ams2.Shared.Profiles.ThemeCatalog.Canonical(id), StringComparison.OrdinalIgnoreCase)) ?? F1_1998;
 }

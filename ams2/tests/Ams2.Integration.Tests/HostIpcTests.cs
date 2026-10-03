@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Ams2.Shared.Ipc;
 using Ams2.Shared.Profiles;
 
@@ -54,7 +54,7 @@ public sealed class HostIpcTests : IDisposable
         Assert.Equal("f1-1998", st.Theme);
         Assert.Equal("Padrão", st.ActiveProfile);
         Assert.Equal(WidgetCatalog.All.Select(w => w.Id), st.Widgets.Select(w => w.Id));
-        Assert.All(new[] { "f1-1998", "f1-2004", "f1-2010s" }, id => Assert.Contains(st.Themes, t => t.Id == id && t.Available));
+        Assert.All(new[] { "f1-1998", "f1-2004", "f1-2018" }, id => Assert.Contains(st.Themes, t => t.Id == id && t.Available));
         await WaitFor(() => client.SendAsync(IpcCommands.GetState).Result!.GameConnected, 8000, "escritor falso nao conectou");
 
         // Aplicar um perfil inteiro (o Control Center envia Data) e depois alterar um widget ao vivo.
@@ -85,8 +85,8 @@ public sealed class HostIpcTests : IDisposable
 
         // Erros viram resposta, nao derrubam o host.
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2099" }));
-        // Cada tema tem seus perfis: trocar para 2004 e 2010s carrega o perfil padrao do tema, sem tocar no de 1998.
-        foreach (var th in new[] { "f1-2004", "f1-2010s" })
+        // Cada tema tem seus perfis: trocar para 2004 e 2018 carrega o perfil padrao do tema, sem tocar no de 1998.
+        foreach (var th in new[] { "f1-2004", "f1-2018" })
         {
             st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = th }))!;
             Assert.Equal(th, st.Theme);

@@ -35,7 +35,7 @@ public static class WidgetLayout
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 690, 0.6f),
             ["radar"] = new(900, 585, 1f),
         },
-        ["f1-2010s"] = new(StringComparer.OrdinalIgnoreCase)
+        ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["standings"] = new(32, 24, 0.95f), ["lapcounter"] = new(867, 24, 1.4f),
             ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f), ["board"] = new(600, 845, 1.1f),
@@ -59,7 +59,7 @@ public static class WidgetLayout
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 630),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (590, 164), ["radar"] = (120, 190),
             },
-            ["f1-2010s"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
+            ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (240, 408), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (410, 94), ["board"] = (760, 210), ["radar"] = (120, 190),
@@ -69,6 +69,7 @@ public static class WidgetLayout
     /// <summary>Posicao e escala padrao do widget no tema; temas/widgets desconhecidos caem no padrao do catalogo.</summary>
     public static Slot Get(string themeId, string widgetId)
     {
+        themeId = ThemeCatalog.Canonical(themeId);
         if (Slots.TryGetValue(themeId, out var t) && t.TryGetValue(widgetId, out var s)) return s;
         var d = WidgetCatalog.Find(widgetId);
         return d is null ? new Slot(0, 0, 1f) : new Slot(d.DefaultX, d.DefaultY, d.DefaultScale);
@@ -77,7 +78,7 @@ public static class WidgetLayout
     /// <summary>Retangulo do widget em pixels da tela de referencia (tamanho de projeto x escala), ou null se nao houver tamanho conhecido.</summary>
     public static (double X, double Y, double W, double H)? Rect(string themeId, string widgetId)
     {
-        if (!DesignSizes.TryGetValue(themeId, out var sizes) || !sizes.TryGetValue(widgetId, out var sz)) return null;
+        if (!DesignSizes.TryGetValue(ThemeCatalog.Canonical(themeId), out var sizes) || !sizes.TryGetValue(widgetId, out var sz)) return null;
         var s = Get(themeId, widgetId);
         // Mesmo arredondamento da janela real (Ceiling do tamanho escalado).
         return (s.X, s.Y, Math.Ceiling(sz.W * s.Scale), Math.Ceiling(sz.H * s.Scale));

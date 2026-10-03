@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ams2.Shared.Profiles;
@@ -50,7 +50,7 @@ public sealed class CustomizationPngTests
     [Theory]
     [InlineData("relative", "f1-1998")]
     [InlineData("standings", "f1-2004")]
-    [InlineData("inputs", "f1-2010s")]
+    [InlineData("inputs", "f1-2018")]
     [InlineData("board", "f1-2004")]
     [InlineData("weather", "f1-1998")]
     public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
@@ -74,11 +74,11 @@ public sealed class CustomizationPngTests
     [Theory]
     [InlineData("standings", "f1-1998", "name")]
     [InlineData("standings", "f1-2004", "gap")]
-    [InlineData("relative", "f1-2010s", "name")]
+    [InlineData("relative", "f1-2018", "name")]
     [InlineData("relative", "f1-2004", "gap")]
     [InlineData("inputs", "f1-1998", "graph")]
     [InlineData("inputs", "f1-2004", "graph")]
-    [InlineData("board", "f1-2010s", "name")]
+    [InlineData("board", "f1-2018", "name")]
     [InlineData("pitstops", "f1-2004", "name")]
     [InlineData("pittimer", "f1-1998", "name")]
     public void Wider_column_makes_the_widget_wider(string widget, string theme, string column)
@@ -105,10 +105,10 @@ public sealed class CustomizationPngTests
         finally { File.Delete(png); File.Delete(json); }
     }
 
-    // 2004 e 2010s usam a mesma familia para texto e numeros: a troca de fonte tem que valer mesmo assim.
+    // 2004 e 2018 usam a mesma familia para texto e numeros: a troca de fonte tem que valer mesmo assim.
     [Theory]
     [InlineData("standings", "f1-2004")]
-    [InlineData("relative", "f1-2010s")]
+    [InlineData("relative", "f1-2018")]
     public void Font_override_changes_the_drawing_when_text_and_numbers_share_a_family(string widget, string theme)
     {
         var a = Pixels($"--widget {widget} --theme {theme}", new WidgetSettings { Id = widget });

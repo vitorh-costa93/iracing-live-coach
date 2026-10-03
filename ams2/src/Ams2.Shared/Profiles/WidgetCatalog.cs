@@ -84,8 +84,17 @@ public static class ThemeCatalog
     [
         new("f1-1998", "F1 1998-2001", true),
         new("f1-2004", "F1 2004-2008", true),
-        new("f1-2010s", "F1 2010s", true),
+        new("f1-2018", "F1 2018", true),
     ];
 
-    public static ThemeDef? Find(string? id) => All.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+    /// <summary>Ids de temas que foram substituidos (perfis e state.json antigos): "f1-2010s" virou "f1-2018".</summary>
+    public static readonly IReadOnlyDictionary<string, string> LegacyIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["f1-2010s"] = "f1-2018",
+    };
+
+    /// <summary>Id atual do tema: troca ids antigos pelo substituto; os demais passam como estao.</summary>
+    public static string Canonical(string id) => LegacyIds.TryGetValue(id, out var n) ? n : id;
+
+    public static ThemeDef? Find(string? id) => id is null ? null : All.FirstOrDefault(t => string.Equals(t.Id, Canonical(id), StringComparison.OrdinalIgnoreCase));
 }

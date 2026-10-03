@@ -225,7 +225,8 @@ public sealed record Profile
     /// <summary>Normaliza todos os widgets e garante que todo widget do catalogo exista (os que faltam entram com o padrao).</summary>
     public Profile Normalized(int screenWidth = 1920, int screenHeight = 1080)
     {
-        var defaults = ProfileFactory.CreateDefault(Name, ThemeId, screenWidth, screenHeight);
+        string themeId = ThemeCatalog.Canonical(ThemeId);
+        var defaults = ProfileFactory.CreateDefault(Name, themeId, screenWidth, screenHeight);
         var list = new List<WidgetSettings>();
         foreach (var d in WidgetCatalog.All)
         {
@@ -234,7 +235,7 @@ public sealed record Profile
             list.Add((w ?? defaults.Get(d.Id)!).Normalized());
         }
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
-        return this with { SchemaVersion = CurrentSchemaVersion, Widgets = ordered };
+        return this with { SchemaVersion = CurrentSchemaVersion, ThemeId = themeId, Widgets = ordered };
     }
 
     /// <summary>v2 -> v3: colunas criadas na v3 entram visiveis nas listas salvas; Inputs do f1-2004 liga o grafico.</summary>

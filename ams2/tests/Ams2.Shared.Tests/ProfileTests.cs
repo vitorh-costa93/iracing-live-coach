@@ -108,7 +108,7 @@ public class ProfileTests
     {
         Assert.Equal(["tyre", "page"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
         Assert.Null(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Columns);   // todas visiveis
-        Assert.True(ProfileFactory.CreateDefault("x", "f1-2010s").Get("board")!.Visible);
+        Assert.True(ProfileFactory.CreateDefault("x", "f1-2018").Get("board")!.Visible);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class ProfileTests
         Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
         Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
         Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);   // so posicao + sigla, sem gap/classe
-        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2010s").Get("standings")!.Columns);
+        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2018").Get("standings")!.Columns);
         Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("relative")!.Columns);
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "table");
         // perfis antigos com a coluna "flag" carregam sem erro: a coluna desconhecida e ignorada
@@ -135,7 +135,7 @@ public class ProfileTests
             var d = WidgetCatalog.Find(id);
             Assert.NotNull(d);
             Assert.Contains(d!.Columns, c => c.Id == "always");
-            foreach (var theme in new[] { "f1-1998", "f1-2004", "f1-2010s" })
+            foreach (var theme in new[] { "f1-1998", "f1-2004", "f1-2018" })
             {
                 var w = ProfileFactory.CreateDefault("x", theme).Get(id)!.Normalized();
                 Assert.False(w.ColumnVisible("always"));      // padrao: so aparece nos eventos
@@ -225,4 +225,61 @@ public class ProfileTests
         Assert.Contains("a/b:c?", t.Store.List(Theme));
         Assert.NotNull(t.Store.Load(Theme, "a/b:c?"));
     }
-}
+
+    // ---- Migracao do tema substituido f1-2010s -> f1-2018 (pasta temporaria; os arquivos antigos ficam intactos) ----
+
+    static void WriteLegacy(string dir, string name, int standingsX)
+    {
+        var p = ProfileFactory.CreateDefault(name, "f1-2010s");
+        p = p.WithWidget(p.Get("standings")! with { X = standingsX });
+        Directory.CreateDirectory(Path.Combine(dir, "profiles", "f1-2010s"));
+        File.WriteAllText(Path.Combine(dir, "profiles", "f1-2010s", name + ".json"), System.Text.Json.JsonSerializer.Serialize(p, ProfileStore.Json));
+    }
+
+    [Fact]
+    public void Legacy_2010s_profiles_and_state_are_read_as_2018_without_deleting_the_old_files()
+    {
+        using var t = new TempStore();
+        WriteLegacy(t.Dir, "Meu", 123);
+        File.WriteAllText(Path.Combine(t.Dir, "state.json"), "{\"activeTheme\":\"f1-2010s\",\"activeProfiles\":{\"f1-2010s\":\"Meu\",\"f1-1998\":\"Padrão\"}}");
+        var store = new ProfileStore(t.Dir);
+
+        Assert.Equal("f1-2018", store.GetActiveTheme());
+        Assert.Equal("Meu", store.GetActiveProfile("f1-2018"));
+        Assert.Contains("Meu", store.List("f1-2018"));
+        var p = store.Load("f1-2018", "Meu")!;
+        Assert.Equal("f1-2018", p.ThemeId);
+        Assert.Equal(123, p.Get("standings")!.X);
+        // o id antigo continua funcionando (Control Center/host antigos) e aponta para a mesma pasta
+        Assert.Equal(123, store.Load("f1-2010s", "Meu")!.Get("standings")!.X);
+        // nada do usuario foi apagado: a pasta antiga continua la
+        Assert.True(File.Exists(Path.Combine(t.Dir, "profiles", "f1-2010s", "Meu.json")));
+        Assert.True(File.Exists(Path.Combine(t.Dir, "profiles", "f1-2018", "Meu.json")));
+        var state = File.ReadAllText(Path.Combine(t.Dir, "state.json"));
+        Assert.DoesNotContain("f1-2010s", state);
+        Assert.Contains("f1-1998", state);
+    }
+
+    [Fact]
+    public void Legacy_migration_never_overwrites_an_existing_2018_profile()
+    {
+        using var t = new TempStore();
+        WriteLegacy(t.Dir, "Meu", 123);
+        var current = ProfileFactory.CreateDefault("Meu", "f1-2018");
+        Directory.CreateDirectory(Path.Combine(t.Dir, "profiles", "f1-2018"));
+        File.WriteAllText(Path.Combine(t.Dir, "profiles", "f1-2018", "Meu.json"),
+            System.Text.Json.JsonSerializer.Serialize(current.WithWidget(current.Get("standings")! with { X = 456 }), ProfileStore.Json));
+        var store = new ProfileStore(t.Dir);
+        Assert.Equal(456, store.Load("f1-2018", "Meu")!.Get("standings")!.X);
+    }
+
+    [Fact]
+    public void Legacy_theme_ids_map_to_the_new_theme()
+    {
+        Assert.Equal("f1-2018", ThemeCatalog.Canonical("f1-2010s"));
+        Assert.Equal("f1-2004", ThemeCatalog.Canonical("f1-2004"));
+        Assert.Equal("f1-2018", ThemeCatalog.Find("F1-2010S")!.Id);
+        Assert.DoesNotContain(ThemeCatalog.All, d => d.Id == "f1-2010s");
+        Assert.Equal("F1 2018", ThemeCatalog.Find("f1-2018")!.DisplayName);
+        Assert.Equal(WidgetLayout.Get("f1-2018", "standings"), WidgetLayout.Get("f1-2010s", "standings"));
+    }}

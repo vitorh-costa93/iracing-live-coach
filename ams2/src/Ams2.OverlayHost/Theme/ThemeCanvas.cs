@@ -91,10 +91,11 @@ public sealed unsafe class ThemeCanvas : IDisposable
         bool specialNumbers = Theme.Numbers.Family != Theme.Text.Family;
         if (_fontOverride is not null && !(specialNumbers && font.Family == Theme.Numbers.Family)) font = font with { Family = _fontOverride };
         bool has = _gfx.Fonts.Has(font.Family);
-        string family = has ? font.Family : "Segoe UI";
+        // Fora da coleção própria: fonte instalada no Windows (Verdana do tema 2018, fonte escolhida no Control Center); senão Segoe UI.
+        string family = has || _gfx.Fonts.SystemHas((IDWriteFactory*)_gfx.DWriteFactory, font.Family) ? font.Family : "Segoe UI";
         var collection = has ? (IDWriteFontCollection*)_gfx.Fonts.Collection : null;
         var fmt = _gfx.DWriteFactory->CreateTextFormat(family, collection, font.Size,
-            fontWeight: (FontWeight)font.Weight, localeName: "en-us");
+            fontWeight: (FontWeight)font.Weight, fontStyle: font.Italic ? FontStyle.Italic : FontStyle.Normal, localeName: "en-us");
         ThrowIfFailed(fmt.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
         ThrowIfFailed(fmt.Get()->SetWordWrapping(WordWrapping.NoWrap));
         ThrowIfFailed(fmt.Get()->SetTextAlignment(align switch

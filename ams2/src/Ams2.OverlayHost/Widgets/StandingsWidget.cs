@@ -27,7 +27,7 @@ public sealed class StandingsWidget : IWidget
         
         : (_b04 ? Width2004 : _b10 ? Math.Max(Layout().Width, MinWidth10) : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
     bool _b04, _b98, _b10;
-    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2010s; }
+    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2018; }
     /// <summary>2010s: cabecalho "RACE" + "LAP n / N" (mockup v5) empurra as linhas para baixo.</summary>
     float Top => _b10 && !TableMode ? RowTop + HeaderH10 : RowTop;
     const float HeaderH10 = 36, MinWidth10 = 240; // cabecalho "RACE" + "LAP n / N" precisa de largura mesmo sem a coluna de gap
@@ -127,7 +127,7 @@ public sealed class StandingsWidget : IWidget
     void DrawSeparator(ThemeCanvas c, Theme.Theme t, Cols L, float cy)
     {
         float cx = _b04 ? X04 + Pos04 / 2 : L.PosX + BoxW / 2;
-        var color = t.Style == ThemeStyle.Modern2010s ? t.LabelColor : t.Style == ThemeStyle.Broadcast98 ? t.NumberColor : t.TextColor;
+        var color = t.Style == ThemeStyle.Modern2018 ? t.LabelColor : t.Style == ThemeStyle.Broadcast98 ? t.NumberColor : t.TextColor;
         for (int k = -1; k <= 1; k++) c.FillEllipse(cx + k * 8, cy, 2.2f, 2.2f, color);
     }
 
@@ -136,7 +136,7 @@ public sealed class StandingsWidget : IWidget
     {
         if (t.Style == ThemeStyle.Broadcast98)
             return r.Car.Position == 1 && r.Car.CurrentLap > 0 ? "LAP " + r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture) : Gap(r, defaultSign: false);
-        if (t.Style == ThemeStyle.Modern2010s && r.Car.Position == 1) return "–";
+        if (t.Style == ThemeStyle.Modern2018 && r.Car.Position == 1) return "–";
         return Gap(r);
     }
 

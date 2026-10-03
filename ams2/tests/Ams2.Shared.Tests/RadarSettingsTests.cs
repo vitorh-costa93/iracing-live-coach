@@ -1,11 +1,11 @@
-using Ams2.Shared.Profiles;
+﻿using Ams2.Shared.Profiles;
 
 namespace Ams2.Shared.Tests;
 
 public class RadarSettingsTests
 {
     [Theory]
-    [InlineData("f1-1998")] [InlineData("f1-2004")] [InlineData("f1-2010s")]
+    [InlineData("f1-1998")] [InlineData("f1-2004")] [InlineData("f1-2018")]
     public void Radar_is_in_every_default_profile_visible_in_v3_panel_style_at_the_lower_centre(string theme)
     {
         var r = ProfileFactory.CreateDefault("x", theme).Get("radar")!;

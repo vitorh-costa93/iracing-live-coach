@@ -13,14 +13,14 @@ public static class Chrome
         if (maxRight < float.MaxValue)
         {
             float tw = c.Measure(title, t.Title);
-            float used = t.Style switch { ThemeStyle.Modern2010s => x + 16 + tw + 16, ThemeStyle.Broadcast2000s => x + tw, _ => x + tw + 10 };
+            float used = t.Style switch { ThemeStyle.Modern2018 => x + 16 + tw + 16, ThemeStyle.Broadcast2000s => x + tw, _ => x + tw + 10 };
             float k = t.Style == ThemeStyle.Broadcast2000s ? 0.5f : 1f;
             barWidth = Math.Clamp((maxRight - used) / k, 0, barWidth);
             if (barWidth < 12) underline = false;
         }
         switch (t.Style)
         {
-            case ThemeStyle.Modern2010s:
+            case ThemeStyle.Modern2018:
                 // Barra inclinada vermelha antes do título; sublinhado fino claro até barWidth.
                 c.Line(x + 1, y + 24, x + 8, y + 6, t.AccentBar, 3.2f);
                 c.Text(title, t.Title, x + 16, y, 260, 30, t.TitleColor);

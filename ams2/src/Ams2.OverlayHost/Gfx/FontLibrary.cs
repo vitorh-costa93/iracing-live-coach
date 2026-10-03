@@ -1,12 +1,12 @@
-using Vortice.Win32;
+﻿using Vortice.Win32;
 using Vortice.Win32.Graphics.DirectWrite;
 using static Vortice.Win32.Apis;
 
 namespace Ams2.OverlayHost.Gfx;
 
 /// <summary>
-/// Coleção de fontes própria do DirectWrite, montada direto dos .ttf (não depende de instalar nada no Windows).
-/// Procura a pasta de fontes ao lado do exe (<c>fonts\</c>) e, em desenvolvimento, em <c>ams2\fonts</c> subindo a árvore.
+/// ColeÃ§Ã£o de fontes prÃ³pria do DirectWrite, montada direto dos .ttf (nÃ£o depende de instalar nada no Windows).
+/// Procura a pasta de fontes ao lado do exe (<c>fonts\</c>) e, em desenvolvimento, em <c>ams2\fonts</c> subindo a Ã¡rvore.
 /// </summary>
 public sealed unsafe class FontLibrary : IDisposable
 {
@@ -33,19 +33,19 @@ public sealed unsafe class FontLibrary : IDisposable
     {
         var lib = new FontLibrary();
         try { lib.Initialize(factory); }
-        catch (Exception ex) { Console.Error.WriteLine($"[Fonts] coleção própria falhou ({ex.GetType().Name}: {ex.Message}); usando fontes do sistema."); }
+        catch (Exception ex) { Console.Error.WriteLine($"[Fonts] coleÃ§Ã£o prÃ³pria falhou ({ex.GetType().Name}: {ex.Message}); usando fontes do sistema."); }
         return lib;
     }
 
     void Initialize(IDWriteFactory* factory)
     {
         Directory = FindFontDirectory();
-        if (Directory is null) { Console.Error.WriteLine("[Fonts] pasta de fontes não encontrada."); return; }
+        if (Directory is null) { Console.Error.WriteLine("[Fonts] pasta de fontes nÃ£o encontrada."); return; }
 
         ComPtr<IDWriteFactory3> factory3 = default;
         if (factory->QueryInterface(__uuidof<IDWriteFactory3>(), (void**)factory3.GetAddressOf()).Failure)
         {
-            Console.Error.WriteLine("[Fonts] IDWriteFactory3 indisponível.");
+            Console.Error.WriteLine("[Fonts] IDWriteFactory3 indisponÃ­vel.");
             return;
         }
         using var f3 = factory3;
@@ -90,6 +90,28 @@ public sealed unsafe class FontLibrary : IDisposable
     }
 
     public bool Has(string family) => Families.Contains(family);
+
+    readonly Dictionary<string, bool> _system = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>true se a famÃ­lia estÃ¡ instalada no Windows (coleÃ§Ã£o do sistema). Usado pelo tema 2018 (Verdana) e pela fonte escolhida no Control Center.</summary>
+    public bool SystemHas(IDWriteFactory* factory, string family)
+    {
+        if (_system.TryGetValue(family, out var known)) return known;
+        bool exists = false;
+        try
+        {
+            using ComPtr<IDWriteFontCollection> sys = default;
+            if (factory->GetSystemFontCollection(sys.GetAddressOf(), false).Success)
+            {
+                uint index; Bool32 ok;
+                fixed (char* p = family)
+                    if (sys.Get()->FindFamilyName(p, &index, &ok).Success) exists = ok;
+            }
+        }
+        catch (Exception) { exists = false; }
+        _system[family] = exists;
+        return exists;
+    }
 
     public void Dispose() => _collection.Dispose();
 }

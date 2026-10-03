@@ -24,7 +24,7 @@ public sealed class BoardWidget : IWidget
     Style _style = Style.S98;
     WidgetSettings _cfg = new() { Id = "board" };
 
-    public void UseTheme(Theme.Theme theme) => _style = theme.Style switch { ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2010s => Style.S10, _ => Style.S98 };
+    public void UseTheme(Theme.Theme theme) => _style = theme.Style switch { ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2018 => Style.S10, _ => Style.S98 };
     public void Configure(WidgetSettings s) => _cfg = s;
 
     /// <summary>
