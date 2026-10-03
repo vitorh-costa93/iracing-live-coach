@@ -14,11 +14,13 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class RelativeWidget : IWidget
 {
     public string Id => "relative";
-    public (float Width, float Height) DesignSize => BarMode ? (BarWidth, BarTop + 2 * BarPitch + 8) : (Math.Max(MinWidth, BlockEnd(Ahead, AheadX) + BlockGap + BlockWidth(Behind) + EdgeRight), RowsTop + RowsPerSide * RowPitch + 15);
+    public (float Width, float Height) DesignSize => SplitMode ? (SplitW, SplitTop + SplitBandH) : BarMode ? (BarWidth, BarTop + 2 * BarPitch + 8) : (Math.Max(MinWidth, BlockEnd(Ahead, AheadX) + BlockGap + BlockWidth(Behind) + EdgeRight), RowsTop + RowsPerSide * RowPitch + 15);
 
     public int RowsPerSide { get; set; } = 3;
-    bool _b04;
-    public void UseTheme(Theme.Theme theme) => _b04 = theme.Style == ThemeStyle.Broadcast2000s;
+    bool _b04, _b98;
+    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; }
+    /// <summary>1998–2001 com a coluna "bar": barra de tempo dividido (GP do Brasil 2003) entre o jogador e o vizinho mais próximo. Sem ela, a lista por lado.</summary>
+    bool SplitMode => _b98 && _cfg.ColumnVisible("bar");
     /// <summary>2004–2008 com a coluna "bar": barras de gap do vídeo (vizinho imediato à frente e atrás). Sem ela, a lista por lado.</summary>
     bool BarMode => _b04 && _cfg.ColumnVisible("bar");
     WidgetSettings _cfg = new() { Id = "relative" };
@@ -56,6 +58,7 @@ public sealed class RelativeWidget : IWidget
     {
         var t = c.Theme;
         var (w, h) = DesignSize;
+        if (SplitMode) { DrawSplit(c, t, m); return; }
         c.Panel(0, 0, w, h);
         if (BarMode) { DrawBars(c, t, m); return; }
         DrawHeader(c, t);
@@ -81,6 +84,52 @@ public sealed class RelativeWidget : IWidget
         }
         DrawColumn(c, t, ahead, AheadX, Ahead, true);
         DrawColumn(c, t, behind, BehindX, Behind, false);
+    }
+
+    // Barra de tempo dividido 1998–2001: [caixa pos][degradê][NOME] gap [NOME][degradê][caixa pos] sobre a faixa; selo "TIMING" preto no canto superior direito.
+    const float SplitW = 800, SplitTop = 30, SplitBandH = 78, SplitBox = 56, SplitEdge = 20, SplitBarW = 160;
+
+    void DrawSplit(ThemeCanvas c, Theme.Theme t, OverlayModel m)
+    {
+        float w = SplitW, bt = SplitTop;
+        c.Panel(0, bt, w, SplitBandH);
+        Chrome.BlackTag(c, w - 190, 0, 190, SplitTop - 2, "TIMING", t.Label with { Size = 21 });
+        var me = m.Relative.FirstOrDefault(r => r.IsPlayer);
+        if (!m.Connected || m.Session is null || me is null)
+        {
+            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, SplitEdge + 4, bt, 400, SplitBandH, t.LabelColor, shadow: t.TextShadow);
+            return;
+        }
+        var ahead = m.Relative.TakeWhile(r => !r.IsPlayer).LastOrDefault();
+        var behind = m.Relative.SkipWhile(r => !r.IsPlayer).Skip(1).FirstOrDefault();
+        if (ahead is null && behind is null) { c.Text("NO DATA", t.Label, SplitEdge + 4, bt, 400, SplitBandH, t.LabelColor, shadow: t.TextShadow); return; }
+        // Vizinho mais próximo em tempo (sem tempo = mais distante); empate: o da frente.
+        static double Key(RelativeRow? r) => r is null ? double.MaxValue : r.LapDelta != 0 ? 1e6 + Math.Abs(r.LapDelta) : r.GapSeconds is { } g ? Math.Abs(g) : 1e5;
+        bool aheadCloser = Key(ahead) <= Key(behind);
+        var neighbor = aheadCloser ? ahead! : behind!;
+        var left = aheadCloser ? neighbor : me;
+        var right = aheadCloser ? me : neighbor;
+        string gap = FormatGap(neighbor).TrimStart('+', '-');
+        if (neighbor.LapDelta != 0) gap = Math.Abs(neighbor.LapDelta).ToString(CultureInfo.InvariantCulture) + " LAP";
+        var field = m.Relative.Select(r => r.Car).ToList();
+        float by = bt + 10, nameW = w / 2 - SplitEdge - SplitBox - 14 - 120;
+        var big = t.Numbers with { Size = 46 };
+        // esquerda
+        Chrome.AccentBox(c, SplitEdge, by, SplitBox, 58, left.Car.Position.ToString(CultureInfo.InvariantCulture), big);
+        float lx = SplitEdge + SplitBox + 14;
+        Chrome.SplitBar(c, lx, by + 4, SplitBarW, 12, false);
+        string ln = BroadcastUi.ShortName(left.Car, field).ToUpperInvariant();
+        c.Text(ln, BroadcastUi.Fit(c, ln, t.Text, nameW), lx, by + 18, nameW + 10, 38, left.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+        // direita (espelhada)
+        Chrome.AccentBox(c, w - SplitEdge - SplitBox, by, SplitBox, 58, right.Car.Position.ToString(CultureInfo.InvariantCulture), big);
+        float rx = w - SplitEdge - SplitBox - 14;
+        Chrome.SplitBar(c, rx - SplitBarW, by + 4, SplitBarW, 12, true);
+        string rn = BroadcastUi.ShortName(right.Car, field).ToUpperInvariant();
+        c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, nameW), rx - nameW - 10, by + 18, nameW + 10, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right, t.TextShadow);
+        // gap ao centro
+        var gf = t.Numbers with { Size = 44 };
+        if (neighbor.LapDelta != 0) c.Text(gap, t.Label with { Size = 34 }, w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.TextShadow);
+        else c.Text(gap, gf, w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.ValueShadow);
     }
 
     // Barra de gap (transmissão 2004–2008): [pos][nome à direita][gap preto][nome à esquerda][pos], células coladas.
