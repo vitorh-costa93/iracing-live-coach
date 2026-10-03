@@ -8,6 +8,7 @@ namespace Ams2.Integration.Tests;
 /// Integracao real: o OverlayHost em --fake (escritor falso em processo, sem o jogo) e o IpcClient. As janelas aparecem por poucos
 /// segundos. Regra do projeto: nunca abrir o overlay com o iRacing aberto, entao o teste nao faz nada nesse caso.
 /// </summary>
+[Collection("host")]
 public sealed class HostIpcTests : IDisposable
 {
     readonly string _dir = Path.Combine(Path.GetTempPath(), "ams2-it-" + Guid.NewGuid().ToString("N"));
