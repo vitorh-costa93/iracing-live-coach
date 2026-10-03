@@ -143,10 +143,8 @@ public static class ProfileFactory
             Id = e.d.Id, Visible = e.d.DefaultVisible, Order = e.i,
             X = (int)Math.Round(e.slot.X * fx), Y = (int)Math.Round(e.slot.Y * fy),
             Rows = e.d.DefaultRows, TopCount = e.d.HasSelection ? WidgetCatalog.DefaultTopCount : null, NearCount = e.d.HasSelection ? WidgetCatalog.DefaultNearCount : null, Scale = (float)Math.Round(e.slot.Scale * fy, 3),
-            // f1-2004: mini-torre da transmissao (posicao, sigla, bandeira); gap/classe/pneu ficam opcionais.
-            // Standings: so posicao + sigla (2004-2008 com bandeira); gap e classe sao opcionais. Board: 1998 sem bandeira (como a faixa do GP do Brasil 2003).
-            Columns = e.d.Id == "standings" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "flag"]
-                : e.d.Id == "standings" ? ["pos", "name"]
+            // Standings: so posicao + sigla; gap e classe sao opcionais. Board 1998: so legenda de pneus + indicador de pagina.
+            Columns = e.d.Id == "standings" ? ["pos", "name"]
                 : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre", "page"]
                 // f1-2004: o cluster (tacometro + marcha/pedais + barra de velocidade) e fiel a transmissao; o grafico de 10 s e opcional.
                 : e.d.Id == "inputs" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["bars", "gear"]

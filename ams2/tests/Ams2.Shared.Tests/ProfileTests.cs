@@ -104,7 +104,7 @@ public class ProfileTests
     }
 
     [Fact]
-    public void Board_defaults_hide_the_flag_in_f1_1998_like_the_2003_band()
+    public void Board_defaults_keep_only_tyre_and_page_in_f1_1998()
     {
         Assert.Equal(["tyre", "page"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
         Assert.Null(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Columns);   // todas visiveis
@@ -112,17 +112,19 @@ public class ProfileTests
     }
 
     [Fact]
-    public void New_widgets_exist_and_f1_2004_standings_defaults_to_mini_tower_columns()
+    public void New_widgets_exist_and_standings_defaults_to_pos_and_name()
     {
         Assert.NotNull(WidgetCatalog.Find("lapcounter"));
-        Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
+        Assert.DoesNotContain(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
         Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
-        Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
+        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
         Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);   // so posicao + sigla, sem gap/classe
         Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2010s").Get("standings")!.Columns);
         Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("relative")!.Columns);
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "table");
-        Assert.Equal(["pos", "name", "flag"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Normalized().Columns);
+        // perfis antigos com a coluna "flag" carregam sem erro: a coluna desconhecida e ignorada
+        var old = ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")! with { Columns = ["pos", "name", "flag"] };
+        Assert.Equal(["pos", "name"], old.Normalized().Columns);
     }
 
     [Fact]
