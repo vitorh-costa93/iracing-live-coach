@@ -9,25 +9,72 @@ public interface IRawMemorySource : IDisposable
 {
     /// <summary>false se o mapa não existe (jogo fechado).</summary>
     bool TryRead(out RawSharedMemory raw);
+
+    /// <summary>
+    /// Leitura mínima para o amostrador de alta taxa: contador de sequência + acelerador/freio/volante, só de um estado estável
+    /// (seq par e igual antes/depois). false = sem mapa ou leitura rasgada. O padrão lê a estrutura inteira.
+    /// </summary>
+    bool TryReadInputs(out RawInputs inputs)
+    {
+        if (TryRead(out var raw) && raw.SequenceNumber % 2 == 0)
+        {
+            inputs = new RawInputs(raw.SequenceNumber, raw.Throttle, raw.Brake, raw.Steering);
+            return true;
+        }
+        inputs = default;
+        return false;
+    }
 }
+
+public readonly record struct RawInputs(uint Seq, float Throttle, float Brake, float Steering);
 
 public sealed class MemoryMappedSource(string mapName = Const.MapName) : IRawMemorySource
 {
     MemoryMappedFile? _mmf;
     MemoryMappedViewAccessor? _view;
 
+    static readonly int SeqOffset = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.SequenceNumber));
+    static readonly int ThrottleOffset = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.Throttle));
+    static readonly int BrakeOffset = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.Brake));
+    static readonly int SteeringOffset = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.Steering));
+
+    bool Open()
+    {
+        if (_view is not null) return true;
+        _mmf = MemoryMappedFile.OpenExisting(mapName, MemoryMappedFileRights.Read);
+        _view = _mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        if (_view.Capacity < Marshal.SizeOf<RawSharedMemory>()) { Close(); return false; }
+        return true;
+    }
+
     public bool TryRead(out RawSharedMemory raw)
     {
         raw = default;
         try
         {
-            if (_view is null)
-            {
-                _mmf = MemoryMappedFile.OpenExisting(mapName, MemoryMappedFileRights.Read);
-                _view = _mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
-                if (_view.Capacity < Marshal.SizeOf<RawSharedMemory>()) { Close(); return false; }
-            }
-            _view.Read(0, out raw);
+            if (!Open()) return false;
+            _view!.Read(0, out raw);
+            return true;
+        }
+        catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            Close();
+            return false;
+        }
+    }
+
+    /// <summary>Leitura mínima (4 campos) sob protocolo seqlock. Uma instância não é thread-safe: o amostrador usa a sua.</summary>
+    public bool TryReadInputs(out RawInputs inputs)
+    {
+        inputs = default;
+        try
+        {
+            if (!Open()) return false;
+            uint s1 = _view!.ReadUInt32(SeqOffset);
+            if ((s1 & 1) != 0) return false;
+            float thr = _view.ReadSingle(ThrottleOffset), brk = _view.ReadSingle(BrakeOffset), str = _view.ReadSingle(SteeringOffset);
+            if (_view.ReadUInt32(SeqOffset) != s1) return false;
+            inputs = new RawInputs(s1, thr, brk, str);
             return true;
         }
         catch (Exception e) when (e is FileNotFoundException or IOException or UnauthorizedAccessException)
