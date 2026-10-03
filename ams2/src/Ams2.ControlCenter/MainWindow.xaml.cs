@@ -313,6 +313,8 @@ public partial class MainWindow : Window
         RowsPanel.Visibility = vm.SupportsRows ? Visibility.Visible : Visibility.Collapsed;
         SelectionPanel.Visibility = vm.HasSelection ? Visibility.Visible : Visibility.Collapsed;
         RadarPanel.Visibility = vm.HasRadarOptions ? Visibility.Visible : Visibility.Collapsed;
+        WidthsPanel.Visibility = vm.HasWidths ? Visibility.Visible : Visibility.Collapsed;
+        FormatPanel.Visibility = vm.HasFormat ? Visibility.Visible : Visibility.Collapsed;
         BoardModeBar.Visibility = vm.IsBoard ? Visibility.Visible : Visibility.Collapsed;
         ColumnsPanel.Visibility = vm.HasColumns ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -333,17 +335,7 @@ public partial class MainWindow : Window
         }
     }
 
-    static WidgetPatch Merge(WidgetPatch a, WidgetPatch b) => new()
-    {
-        Visible = b.Visible ?? a.Visible, X = b.X ?? a.X, Y = b.Y ?? a.Y, Scale = b.Scale ?? a.Scale, Opacity = b.Opacity ?? a.Opacity,
-        Order = b.Order ?? a.Order,
-        Font = b.ClearFont == true ? null : b.Font ?? (a.ClearFont == true ? null : a.Font),
-        ClearFont = b.Font is not null ? null : b.ClearFont ?? a.ClearFont,
-        Rows = b.Rows ?? a.Rows, TopCount = b.TopCount ?? a.TopCount, NearCount = b.NearCount ?? a.NearCount,
-        RadarRange = b.RadarRange ?? a.RadarRange, RadarSensitivity = b.RadarSensitivity ?? a.RadarSensitivity,
-        Columns = b.AllColumns == true ? null : b.Columns ?? (a.AllColumns == true ? null : a.Columns),
-        AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
-    };
+    static WidgetPatch Merge(WidgetPatch a, WidgetPatch b) => WidgetPatch.Merge(a, b);
 
     async Task FlushPendingAsync()
     {
@@ -397,7 +389,8 @@ public partial class MainWindow : Window
         if (vm.SupportsRows) vm.Rows = vm.Def.DefaultRows ?? vm.Rows;
         if (vm.HasSelection) { vm.TopCount = WidgetCatalog.DefaultTopCount; vm.NearCount = WidgetCatalog.DefaultNearCount; }
         if (vm.HasRadarOptions) { vm.RadarRange = WidgetCatalog.DefaultRadarRange; vm.RadarSensitivity = WidgetCatalog.DefaultRadarSensitivity; }
-        foreach (var c in vm.Columns) c.IsVisible = true;
+        foreach (var c in vm.Columns) c.IsVisible = d.ColumnVisible(c.Def.Id);
+        vm.ResetCustomization();
         vm.X = d.X; vm.Y = d.Y;
     }
 
@@ -435,20 +428,15 @@ public partial class MainWindow : Window
         Directory.CreateDirectory(_previewDir);
         string png = Path.Combine(_previewDir, $"{seq}.png");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--opacity", (vm.OpacityPct / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) })
+        // Todas as opcoes do widget (linhas, colunas, larguras, formato, texto, radar...) vao no mesmo JSON do perfil (--settings); a previa usa escala 1.
+        string settingsJson = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(settingsJson, JsonSerializer.Serialize(vm.ToSettings(0) with { Scale = 1f }, ProfileStore.Json));
+        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--settings", settingsJson })
             psi.ArgumentList.Add(a);
-        if (vm.SupportsRows) { psi.ArgumentList.Add("--rows"); psi.ArgumentList.Add(vm.Rows.ToString()); }
         // Radar: carros orbitando o jogador (instante 3 s = um de cada lado); o alcance e a sensibilidade do widget valem na previa.
-        if (vm.IsRadar) { psi.Environment["AMS2_FAKE_RADAR"] = "1"; foreach (var a in new[] { "--radar-range", vm.RadarRange.ToString(), "--radar-sens", vm.RadarSensitivity.ToString() }) psi.ArgumentList.Add(a); }
-        if (vm.HasSelection) { psi.ArgumentList.Add("--top"); psi.ArgumentList.Add(vm.TopCount.ToString()); psi.ArgumentList.Add("--near"); psi.ArgumentList.Add(vm.NearCount.ToString()); }
+        if (vm.IsRadar) psi.Environment["AMS2_FAKE_RADAR"] = "1";
         // Standings e board: corrida simulada de 20 carros (o campo padrao de 8 nao mostra o topo + janela nem a torre em paginas).
         if (vm.HasSelection || vm.IsBoard) psi.Environment["AMS2_FAKE_BOARD"] = "1";
-        if (vm.FontChoice != WidgetVm.FontDefault) { psi.ArgumentList.Add("--font"); psi.ArgumentList.Add(vm.FontChoice); }
-        if (vm.HasColumns && !vm.Columns.All(c => c.IsVisible))
-        {
-            psi.ArgumentList.Add("--cols");
-            psi.ArgumentList.Add(vm.Columns.Any(c => c.IsVisible) ? string.Join(",", vm.Columns.Where(c => c.IsVisible).Select(c => c.Def.Id)) : "none");
-        }
         try
         {
             using var p = Process.Start(psi)!;
@@ -456,6 +444,7 @@ public partial class MainWindow : Window
             _ = p.StandardError.ReadToEndAsync();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await p.WaitForExitAsync(cts.Token);
+            TryDelete(settingsJson);
             if (seq != _previewSeq) { TryDelete(png); return; }
             if (p.ExitCode != 0 || !File.Exists(png)) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; return; }
             var bmp = new BitmapImage();
