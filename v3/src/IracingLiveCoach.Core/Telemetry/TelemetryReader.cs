@@ -37,7 +37,9 @@ public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeco
 /// minus the player's own LapLastLapTime), matching the driver's own reference mockup's footnote
 /// ("Δ VOLTA = última volta do piloto - sua última volta").</summary>
 public record StandingsRow(int Position, string DriverCode, int LapsCompleted, double? LastLapTime, int? TireCompound, bool IsPlayer, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, double? GapToLeaderSeconds, double? EstimatedDeltaIRating, double? LapDeltaVsPlayerSeconds, string ClassShortName, string? ClassColorHex, int ClassPosition, double? IntervalSeconds, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string PitStatus, string CarNumber = "", int ClassRank = 0,
-    int? StartPosition = null, int? PositionChange = null, int? IntervalLaps = null, double? BestLapTime = null, bool InPitLane = false, bool TimedOrder = false);
+    int? StartPosition = null, int? PositionChange = null, int? IntervalLaps = null, double? BestLapTime = null, bool InPitLane = false, bool TimedOrder = false,
+    IReadOnlyList<double>? CleanLapTimes = null);
+// CleanLapTimes: this car's clean timed laps so far (LapHistory) -- the Standings average-gap column ranks them.
 // StartPosition/PositionChange: class grid slot and places gained (+) / lost (-) since the start -- race
 // only, see StartingGrid. IntervalLaps: the car ahead in class is this many whole laps up the road
 // (IntervalSeconds is then null) -- Kapps' "1L". BestLapTime: the car's best lap (practice/qualifying
@@ -203,6 +205,7 @@ public class TelemetryReader : IDisposable
     // retain the real transition locally and present its elapsed duration.  Once a car exits, the
     // last completed pit (lap + duration) remains available as useful race context.
     private readonly PitStopTracker _pitStops = new();
+    private readonly LapHistory _lapHistory = new();
 
     // Per-session state. A session = telemetry (SessionUniqueID, SessionNum); practice -> qualifying ->
     // race of one event are different sessions of one connection, so everything tied to "this session"
@@ -863,6 +866,7 @@ public class TelemetryReader : IDisposable
     private void ResetPerSessionState()
     {
         _pitStops.Reset();
+        _lapHistory.Reset();
         _flagBadges.Reset();
         _preGreenGrid.Clear();
         _grid = new();
@@ -1233,6 +1237,8 @@ public class TelemetryReader : IDisposable
                 bool towed = false;
                 if (idx == _playerCarIdx) { try { towed = _sdk.Data.GetFloat("PlayerCarTowTime") > 0; } catch { } }
                 var pitStatus = _pitStops.Update(idx, onPitRoad, lapsCompleted, stopsCount, now, towed);
+                if (!_finalResults.ContainsKey(idx))
+                    _lapHistory.Update(idx, _sdk.Data.GetInt("CarIdxLapCompleted", idx), _sdk.Data.GetFloat("CarIdxLastLapTime", idx), onPitRoad, _isRaceSession);
                 var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
                 // "Valid lap" (qualifying gate): iRacing only classifies (CarIdxPosition > 0) a car that has
                 // a timed lap.
@@ -1341,7 +1347,7 @@ public class TelemetryReader : IDisposable
                 rows.Add(new StandingsRow(r.Position, r.Code, r.Laps, r.LastLap, r.Tire, r.IsPlayer, r.Flag, r.Lic,
                     r.LicHex, r.IRating, r.ClassId, r.Manufacturer, gapToLeader, deltaIR, lapDelta, r.ClassShortName, r.ClassColorHex, r.ClassPosition, interval.Seconds,
                     r.P2PActive, r.P2PUsesRemaining, r.P2PSecondsRemaining, r.P2PInCooldown, r.PitStatus, r.CarNumber, r.ClassRank,
-                    start, change, interval.Laps, r.BestLap, r.OnPitRoad, timed));
+                    start, change, interval.Laps, r.BestLap, r.OnPitRoad, timed, _lapHistory.Laps(r.Idx)));
             }
 
             // Race: Kapps' per-class race length (RaceLengthEstimator, spec A) -- also before the green (grid rule).
