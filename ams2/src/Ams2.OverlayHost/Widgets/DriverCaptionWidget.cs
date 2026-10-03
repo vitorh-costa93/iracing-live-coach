@@ -30,17 +30,17 @@ public sealed class DriverCaptionWidget : IWidget
             alpha = BroadcastUi.Fade(m.Now - last, BroadcastUi.CaptionHold);
             if (b.Winner is { } w && m.Now - w.FinishedT < BroadcastUi.WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
         }
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars));
+        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars, _cfg.ColumnVisible("flag")));
     }
 }
 
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448;
+    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 500;
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
-    public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field)
+    public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, bool flag = true)
     {
         var t = c.Theme;
         string name = BroadcastUi.ShortName(car, field), team = BroadcastUi.Team(car);
@@ -58,7 +58,8 @@ public static class CaptionPlate
             Chrome.Box(c, x + 40, Y0 + HeadH, 56, RowH * 2, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 38 }, posKind, HAlign.Center, 0);
             return;
         }
-        // 1998 / 2010s: painel do tema com caixa de posicao, nome, equipe, bandeira e fornecedor.
+        if (t.Style == ThemeStyle.Broadcast98) { DriverBand(c, car, field, name, team, flag); return; }
+        // 2010s: painel do tema com caixa de posicao, nome, equipe, bandeira e fornecedor.
         float w = DriverWidth, h = Height;
         c.Panel(0, 0, w, h);
         Chrome.AccentBox(c, 16, 16, 58, h - 32, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 36 });
@@ -68,7 +69,41 @@ public static class CaptionPlate
         if (car.TyreSupplier.Length > 0) c.Text(car.TyreSupplier, t.Label, w - 56, 48, 40, 30, t.ValueColor, HAlign.Center, t.TextShadow);
     }
 
-    public static void DrawWinner(ThemeCanvas c, WinnerInfo win, IReadOnlyList<CarSnapshot> field)
+    const float BandTop = 26, TagH = 24;
+
+    /// <summary>Número do carro da legenda 1998–2001: o AMS2 não expõe o número real, então usa o índice do carro + 1.</summary>
+    public static string CarNumber(CarSnapshot car) => (car.Index + 1).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Selo ciano de canto acima da faixa (no lugar do patrocinador da transmissão): o nome do widget.</summary>
+    static void CyanTag(ThemeCanvas c, float right, string text, float w = 150)
+    {
+        c.FillRect(right - w, BandTop - TagH, w, TagH, new Vortice.Win32.Numerics.Color4(21 / 255f, 150 / 255f, 176 / 255f, 0.97f));
+        c.Text(text, c.Theme.Label with { Size = 20 }, right - w, BandTop - TagH - 1, w, TagH, new Vortice.Win32.Numerics.Color4(1, 1, 1, 1), HAlign.Center, c.Theme.TextShadow);
+    }
+
+    /// <summary>Linhas [bolha ciana com o número][NOME] e [emblema do pneu][EQUIPE em ciano] sobre a faixa translúcida; bandeira opcional à direita.</summary>
+    static void NameLines(ThemeCanvas c, CarSnapshot car, string name, string team, float x, float maxW)
+    {
+        var t = c.Theme;
+        float y1 = BandTop + 8, y2 = BandTop + 38;
+        Chrome.Bubble(c, x, y1, 50, 28, CarNumber(car), t.Numbers with { Size = 24, Tracking = 1f });
+        string nm = name.ToUpperInvariant(), tm = team.ToUpperInvariant();
+        c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, maxW), x + 62, y1 - 1, maxW + 8, 30, t.TextColor, shadow: t.TextShadow);
+        float tx = x + 62;
+        if (Chrome.TyreEmblem(c, x + 25, y2 + 14, 12, car.TyreSupplier, t.Text with { Size = 17 })) { }
+        c.Text(tm, BroadcastUi.Fit(c, tm, t.Label, maxW), tx, y2, maxW + 8, 28, t.LabelColor, shadow: t.TextShadow);
+    }
+
+    static void DriverBand(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, string name, string team, bool flag)
+    {
+        float w = DriverWidth, h = Height;
+        c.Panel(0, BandTop, w, h - BandTop);
+        CyanTag(c, w - 4, "DRIVER");
+        NameLines(c, car, name, team, 16, flag ? w - 16 - 62 - 62 : w - 16 - 62 - 14);
+        if (flag) c.Flag(car.Nationality, w - 54, BandTop + 12, 40, 26);
+    }
+
+    public static void DrawWinner(ThemeCanvas c, WinnerInfo win, IReadOnlyList<CarSnapshot> field, bool flag = true)
     {
         var t = c.Theme;
         var car = win.Car;
@@ -93,6 +128,19 @@ public static class CaptionPlate
             Chrome.BlackCell(c, bx, Y0 + 2 * ch, bw, ch - 1, avg, vf, HAlign.Right);
             return;
         }
+        if (t.Style == ThemeStyle.Broadcast98)
+        {
+            float bw = Winner98Width, bh = Height;
+            c.Panel(0, BandTop, bw, bh - BandTop);
+            CyanTag(c, bw - 4, "WINNER");
+            NameLines(c, car, name, team, 16, 190);
+            float vr = bw - 16;
+            if (flag) c.Flag(car.Nationality, 292, BandTop + 12, 38, 24);
+            c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Size = 26 }, 150), vr - 160, BandTop + 2, 160, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
+            c.Text(dist, t.Label with { Size = 19 }, vr - 160, BandTop + 28, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
+            c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
+            return;
+        }
         float w = WinnerWidth, h = Height;
         c.Panel(0, 0, w, h);
         c.Text("WINNER", t.Title, 16, 8, 160, 30, t.AccentFill);
@@ -109,7 +157,9 @@ public static class CaptionPlate
 public sealed class WinnerWidget : IWidget
 {
     public string Id => "winner";
-    public (float Width, float Height) DesignSize => (CaptionPlate.WinnerWidth, CaptionPlate.Height);
+    public (float Width, float Height) DesignSize => (_b98 ? CaptionPlate.Winner98Width : CaptionPlate.WinnerWidth, CaptionPlate.Height);
+    bool _b98;
+    public void UseTheme(Theme.Theme theme) => _b98 = theme.Style == ThemeStyle.Broadcast98;
     WidgetSettings _cfg = new() { Id = "winner" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -119,6 +169,6 @@ public sealed class WinnerWidget : IWidget
         var b = BroadcastUi.State(m);
         if (b.Winner is not { } w) return;
         float alpha = _cfg.ColumnVisible("always") ? 1f : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars));
+        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars, _cfg.ColumnVisible("flag")));
     }
 }

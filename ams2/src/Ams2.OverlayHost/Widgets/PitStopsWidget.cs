@@ -41,7 +41,15 @@ public sealed class PitStopsWidget : IWidget
         var t = c.Theme;
         bool b04 = t.Style == ThemeStyle.Broadcast2000s;
         var (w, h) = DesignSize;
-        if (!b04) { c.Panel(0, 0, w, h); Chrome.Header(c, "PIT STOPS", 16, 2, 200, underline: false); }
+        bool b98 = t.Style == ThemeStyle.Broadcast98;
+        if (b98)
+        {
+            // Faixa translucida + selo ciano no canto (no lugar do patrocinador da transmissao); linhas em caixa-alta.
+            c.Panel(0, 0, w, h);
+            c.FillRect(w - 154, 0, 150, 24, new Vortice.Win32.Numerics.Color4(21 / 255f, 150 / 255f, 176 / 255f, 0.97f));
+            c.Text("PIT STOPS", t.Label with { Size = 20 }, w - 154, -1, 150, 24, new Vortice.Win32.Numerics.Color4(1, 1, 1, 1), HAlign.Center, t.TextShadow);
+        }
+        else if (!b04) { c.Panel(0, 0, w, h); Chrome.Header(c, "PIT STOPS", 16, 2, 200, underline: false); }
         else Chrome.HeaderCell(c, X0 + PosW, Y0, NameW, HeadH, "PIT STOPS", t.Label);
         for (int i = 0; i < page.Count; i++)
         {
@@ -49,6 +57,7 @@ public sealed class PitStopsWidget : IWidget
             int col = i / Rows, row = i % Rows;
             float x = X0 + col * (ColW + ColGap), y = Y0 + HeadH + row * Pitch;
             string name = BroadcastUi.ShortName(car, field), stops = BroadcastUi.Stops(b.StopsOf(car.Index));
+            if (b98) { name = name.ToUpperInvariant(); stops = stops.ToUpperInvariant(); }
             if (b04)
             {
                 Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text);

@@ -8,11 +8,13 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class PitTimerWidget : IWidget
 {
     public string Id => "pittimer";
-    public (float Width, float Height) DesignSize => (X0 * 2 + NameW + TimeW, Y0 * 2 + RowH + 2);
+    public (float Width, float Height) DesignSize => (X0 * 2 + (_b98 ? NameW98 : NameW) + TimeW, Y0 * 2 + RowH + 2);
+    bool _b98;
+    public void UseTheme(Theme.Theme theme) => _b98 = theme.Style == ThemeStyle.Broadcast98;
     WidgetSettings _cfg = new() { Id = "pittimer" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
-    const float X0 = 4, Y0 = 4, NameW = 190, TimeW = 96, RowH = 32;
+    const float X0 = 4, Y0 = 4, NameW = 190, NameW98 = 256, TimeW = 96, RowH = 32;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -31,6 +33,15 @@ public sealed class PitTimerWidget : IWidget
             }
             var (w, h) = DesignSize;
             c.Panel(0, 0, w, h);
+            if (t.Style == ThemeStyle.Broadcast98)
+            {
+                // Faixa translucida: bolha ciana com o numero do carro, nome em caixa-alta e tempo parado em amarelo.
+                Chrome.Bubble(c, 14, Y0 + 3, 50, RowH - 6, CaptionPlate.CarNumber(car), t.Numbers with { Size = 24, Tracking = 1f });
+                string nm = name.ToUpperInvariant();
+                c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameW98 - 84), 76, Y0 - 1, NameW98 - 80, RowH, t.TextColor, shadow: t.TextShadow);
+                c.Text(time, t.Numbers, X0 + NameW98, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
+                return;
+            }
             c.Text(name, t.Text, 16, Y0, NameW - 12, RowH, t.TextColor, shadow: t.TextShadow);
             c.Text(time, t.Numbers, X0 + NameW, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
         });
