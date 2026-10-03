@@ -34,7 +34,7 @@ public sealed class TyresWidget : IWidget
             return;
         }
 
-        string compound = p.Wheels[0].Compound.Trim().ToUpperInvariant();
+        string compound = _cfg.ColumnVisible("compound") ? p.Wheels[0].Compound.Trim().ToUpperInvariant() : "";
         bool b04 = t.Style == ThemeStyle.Broadcast2000s;
         if (compound.Length > 0 && b04) Chrome.Caption(c, 280 - c.Measure(compound, t.Label with { Size = 18 }) - 18, 13, compound, 24, t.Label with { Size = 18 }, Chrome.CellKind.Navy);
         else if (compound.Length > 0) c.Text(compound, t.Label with { Size = 20 }, 190, 11, 90, 30, t.LabelColor, HAlign.Right, t.TextShadow);
@@ -47,7 +47,7 @@ public sealed class TyresWidget : IWidget
             if (b04) { Draw2000s(c, t, wh, i, cx, y); continue; }
             c.Text(Names[i], t.Label with { Size = 17, Tracking = 4 }, cx - 40, y, 80, 20, t.TitleColor, HAlign.Center, t.TextShadow);
             bool temp = _cfg.ColumnVisible("temp"), wear = _cfg.ColumnVisible("wear");
-            if (temp) DrawCentered(c, wh.TempC.ToString("0", CultureInfo.InvariantCulture), "°C", cx, y + 19, t.ValueColor);
+            if (temp) DrawCentered(c, Temp(wh.TempC), DisplayFormat.TempLabel(_cfg.Fmt.TempOrDefault), cx, y + 19, t.ValueColor);
             double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100; // 0 = novo ... 1 = gasto (a confirmar em sessão real)
             if (wear) DrawCentered(c, wearPct.ToString("0", CultureInfo.InvariantCulture), "%", cx, y + (temp ? 45 : 19), wearPct >= 70 ? t.PlayerColor : t.ReadoutColor);
         }
@@ -61,9 +61,11 @@ public sealed class TyresWidget : IWidget
         var f = t.Numbers with { Size = 21 };
         double wearPct = Math.Clamp(wh.Wear, 0, 1) * 100;
         float yy = y + 22;
-        if (temp) { Chrome.BlackCell(c, cx - 50, yy, 100, 24, wh.TempC.ToString("0", CultureInfo.InvariantCulture) + " °C", f, HAlign.Center); yy += 24; }
+        if (temp) { Chrome.BlackCell(c, cx - 50, yy, 100, 24, Temp(wh.TempC) + " " + DisplayFormat.TempLabel(_cfg.Fmt.TempOrDefault), f, HAlign.Center); yy += 24; }
         if (wear) Chrome.BlackCell(c, cx - 50, yy, 100, 24, wearPct.ToString("0", CultureInfo.InvariantCulture) + " %", f, HAlign.Center, wearPct >= 70 ? t.PlayerColor : null);
     }
+
+    string Temp(double celsius) => DisplayFormat.Temp(celsius, _cfg.Fmt.TempOrDefault).ToString("0", CultureInfo.InvariantCulture);
 
     static void DrawCentered(ThemeCanvas c, string value, string unit, float cx, float y, Vortice.Win32.Numerics.Color4 color)
     {

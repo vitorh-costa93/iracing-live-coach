@@ -18,6 +18,8 @@ namespace Ams2.OverlayHost;
 ///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
+///                       [--text-scale 0.6..2] [--settings ARQUIVO.json]   (so com --png: tamanho do texto, que redimensiona o widget; ou o WidgetSettings
+///                       inteiro do perfil em JSON, com larguras/formato/cores, como o Control Center usa na previa; --scale continua valendo)
 ///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
@@ -34,7 +36,8 @@ namespace Ams2.OverlayHost;
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure, string? PlayerName = null, int? RadarRange = null, int? RadarSens = null);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure, string? PlayerName = null, int? RadarRange = null, int? RadarSens = null,
+        string? SettingsFile = null, float? TextScale = null);
 
     [STAThread]
     static int Main(string[] args)
@@ -83,7 +86,9 @@ internal static class Program
             Measure: a.Contains("--measure"),
             PlayerName: Val("--player-name"),
             RadarRange: Val("--radar-range") is { } rr ? int.Parse(rr) : null,
-            RadarSens: Val("--radar-sens") is { } rs ? int.Parse(rs) : null);
+            RadarSens: Val("--radar-sens") is { } rs ? int.Parse(rs) : null,
+            SettingsFile: Val("--settings"),
+            TextScale: Val("--text-scale") is { } ts ? float.Parse(ts, CultureInfo.InvariantCulture) : null);
     }
 
     /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
@@ -117,7 +122,10 @@ internal static class Program
         using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
         // Radar: sem --cols o previa usa o padrao do perfil (painel estilo V3; "native" liga o indicador nativo).
         string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
-        provider.Radar.Options = RadarWidget.OptionsFor(new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
+        // --settings: o WidgetSettings do perfil em JSON (larguras, formato, texto...); as outras opcoes do widget na linha de comando nao se aplicam.
+        WidgetSettings? fromFile = o.SettingsFile is { } sf ? System.Text.Json.JsonSerializer.Deserialize<WidgetSettings>(File.ReadAllText(sf), ProfileStore.Json) : null;
+        provider.Radar.Options = RadarWidget.OptionsFor(fromFile is not null && o.Widget == "radar" ? (fromFile with { Id = "radar" }).Normalized()
+            : new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
         if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
@@ -127,17 +135,20 @@ internal static class Program
         var widget = WidgetRegistry.Create(o.Widget);
         widget.UseTheme(theme);
         // Configuracao do widget como no perfil: --cols = ids das colunas VISIVEIS separados por virgula ("none" = nenhuma, omitido = todas).
-        var settings = new WidgetSettings
+        var settings = (fromFile is not null ? fromFile with { Id = widget.Id, Scale = scale } : new WidgetSettings
         {
             Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
             RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens,
             Columns = cols,
-        }.Normalized();
+        }).Normalized();
+        if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized();
         widget.Configure(settings);
-        int w = (int)Math.Ceiling(widget.DesignSize.Width * scale), h = (int)Math.Ceiling(widget.DesignSize.Height * scale);
+        // Mesmo tamanho da janela real: escala de render = escala x tamanho do texto.
+        float rs = settings.RenderScale;
+        int w = (int)Math.Ceiling(widget.DesignSize.Width * rs), h = (int)Math.Ceiling(widget.DesignSize.Height * rs);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");
-        using var canvas = new ThemeCanvas(gfx, theme, scale) { Opacity = settings.Opacity, FontOverride = settings.Font };
+        using var canvas = new ThemeCanvas(gfx, ThemeOverrides.Apply(theme, settings), rs) { Opacity = settings.Opacity, FontOverride = settings.Font };
         gfx.BeginFrame();
         canvas.Begin();
         widget.Draw(canvas, provider.Current);

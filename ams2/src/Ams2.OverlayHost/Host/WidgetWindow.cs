@@ -59,18 +59,19 @@ internal sealed class WidgetWindow : IDisposable
         Settings = settings;
         _widget.UseTheme(theme);
         _widget.Configure(settings);
-        (_w, _h) = PixelSize(settings.Scale);
+        (_w, _h) = PixelSize(settings.RenderScale);
         var (x, y) = ClampToScreen(settings.X, settings.Y, _w, _h);
         _win = OverlayWindow.Create($"AMS2 Overlay - {id}", x, y, _w, _h);
         _win.Mouse = OnMouse;
         _win.IsResizeGrip = (cx, cy) => cx >= _w - GripSize && cy >= _h - GripSize;
         _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
         _gfx.PresentInterval = 0;
-        _canvas = new ThemeCanvas(_gfx, theme, settings.Scale);
+        _canvas = new ThemeCanvas(_gfx, theme, settings.RenderScale);
         ApplyCanvas();
         _win.SetVisible(Visible);
     }
 
+    /// <summary>Tamanho da janela na escala de render (escala x tamanho do texto): a fonte maior aumenta a janela na mesma proporcao.</summary>
     (int W, int H) PixelSize(float scale)
     {
         var d = _widget.DesignSize;
@@ -79,8 +80,8 @@ internal sealed class WidgetWindow : IDisposable
 
     void ApplyCanvas()
     {
-        _canvas.Theme = _theme;
-        _canvas.Scale = Settings.Scale;
+        _canvas.Theme = ThemeOverrides.Apply(_theme, Settings);
+        _canvas.Scale = Settings.RenderScale;
         _canvas.Opacity = Settings.Opacity;
         _canvas.FontOverride = Settings.Font;
     }
@@ -94,7 +95,7 @@ internal sealed class WidgetWindow : IDisposable
         _theme = theme;
         _widget.UseTheme(theme);
         _widget.Configure(s);
-        var (w, h) = PixelSize(s.Scale);
+        var (w, h) = PixelSize(s.RenderScale);
         var (x, y) = ClampToScreen(s.X, s.Y, w, h);
         if (w != _w || h != _h)
         {
@@ -113,7 +114,7 @@ internal sealed class WidgetWindow : IDisposable
         _gfx.Dispose();
         _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
         _gfx.PresentInterval = 0;
-        _canvas = new ThemeCanvas(_gfx, _theme, Settings.Scale);
+        _canvas = new ThemeCanvas(_gfx, _theme, Settings.RenderScale);
         ApplyCanvas();
     }
 
@@ -148,7 +149,7 @@ internal sealed class WidgetWindow : IDisposable
     void DrawEditAdornments()
     {
         var (dw, dh) = _widget.DesignSize;
-        float s = Settings.Scale;
+        float s = Settings.RenderScale;
         float opacity = _canvas.Opacity;
         _canvas.Opacity = 1f;
         _canvas.StrokeRect(0, 0, dw, dh, EditColor, 2f / s);
@@ -192,7 +193,7 @@ internal sealed class WidgetWindow : IDisposable
                 else
                 {
                     var d = _widget.DesignSize;
-                    float scale = (p.X - _dragStartWinX) / d.Width;
+                    float scale = (p.X - _dragStartWinX) / (d.Width * (Settings.TextScale ?? 1f));
                     SetScale(scale);
                 }
                 break;
@@ -219,7 +220,7 @@ internal sealed class WidgetWindow : IDisposable
         if (Math.Abs(scale - Settings.Scale) < 0.001f) return;
         var b = _win.Bounds;
         Settings = Settings with { Scale = scale, X = b.X, Y = b.Y };
-        var (w, h) = PixelSize(scale);
+        var (w, h) = PixelSize(Settings.RenderScale);
         _w = w; _h = h;
         _win.MoveResize(b.X, b.Y, w, h);
         Rebuild();

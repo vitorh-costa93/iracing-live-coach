@@ -30,7 +30,7 @@ public sealed class DriverCaptionWidget : IWidget
             alpha = BroadcastUi.Fade(m.Now - last, BroadcastUi.CaptionHold);
             if (b.Winner is { } w && m.Now - w.FinishedT < BroadcastUi.WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
         }
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars));
+        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars, _cfg));
     }
 }
 
@@ -40,10 +40,12 @@ public static class CaptionPlate
     public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Winner10Width = 410;
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
-    public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field)
+    /// <summary>Legenda do piloto; <paramref name="cfg"/> traz o formato do nome e as colunas "team"/"tyre" (equipe e fornecedor de pneus).</summary>
+    public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
         var t = c.Theme;
-        string name = BroadcastUi.ShortName(car, field), team = BroadcastUi.Team(car);
+        string name = cfg.Name(car, BroadcastUi.ShortName(car, field)), team = cfg.ColumnVisible("team") ? BroadcastUi.Team(car) : "";
+        if (!cfg.ColumnVisible("tyre")) car = car with { TyreSupplier = "" };
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
             Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
@@ -99,14 +101,17 @@ public static class CaptionPlate
         NameLines(c, car, name, team, 16, w - 16 - 62 - 14);
     }
 
-    public static void DrawWinner(ThemeCanvas c, WinnerInfo win, IReadOnlyList<CarSnapshot> field)
+    /// <summary>Legenda do vencedor; colunas "team" (equipe) e "stats" (tempo, distância e média, na unidade de velocidade do perfil).</summary>
+    public static void DrawWinner(ThemeCanvas c, WinnerInfo win, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
         var t = c.Theme;
         var car = win.Car;
-        string name = BroadcastUi.ShortName(car, field), team = BroadcastUi.Team(car);
-        string time = BroadcastUi.RaceTime(win.TotalSeconds);
-        string dist = win.DistanceKm.ToString("0.000", CultureInfo.InvariantCulture) + " Km";
-        string avg = win.AvgKmh.ToString("0.000", CultureInfo.InvariantCulture) + " Km/h";
+        string name = cfg.Name(car, BroadcastUi.ShortName(car, field)), team = cfg.ColumnVisible("team") ? BroadcastUi.Team(car) : "";
+        var su = cfg.Fmt.SpeedOrDefault;
+        bool stats = cfg.ColumnVisible("stats");
+        string time = stats ? BroadcastUi.RaceTime(win.TotalSeconds) : "";
+        string dist = stats ? DisplayFormat.Distance(win.DistanceKm, su).ToString("0.000", CultureInfo.InvariantCulture) + " " + DisplayFormat.DistanceLabel(su) : "";
+        string avg = stats ? DisplayFormat.SpeedFromKph(win.AvgKmh, su).ToString("0.000", CultureInfo.InvariantCulture) + " " + (su == SpeedUnit.Mph ? "mph" : "Km/h") : "";
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
             Chrome.Box(c, X0, Y0, WinLeftW, HeadH, "Winner", t.Text, Chrome.CellKind.Red);
@@ -117,6 +122,7 @@ public static class CaptionPlate
             float bx = X0 + WinLeftW + 6, bw = 160;
             float ch = (HeadH + 2 * RowH) / 3f;
             var vf = t.Text with { Size = 21 };
+            if (!stats) return;
             Chrome.BlackCell(c, bx, Y0, bw, ch - 1, time, vf, HAlign.Right);
             Chrome.BlackCell(c, bx, Y0 + ch, bw, ch - 1, dist, vf, HAlign.Right);
             Chrome.BlackCell(c, bx, Y0 + 2 * ch, bw, ch - 1, avg, vf, HAlign.Right);
@@ -161,6 +167,6 @@ public sealed class WinnerWidget : IWidget
         var b = BroadcastUi.State(m);
         if (b.Winner is not { } w) return;
         float alpha = _cfg.ColumnVisible("always") ? 1f : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars));
+        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars, _cfg));
     }
 }

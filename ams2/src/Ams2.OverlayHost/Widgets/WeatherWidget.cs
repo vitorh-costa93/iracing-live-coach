@@ -12,12 +12,15 @@ public sealed class WeatherWidget : IWidget
     // O título do 1998 é alto (fonte grande): cabeçalho mais alto e linhas empurradas para baixo, sem colidir com AIR.
     bool _b98;
     public void UseTheme(Theme.Theme theme) => _b98 = theme.Style == ThemeStyle.Broadcast98;
-    public (float Width, float Height) DesignSize => (295, _b98 ? 144 : 128);
+    /// <summary>Linhas visiveis (ar, pista, chuva) sobem para ocupar o lugar das ocultas; o painel encolhe junto.</summary>
+    int Rows => (_cfg.ColumnVisible("air") ? 1 : 0) + (_cfg.ColumnVisible("track") ? 1 : 0) + (_cfg.ColumnVisible("rain") ? 1 : 0);
+    public (float Width, float Height) DesignSize => (295, Row0 + Math.Max(Rows, 1) * RowPitch + (_b98 ? 5 : 8));
 
     const float LabelX = 87, ValueRight = 275, RowPitch = 29;
     float Row0 => _b98 ? 52 : 33;
 
-    public void Configure(WidgetSettings s) { }
+    WidgetSettings _cfg = new() { Id = "weather" };
+    public void Configure(WidgetSettings s) => _cfg = s;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -35,9 +38,12 @@ public sealed class WeatherWidget : IWidget
         }
 
         var f = t.Label with { Size = 22 };
-        Row(c, Row0, "AIR", Math.Round(wx.AmbientC).ToString("0", CultureInfo.InvariantCulture), "°C", 0, f);
-        Row(c, Row0, "TRACK", Math.Round(wx.TrackC).ToString("0", CultureInfo.InvariantCulture), "°C", 1, f);
-        Row(c, Row0, "RAIN", Math.Round(Math.Clamp(wx.RainDensity, 0, 1) * 100).ToString("0", CultureInfo.InvariantCulture), "%", 2, f);
+        var tu = _cfg.Fmt.TempOrDefault;
+        string Temp(double celsius) => Math.Round(DisplayFormat.Temp(celsius, tu)).ToString("0", CultureInfo.InvariantCulture);
+        int row = 0;
+        if (_cfg.ColumnVisible("air")) Row(c, Row0, "AIR", Temp(wx.AmbientC), DisplayFormat.TempLabel(tu), row++, f);
+        if (_cfg.ColumnVisible("track")) Row(c, Row0, "TRACK", Temp(wx.TrackC), DisplayFormat.TempLabel(tu), row++, f);
+        if (_cfg.ColumnVisible("rain")) Row(c, Row0, "RAIN", Math.Round(Math.Clamp(wx.RainDensity, 0, 1) * 100).ToString("0", CultureInfo.InvariantCulture), "%", row++, f);
     }
 
     static void Row(ThemeCanvas c, float row0, string label, string value, string unit, int row, FontToken labelFont)

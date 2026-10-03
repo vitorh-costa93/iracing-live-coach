@@ -32,7 +32,11 @@ public sealed class RelativeWidget : IWidget
     const float RowsTop = 72;     // topo da primeira linha
     const float RowPitch = 31;
     const float AheadX = 68;      // início da coluna AHEAD (número)
-    const float PosSlot = 6, NameCellW = 112, MinWidth = 420, BlockGap = 126, EdgeRight = 62;
+    const float PosSlot = 6, MinWidth = 420, BlockGap = 126, EdgeRight = 62;
+    // Larguras das colunas (perfil: % da largura do tema; 100 % = mockup).
+    float NameCellW => MathF.Round(_cfg.Width("name", 112));
+    float PosW(float themeW) => MathF.Round(_cfg.Width("pos", themeW));
+    float GapW(float themeW) => MathF.Round(_cfg.Width("gap", themeW));
 
     /// <summary>Colunas visiveis de um lado: posicoes relativas ao inicio do bloco, sem buracos. Todas visiveis = mockup.</summary>
     readonly record struct Side(float PosDx, float NameDx, float ValueRight, float Width);
@@ -45,12 +49,12 @@ public sealed class RelativeWidget : IWidget
     Side SideLayout(float nameDx, float valueRight)
     {
         bool pos = _cfg.ColumnVisible("pos"), name = _cfg.ColumnVisible("name"), gap = _cfg.ColumnVisible("gap");
-        float cursor = pos ? nameDx : PosSlot;   // sem posição, o texto do nome fica 6 px à direita da célula
+        float cursor = pos ? PosW(nameDx) : PosSlot;   // sem posição, o texto do nome fica 6 px à direita da célula
         float nx = cursor;
         if (name) cursor = nx + NameCellW - 0;
         else if (!pos) cursor = 0;
         float gapRight = 0;
-        if (gap) { gapRight = cursor + (valueRight - nameDx - NameCellW); cursor = gapRight; }
+        if (gap) { gapRight = cursor + GapW(valueRight - nameDx - 112); cursor = gapRight; }
         return new Side(0, nx, gapRight, Math.Max(cursor, 60));
     }
 
@@ -109,7 +113,7 @@ public sealed class RelativeWidget : IWidget
         var neighbor = aheadCloser ? ahead! : behind!;
         var left = aheadCloser ? neighbor : me;
         var right = aheadCloser ? me : neighbor;
-        string gap = FormatGap(neighbor).TrimStart('+', '-');
+        string gap = Gap(neighbor, sign: false);
         if (neighbor.LapDelta != 0) gap = Math.Abs(neighbor.LapDelta).ToString(CultureInfo.InvariantCulture) + " LAP";
         var field = m.Relative.Select(r => r.Car).ToList();
         float by = bt + 10, nameW = w / 2 - SplitEdge - SplitBox - 14 - 120;
@@ -118,13 +122,13 @@ public sealed class RelativeWidget : IWidget
         Chrome.AccentBox(c, SplitEdge, by, SplitBox, 58, left.Car.Position.ToString(CultureInfo.InvariantCulture), big);
         float lx = SplitEdge + SplitBox + 14;
         Chrome.SplitBar(c, lx, by + 4, SplitBarW, 12, false);
-        string ln = BroadcastUi.ShortName(left.Car, field).ToUpperInvariant();
+        string ln = _cfg.Name(left.Car, BroadcastUi.ShortName(left.Car, field)).ToUpperInvariant();
         c.Text(ln, BroadcastUi.Fit(c, ln, t.Text, nameW), lx, by + 18, nameW + 10, 38, left.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
         // direita (espelhada)
         Chrome.AccentBox(c, w - SplitEdge - SplitBox, by, SplitBox, 58, right.Car.Position.ToString(CultureInfo.InvariantCulture), big);
         float rx = w - SplitEdge - SplitBox - 14;
         Chrome.SplitBar(c, rx - SplitBarW, by + 4, SplitBarW, 12, true);
-        string rn = BroadcastUi.ShortName(right.Car, field).ToUpperInvariant();
+        string rn = _cfg.Name(right.Car, BroadcastUi.ShortName(right.Car, field)).ToUpperInvariant();
         c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, nameW), rx - nameW - 10, by + 18, nameW + 10, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right, t.TextShadow);
         // gap ao centro
         var gf = t.Numbers with { Size = 44 };
@@ -133,7 +137,10 @@ public sealed class RelativeWidget : IWidget
     }
 
     // Barra de gap (transmissão 2004–2008): [pos][nome à direita][gap preto][nome à esquerda][pos], células coladas.
-    const float BarPos = 34, BarName = 176, BarGap = 118, BarTop = 38, BarPitch = 31, BarH = 29;
+    const float BarTop = 38, BarPitch = 31, BarH = 29;
+    float BarPos => PosW(34);
+    float BarName => MathF.Round(_cfg.Width("name", 176));
+    float BarGap => GapW(118);
     float BarWidth => 2 * (_cfg.ColumnVisible("pos") ? BarPos : 0) + 2 * (_cfg.ColumnVisible("name") ? BarName : 0) + (_cfg.ColumnVisible("gap") ? BarGap : 0) + 8;
 
     void DrawBars(ThemeCanvas c, Theme.Theme t, OverlayModel m)
@@ -161,14 +168,14 @@ public sealed class RelativeWidget : IWidget
         bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
         var nf = t.Text with { Size = 22 };
         if (p) { Chrome.PositionBox(c, x, y, BarPos, BarH, left.Car.Position, t.Numbers); x += BarPos; }
-        if (n) { Chrome.WhiteCell(c, x, y, BarName, BarH, ShortName(left.Car.Name), nf, HAlign.Right, left.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
+        if (n) { string ln = _cfg.Name(left.Car, ShortName(left.Car.Name)); Chrome.WhiteCell(c, x, y, BarName, BarH, ln, BroadcastUi.Fit(c, ln, nf, BarName - 16), HAlign.Right, left.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
         if (g)
         {
-            Chrome.BlackCell(c, x, y, BarGap, BarH, FormatGap(neighbor), t.Numbers with { Size = 22 }, HAlign.Center,
+            Chrome.BlackCell(c, x, y, BarGap, BarH, Gap(neighbor), t.Numbers with { Size = 22 }, HAlign.Center,
                 kind: neighbor.GapSeconds is null && neighbor.LapDelta == 0 ? Chrome.CellKind.Black : neighborIsLeft ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
             x += BarGap;
         }
-        if (n) { Chrome.WhiteCell(c, x, y, BarName, BarH, ShortName(right.Car.Name), nf, HAlign.Left, right.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
+        if (n) { string rn = _cfg.Name(right.Car, ShortName(right.Car.Name)); Chrome.WhiteCell(c, x, y, BarName, BarH, rn, BroadcastUi.Fit(c, rn, nf, BarName - 16), HAlign.Left, right.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
         if (p) Chrome.PositionBox(c, x, y, BarPos, BarH, right.Car.Position, t.Numbers);
     }
 
@@ -218,16 +225,17 @@ public sealed class RelativeWidget : IWidget
             if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, row, pos, x, y, side, ahead); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
-                if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, 36, 30, t.NumberColor, shadow: t.ValueShadow);
-                else Chrome.AccentBox(c, x, y + 2, 34, 26, pos, t.Numbers);
+                if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, Math.Max(36, PosW(50) - 14), 30, t.NumberColor, shadow: t.ValueShadow);
+                else Chrome.AccentBox(c, x, y + 2, PosW(34), 26, pos, t.Numbers);
             }
             if (_cfg.ColumnVisible("name"))
             {
                 var ink = row.IsPlayer && t.NameCellFill.A <= 0f ? t.PlayerColor : t.TextColor;
-                ink = Chrome.NameCell(c, x + side.NameDx - 6, y + 2, 118, 26, ink);
-                c.Text(Code(row.Car.Name), t.Text, x + side.NameDx, y, 130, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+                ink = Chrome.NameCell(c, x + side.NameDx - 6, y + 2, NameCellW + 6, 26, ink);
+                string nm = _cfg.Name(row.Car, Code(row.Car.Name));
+                c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW + 10), x + side.NameDx, y, NameCellW + 18, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
-            if (_cfg.ColumnVisible("gap")) c.Text(FormatGap(row), t.Numbers, x + side.ValueRight - 140, y, 140, 30, t.ValueColor, HAlign.Right, t.ValueShadow);
+            if (_cfg.ColumnVisible("gap")) { float gw = Math.Max(140, GapW(117)); c.Text(Gap(row), t.Numbers, x + side.ValueRight - gw, y, gw, 30, t.ValueColor, HAlign.Right, t.ValueShadow); }
         }
     }
 
@@ -237,13 +245,14 @@ public sealed class RelativeWidget : IWidget
         const float h = 29;
         bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
         float cx = x;
-        if (p) { Chrome.PositionBox(c, cx, y + 1, 34, h, row.Car.Position, t.Numbers); cx += 34; }
+        if (p) { Chrome.PositionBox(c, cx, y + 1, PosW(34), h, row.Car.Position, t.Numbers); cx += PosW(34); }
         if (n)
         {
-            Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, Code(row.Car.Name), t.Text, ink: row.IsPlayer ? Chrome.PlayerInk : null);
+            string nm = _cfg.Name(row.Car, Code(row.Car.Name));
+            Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW - 16), ink: row.IsPlayer ? Chrome.PlayerInk : null);
             cx += NameCellW;
         }
-        if (g) Chrome.BlackCell(c, cx, y + 1, 112, h, FormatGap(row), t.Numbers,
+        if (g) Chrome.BlackCell(c, cx, y + 1, GapW(112), h, Gap(row), t.Numbers,
             kind: row.GapSeconds is null && row.LapDelta == 0 ? Chrome.CellKind.Black : ahead ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
     }
 
@@ -256,10 +265,16 @@ public sealed class RelativeWidget : IWidget
         return (last.Length >= 3 ? last[..3] : last).ToUpperInvariant();
     }
 
-    public static string FormatGap(RelativeRow r)
+    /// <summary>Gap padrão (sem perfil): "+1.234", voltas "+1L"/"-1L", sem tempo "--.---". Usado pela saída do --png.</summary>
+    public static string FormatGap(RelativeRow r) => FormatGap(r, DisplayOptions.Empty, true);
+
+    /// <summary>Gap no formato do perfil: o valor é sempre absoluto (o lado já diz se está à frente); voltas mantêm o sinal; "+" opcional.</summary>
+    public static string FormatGap(RelativeRow r, DisplayOptions f, bool sign)
     {
-        if (r.LapDelta != 0) return (r.LapDelta > 0 ? "+" : "-") + Math.Abs(r.LapDelta).ToString(CultureInfo.InvariantCulture) + "L";
-        if (r.GapSeconds is not { } g) return "--.---";
-        return "+" + Math.Abs(g).ToString("0.000", CultureInfo.InvariantCulture);
+        if (r.LapDelta != 0) return f.FormatLaps(r.LapDelta, sign);
+        if (r.GapSeconds is not { } g) return f.NoGap;
+        return f.FormatGap(Math.Abs(g), sign);
     }
+
+    string Gap(RelativeRow r, bool sign = true) => FormatGap(r, _cfg.Fmt, sign);
 }

@@ -36,9 +36,16 @@ public sealed class StandingsWidget : IWidget
     float Pitch => _b04 ? RowPitch2000s : RowPitch;
 
     const float RowTop = 12, RowPitch = 43, RowPitch2000s = 36;
-    const float BoxX = 19, BoxW = 40, BoxH = 34;
-    const float NameCellW = 104, BadgeW = 40, GapW = 170, GapOnlyW = 125, ColSpacing = 8, EdgeRight = 36;
+    const float BoxX = 19, BoxH = 34;
+    const float BadgeW = 40, ColSpacing = 8, EdgeRight = 36;
     const float NameX = 75; // so para a mensagem de espera
+    // Larguras das colunas (perfil: % da largura do tema; 100 % = mockup).
+    float BoxW => MathF.Round(_cfg.Width("pos", 40));
+    float NameCellW => MathF.Round(_cfg.Width("name", 104));
+    float GapW => MathF.Round(_cfg.Width("gap", 170));
+    float GapOnlyW => MathF.Round(_cfg.Width("gap", 125));
+    /// <summary>Caixa de texto do gap: alinhada à direita, pelo menos 160 (textos longos como "+1:02.345" não cortam).</summary>
+    float GapTextW => Math.Max(160, GapW);
 
     /// <summary>Posicoes das colunas visiveis, da esquerda para a direita, sem buracos (todas visiveis = layout do mockup).</summary>
     readonly record struct Cols(float PosX, float NameCellX, float BadgeCx, float GapRight, float Width);
@@ -97,7 +104,8 @@ public sealed class StandingsWidget : IWidget
             if (_cfg.ColumnVisible("name"))
             {
                 var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
-                c.Text(RelativeWidget.Code(r.Car.Name), t.Text, L.NameCellX + 8, y, 130, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
+                string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+                c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW + 18), L.NameCellX + 8, y, NameCellW + 26, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
             if (_cfg.ColumnVisible("gap"))
@@ -110,7 +118,7 @@ public sealed class StandingsWidget : IWidget
                     c.Text(n, t.Numbers, L.GapRight - nw, y, nw + 4, BoxH, t.ValueColor, shadow: t.ValueShadow);
                     c.Text("LAP", t.Label, L.GapRight - nw - 70, y, 66, BoxH, t.ValueColor, HAlign.Right, t.TextShadow);
                 }
-                else c.Text(ListGap(r, t), t.Numbers, L.GapRight - 160, y, 160, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+                else c.Text(ListGap(r, t), t.Numbers, L.GapRight - GapTextW, y, GapTextW, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
             }
         }
     }
@@ -124,12 +132,20 @@ public sealed class StandingsWidget : IWidget
     }
 
     /// <summary>Gap da lista vertical. 1998-2001 (TV): sem sinal "+" e o lider mostra "LAP n" em amarelo; 2010s: lider "–".</summary>
-    static string ListGap(StandingRow r, Theme.Theme t)
+    string ListGap(StandingRow r, Theme.Theme t)
     {
         if (t.Style == ThemeStyle.Broadcast98)
-            return r.Car.Position == 1 && r.Car.CurrentLap > 0 ? "LAP " + r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture) : FormatGap(r).TrimStart('+');
+            return r.Car.Position == 1 && r.Car.CurrentLap > 0 ? "LAP " + r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture) : Gap(r, defaultSign: false);
         if (t.Style == ThemeStyle.Modern2010s && r.Car.Position == 1) return "–";
-        return FormatGap(r);
+        return Gap(r);
+    }
+
+    /// <summary>Gap ao líder no formato do perfil (casas, sinal, sufixo); voltas atrás "+1L".</summary>
+    string Gap(StandingRow r, bool defaultSign = true)
+    {
+        var f = _cfg.Fmt;
+        if (r.LapsBehind > 0) return f.FormatLaps(r.LapsBehind, defaultSign);
+        return r.GapToLeader is { } g ? f.FormatGap(g, defaultSign) : f.NoGap;
     }
 
     void DrawHeader10(ThemeCanvas c, Theme.Theme t, OverlayModel m, float w)
@@ -140,7 +156,10 @@ public sealed class StandingsWidget : IWidget
     }
 
     // Tabela inferior 1998–2001 (faixa do GP do Brasil 2003): 2 colunas x N linhas, [caixa amarela][NOME][gap amarelo à direita]; o líder mostra "LAP n".
-    const float TableX = 22, TableTop = 12, TableBottom = 8, TablePitch = 40, TableBoxW = 36, TableBoxH = 34, TableNameW = 246, TableGapW = 118, TableColGap = 44;
+    const float TableX = 22, TableTop = 12, TableBottom = 8, TablePitch = 40, TableBoxH = 34, TableColGap = 44;
+    float TableBoxW => MathF.Round(_cfg.Width("pos", 36));
+    float TableNameW => MathF.Round(_cfg.Width("name", 246));
+    float TableGapW => MathF.Round(_cfg.Width("gap", 118));
     /// <summary>Largura de uma coluna da tabela; sem a coluna de gap, só caixa + nome.</summary>
     float TableColW => TableBoxW + 14 + TableNameW + (_cfg.ColumnVisible("gap") ? TableGapW : 0);
     int TableRows => (Rows + 1) / 2;
@@ -155,7 +174,7 @@ public sealed class StandingsWidget : IWidget
             var r = rows[i];
             float x = TableX + (i / per) * (TableColW + TableColGap), y = TableTop + (i % per) * TablePitch;
             Chrome.AccentBox(c, x, y, TableBoxW, TableBoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
-            string name = BroadcastUi.ShortName(r.Car, field).ToUpperInvariant();
+            string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
             c.Text(name, BroadcastUi.Fit(c, name, t.Text, TableNameW), x + TableBoxW + 14, y - 1, TableNameW, TableBoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
             float right = x + TableColW;
             if (!_cfg.ColumnVisible("gap")) continue;
@@ -166,12 +185,15 @@ public sealed class StandingsWidget : IWidget
                 c.Text(n, t.Numbers, right - nw, y, nw + 4, TableBoxH, t.ValueColor, shadow: t.ValueShadow);
                 c.Text("LAP", t.Label, right - nw - 70, y, 66, TableBoxH, t.ValueColor, HAlign.Right, t.TextShadow);
             }
-            else c.Text(FormatGap(r).TrimStart('+'), t.Numbers, right - 160, y, 160, TableBoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            else c.Text(Gap(r, defaultSign: false), t.Numbers, right - Math.Max(160, TableGapW), y, Math.Max(160, TableGapW), TableBoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 
     // Mini-torre 2004-2008 (transmissao): [pos][sigla][pneu][classe][gap], celulas coladas. O lider mostra "Lap N" em celula preta.
-    const float X04 = 4, Pos04 = 40, Name04 = 82, Tyre04 = 30, Class04 = 40, Gap04 = 112;
+    const float X04 = 4, Tyre04 = 30, Class04 = 40;
+    float Pos04 => MathF.Round(_cfg.Width("pos", 40));
+    float Name04 => MathF.Round(_cfg.Width("name", 82));
+    float Gap04 => MathF.Round(_cfg.Width("gap", 112));
     float Width2004
     {
         get
@@ -197,7 +219,12 @@ public sealed class StandingsWidget : IWidget
             else Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers);
             x += Pos04;
         }
-        if (_cfg.ColumnVisible("name")) { Chrome.WhiteCell(c, x, y, Name04, h, RelativeWidget.Code(r.Car.Name), t.Text, ink: r.IsPlayer ? Chrome.PlayerInk : null); x += Name04; }
+        if (_cfg.ColumnVisible("name"))
+        {
+            string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+            Chrome.WhiteCell(c, x, y, Name04, h, nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), ink: r.IsPlayer ? Chrome.PlayerInk : null);
+            x += Name04;
+        }
         if (_cfg.ColumnVisible("tyre"))
         {
             if (!Chrome.TyreBox(c, x, y, Tyre04, h, r.Car.TyreSupplier, t.Text with { Size = 20 })) Chrome.Box(c, x, y, Tyre04, h, "", t.Text, Chrome.CellKind.Navy);
@@ -208,7 +235,7 @@ public sealed class StandingsWidget : IWidget
             Chrome.Box(c, x, y, Class04, h, ((char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25))).ToString(), t.Text, Chrome.CellKind.Navy, HAlign.Center, 0);
             x += Class04;
         }
-        if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? FormatGap(r), t.Numbers);
+        if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? Gap(r), t.Numbers);
     }
 
     /// <summary>2004–2008: a célula do líder mostra a volta atual ("Lap 26"), como na transmissão.</summary>
@@ -221,10 +248,4 @@ public sealed class StandingsWidget : IWidget
         c.Text(letter.ToString(), t.Text, cx - 20, cy - 17, 40, 34, t.BadgeInk, HAlign.Center);
     }
 
-    public static string FormatGap(StandingRow r)
-    {
-        if (r.LapsBehind > 0) return "+" + r.LapsBehind.ToString(CultureInfo.InvariantCulture) + "L";
-        if (r.GapToLeader is not { } g) return "--.---";
-        return "+" + g.ToString("0.000", CultureInfo.InvariantCulture);
-    }
 }

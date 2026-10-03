@@ -19,7 +19,12 @@ public sealed class PitStopsWidget : IWidget
     public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 4; }
     public (float Width, float Height) DesignSize => (X0 * 2 + ColW * 2 + ColGap, Y0 * 2 + HeadH + Rows * Pitch + 2);
 
-    const float X0 = 4, Y0 = 4, PosW = 36, NameW = 190, StopsW = 110, ColW = PosW + NameW + StopsW, ColGap = 36, HeadH = 26, RowH = 28, Pitch = 30;
+    const float X0 = 4, Y0 = 4, ColGap = 36, HeadH = 26, RowH = 28, Pitch = 30;
+    // Colunas: posicao (opcional), nome e paradas com largura configuravel (perfil: % do tema).
+    float PosW => _cfg.ColumnVisible("pos") ? 36 : 0;
+    float NameW => MathF.Round(_cfg.Width("name", 190));
+    float StopsW => MathF.Round(_cfg.Width("stops", 110));
+    float ColW => PosW + NameW + StopsW;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -56,17 +61,17 @@ public sealed class PitStopsWidget : IWidget
             var car = page[i];
             int col = i / Rows, row = i % Rows;
             float x = X0 + col * (ColW + ColGap), y = Y0 + HeadH + row * Pitch;
-            string name = BroadcastUi.ShortName(car, field), stops = BroadcastUi.Stops(b.StopsOf(car.Index));
+            string name = _cfg.Name(car, BroadcastUi.ShortName(car, field)), stops = BroadcastUi.Stops(b.StopsOf(car.Index));
             if (b98) { name = name.ToUpperInvariant(); stops = stops.ToUpperInvariant(); }
             if (b04)
             {
-                Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text);
+                if (PosW > 0) Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text);
                 Chrome.WhiteCell(c, x + PosW, y, NameW, RowH, name, BroadcastUi.Fit(c, name, t.Text, NameW - 14), ink: car.IsPlayer ? Chrome.PlayerInk : null);
                 Chrome.BlackCell(c, x + PosW + NameW, y, StopsW, RowH, stops, t.Text, HAlign.Right);
             }
             else
             {
-                Chrome.AccentBox(c, x + 12, y + 1, PosW, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Text);
+                if (PosW > 0) Chrome.AccentBox(c, x + 12, y + 1, PosW, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Text);
                 c.Text(name, BroadcastUi.Fit(c, name, t.Text, NameW - 42), x + PosW + 22, y, NameW - 8, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
                 c.Text(stops, t.Label, x + PosW + NameW - 4, y, StopsW, RowH, t.ValueColor, HAlign.Right, t.TextShadow);
             }

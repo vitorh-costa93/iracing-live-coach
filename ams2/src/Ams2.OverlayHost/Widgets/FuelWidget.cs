@@ -11,8 +11,13 @@ public sealed class FuelWidget : IWidget
     public string Id => "fuel";
     // Linhas da coluna da direita (LAPS/USE/ADD): as visiveis sobem para ocupar o lugar das ocultas.
     int RightRows => (_cfg.ColumnVisible("laps") ? 1 : 0) + (_cfg.ColumnVisible("use") ? 1 : 0) + (_cfg.ColumnVisible("add") ? 1 : 0);
-    public (float Width, float Height) DesignSize => RightRows == 0 ? (250, 96) : (470, Math.Max(96, 46 + RightRows * RowPitch + 8));
+    public (float Width, float Height) DesignSize => RightRows == 0 ? (250, 96) : (470 + Extra, Math.Max(96, 46 + RightRows * RowPitch + 8));
     const float RowPitch = 34;
+    /// <summary>Largura extra da coluna de valores (perfil: % de 135, a celula do 2004).</summary>
+    float Extra => MathF.Round(_cfg.Width("value", 135)) - 135;
+    FuelUnit Unit => _cfg.Fmt.FuelOrDefault;
+    string U => DisplayFormat.FuelLabel(Unit);
+    string Vol(double liters, string format) => DisplayFormat.Fuel(liters, Unit).ToString(format, CultureInfo.InvariantCulture);
 
     WidgetSettings _cfg = new() { Id = "fuel" };
     public void Configure(WidgetSettings s) => _cfg = s;
@@ -33,7 +38,8 @@ public sealed class FuelWidget : IWidget
         }
 
         if (t.Style == ThemeStyle.Broadcast2000s) { Draw2000s(c, t, f); return; }
-        Chrome.ValueUnit(c, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture), "L", 96, 46, 34, t.ReadoutColor, false);
+        Chrome.ValueUnit(c, Vol(f.LitersLeft, "0.0"), U, 96, 46, 34, t.ReadoutColor, false);
+        float vr = 448 + Extra;
         float y = 46;
         if (_cfg.ColumnVisible("laps"))
         {
@@ -45,41 +51,42 @@ public sealed class FuelWidget : IWidget
         if (_cfg.ColumnVisible("use"))
         {
             c.Text("USE", t.Label, 235, y, 90, 34, t.LabelColor, shadow: t.TextShadow);
-            string use = f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--";
-            Chrome.ValueUnit(c, use, "L/LAP", 448, y, 34, t.ReadoutColor, true, t.Label with { Size = 20 });
+            string use = f.PerLapAverage is { } a ? Vol(a, "0.00") : "-.--";
+            Chrome.ValueUnit(c, use, U + "/LAP", vr, y, 34, t.ReadoutColor, true, t.Label with { Size = 20 });
             y += RowPitch;
         }
         if (_cfg.ColumnVisible("add"))
         {
             // Sem necessidade de reabastecer a linha continua (mostra "--"), para o painel nao mudar de tamanho com os dados.
             c.Text("ADD", t.Label, 235, y, 90, 34, t.LabelColor, shadow: t.TextShadow);
-            string add = f.LitersToAdd is { } v && v > 0.05 ? v.ToString("0.0", CultureInfo.InvariantCulture) : "--";
-            Chrome.ValueUnit(c, add, "L", 448, y, 34, t.ValueColor, true);
+            string add = f.LitersToAdd is { } v && v > 0.05 ? Vol(v, "0.0") : "--";
+            Chrome.ValueUnit(c, add, U, vr, y, 34, t.ValueColor, true);
         }
     }
 
     /// <summary>2004–2008: litros numa célula preta; LAPS/USE/ADD como rótulo branco + valor preto.</summary>
     void Draw2000s(ThemeCanvas c, Theme.Theme t, Ams2.Core.Calc.FuelEstimate f)
     {
-        Chrome.BlackCell(c, 96, 46, 124, 34, f.LitersLeft.ToString("0.0", CultureInfo.InvariantCulture) + " L", t.Numbers, HAlign.Center);
+        Chrome.BlackCell(c, 96, 46, 124, 34, Vol(f.LitersLeft, "0.0") + " " + U, t.Numbers, HAlign.Center);
         var small = t.Numbers with { Size = 22 };
+        float vw = 135 + Extra;
         float y = 46;
         if (_cfg.ColumnVisible("laps"))
         {
             Chrome.WhiteCell(c, 235, y, 86, 32, "LAPS", t.Label);
-            Chrome.BlackCell(c, 321, y, 135, 32, f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--", t.Numbers);
+            Chrome.BlackCell(c, 321, y, vw, 32, f.LapsRemainingOnFuel is { } l ? Math.Floor(l).ToString("0", CultureInfo.InvariantCulture) : "--", t.Numbers);
             y += RowPitch;
         }
         if (_cfg.ColumnVisible("use"))
         {
             Chrome.WhiteCell(c, 235, y, 86, 32, "USE", t.Label);
-            Chrome.BlackCell(c, 321, y, 135, 32, (f.PerLapAverage is { } a ? a.ToString("0.00", CultureInfo.InvariantCulture) : "-.--") + " L/LAP", small);
+            Chrome.BlackCell(c, 321, y, vw, 32, (f.PerLapAverage is { } a ? Vol(a, "0.00") : "-.--") + " " + U + "/LAP", small);
             y += RowPitch;
         }
         if (_cfg.ColumnVisible("add"))
         {
             Chrome.WhiteCell(c, 235, y, 86, 32, "ADD", t.Label);
-            Chrome.BlackCell(c, 321, y, 135, 32, (f.LitersToAdd is { } v && v > 0.05 ? v.ToString("0.0", CultureInfo.InvariantCulture) : "--") + " L", t.Numbers);
+            Chrome.BlackCell(c, 321, y, vw, 32, (f.LitersToAdd is { } v && v > 0.05 ? Vol(v, "0.0") : "--") + " " + U, t.Numbers);
         }
     }
 
