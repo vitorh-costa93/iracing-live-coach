@@ -20,6 +20,8 @@ public sealed class Sim
     public string[]? Names;
     public string[]? CarNames;
     public string[]? Nations;
+    /// <summary>Pose de mundo por carro (X, Y, Z, yaw do jogo). Sem entrada = sem pose (HasPose false).</summary>
+    public Dictionary<int, (double X, double Y, double Z, double Yaw)> Poses = [];
     public readonly double[] Speeds;
     readonly double _len;
     readonly double[] _total;
@@ -71,7 +73,8 @@ public sealed class Sim
             string carName = CarNames?[i] ?? "car";
             list.Add(new CarSnapshot(i, Names?[i] ?? $"C{i}", carName, "cls", pos[i], pos[i], laps, laps + 1, d, Math.Clamp((int)(d / _len * 3), 0, 2),
                 0, LastLap.GetValueOrDefault(i), Speeds[i], Pit.GetValueOrDefault(i), Race.GetValueOrDefault(i, RaceState.Racing), false, i == PlayerIndex,
-                Nations?[i] ?? "", Ams2.Core.Reading.SnapshotMapper.SupplierFromCarName(carName)));
+                Nations?[i] ?? "", Ams2.Core.Reading.SnapshotMapper.SupplierFromCarName(carName), "",
+                Poses.TryGetValue(i, out var po) ? po.X : 0, Poses.TryGetValue(i, out po) ? po.Y : 0, Poses.TryGetValue(i, out po) ? po.Z : 0, Poses.TryGetValue(i, out po) ? po.Yaw : 0));
         }
         var wheels = Enumerable.Repeat(new WheelSnapshot(0, 0, 0, 0, ""), 4).ToList();
         var player = new PlayerSnapshot(PlayerIndex, new InputsSnapshot(0, 0, 0, 0, 0, 0, 0, 0), 3, 0, 0, Speeds[PlayerIndex], 50, 80, wheels, 0);

@@ -37,7 +37,9 @@ public static class SnapshotMapper
                 LapInvalid: raw.LapsInvalidated[i] != 0,
                 IsPlayer: i == playerIdx,
                 Nationality: Nationalities.Resolve(raw.Nationalities[i], Text(raw.Participants[i].Name, 0, Const.StringLen)),
-                TyreSupplier: SupplierFromCarName(Text(raw.CarNames, i * Const.StringLen, Const.StringLen))));
+                TyreSupplier: SupplierFromCarName(Text(raw.CarNames, i * Const.StringLen, Const.StringLen)),
+                PosX: p.WorldPosition[0], PosY: p.WorldPosition[1], PosZ: p.WorldPosition[2],
+                Yaw: raw.Orientations[i * 3 + 1]));
         }
 
         cars = AssignClassPositions(cars);

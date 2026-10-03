@@ -21,8 +21,12 @@ public sealed record CarSnapshot(
     bool IsPlayer,
     string Nationality = "",   // ISO 3166-1 alpha-2 minusculo ("br", "gb"); "" = desconhecida, sem bandeira
     string TyreSupplier = "",   // "M" Michelin, "B" Bridgestone, "" desconhecido (sufixo "(M)"/"(B)" do nome do carro)
-    string OriginalName = "")   // so no carro do jogador: nome que o jogo deu (perfil), preservado quando Name e substituido por um nome de exibicao
+    string OriginalName = "",   // so no carro do jogador: nome que o jogo deu (perfil), preservado quando Name e substituido por um nome de exibicao
+    double PosX = 0, double PosY = 0, double PosZ = 0,   // WorldPosition (m); Y = altura
+    double Yaw = 0)                                       // Orientations[i][1] (rad). Rumo de avanco = Yaw + pi (confirmado em sessao real, ver radar-notes.md)
 {
+    /// <summary>true se o jogo informou posicao (tudo zero = sem pose, p.ex. carro ainda nao posicionado).</summary>
+    public bool HasPose => PosX != 0 || PosY != 0 || PosZ != 0 || Yaw != 0;
     /// <summary>Progresso total na corrida em metros (voltas completas + distância na volta).</summary>
     public double TotalDistance(double trackLength) => LapsCompleted * trackLength + LapDistance;
     public bool InPitLane => PitState is PitState.DrivingIntoPits or PitState.InPit or PitState.DrivingOutOfPits;
