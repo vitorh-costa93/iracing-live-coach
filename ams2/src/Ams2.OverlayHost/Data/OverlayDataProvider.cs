@@ -17,7 +17,8 @@ public sealed record OverlayModel(
     IReadOnlyList<StandingRow> Standings,
     InputRing? Inputs,
     BroadcastState? Broadcast = null,
-    BoardState? Board = null)
+    BoardState? Board = null,
+    RadarFrame? Radar = null)
 {
     public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], null);
 }
@@ -64,6 +65,8 @@ public sealed class OverlayDataProvider : IDisposable
     readonly FuelTracker _fuel = new();
     readonly BroadcastTracker _broadcast = new();
     readonly BoardTracker _board;
+    /// <summary>Radar lateral (pose de mundo dos carros). As opcoes (alcance, sensibilidade) vem do perfil, pelo host.</summary>
+    public RadarTracker Radar { get; } = new();
     readonly int _ahead, _behind;
     volatile OverlayModel _current = OverlayModel.Empty;
     CancellationTokenSource? _cts;
@@ -130,7 +133,7 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
@@ -141,7 +144,8 @@ public sealed class OverlayDataProvider : IDisposable
             var bc = s.InSession ? _broadcast.Update(now, s) : BroadcastState.Empty;
             // Board: depois do GapTracker (usa o gap em tempo). Fora de sessão: estado vazio (o tracker se zera sozinho).
             var board = _board.Update(now, s, _gaps);
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board);
+            var radar = Radar.Update(s, now);
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar);
         }
         else
         {

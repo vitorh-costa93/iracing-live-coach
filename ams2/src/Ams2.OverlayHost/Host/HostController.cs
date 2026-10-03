@@ -42,6 +42,13 @@ internal sealed class HostController : IDisposable
         string name = profileName ?? store.GetActiveProfile(_theme.Id, sw, sh);
         _profile = store.Load(_theme.Id, name, sw, sh) ?? ProfileFactory.CreateDefault(name, _theme.Id, sw, sh).Normalized(sw, sh);
         BuildWindows();
+        ApplyRadarOptions();
+    }
+
+    /// <summary>Alcance e sensibilidade do radar (perfil) vao para o tracker do provider; vale no proximo passo de 60 Hz.</summary>
+    void ApplyRadarOptions()
+    {
+        if (_profile.Get("radar") is { } s) _provider.Radar.Options = RadarWidget.OptionsFor(s);
     }
 
     public Profile Profile => _profile;
@@ -182,6 +189,7 @@ internal sealed class HostController : IDisposable
         foreach (var s in p.Ordered)
             if (_windows.TryGetValue(s.Id, out var w)) w.Apply(s, _theme);
         RestackByOrder();
+        ApplyRadarOptions();
         if (_persist)
         {
             _store.SetActiveTheme(p.ThemeId);
@@ -201,6 +209,7 @@ internal sealed class HostController : IDisposable
         foreach (var o in _profile.Widgets)
             if ((o.Id == next.Id || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(o, _theme);
         if (orderChanged) RestackByOrder();
+        if (next.Id == "radar") ApplyRadarOptions();
         ScheduleSave();
     }
 
@@ -300,7 +309,7 @@ internal sealed class HostController : IDisposable
             bool high = false;
             foreach (var w in _windows.Values)
             {
-                if (w.HighFrequency) { w.Render(model); high = true; }
+                if (w.HighFrequency && !w.IsIdle(model)) { w.Render(model); high = true; }
                 else if (lowDue) w.Render(model);
             }
 

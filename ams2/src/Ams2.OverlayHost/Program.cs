@@ -15,8 +15,9 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
+///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
 ///                       [--pipe NOME] [--profiles-dir PASTA] [--profile NOME] [--edit]
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
@@ -25,14 +26,15 @@ namespace Ams2.OverlayHost;
 ///   --measure (so com --fake e --seconds): ao sair imprime fps de render por janela, passos do provider e taxa de amostragem das entradas ([FPS] ...).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
-///   Variaveis do --fake: AMS2_FAKE_PITS=1, AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_BOARD=1 (corrida de
+///   Variaveis do --fake: AMS2_FAKE_PITS=1, AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_RADAR=1 (4 carros orbitando
+///   o jogador: frente, direita, atras, esquerda; ciclo de 12 s; com --png o radar fica sempre visivel; --cols none = so com carro proximo) e AMS2_FAKE_BOARD=1 (corrida de
 ///   20 carros com volta de ~20 s para o widget rotativo inferior; linha do tempo em ams2/reference/board-spec.md).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure, string? PlayerName = null);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure, string? PlayerName = null, int? RadarRange = null, int? RadarSens = null);
 
     [STAThread]
     static int Main(string[] args)
@@ -79,7 +81,9 @@ internal static class Program
             Top: Val("--top") is { } tp ? int.Parse(tp) : null,
             Near: Val("--near") is { } nr ? int.Parse(nr) : null,
             Measure: a.Contains("--measure"),
-            PlayerName: Val("--player-name"));
+            PlayerName: Val("--player-name"),
+            RadarRange: Val("--radar-range") is { } rr ? int.Parse(rr) : null,
+            RadarSens: Val("--radar-sens") is { } rs ? int.Parse(rs) : null);
     }
 
     /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
@@ -111,6 +115,7 @@ internal static class Program
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
         var names = PlayerNameStore.InMemory(); // a previa nunca toca no player-names.json do usuario
         using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
+        provider.Radar.Options = RadarWidget.OptionsFor(new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
         if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
         else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
@@ -123,6 +128,7 @@ internal static class Program
         var settings = new WidgetSettings
         {
             Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
+            RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens,
             Columns = o.Cols is null || o.Cols == "all" ? null : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries),
         }.Normalized();
         widget.Configure(settings);
@@ -141,6 +147,11 @@ internal static class Program
         PngWriter.SaveFromPremultipliedBgra(o.Png!, gfx.ReadPixelsBgra(), w, h, bg);
         var m = provider.Current;
         Console.WriteLine($"[PNG] {o.Png} {w}x{h} tema={theme.Id} conectado={m.Connected} linhas={m.Relative.Count}");
+        if (m.Radar is { } rf)
+        {
+            Console.WriteLine($"[RADAR] valido={rf.Valid} alcance={rf.RangeMeters:0}m carros={rf.Count} alertaE={rf.AlertLeft} alertaD={rf.AlertRight}");
+            foreach (var rc in rf.Cars) Console.WriteLine($"   #{rc.Index} frente={rc.Forward:0.0} direita={rc.Right:0.0} {rc.Side} {rc.Zone} velRel={rc.RelSpeed:0.0}");
+        }
         foreach (var r in m.Relative) Console.WriteLine($"   P{r.Car.Position} {RelativeWidget.Code(r.Car.Name)} {(r.IsPlayer ? "(voce)" : RelativeWidget.FormatGap(r))}");
         return 0;
     }

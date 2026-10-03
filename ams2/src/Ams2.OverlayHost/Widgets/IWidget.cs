@@ -14,6 +14,8 @@ public interface IWidget
     void UseTheme(Theme.Theme theme) { }
     /// <summary>true = o host redesenha este widget na taxa do monitor (sincronizado ao vblank) em vez de 60 Hz fixos.</summary>
     bool HighFrequency => false;
+    /// <summary>true = nada a desenhar agora (p.ex. radar sem carro por perto): o host nao precisa do ritmo de vblank para este widget (60 Hz basta para limpar a janela).</summary>
+    bool IsIdle(OverlayModel model) => false;
     void Configure(WidgetSettings settings);
     void Draw(ThemeCanvas canvas, OverlayModel model);
 }

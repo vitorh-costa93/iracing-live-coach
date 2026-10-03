@@ -195,6 +195,22 @@
                                 </StackPanel>
                             </StackPanel>
 
+                            <StackPanel x:Name="RadarPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Alcance (metros à frente e atrás)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Quanto da pista cabe no radar: de 10 a 40 m (o V3 usa 15 m)."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Button Content="−" Width="34" Click="RadarRangeMinus_Click"/>
+                                    <TextBlock Text="{Binding RadarRange, StringFormat={}{0} m}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="RadarRangePlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="Sensibilidade do aviso" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Distância em que o carro fica âmbar (12 m no V3) ou vermelho ao lado (7 m no V3). 1 = metade, 5 = uma vez e meia."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="−" Width="34" Click="RadarSensMinus_Click"/>
+                                    <TextBlock Text="{Binding RadarSensitivity}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="RadarSensPlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding RadarSensitivityText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+                            </StackPanel>
+
                             <StackPanel x:Name="ColumnsPanel" Margin="0,0,0,14">
                                 <TextBlock Text="Colunas visíveis" Style="{StaticResource Muted}" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding Columns}">

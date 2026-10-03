@@ -22,10 +22,16 @@ public sealed record WidgetSettings
     public int? TopCount { get; init; }
     /// <summary>Standings: pilotos AO REDOR do jogador (a janela inclui o jogador). Null = padrao (3).</summary>
     public int? NearCount { get; init; }
+    /// <summary>Radar: alcance em metros (frente e tras). Null = padrao (15).</summary>
+    public int? RadarRange { get; init; }
+    /// <summary>Radar: sensibilidade 1..5 (janelas de aviso). Null = padrao (3).</summary>
+    public int? RadarSensitivity { get; init; }
 
     /// <summary>Topo efetivo (padrao quando ausente, como em perfis antigos).</summary>
     [JsonIgnore] public int EffectiveTop => TopCount ?? WidgetCatalog.DefaultTopCount;
     [JsonIgnore] public int EffectiveNear => NearCount ?? WidgetCatalog.DefaultNearCount;
+    [JsonIgnore] public int EffectiveRadarRange => RadarRange ?? WidgetCatalog.DefaultRadarRange;
+    [JsonIgnore] public int EffectiveRadarSensitivity => RadarSensitivity ?? WidgetCatalog.DefaultRadarSensitivity;
 
     public bool ColumnVisible(string column) => Columns is null || Columns.Contains(column, StringComparer.OrdinalIgnoreCase);
 
@@ -45,9 +51,12 @@ public sealed record WidgetSettings
             near = Math.Clamp(EffectiveNear, 0, WidgetCatalog.MaxNearCount);
             if (top + near == 0) near = 1; // o jogador sempre aparece
         }
+        bool radar = def is { HasRadarOptions: true };
         return this with
         {
             TopCount = top, NearCount = near,
+            RadarRange = radar ? Math.Clamp(EffectiveRadarRange, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange) : null,
+            RadarSensitivity = radar ? Math.Clamp(EffectiveRadarSensitivity, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity) : null,
             Scale = float.IsFinite(Scale) ? Math.Clamp(Scale, WidgetCatalog.MinScale, WidgetCatalog.MaxScale) : 1f,
             Opacity = float.IsFinite(Opacity) ? Math.Clamp(Opacity, WidgetCatalog.MinOpacity, WidgetCatalog.MaxOpacity) : 1f,
             Font = string.IsNullOrWhiteSpace(Font) ? null : Font,
@@ -73,6 +82,8 @@ public sealed record WidgetPatch
     public bool? AllColumns { get; init; }
     public int? TopCount { get; init; }
     public int? NearCount { get; init; }
+    public int? RadarRange { get; init; }
+    public int? RadarSensitivity { get; init; }
 
     public WidgetSettings ApplyTo(WidgetSettings s) => (s with
     {
@@ -87,6 +98,8 @@ public sealed record WidgetPatch
         Columns = AllColumns == true ? null : Columns ?? s.Columns,
         TopCount = TopCount ?? s.TopCount,
         NearCount = NearCount ?? s.NearCount,
+        RadarRange = RadarRange ?? s.RadarRange,
+        RadarSensitivity = RadarSensitivity ?? s.RadarSensitivity,
     }).Normalized();
 }
 
