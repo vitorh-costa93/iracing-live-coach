@@ -93,6 +93,25 @@ public static class Chrome
         return true;
     }
 
+    /// <summary>Bandeira quadriculada (2 linhas de quadrados, comecando no preto no canto de cima-esquerdo).</summary>
+    public static void Checkered(ThemeCanvas c, float x, float y, float w, float h)
+    {
+        float sq = h / 2;
+        int n = (int)Math.Ceiling(w / sq);
+        c.FillRect(x, y, w, h, C(250, 250, 252));
+        for (int row = 0; row < 2; row++)
+            for (int i = 0; i < n; i++)
+            {
+                if ((i + row) % 2 != 0) continue;
+                float sw = Math.Min(sq, w - i * sq);
+                c.FillRect(x + i * sq, y + row * sq, sw, sq, C(12, 12, 14));
+            }
+    }
+
+    /// <summary>Cabecalho branco com o nome do widget em teal (no lugar do logotipo do patrocinador do video).</summary>
+    public static void HeaderCell(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font)
+        => Box(c, x, y, w, h, text, font, CellKind.White, HAlign.Center, 4, HeaderTeal);
+
     /// <summary>Teal do nome do widget no cabeçalho branco (no lugar do logotipo do patrocinador do vídeo).</summary>
     public static Color4 HeaderTeal => C(0, 154, 166);
 

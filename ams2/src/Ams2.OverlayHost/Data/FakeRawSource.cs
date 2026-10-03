@@ -25,6 +25,20 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
     static readonly string[] FakeIso = ["de", "gb", "fi", "br", "br", "es", "it", "de"];
     static FakeRawSource() { for (int i = 0; i < FakeIso.Length; i++) Ams2.Core.Reading.Nationalities.RegisterId((uint)(900 + i), FakeIso[i]); }
 
+    // Auxilios de teste visual (so --fake): AMS2_FAKE_PITS=1 faz alguns carros pararem nos boxes (jogador entra em t=16 s, parado ~3,4 s);
+    // AMS2_FAKE_FINISH=1 encerra a corrida de 1 volta do lider em t=31 s.
+    static readonly bool Pits = Environment.GetEnvironmentVariable("AMS2_FAKE_PITS") == "1";
+    static readonly bool Finish = Environment.GetEnvironmentVariable("AMS2_FAKE_FINISH") == "1";
+    static uint FakePit(int i, double t)
+    {
+        if (!Pits || i is 4 or 6 or 7) return 0;
+        double s = t - (i == PlayerIndex ? 16 : 8 + i * 2.5);
+        if (s < 0) return 0;
+        if (s < 1) return 1;       // DrivingIntoPits
+        if (s < 4.4) return 2;     // InPit
+        return s < 5.4 ? 3u : 0u;  // DrivingOutOfPits
+    }
+
     uint _seq;
 
     public bool TryRead(out RawSharedMemory raw)
@@ -36,7 +50,7 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
         raw.ViewedParticipantIndex = PlayerIndex;
         raw.NumParticipants = Field.Length;
         raw.TrackLength = (float)TrackLength;
-        raw.LapsInEvent = 44;
+        raw.LapsInEvent = Finish ? 1u : 44u;
         raw.NumSectors = 3;
         raw.EventTimeRemaining = -1;
         Put(raw.TrackLocation, "Spa-Francorchamps");
@@ -61,7 +75,8 @@ public sealed class FakeRawSource(Func<double> clock) : IRawMemorySource
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
             raw.Nationalities[i] = (uint)(900 + i);
             raw.Speeds[i] = (float)speed;
-            raw.RaceStates[i] = 2;
+            raw.RaceStates[i] = (uint)(Finish && i == 0 && t >= 31 ? 3 : 2);
+            raw.PitModes[i] = FakePit(i, t);
             raw.FastestLapTimes[i] = 103.972f + i * 0.31f;
             raw.LastLapTimes[i] = 104.5f + i * 0.2f;
         }
