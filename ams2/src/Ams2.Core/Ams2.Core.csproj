@@ -6,4 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ams2.Shared\Ams2.Shared.csproj" />
+  </ItemGroup>
 </Project>

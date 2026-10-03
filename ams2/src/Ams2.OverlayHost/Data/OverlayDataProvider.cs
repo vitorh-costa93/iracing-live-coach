@@ -1,6 +1,7 @@
 using Ams2.Core;
 using Ams2.Core.Calc;
 using Ams2.Core.Reading;
+using Ams2.Shared.PlayerNames;
 
 namespace Ams2.OverlayHost.Data;
 
@@ -74,6 +75,8 @@ public sealed class OverlayDataProvider : IDisposable
     readonly InputSampler? _sampler;
     public const double InputWindowSeconds = 10;
     bool _wasConnected;
+    readonly PlayerNameStore? _names;
+    double _namesRefreshAt;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
         Func<IRawMemorySource>? inputSource = null)
@@ -87,6 +90,8 @@ public sealed class OverlayDataProvider : IDisposable
     }
 
     public OverlayModel Current => _current;
+    /// <summary>Nomes de exibicao do jogador por modelo de carro (null = sem substituicao).</summary>
+    public PlayerNameStore? Names => _names;
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
     public RateStats TickStats { get; } = new();
     public RateStats InputStats { get; } = new();
@@ -126,6 +131,7 @@ public sealed class OverlayDataProvider : IDisposable
         {
             if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); }
             _wasConnected = true;
+            s = ApplyPlayerName(now, s);
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
@@ -153,6 +159,17 @@ public sealed class OverlayDataProvider : IDisposable
         if (now < Inputs.LastT) Inputs.Clear();
         Inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
         InputStats.Mark();
+    }
+
+    /// <summary>Registra o carro do jogador no store (modelo, nome do jogo, sugestao) e troca o nome dele pelo de exibicao.
+    /// So o Name muda: indices e distancias intactos, o GapTracker nao e afetado.</summary>
+    SessionSnapshot ApplyPlayerName(double now, SessionSnapshot s)
+    {
+        if (_names is null) return s;
+        if (now >= _namesRefreshAt || now < _namesRefreshAt - 5) { _namesRefreshAt = now + 1; _names.Refresh(); }
+        var pc = s.PlayerCar;
+        _names.Observe(pc?.CarName ?? "", pc?.Name ?? "", PlayerIdentity.Suggest(s));
+        return PlayerIdentity.Apply(s, _names.Get);
     }
 
     public void Dispose()
