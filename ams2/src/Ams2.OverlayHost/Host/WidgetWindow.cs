@@ -35,6 +35,8 @@ internal sealed class WidgetWindow : IDisposable
     bool _dragged;
 
     public string Id { get; }
+    /// <summary>Medição de fps de render (marca a cada quadro desenhado).</summary>
+    public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
     public WidgetSettings Settings { get; private set; }
     public bool Visible => Settings.Visible;
     public bool Editing => _win.EditMode;
@@ -121,6 +123,7 @@ internal sealed class WidgetWindow : IDisposable
     public void Render(OverlayModel model)
     {
         if (!Settings.Visible) return;
+        RenderStats.Mark();
         _gfx.BeginFrame();
         _canvas.Begin();
         _widget.Draw(_canvas, model);

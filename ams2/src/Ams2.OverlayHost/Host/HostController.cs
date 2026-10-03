@@ -45,6 +45,7 @@ internal sealed class HostController : IDisposable
     }
 
     public Profile Profile => _profile;
+    internal IEnumerable<(string Id, Ams2.Core.Calc.RateStats Stats)> RenderStats => _windows.Select(kv => (kv.Key, kv.Value.RenderStats));
 
     void BuildWindows()
     {

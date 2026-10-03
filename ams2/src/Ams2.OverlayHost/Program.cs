@@ -1,4 +1,5 @@
 using System.Globalization;
+using Ams2.Core.Calc;
 using Ams2.Core.Reading;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Host;
@@ -19,6 +20,7 @@ namespace Ams2.OverlayHost;
 ///   Sem --widget: uma janela por widget, configuradas pelo perfil ativo (%AppData%\ams2-live-coach) e controladas pelo Control Center (IPC).
 ///   Com --widget: so aquele widget, sem salvar perfil (--x/--y/--scale sobrescrevem).
 ///   --edit   inicia no modo de edicao do layout (Ctrl+Alt+E alterna; arraste, roda ou canto para escalar).
+///   --measure (so com --fake e --seconds): ao sair imprime fps de render por janela, passos do provider e taxa de amostragem das entradas ([FPS] ...).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
 ///   Variaveis do --fake: AMS2_FAKE_PITS=1, AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_BOARD=1 (corrida de
@@ -28,7 +30,7 @@ namespace Ams2.OverlayHost;
 internal static class Program
 {
     sealed record Options(bool Fake, string? Png, bool Real, string? ThemeId, float? Scale, string Bg, int? X, int? Y, double Seconds, string? Widget, double Sim,
-        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near);
+        string Pipe, string? ProfilesDir, string? Profile, bool Edit, string? Cols, int? Rows, string? Font, float? Opacity, int? Top, int? Near, bool Measure);
 
     [STAThread]
     static int Main(string[] args)
@@ -73,7 +75,8 @@ internal static class Program
             Font: Val("--font"),
             Opacity: Val("--opacity") is { } op ? float.Parse(op, CultureInfo.InvariantCulture) : null,
             Top: Val("--top") is { } tp ? int.Parse(tp) : null,
-            Near: Val("--near") is { } nr ? int.Parse(nr) : null);
+            Near: Val("--near") is { } nr ? int.Parse(nr) : null,
+            Measure: a.Contains("--measure"));
     }
 
     /// <summary>Imprime "tema widget largura altura" (unidades de design, perfil padrao do tema) para o teste de sobreposicao conferir a tabela de WidgetLayout.</summary>
@@ -137,8 +140,18 @@ internal static class Program
         return 0;
     }
 
+    /// <summary>Relatório do --measure (descarta 1 s de aquecimento). Só faz sentido com o escritor falso.</summary>
+    static void PrintMeasure(Options o, HostController host, OverlayDataProvider provider, double fromT)
+    {
+        Console.WriteLine($"[FPS] fake={o.Fake} seconds={o.Seconds}");
+        foreach (var (id, st) in host.RenderStats) Console.WriteLine($"[FPS] render {id,-14} {st.Report(fromT)}");
+        Console.WriteLine($"[FPS] provider.tick          {provider.TickStats.Report(fromT)}");
+        Console.WriteLine($"[FPS] inputs.amostragem      {provider.InputStats.Report(fromT)}");
+    }
+
     static int RunOverlay(Options o)
     {
+        if (o.Measure && !o.Fake) { Console.Error.WriteLine("--measure exige --fake (nao mede o jogo real)."); return 2; }
         Win32.SetProcessDpiAwarenessContext(-4); // per-monitor v2
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = () => sw.Elapsed.TotalSeconds;
@@ -154,7 +167,9 @@ internal static class Program
         host.StartIpc(o.Pipe);
         if (o.Edit) host.SetEditModeDirect(true);
         Console.WriteLine($"[Overlay] perfil='{host.Profile.Name}' tema={host.Profile.ThemeId} fake={o.Fake} pipe={o.Pipe}. Ctrl+Alt+Q sai, Ctrl+Alt+E edita o layout.");
+        double t0 = RateStats.Now();
         host.Run(o.Seconds);
+        if (o.Measure) PrintMeasure(o, host, provider, t0 + 1.0);
         return 0;
     }
 }

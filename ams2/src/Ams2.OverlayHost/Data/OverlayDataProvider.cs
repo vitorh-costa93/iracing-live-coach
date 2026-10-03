@@ -86,6 +86,9 @@ public sealed class OverlayDataProvider : IDisposable
     }
 
     public OverlayModel Current => _current;
+    /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
+    public RateStats TickStats { get; } = new();
+    public RateStats InputStats { get; } = new();
 
     public void Start(double hz = 60)
     {
@@ -113,6 +116,7 @@ public sealed class OverlayDataProvider : IDisposable
     public OverlayModel Tick()
     {
         double now = _clock();
+        TickStats.Mark();
         var r = _reader.Poll();
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
@@ -145,6 +149,7 @@ public sealed class OverlayDataProvider : IDisposable
         if (_inputs.Count > 0 && now < _inputs[^1].T) { _inputs.Clear(); _lastInputT = double.NegativeInfinity; } // relógio voltou
         if (now - _lastInputT < InputSampleSeconds) return _inputsPublished;
         _lastInputT = now;
+        InputStats.Mark();
         var i = s.Player.Inputs;
         _inputs.Add(new InputSample(now, (float)i.Throttle, (float)i.Brake, (float)i.Steering));
         int drop = _inputs.FindIndex(x => x.T >= now - InputWindowSeconds);

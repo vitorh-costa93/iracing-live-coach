@@ -6,12 +6,14 @@ using Ams2.Core.Raw;
 // Uso:
 //   Ams2.Spike layout   -> imprime tamanho e offsets da estrutura (conferir com o header)
 //   Ams2.Spike fake     -> cria o mapa $pcars2$ com dados simulados (sem o jogo)
+//   Ams2.Spike rate [segundos] -> SOMENTE LEITURA: mede quantas vezes por segundo o jogo atualiza SequenceNumber e as entradas
 //   Ams2.Spike [read]   -> lê $pcars2$ e imprime pilotos/velocidade/combustível (~4 Hz)
 var mode = args.Length > 0 ? args[0] : "read";
 return mode switch
 {
     "layout" => Layout(),
     "fake" => Fake(),
+    "rate" => Rate(args),
     _ => Read(args),
 };
 
@@ -116,4 +118,41 @@ static int Read(string[] args)
         if (args.Contains("--once")) return 0;
         Thread.Sleep(250);
     }
+}
+
+// Mede a taxa real de atualização da memória compartilhada (só leitura, polling com spin; não interfere no jogo).
+static int Rate(string[] args)
+{
+    double secs = args.Length > 1 ? double.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 5;
+    int seqOff = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.SequenceNumber));
+    int thrOff = (int)Marshal.OffsetOf<RawSharedMemory>(nameof(RawSharedMemory.UnfilteredThrottle));
+    using var mmf = MemoryMappedFile.OpenExisting(Const.MapName, MemoryMappedFileRights.Read);
+    using var view = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    uint lastSeq = view.ReadUInt32(seqOff);
+    float[] last = new float[3];
+    int seqChanges = 0, inputChanges = 0; long polls = 0; uint firstSeq = lastSeq;
+    var gaps = new List<double>(); double lastChange = 0;
+    while (sw.Elapsed.TotalSeconds < secs)
+    {
+        polls++;
+        uint seq = view.ReadUInt32(seqOff);
+        if (seq % 2 == 0 && seq != lastSeq) // so estados estaveis (par): 1 por escrita completa do jogo
+        {
+            double now = sw.Elapsed.TotalSeconds;
+            if (lastChange > 0) gaps.Add((now - lastChange) * 1000);
+            lastChange = now; seqChanges++; lastSeq = seq;
+        }
+        else if (seq != lastSeq) lastSeq = seq;
+        float a = view.ReadSingle(thrOff), b = view.ReadSingle(thrOff + 4), c = view.ReadSingle(thrOff + 8);
+        if (a != last[0] || b != last[1] || c != last[2]) { inputChanges++; last[0] = a; last[1] = b; last[2] = c; }
+        Thread.SpinWait(50);
+    }
+    double t = sw.Elapsed.TotalSeconds;
+    gaps.Sort();
+    string P(double q) => gaps.Count == 0 ? "-" : gaps[(int)Math.Min(gaps.Count - 1, q * gaps.Count)].ToString("F1");
+    Console.WriteLine($"[rate] {t:F1}s polls={polls} ({polls / t:F0}/s) seq {firstSeq}->{lastSeq} (delta {lastSeq - firstSeq})");
+    Console.WriteLine($"[rate] atualizacoes completas (seq par) por segundo: {seqChanges / t:F1}/s ; entradas (thr/brk/str) mudaram {inputChanges / t:F1}/s");
+    Console.WriteLine($"[rate] intervalo entre mudancas de seq (ms entre escritas): p50={P(0.5)} p95={P(0.95)} max={P(1.0)}");
+    return 0;
 }
