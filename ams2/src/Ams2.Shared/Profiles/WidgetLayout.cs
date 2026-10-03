@@ -32,7 +32,7 @@ public static class WidgetLayout
             ["standings"] = new(32, 24, 1.4f), ["lapcounter"] = new(867, 24, 1.4f),
             ["relative"] = new(640, 905, 1.25f), ["drivercaption"] = new(32, 926, 1.3f), ["winner"] = new(32, 926, 1.3f), ["board"] = new(650, 866, 1.2f),
             ["pitstops"] = new(32, 560, 1f), ["pittimer"] = new(769, 790, 1.3f),
-            ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 770, 0.6f),
+            ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 690, 0.6f),
             ["radar"] = new(900, 585, 1f),
         },
         ["f1-2010s"] = new(StringComparer.OrdinalIgnoreCase)
@@ -56,7 +56,7 @@ public static class WidgetLayout
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490),
+                ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 630),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (590, 164), ["radar"] = (120, 190),
             },
             ["f1-2010s"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)

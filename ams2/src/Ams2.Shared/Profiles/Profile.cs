@@ -26,6 +26,27 @@ public sealed record WidgetSettings
     public int? RadarRange { get; init; }
     /// <summary>Radar: sensibilidade 1..5 (janelas de aviso). Null = padrao (3).</summary>
     public int? RadarSensitivity { get; init; }
+    /// <summary>Largura de cada coluna dimensionavel (<see cref="WidgetDef.Widths"/>), em % da largura do tema (100 = padrao). Null = tudo padrao.</summary>
+    public Dictionary<string, int>? ColumnWidths { get; init; }
+    /// <summary>Tamanho do texto (1 = tema). Redimensiona o widget inteiro junto (linhas, colunas, janela), na proporcao.</summary>
+    public float? TextScale { get; init; }
+    /// <summary>Peso da fonte dos textos (100-900). Null = o do tema.</summary>
+    public int? FontWeight { get; init; }
+    /// <summary>Cores "#RRGGBB" que substituem as do tema: textos/titulos, rotulos e valores. Null = tema.</summary>
+    public string? TextColor { get; init; }
+    public string? LabelColor { get; init; }
+    public string? ValueColor { get; init; }
+    /// <summary>Formato de nomes, gaps, tempos e unidades. Null = padrao do widget.</summary>
+    public DisplayOptions? Display { get; init; }
+
+    /// <summary>Escala de render efetiva = escala da janela x tamanho do texto: a fonte maior aumenta o widget inteiro na mesma proporcao.</summary>
+    [JsonIgnore] public float RenderScale => Scale * (TextScale ?? 1f);
+    /// <summary>Formato efetivo (nunca nulo).</summary>
+    [JsonIgnore] public DisplayOptions Fmt => Display ?? DisplayOptions.Empty;
+    /// <summary>Fator (0,5..2,5) de largura da coluna; 1 quando nao configurada.</summary>
+    public float WidthFactor(string column) => ColumnWidths is not null && ColumnWidths.TryGetValue(column, out var pct) ? pct / 100f : 1f;
+    /// <summary>Largura da coluna: <paramref name="baseWidth"/> do tema x fator configurado.</summary>
+    public float Width(string column, float baseWidth) => baseWidth * WidthFactor(column);
 
     /// <summary>Topo efetivo (padrao quando ausente, como em perfis antigos).</summary>
     [JsonIgnore] public int EffectiveTop => TopCount ?? WidgetCatalog.DefaultTopCount;
@@ -52,8 +73,28 @@ public sealed record WidgetSettings
             if (top + near == 0) near = 1; // o jogador sempre aparece
         }
         bool radar = def is { HasRadarOptions: true };
+        Dictionary<string, int>? widths = null;
+        if (ColumnWidths is not null && def is not null)
+        {
+            foreach (var (k, v) in ColumnWidths)
+            {
+                var known = def.Widths.FirstOrDefault(d => string.Equals(d.Id, k, StringComparison.OrdinalIgnoreCase));
+                int pct = Math.Clamp(v, WidgetCatalog.MinWidthPct, WidgetCatalog.MaxWidthPct);
+                if (known is null || pct == 100) continue;
+                (widths ??= new(StringComparer.OrdinalIgnoreCase))[known.Id] = pct;
+            }
+        }
+        float? textScale = TextScale is { } ts && float.IsFinite(ts) ? MathF.Round(Math.Clamp(ts, WidgetCatalog.MinTextScale, WidgetCatalog.MaxTextScale), 2) : null;
+        if (textScale is 1f) textScale = null;
         return this with
         {
+            ColumnWidths = widths,
+            TextScale = textScale,
+            FontWeight = FontWeight is { } fw and > 0 ? Math.Clamp((int)Math.Round(fw / 100.0) * 100, 100, 900) : null,
+            TextColor = ColorHex.Normalize(TextColor),
+            LabelColor = ColorHex.Normalize(LabelColor),
+            ValueColor = ColorHex.Normalize(ValueColor),
+            Display = Display?.Normalized(),
             TopCount = top, NearCount = near,
             RadarRange = radar ? Math.Clamp(EffectiveRadarRange, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange) : null,
             RadarSensitivity = radar ? Math.Clamp(EffectiveRadarSensitivity, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity) : null,
@@ -84,6 +125,17 @@ public sealed record WidgetPatch
     public int? NearCount { get; init; }
     public int? RadarRange { get; init; }
     public int? RadarSensitivity { get; init; }
+    /// <summary>Substitui o mapa inteiro de larguras (vazio = todas no padrao).</summary>
+    public Dictionary<string, int>? ColumnWidths { get; init; }
+    public float? TextScale { get; init; }
+    /// <summary>0 = volta ao peso do tema.</summary>
+    public int? FontWeight { get; init; }
+    /// <summary>"" = volta a cor do tema.</summary>
+    public string? TextColor { get; init; }
+    public string? LabelColor { get; init; }
+    public string? ValueColor { get; init; }
+    /// <summary>Substitui o bloco de formato inteiro (todos os campos nulos = padrao).</summary>
+    public DisplayOptions? Display { get; init; }
 
     public WidgetSettings ApplyTo(WidgetSettings s) => (s with
     {
@@ -100,14 +152,64 @@ public sealed record WidgetPatch
         NearCount = NearCount ?? s.NearCount,
         RadarRange = RadarRange ?? s.RadarRange,
         RadarSensitivity = RadarSensitivity ?? s.RadarSensitivity,
+        ColumnWidths = ColumnWidths ?? s.ColumnWidths,
+        TextScale = TextScale ?? s.TextScale,
+        FontWeight = FontWeight ?? s.FontWeight,
+        TextColor = TextColor ?? s.TextColor,
+        LabelColor = LabelColor ?? s.LabelColor,
+        ValueColor = ValueColor ?? s.ValueColor,
+        Display = Display ?? s.Display,
     }).Normalized();
+
+    /// <summary>Junta dois patches (b vence a): usado pelo Control Center para agrupar edicoes antes do envio.</summary>
+    public static WidgetPatch Merge(WidgetPatch a, WidgetPatch b) => new()
+    {
+        Visible = b.Visible ?? a.Visible, X = b.X ?? a.X, Y = b.Y ?? a.Y, Scale = b.Scale ?? a.Scale, Opacity = b.Opacity ?? a.Opacity,
+        Order = b.Order ?? a.Order,
+        Font = b.ClearFont == true ? null : b.Font ?? (a.ClearFont == true ? null : a.Font),
+        ClearFont = b.Font is not null ? null : b.ClearFont ?? a.ClearFont,
+        Rows = b.Rows ?? a.Rows, TopCount = b.TopCount ?? a.TopCount, NearCount = b.NearCount ?? a.NearCount,
+        RadarRange = b.RadarRange ?? a.RadarRange, RadarSensitivity = b.RadarSensitivity ?? a.RadarSensitivity,
+        Columns = b.AllColumns == true ? null : b.Columns ?? (a.AllColumns == true ? null : a.Columns),
+        AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
+        ColumnWidths = b.ColumnWidths ?? a.ColumnWidths, TextScale = b.TextScale ?? a.TextScale, FontWeight = b.FontWeight ?? a.FontWeight,
+        TextColor = b.TextColor ?? a.TextColor, LabelColor = b.LabelColor ?? a.LabelColor, ValueColor = b.ValueColor ?? a.ValueColor,
+        Display = b.Display ?? a.Display,
+    };
+}
+
+/// <summary>Cor "#RRGGBB" do perfil.</summary>
+public static class ColorHex
+{
+    /// <summary>"#rrggbb", "rrggbb" ou "#rgb" -> "#RRGGBB"; vazio ou invalido -> null (cor do tema).</summary>
+    public static string? Normalize(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var h = s.Trim().TrimStart('#');
+        if (h.Length == 3) h = string.Concat(h.Select(ch => new string(ch, 2)));
+        if (h.Length != 6 || !h.All(Uri.IsHexDigit)) return null;
+        return "#" + h.ToUpperInvariant();
+    }
+
+    /// <summary>Componentes 0..1 de uma cor normalizada; null se invalida.</summary>
+    public static (float R, float G, float B)? Parse(string? s)
+    {
+        var n = Normalize(s);
+        if (n is null) return null;
+        int v = Convert.ToInt32(n[1..], 16);
+        return (((v >> 16) & 255) / 255f, ((v >> 8) & 255) / 255f, (v & 255) / 255f);
+    }
 }
 
 /// <summary>Perfil nomeado de um tema: um <see cref="WidgetSettings"/> por widget.</summary>
 public sealed record Profile
 {
-    /// <summary>2: Standings ganha TopCount/NearCount e o catalogo ganha o widget "board". Perfis v1 carregam normalmente (valores padrao).</summary>
-    public const int CurrentSchemaVersion = 2;
+    /// <summary>
+    /// 2: Standings ganha TopCount/NearCount e o catalogo ganha o widget "board". Perfis v1 carregam normalmente (valores padrao).
+    /// 3: personalizacao (larguras, formato, texto) e colunas novas; listas de colunas salvas ganham as colunas novas (visiveis) e o
+    /// Inputs do f1-2004 ganha o grafico (antes desligado por padrao).
+    /// </summary>
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Name { get; init; } = "Padrão";
@@ -126,9 +228,23 @@ public sealed record Profile
         var defaults = ProfileFactory.CreateDefault(Name, ThemeId, screenWidth, screenHeight);
         var list = new List<WidgetSettings>();
         foreach (var d in WidgetCatalog.All)
-            list.Add((Get(d.Id) ?? defaults.Get(d.Id)!).Normalized());
+        {
+            var w = Get(d.Id);
+            if (w is not null && SchemaVersion < 3) w = MigrateV3(w);
+            list.Add((w ?? defaults.Get(d.Id)!).Normalized());
+        }
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
         return this with { SchemaVersion = CurrentSchemaVersion, Widgets = ordered };
+    }
+
+    /// <summary>v2 -> v3: colunas criadas na v3 entram visiveis nas listas salvas; Inputs do f1-2004 liga o grafico.</summary>
+    WidgetSettings MigrateV3(WidgetSettings w)
+    {
+        if (w.Columns is null) return w;
+        var add = WidgetCatalog.ColumnsAddedInV3.TryGetValue(w.Id, out var a) ? a.ToList() : [];
+        if (string.Equals(w.Id, "inputs", StringComparison.OrdinalIgnoreCase) && string.Equals(ThemeId, "f1-2004", StringComparison.OrdinalIgnoreCase)) add.Add("graph");
+        if (add.Count == 0) return w;
+        return w with { Columns = w.Columns.Concat(add).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() };
     }
 
     /// <summary>Move o widget para a posicao <paramref name="index"/> da ordem de exibicao e renumera 0..n-1.</summary>
@@ -159,12 +275,11 @@ public static class ProfileFactory
             // Standings: so posicao + sigla; gap e classe sao opcionais. Board 1998: so legenda de pneus + indicador de pagina.
             Columns = e.d.Id == "standings" ? ["pos", "name"]
                 : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre", "page"]
-                // f1-2004: o cluster (tacometro + marcha/pedais + barra de velocidade) e fiel a transmissao; o grafico de 10 s e opcional.
-                : e.d.Id == "inputs" && string.Equals(themeId, "f1-2004", StringComparison.OrdinalIgnoreCase) ? ["bars", "gear"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
-                // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos.
-                : e.d.Columns.Any(col => col.Id == "always") ? [] : null,
+                // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos (os campos ficam visiveis).
+                // Radar: "native" (indicador nativo) tambem e opcional.
+                : e.d.Columns.Any(col => col.Id == "always") ? e.d.Columns.Where(col => col.Id is not ("always" or "native")).Select(col => col.Id).ToArray() : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }

@@ -8,22 +8,26 @@ using Vortice.Win32.Numerics;
 namespace Ams2.OverlayHost.Widgets;
 
 /// <summary>
-/// Pedais: gráfico dos últimos 10 s (acelerador e freio preenchidos, volante em linha), legenda, barras
-/// verticais THR/BRK, marcha e velocidade. Só lê <see cref="OverlayModel.InputHistory"/> e o jogador.
+/// Pedais: grÃ¡fico de LINHAS dos Ãºltimos 10 s (sÃ³ acelerador e freio, em todos os temas), legenda, barras verticais THR/BRK,
+/// marcha e velocidade. No 2004â€“2008 o cluster analÃ³gico (tacÃ´metro + barra de velocidade) Ã© a coluna "speedo" e o grÃ¡fico entra
+/// embaixo, combinÃ¡vel com ele. SÃ³ lÃª <see cref="OverlayModel.Inputs"/> e o jogador.
 /// </summary>
 public sealed class InputsWidget : IWidget
 {
     public string Id => "inputs";
-    /// <summary>O gráfico rola por tempo: precisa de um quadro por vblank para o deslocamento ser contínuo.</summary>
+    /// <summary>O grÃ¡fico rola por tempo: precisa de um quadro por vblank para o deslocamento ser contÃ­nuo.</summary>
     public bool HighFrequency => true;
     Theme.Theme _theme = Themes.F1_1998;
     bool Analog => _theme.Style == ThemeStyle.Broadcast2000s;
     public void UseTheme(Theme.Theme theme) => _theme = theme;
     public (float Width, float Height) DesignSize => Analog ? AnalogSize() : (L.Width, 197);
 
-    // Gráfico
-    // (o gráfico e a largura de cada bloco seguem as colunas visíveis; todas visíveis = mockup)
-    const float GX = 21, GW = 408, GY = 78, GH = 88;
+    // GrÃ¡fico
+    // (o grÃ¡fico e a largura de cada bloco seguem as colunas visÃ­veis; todas visÃ­veis = mockup)
+    const float GX = 21, GY = 78, GH = 88;
+    /// <summary>Largura do grÃ¡fico: 408 do mockup x largura configurada da coluna "graph".</summary>
+    float GW => MathF.Round(_cfg.Width("graph", 408));
+    SpeedUnit Unit => _cfg.Fmt.SpeedOrDefault;
     // Barras verticais
     const float BarW = 22, BarY = 46, BarH = 109, BarPitch = 54;
     // Marcha / velocidade
@@ -31,7 +35,7 @@ public sealed class InputsWidget : IWidget
 
     readonly record struct StdLayout(float GraphX, float ThrX, float GearCx, float Width);
 
-    /// <summary>Blocos visíveis (gráfico, barras, marcha) lado a lado, sem buracos.</summary>
+    /// <summary>Blocos visÃ­veis (grÃ¡fico, barras, marcha) lado a lado, sem buracos.</summary>
     StdLayout L
     {
         get
@@ -59,7 +63,8 @@ public sealed class InputsWidget : IWidget
         Chrome.Header(c, "INPUTS", 19, 11, 150, maxRight: !_cfg.ColumnVisible("graph") && _cfg.ColumnVisible("gear") ? L.GearCx - 45 : w - 14);
         bool graph = _cfg.ColumnVisible("graph"), bars = _cfg.ColumnVisible("bars"), gear = _cfg.ColumnVisible("gear");
         var lay = L;
-        if (graph) { DrawLegend(c, t, lay.GraphX); DrawGraphFrame(c, t, lay.GraphX, GY, GW, GH); }
+        float gw = GW;
+        if (graph) { DrawLegend(c, t, lay.GraphX + gw - 115); DrawGraphFrame(c, t, lay.GraphX, GY, gw, GH); }
 
         var p = m.Session?.Player;
         if (!m.Connected || p is null)
@@ -68,24 +73,25 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
-        if (graph) DrawTrace(c, t, m.Inputs, lay.GraphX, GY, GW, GH);
+        if (graph) DrawTrace(c, t, m.Inputs, lay.GraphX, GY, gw, GH, t.ThrottleColor, t.BrakeColor, 2.2f);
         if (bars)
         {
             DrawBar(c, t, lay.ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
             DrawBar(c, t, lay.ThrX + BarPitch, p.Inputs.Brake, t.BrakeColor, "BRK");
         }
-        if (gear) DrawGear(c, t, lay.GearCx, p.Gear, p.SpeedMps * 3.6);
+        if (gear) DrawGear(c, t, lay.GearCx, p.Gear, DisplayFormat.Speed(p.SpeedMps, Unit), DisplayFormat.SpeedLabel(Unit));
     }
 
-    static void DrawLegend(ThemeCanvas c, Theme.Theme t, float gx)
+    /// <summary>Legenda Ã  direita, acima do grÃ¡fico: sÃ³ acelerador e freio (o volante saiu do grÃ¡fico).</summary>
+    static void DrawLegend(ThemeCanvas c, Theme.Theme t, float x)
     {
         var f = t.Label with { Size = 17 };
-        (string, Color4)[] items = [("THROTTLE", t.ThrottleColor), ("BRAKE", t.BrakeColor), ("STEERING", t.SteeringColor)];
+        (string, Color4)[] items = [("THROTTLE", t.ThrottleColor), ("BRAKE", t.BrakeColor)];
         for (int i = 0; i < items.Length; i++)
         {
-            float y = 14 + i * 21;
-            c.FillRect(gx + 293, y + 7, 20, 8, items[i].Item2);
-            c.Text(items[i].Item1, f, gx + 321, y, 110, 22, t.TitleColor, shadow: t.TextShadow);
+            float y = 22 + i * 24;
+            c.FillRect(x, y + 10, 20, 3, items[i].Item2);   // amostra em linha, como o traÃ§o do grÃ¡fico
+            c.Text(items[i].Item1, f, x + 28, y, 110, 22, t.TitleColor, shadow: t.TextShadow);
         }
     }
 
@@ -108,28 +114,29 @@ public sealed class InputsWidget : IWidget
         c.Text("0s", f, GX + GW - 50, GY + GH + 2, 50, 22, t.TitleColor, HAlign.Right, t.TextShadow);
     }
 
-    // Buffers do gráfico: criados uma vez (o widget é desenhado a cada vblank; nada é alocado por quadro).
+    // Buffers do grÃ¡fico: criados uma vez (o widget Ã© desenhado a cada vblank; nada Ã© alocado por quadro).
     InputSample[]? _snap;
-    float[] _thr = [], _brk = [], _str = [];
+    float[] _thr = [], _brk = [];
     bool[] _ok = [];
-    /// <summary>Quanto tempo o último valor é mantido (zero-order hold) à direita da última amostra, em s: cobre o atraso até a próxima escrita do jogo.</summary>
+    /// <summary>Quanto tempo o Ãºltimo valor Ã© mantido (zero-order hold) Ã  direita da Ãºltima amostra, em s: cobre o atraso atÃ© a prÃ³xima escrita do jogo.</summary>
     const double HoldSeconds = 0.05;
 
     /// <summary>
-    /// Uma coluna de pixel por vez: valor interpolado no instante da coluna (10 s = largura do gráfico). O instante "agora" é o do
-    /// RENDER (relógio do anel), não o do último passo do provider: o gráfico desloca de forma contínua por tempo, não por amostra.
+    /// GrÃ¡fico de linhas (sem Ã¡rea preenchida): acelerador e freio, uma coluna de pixel por vez com o valor interpolado no instante
+    /// da coluna (10 s = largura do grÃ¡fico). O instante "agora" Ã© o do RENDER (relÃ³gio do anel), nÃ£o o do Ãºltimo passo do provider:
+    /// o grÃ¡fico desloca de forma contÃ­nua por tempo, nÃ£o por amostra. O freio Ã© desenhado por cima (Ã© o que importa ler na frenagem).
     /// </summary>
-    void DrawTrace(ThemeCanvas c, Theme.Theme t, InputRing? ring, float GX, float GY, float GW, float GH)
+    void DrawTrace(ThemeCanvas c, Theme.Theme t, InputRing? ring, float GX, float GY, float GW, float GH, Color4 thrColor, Color4 brkColor, float width)
     {
         if (ring is null) return;
         const double win = OverlayDataProvider.InputWindowSeconds;
         int cols = (int)GW;
-        if (_thr.Length < cols) { _thr = new float[cols]; _brk = new float[cols]; _str = new float[cols]; _ok = new bool[cols]; }
+        if (_thr.Length < cols) { _thr = new float[cols]; _brk = new float[cols]; _ok = new bool[cols]; }
         var snap = _snap ??= new InputSample[ring.Usable];
         double now = ring.Now;
         int n = ring.CopyFrom(now - win - 0.25, snap); // um pouco antes da borda esquerda, para interpolar a primeira coluna
         if (n < 2) return;
-        var thr = _thr; var brk = _brk; var str = _str; var ok = _ok;
+        var thr = _thr; var brk = _brk; var ok = _ok;
         double firstT = snap[0].T, lastT = snap[n - 1].T;
         int k = 0;
         for (int x = 0; x < cols; x++)
@@ -137,34 +144,27 @@ public sealed class InputsWidget : IWidget
             double tt = now - win + (x + 0.5) / cols * win;
             ok[x] = false;
             if (tt < firstT || tt > lastT + HoldSeconds) continue;
-            if (tt >= lastT) { thr[x] = snap[n - 1].Throttle; brk[x] = snap[n - 1].Brake; str[x] = snap[n - 1].Steering; ok[x] = true; continue; }
+            if (tt >= lastT) { thr[x] = snap[n - 1].Throttle; brk[x] = snap[n - 1].Brake; ok[x] = true; continue; }
             while (k < n - 2 && snap[k + 1].T < tt) k++;
             var a = snap[k]; var b = snap[k + 1];
             float f = b.T > a.T ? (float)Math.Clamp((tt - a.T) / (b.T - a.T), 0, 1) : 0;
             thr[x] = a.Throttle + (b.Throttle - a.Throttle) * f;
             brk[x] = a.Brake + (b.Brake - a.Brake) * f;
-            str[x] = a.Steering + (b.Steering - a.Steering) * f;
             ok[x] = true;
         }
 
-        float bottom = GY + GH - 1, span = GH - 4;
-        Color4 Fill(Color4 col) => new(col.R, col.G, col.B, 0.5f);
-        var thrFill = Fill(t.ThrottleColor); var brkFill = Fill(t.BrakeColor);
-        for (int x = 0; x < cols; x++)
+        // Linha a 0 % fica meia espessura acima do eixo (nÃ£o some atrÃ¡s dele); 100 % encosta no topo.
+        float bottom = GY + GH - 1 - width / 2, span = GH - 3 - width;
+        for (int pass = 0; pass < 2; pass++)
         {
-            if (!ok[x]) continue;
-            float fx = GX + x;
-            c.FillRect(fx, bottom - thr[x] * span, 1, thr[x] * span, thrFill);
-            c.FillRect(fx, bottom - brk[x] * span, 1, brk[x] * span, brkFill);
-        }
-        for (int x = 1; x < cols; x++)
-        {
-            if (!ok[x] || !ok[x - 1]) continue;
-            float fx = GX + x;
-            if (thr[x - 1] + thr[x] > 0.01f) c.Line(fx - 1, bottom - thr[x - 1] * span, fx, bottom - thr[x] * span, t.ThrottleColor, 2);
-            if (brk[x - 1] + brk[x] > 0.01f) c.Line(fx - 1, bottom - brk[x - 1] * span, fx, bottom - brk[x] * span, t.BrakeColor, 2);
-            float mid = GY + GH / 2, amp = GH / 2 - 4;
-            c.Line(fx - 1, mid + Math.Clamp(str[x - 1], -1, 1) * amp, fx, mid + Math.Clamp(str[x], -1, 1) * amp, t.SteeringColor, 1.6f);
+            var v = pass == 0 ? thr : brk;
+            var col = pass == 0 ? thrColor : brkColor;
+            for (int x = 1; x < cols; x++)
+            {
+                if (!ok[x] || !ok[x - 1]) continue;
+                float fx = GX + x;
+                c.Line(fx - 1, bottom - Math.Clamp(v[x - 1], 0, 1) * span, fx, bottom - Math.Clamp(v[x], 0, 1) * span, col, width);
+            }
         }
     }
 
@@ -177,7 +177,7 @@ public sealed class InputsWidget : IWidget
         c.Text(label, t.Label with { Size = 17 }, x - 20, BarY + BarH + 3, BarW + 40, 24, t.TitleColor, HAlign.Center, t.TextShadow);
     }
 
-    static void DrawGear(ThemeCanvas c, Theme.Theme t, float GearCx, int gear, double kph)
+    static void DrawGear(ThemeCanvas c, Theme.Theme t, float GearCx, int gear, double speed, string unit)
     {
         c.Text("GEAR", t.Label with { Size = 21 }, GearCx - 50, 11, 100, 30, t.TitleColor, HAlign.Center, t.TextShadow);
         string g = gear switch { < 0 => "R", 0 => "N", _ => gear.ToString(CultureInfo.InvariantCulture) };
@@ -186,17 +186,17 @@ public sealed class InputsWidget : IWidget
         // destoante. Letras usam a fonte do titulo (mesma familia/peso do "GEAR" e do "KPH").
         var gf = g.Length == 1 && !char.IsDigit(g[0]) && t.Numbers.Family.StartsWith("F1 Broadcast", StringComparison.Ordinal) ? t.Title with { Size = 36 } : t.Numbers;
         c.Text(g, gf, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
-        c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
-        c.Text("KPH", t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);
+        c.Text(Math.Round(speed).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
+        c.Text(unit, t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);
     }
 
-    // ---- Estilo 2004-2008: cluster tacômetro + marcha/pedais + barra de velocidade em arco (ref. f1-2000s-speedo-dial) ----
-    // Coordenadas de projeto = pixels da referência ampliados 4x (origem no canto do tacômetro).
-    const float TCx = 172, TCy = 170, TDiscR = 170;           // tacômetro
+    // ---- Estilo 2004-2008: cluster tacÃ´metro + marcha/pedais + barra de velocidade em arco (ref. f1-2000s-speedo-dial) ----
+    // Coordenadas de projeto = pixels da referÃªncia ampliados 4x (origem no canto do tacÃ´metro).
+    const float TCx = 172, TCy = 170, TDiscR = 170;           // tacÃ´metro
     const float CellX = 202, CellW = 148, CellH = 38, CellPitch = 44, CellY0 = 175;
     const float ACx = 182, ACy = 328, ARin = 66, ARout = 114; // arco da barra de velocidade (centro, raios interno/externo)
     const float BarX0 = 10, SpdY = 394, SpdH = 48;            // trecho reto da barra (12 segmentos verdes, 0-240 km/h)
-    const float ClusterW = 360, ClusterH = 490, GraphW = 342, GraphH = 84, GraphSectionH = 8 + GraphH + 26;
+    const float ClusterW = 360, ClusterH = 490, GraphW = 342, GraphH = 84;
 
     static Color4 Rgb(int r, int g, int b, float a = 1f) => new(r / 255f, g / 255f, b / 255f, a);
     static readonly Color4 PanelDark = new(0.04f, 0.04f, 0.05f, 0.72f);
@@ -205,7 +205,7 @@ public sealed class InputsWidget : IWidget
     static (float X, float Y) Pol(float cx, float cy, float r, double deg) =>
         (cx + r * (float)Math.Cos(deg * Math.PI / 180), cy + r * (float)Math.Sin(deg * Math.PI / 180));
 
-    /// <summary>Setor anular (raios r0..r1, ângulos de tela em graus) preenchido por raios finos sobrepostos.</summary>
+    /// <summary>Setor anular (raios r0..r1, Ã¢ngulos de tela em graus) preenchido por raios finos sobrepostos.</summary>
     static void Wedge(ThemeCanvas c, float cx, float cy, float r0, float r1, double a0, double a1, Color4 col)
     {
         double lo = Math.Min(a0, a1), hi = Math.Max(a0, a1);
@@ -219,7 +219,7 @@ public sealed class InputsWidget : IWidget
         c.Line(ex1, ey1, ex2, ey2, col, 1.6f);
     }
 
-    /// <summary>Ponteiro afilado do cubo até <paramref name="len"/> (largura w0 no cubo, w1 na ponta).</summary>
+    /// <summary>Ponteiro afilado do cubo atÃ© <paramref name="len"/> (largura w0 no cubo, w1 na ponta).</summary>
     static void Needle(ThemeCanvas c, float cx, float cy, double deg, float len, float w0, float w1, Color4 col)
     {
         const int n = 40;
@@ -231,9 +231,17 @@ public sealed class InputsWidget : IWidget
         }
     }
 
-    /// <summary>Fim da escala do tacômetro em milhares de rpm: 18900 -> 20 (como na referência); sem dado, 20.</summary>
+    /// <summary>Fim da escala do tacÃ´metro em milhares de rpm: 18900 -> 20 (como na referÃªncia); sem dado, 20.</summary>
     static int ScaleEnd(double maxRpm) => maxRpm > 1000 ? Math.Clamp((int)Math.Ceiling(maxRpm / 1000.0) + 1, 8, 30) : 20;
     static int ScaleStart(int end) => end >= 12 ? 6 : 0;
+
+    bool Speedo => _cfg.ColumnVisible("speedo");
+
+    /// <summary>Altura das cÃ©lulas empilhadas quando o velocÃ­metro estÃ¡ oculto (marcha + velocidade, pedais).</summary>
+    float StackH => (_cfg.ColumnVisible("gear") ? 2 * CellPitch : 0) + (_cfg.ColumnVisible("bars") ? 2 * CellPitch : 0);
+    /// <summary>Largura da placa do grÃ¡fico: 342 x largura configurada da coluna "graph".</summary>
+    float PlateW => MathF.Round(_cfg.Width("graph", GraphW));
+    float GraphTop => Speedo ? ClusterH + 8 : StackH > 0 ? StackH + 4 : 0;
 
     void DrawAnalog(ThemeCanvas c, Theme.Theme t, OverlayModel m)
     {
@@ -243,17 +251,43 @@ public sealed class InputsWidget : IWidget
         double rpm = live ? p!.Rpm : 0;
         var white = new Color4(1, 1, 1, 1);
         var shadow = new ShadowToken(1.5f, 1.5f, new Color4(0, 0, 0, 0.7f));
+        var cf = t.Label with { Size = 26 };
+        string speedTxt = Math.Round(DisplayFormat.Speed(live ? p!.SpeedMps : 0, Unit)).ToString("0", CultureInfo.InvariantCulture) + " " + DisplayFormat.SpeedLabelShort(Unit);
 
-        // Painéis translúcidos: disco do tacômetro e placa da barra de velocidade.
+        if (Speedo) DrawCluster(c, t, live, kph, rpm, live ? p!.MaxRpm : 0, speedTxt, white, shadow);
+
+        // ---- Marcha e pedais: Ã  direita do tacÃ´metro; sem o velocÃ­metro, empilhados no canto (marcha, velocidade, pedais) ----
+        float cx = Speedo ? CellX : 0, y = Speedo ? CellY0 : 0;
+        if (_cfg.ColumnVisible("gear"))
+        {
+            string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
+            Chrome.WhiteCell(c, cx, y, CellW, CellH, "", cf);
+            c.Text("Gear", cf, cx, y - 1, CellW * 0.62f, CellH, t.NameCellInk, HAlign.Center);
+            c.Text(g, cf, cx + CellW * 0.62f, y - 1, CellW * 0.38f - 12, CellH, t.NameCellInk, HAlign.Right);
+            y += CellPitch;
+            if (!Speedo) { Chrome.BlackCell(c, cx, y, CellW, CellH, speedTxt, cf with { Size = 24 }, HAlign.Center); y += CellPitch; }
+        }
+        if (_cfg.ColumnVisible("bars"))
+        {
+            PedalCell(c, cx, y, "Throttle", live ? p!.Inputs.Throttle : 0, [new(0f, Rgb(96, 230, 96)), new(0.35f, Rgb(26, 185, 23)), new(1f, Rgb(12, 112, 20))], cf, shadow);
+            PedalCell(c, cx, y + CellPitch, "Brake", live ? p!.Inputs.Brake : 0, [new(0f, Rgb(244, 84, 64)), new(0.35f, Rgb(210, 28, 20)), new(1f, Rgb(120, 8, 8))], cf, shadow);
+        }
+
+        if (_cfg.ColumnVisible("graph")) DrawGraph2004(c, t, m, live, GraphTop, shadow);
+    }
+
+    void DrawCluster(ThemeCanvas c, Theme.Theme t, bool live, double kph, double rpm, double maxRpm, string speedTxt, Color4 white, ShadowToken shadow)
+    {
+        // PainÃ©is translÃºcidos: disco do tacÃ´metro e placa da barra de velocidade.
         c.FillEllipse(TCx, TCy, TDiscR, TDiscR, PanelDark);
         c.FillRoundRect(0, 330, 346, ClusterH - 330, 28, PanelDark);
 
-        // ---- Tacômetro ----
-        int end = ScaleEnd(live ? p!.MaxRpm : 0), start = ScaleStart(end);
+        // ---- TacÃ´metro ----
+        int end = ScaleEnd(live ? maxRpm : 0), start = ScaleStart(end);
         double step = 270.0 / (end - start);
         double AngleOf(double r) => 90 + Math.Clamp(r / 1000.0 - start, 0, end - start) * step;
         Wedge(c, TCx, TCy, 101, 113, 90, 360, white);   // anel grosso
-        Wedge(c, TCx, TCy, 92, 94.6f, 90, 360, white);  // anéis finos
+        Wedge(c, TCx, TCy, 92, 94.6f, 90, 360, white);  // anÃ©is finos
         Wedge(c, TCx, TCy, 85, 87.6f, 90, 360, white);
         var nf = t.Label with { Size = 22 };
         for (int k = start; k <= end; k++)
@@ -272,24 +306,7 @@ public sealed class InputsWidget : IWidget
         c.FillEllipse(TCx, TCy, 21, 21, white);
         c.FillEllipse(TCx, TCy, 13, 13, Rgb(225, 228, 232));
 
-        // ---- Marcha e pedais (pilha de células à direita do tacômetro) ----
-        float y = CellY0;
-        var cf = t.Label with { Size = 26 };
-        if (_cfg.ColumnVisible("gear"))
-        {
-            string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
-            Chrome.WhiteCell(c, CellX, y, CellW, CellH, "", cf);
-            c.Text("Gear", cf, CellX, y - 1, CellW * 0.62f, CellH, t.NameCellInk, HAlign.Center);
-            c.Text(g, cf, CellX + CellW * 0.62f, y - 1, CellW * 0.38f - 12, CellH, t.NameCellInk, HAlign.Right);
-            y += CellPitch;
-        }
-        if (_cfg.ColumnVisible("bars"))
-        {
-            PedalCell(c, y, "Throttle", live ? p!.Inputs.Throttle : 0, [new(0f, Rgb(96, 230, 96)), new(0.35f, Rgb(26, 185, 23)), new(1f, Rgb(12, 112, 20))], cf, shadow);
-            PedalCell(c, y + CellPitch, "Brake", live ? p!.Inputs.Brake : 0, [new(0f, Rgb(244, 84, 64)), new(0.35f, Rgb(210, 28, 20)), new(1f, Rgb(120, 8, 8))], cf, shadow);
-        }
-
-        // ---- Barra de velocidade em arco: 12 verdes (0-240), 3 amarelos (240-280), 3 laranjas (280-320), 1 vermelho (320-340) ----
+        // ---- Barra de velocidade em arco: 12 verdes (0-240), 3 amarelos (240-280), 3 laranjas (280-320), 1 vermelho (320-340) km/h ----
         Color4 green = Rgb(52, 208, 82), yellow = Rgb(226, 202, 31), orange = Rgb(205, 122, 24), red = Rgb(128, 12, 16);
         float pitch = (ACx - BarX0) / 12f;
         for (int i = 0; i < 12; i++)
@@ -303,34 +320,56 @@ public sealed class InputsWidget : IWidget
         }
         Wedge(c, ACx, ACy, ARin, ARout, -24, 3.6, kph > 320 ? red : SegOff);
         var lf = t.Label with { Size = 20 };
-        (string, double)[] marks = [("240", 85), ("280", 47), ("320", 16), ("340", -8)];
-        foreach (var (txt, a) in marks)
+        (int, double)[] marks = [(240, 85), (280, 47), (320, 16), (340, -8)];
+        foreach (var (kmh, a) in marks)
         {
+            // A escala da barra Ã© em km/h; em mph sÃ³ os rÃ³tulos mudam (149 / 174 / 199 / 211).
+            string txt = Math.Round(DisplayFormat.SpeedFromKph(kmh, Unit)).ToString("0", CultureInfo.InvariantCulture);
             var (lx, ly) = Pol(ACx, ACy, 140, a);
             c.Text(txt, lf, lx - 30, ly - 13, 60, 26, white, HAlign.Center, shadow);
         }
-        c.Text(Math.Round(kph).ToString("0", CultureInfo.InvariantCulture) + " km/h", lf, BarX0, 455, 130, 26, white, HAlign.Left, shadow);
+        c.Text(speedTxt, lf, BarX0, 455, 130, 26, white, HAlign.Left, shadow);
+    }
 
-        if (_cfg.ColumnVisible("graph"))
-        {
-            // Gráfico opcional dos últimos 10 s (mesmos dados do estilo padrão).
-            float gy = ClusterH + 8;
-            DrawGraphFrame(c, t, 0, gy, GraphW, GraphH);
-            if (live) DrawTrace(c, t, m.Inputs, 0, gy, GraphW, GraphH);
-            else Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", 10, gy + 24, 280);
-        }
+    // GrÃ¡fico 2004â€“2008: placa escura arredondada como a da barra de velocidade, legendas em cÃ©lulas da transmissÃ£o (verde "Throttle",
+    // vermelha "Brake", branca "10 s"), grade fina e as duas linhas.
+    const float PlatePad = 10, CapH = 24, PlotTop = 6 + CapH + 8, PlateBottom = 10;
+
+    void DrawGraph2004(ThemeCanvas c, Theme.Theme t, OverlayModel m, bool live, float y0, ShadowToken shadow)
+    {
+        float w = PlateW, h = PlotTop + GraphH + PlateBottom;
+        c.FillRoundRect(0, y0, w, h, 18, PanelDark);
+        var capF = t.Label with { Size = 16 };
+        float x = PlatePad;
+        x += Chrome.Caption(c, x, y0 + 6, "Throttle", CapH, capF, Chrome.CellKind.Green) + 4;
+        Chrome.Caption(c, x, y0 + 6, "Brake", CapH, capF, Chrome.CellKind.Red);
+        float tw = c.Measure("10 s", capF) + 18;
+        Chrome.Caption(c, w - PlatePad - tw, y0 + 6, "10 s", CapH, capF);
+
+        float gx = PlatePad, gy = y0 + PlotTop, gw = w - 2 * PlatePad;
+        c.FillRect(gx, gy, gw, GraphH, new Color4(0, 0, 0, 0.35f));
+        var grid = new Color4(1, 1, 1, 0.13f);
+        for (int i = 1; i < 4; i++) c.Line(gx, gy + GraphH * i / 4f, gx + gw, gy + GraphH * i / 4f, grid, 1);
+        c.Line(gx, gy + GraphH, gx + gw, gy + GraphH, new Color4(1, 1, 1, 0.55f), 1.5f);
+        if (live) DrawTrace(c, t, m.Inputs, gx, gy, gw, GraphH, Rgb(52, 208, 82), Rgb(236, 44, 36), 2.6f);
+        else c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", capF with { Size = 20 }, gx + 8, gy + GraphH / 2 - 14, gw - 16, 28, new Color4(1, 1, 1, 0.85f), shadow: shadow);
     }
 
     (float Width, float Height) AnalogSize()
-        => (ClusterW, ClusterH + (_cfg.ColumnVisible("graph") ? GraphSectionH : 0));
-
-    /// <summary>Célula escura que enche (verde/vermelho) proporcionalmente ao valor, com o rótulo branco por cima.</summary>
-    static void PedalCell(ThemeCanvas c, float y, string label, double value, BarStop[] stops, FontToken font, ShadowToken shadow)
     {
-        c.FillRect(CellX, y + CellH, CellW, 1.5f, new Color4(0.04f, 0.04f, 0.08f, 0.6f));
-        c.FillRect(CellX, y, CellW, CellH, new Color4(0.09f, 0.1f, 0.11f, 0.9f));
+        bool graph = _cfg.ColumnVisible("graph");
+        float w = Speedo ? ClusterW : StackH > 0 ? CellW : 0, h = Speedo ? ClusterH : StackH > 0 ? StackH - (CellPitch - CellH) : 0;
+        if (graph) { w = Math.Max(w, PlateW); h = GraphTop + PlotTop + GraphH + PlateBottom; }
+        return w <= 0 ? (CellW, CellH) : (w, h);
+    }
+
+    /// <summary>CÃ©lula escura que enche (verde/vermelho) proporcionalmente ao valor, com o rÃ³tulo branco por cima.</summary>
+    static void PedalCell(ThemeCanvas c, float x, float y, string label, double value, BarStop[] stops, FontToken font, ShadowToken shadow)
+    {
+        c.FillRect(x, y + CellH, CellW, 1.5f, new Color4(0.04f, 0.04f, 0.08f, 0.6f));
+        c.FillRect(x, y, CellW, CellH, new Color4(0.09f, 0.1f, 0.11f, 0.9f));
         float fw = (float)Math.Clamp(value, 0, 1) * CellW;
-        if (fw > 0.5f) c.VGradientRect(CellX, y, fw, CellH, stops);
-        c.Text(label, font, CellX, y - 1, CellW, CellH, new Color4(1, 1, 1, 1), HAlign.Center, shadow);
+        if (fw > 0.5f) c.VGradientRect(x, y, fw, CellH, stops);
+        c.Text(label, font, x, y - 1, CellW, CellH, new Color4(1, 1, 1, 1), HAlign.Center, shadow);
     }
 }
