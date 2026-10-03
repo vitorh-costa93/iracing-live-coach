@@ -9,7 +9,7 @@ namespace Ams2.OverlayHost.Data;
 /// Escritor falso em processo (modo --fake): simula uma corrida de 8 carros numa pista de 7004 m, sem o jogo
 /// e sem tocar no mapa real $pcars2$. O estado é função do relógio, então é determinístico para o --png.
 /// </summary>
-public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRawMemorySource
+public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? radar = null) : IRawMemorySource
 {
     public const double TrackLength = 7004;
     const double Speed = 60; // m/s
@@ -67,6 +67,15 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
     static readonly bool BoardEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_BOARD") == "1";
     readonly bool _board = board ?? BoardEnv;
 
+    // AMS2_FAKE_RADAR=1 (so --fake): o jogador (indice 0) segue em reta a 60 m/s e 4 carros orbitam em torno dele numa elipse de 20 m (frente/tras) x 3,6 m (lados),
+    // 12 s por volta, defasados de 90 graus: a cada instante um esta a frente, um a direita (ao lado), um atras e um a esquerda. Posicao de mundo e yaw coerentes
+    // com a convencao do jogo (rumo = yaw + pi; avanco (sin h, cos h); direita (cos h, -sin h)); o yaw do jogador oscila de leve para exercitar a rotacao.
+    public const double RadarTrackLength = 4000, RadarPeriod = 12;
+    const double RadarForwardAmp = 20, RadarLateralAmp = 3.6;
+    static readonly string[] RadarNames = ["Player", "Michael Schumacher", "David Coulthard", "Mika Hakkinen", "Rubens Barrichello"];
+    static readonly bool RadarEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_RADAR") == "1";
+    readonly bool _radar = radar ?? RadarEnv;
+
     uint _seq;
 
     public bool TryRead(out RawSharedMemory raw)
@@ -75,9 +84,9 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
         raw = default;
         raw.Version = Const.ExpectedVersion;
         raw.GameState = 2; raw.SessionState = 5; raw.RaceState = 2;
-        raw.ViewedParticipantIndex = _board ? BoardPlayerIndex : PlayerIndex;
-        raw.NumParticipants = _board ? BoardField.Length : Field.Length;
-        raw.TrackLength = (float)(_board ? BoardTrackLength : TrackLength);
+        raw.ViewedParticipantIndex = _radar ? 0 : _board ? BoardPlayerIndex : PlayerIndex;
+        raw.NumParticipants = _radar ? RadarNames.Length : _board ? BoardField.Length : Field.Length;
+        raw.TrackLength = (float)(_radar ? RadarTrackLength : _board ? BoardTrackLength : TrackLength);
         raw.LapsInEvent = Finish ? 1u : _board ? 20u : 44u;
         raw.NumSectors = 3;
         raw.EventTimeRemaining = -1;
@@ -85,7 +94,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
         Put(raw.CarName, "Formula Classic Gen2");
         Put(raw.CarClassName, "F1");
 
-        if (_board) FillBoardField(ref raw, t);
+        if (_radar) FillRadarField(ref raw, t);
+        else if (_board) FillBoardField(ref raw, t);
         else for (int i = 0; i < Field.Length; i++)
         {
             double wobble = 0.4 / 0.3;
@@ -129,6 +139,55 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null) : IRaw
         _seq += 2; // par = memória estável
         raw.SequenceNumber = _seq;
         return true;
+    }
+
+    static void FillRadarField(ref RawSharedMemory raw, double t)
+    {
+        const double speed = 60;
+        double w = 2 * Math.PI / RadarPeriod;
+        double playerTotal = 2000 + speed * t;
+        double yaw = Math.PI + 0.25 * Math.Sin(0.3 * t);
+        double h = yaw + Math.PI, fx = Math.Sin(h), fz = Math.Cos(h), rx = Math.Cos(h), rz = -Math.Sin(h);
+        raw.Orientation[1] = (float)yaw;
+        Span<double> total = stackalloc double[RadarNames.Length];
+        for (int i = 0; i < RadarNames.Length; i++)
+        {
+            double fwd = 0, right = 0, v = speed, carYaw = yaw;
+            if (i > 0)
+            {
+                double th = w * t + (i - 1) * Math.PI / 2;
+                fwd = RadarForwardAmp * Math.Cos(th); right = RadarLateralAmp * Math.Sin(th);
+                double vF = speed - RadarForwardAmp * w * Math.Sin(th), vR = RadarLateralAmp * w * Math.Cos(th);
+                v = Math.Sqrt(vF * vF + vR * vR);
+                carYaw = yaw + Math.Atan2(vR, vF);
+            }
+            total[i] = playerTotal + fwd;
+            ref var p = ref raw.Participants[i];
+            p.IsActive = 1;
+            p.WorldPosition[0] = (float)(right * rx + fwd * fx);
+            p.WorldPosition[1] = 0;
+            p.WorldPosition[2] = (float)(playerTotal + right * rz + fwd * fz);
+            raw.Orientations[i * 3 + 1] = (float)carYaw;
+            int laps = (int)Math.Floor(total[i] / RadarTrackLength);
+            p.LapsCompleted = (uint)laps;
+            p.CurrentLap = (uint)laps + 1;
+            p.CurrentLapDistance = (float)(total[i] - laps * RadarTrackLength);
+            p.CurrentSector = Math.Min(2, (int)(p.CurrentLapDistance / RadarTrackLength * 3));
+            Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), RadarNames[i]);
+            Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), i == 0 ? "Formula Classic Gen2" : "Formula Classic Gen2 (" + (i % 2 == 0 ? "B" : "M") + ")");
+            Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
+            raw.Speeds[i] = (float)v;
+            raw.RaceStates[i] = 2;
+            raw.FastestLapTimes[i] = 103.9f + i * 0.3f;
+            raw.LastLapTimes[i] = 104.5f + i * 0.2f;
+        }
+        for (int i = 0; i < RadarNames.Length; i++)
+        {
+            int pos = 1;
+            for (int j = 0; j < RadarNames.Length; j++) if (total[j] > total[i]) pos++;
+            raw.Participants[i].RacePosition = (uint)pos;
+        }
+        raw.Speed = (float)speed;
     }
 
     /// <summary>Campo do modo board: velocidade constante por carro (cada carro perde ~0,004 s por volta para o da frente),

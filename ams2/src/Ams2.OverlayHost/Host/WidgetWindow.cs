@@ -42,6 +42,8 @@ internal sealed class WidgetWindow : IDisposable
     public bool Editing => _win.EditMode;
     /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>
     public bool HighFrequency => Settings.Visible && _widget.HighFrequency;
+    /// <summary>Widget de alta frequencia sem nada para desenhar neste quadro (volta ao ritmo de 60 Hz).</summary>
+    public bool IsIdle(OverlayModel model) => _widget.IsIdle(model);
 
     /// <summary>Disparado quando o usuário termina de arrastar ou muda a escala no modo de edição (já com as novas Settings).</summary>
     public event Action<WidgetWindow>? UserChanged;
