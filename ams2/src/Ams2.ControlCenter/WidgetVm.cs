@@ -37,6 +37,7 @@ public sealed class WidgetVm : Notify
     bool _visible = true, _dropTarget;
     double _scale = 1, _opacity = 1;
     int _x, _y, _rows, _top = WidgetCatalog.DefaultTopCount, _near = WidgetCatalog.DefaultNearCount;
+    int _radarRange = WidgetCatalog.DefaultRadarRange, _radarSens = WidgetCatalog.DefaultRadarSensitivity;
     string _font = FontDefault;
     bool _loading;
 
@@ -60,6 +61,9 @@ public sealed class WidgetVm : Notify
     /// <summary>Standings: passos de "pilotos no topo" e "perto de mim".</summary>
     public bool HasSelection => Def.HasSelection;
     public bool IsBoard => Def.Id == "board";
+    /// <summary>Radar: alcance em metros e sensibilidade.</summary>
+    public bool HasRadarOptions => Def.HasRadarOptions;
+    public bool IsRadar => Def.Id == "radar";
 
     public event Action<WidgetVm, string>? Edited;
 
@@ -79,10 +83,13 @@ public sealed class WidgetVm : Notify
     public int Rows { get => _rows; set => Edit(ref _rows, Math.Clamp(value, MinRows, Math.Max(MinRows, MaxRows)), nameof(Rows)); }
     public int TopCount { get => _top; set => Edit(ref _top, Math.Clamp(value, 0, WidgetCatalog.MaxTopCount), nameof(TopCount)); }
     public int NearCount { get => _near; set => Edit(ref _near, Math.Clamp(value, 0, WidgetCatalog.MaxNearCount), nameof(NearCount)); }
+    public int RadarRange { get => _radarRange; set => Edit(ref _radarRange, Math.Clamp(value, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange), nameof(RadarRange)); }
+    public int RadarSensitivity { get => _radarSens; set => Edit(ref _radarSens, Math.Clamp(value, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity), nameof(RadarSensitivity)); }
+    public string RadarSensitivityText => RadarSensitivity switch { 1 => "1 (so quase encostado)", 2 => "2", 3 => "3 (como o V3)", 4 => "4", _ => "5 (avisa cedo)" };
     public string FontChoice { get => _font; set => Edit(ref _font, value, nameof(FontChoice)); }
     public bool DropTarget { get => _dropTarget; set => Set(ref _dropTarget, value); }
 
-    public string Summary => (Visible ? "" : "oculto · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "") + (HasSelection ? $" · top {TopCount} + perto {NearCount}" : "");
+    public string Summary => (Visible ? "" : "oculto · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "") + (HasSelection ? $" · top {TopCount} + perto {NearCount}" : "") + (HasRadarOptions ? $" · {RadarRange} m · sens. {RadarSensitivity}" : "");
 
     /// <summary>Carrega do modelo sem disparar <see cref="Edited"/>.</summary>
     public void Load(WidgetSettings s)
@@ -93,6 +100,7 @@ public sealed class WidgetVm : Notify
             Visible = s.Visible; Scale = s.Scale; OpacityPct = s.Opacity * 100; X = s.X; Y = s.Y;
             Rows = s.Rows ?? Def.DefaultRows ?? 0;
             TopCount = s.EffectiveTop; NearCount = s.EffectiveNear;
+            RadarRange = s.EffectiveRadarRange; RadarSensitivity = s.EffectiveRadarSensitivity;
             FontChoice = s.Font ?? FontDefault;
             foreach (var c in Columns) c.Load(s.ColumnVisible(c.Def.Id));
             Raise(nameof(Summary));
@@ -106,6 +114,7 @@ public sealed class WidgetVm : Notify
         Font = FontChoice == FontDefault ? null : FontChoice,
         Rows = SupportsRows ? Rows : null,
         TopCount = HasSelection ? TopCount : null, NearCount = HasSelection ? NearCount : null,
+        RadarRange = HasRadarOptions ? RadarRange : null, RadarSensitivity = HasRadarOptions ? RadarSensitivity : null,
         Columns = Columns.All(c => c.IsVisible) ? null : Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray(),
     }.Normalized();
 
@@ -118,6 +127,7 @@ public sealed class WidgetVm : Notify
         nameof(X) or nameof(Y) => new WidgetPatch { X = X, Y = Y },
         nameof(Rows) => new WidgetPatch { Rows = Rows },
         nameof(TopCount) or nameof(NearCount) => new WidgetPatch { TopCount = TopCount, NearCount = NearCount },
+        nameof(RadarRange) or nameof(RadarSensitivity) => new WidgetPatch { RadarRange = RadarRange, RadarSensitivity = RadarSensitivity },
         nameof(FontChoice) => FontChoice == FontDefault ? new WidgetPatch { ClearFont = true } : new WidgetPatch { Font = FontChoice },
         nameof(Columns) => Columns.All(c => c.IsVisible) ? new WidgetPatch { AllColumns = true } : new WidgetPatch { Columns = Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray() },
         _ => null,
