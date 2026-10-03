@@ -231,7 +231,7 @@ public sealed class InputsWidget : IWidget
             Chrome.Caption(c, RpX, y + 24, "RPM", 18, t.Label with { Size = 13 });
             string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
             Chrome.WhiteCell(c, RpX, y + 46, 90, 36, "Gear", t.Text);
-            Chrome.Cell(c, RpX + 90, y + 46, 50, 36, g, t.Numbers, t.AccentFill, t.AccentInk, HAlign.Center, 0);
+            Chrome.Box(c, RpX + 90, y + 46, 50, 36, g, t.Numbers, Chrome.CellKind.Navy, HAlign.Center, 0);
             y += GearSectionH;
         }
         if (_cfg.ColumnVisible("bars"))
@@ -268,7 +268,7 @@ public sealed class InputsWidget : IWidget
         // Rótulo em célula branca e barra em célula preta (estilo 2004–2008).
         const float lw = 104;
         Chrome.WhiteCell(c, RpX, y, lw, 28, label, t.Label with { Size = 17 });
-        c.FillRect(RpX + lw, y, RpW - lw, 28, t.ValueCellFill);
+        Chrome.Box(c, RpX + lw, y, RpW - lw, 28, "", t.Label, Chrome.CellKind.Black);
         c.FillRect(RpX + lw + 2, y + 2, (float)Math.Clamp(value, 0, 1) * (RpW - lw - 4), 24, color);
     }
 }

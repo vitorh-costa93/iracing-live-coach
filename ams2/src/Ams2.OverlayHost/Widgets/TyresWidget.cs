@@ -36,7 +36,7 @@ public sealed class TyresWidget : IWidget
 
         string compound = p.Wheels[0].Compound.Trim().ToUpperInvariant();
         bool b04 = t.Style == ThemeStyle.Broadcast2000s;
-        if (compound.Length > 0 && b04) Chrome.Caption(c, 280 - c.Measure(compound, t.Label with { Size = 18 }) - 18, 13, compound, 24, t.Label with { Size = 18 });
+        if (compound.Length > 0 && b04) Chrome.Caption(c, 280 - c.Measure(compound, t.Label with { Size = 18 }) - 18, 13, compound, 24, t.Label with { Size = 18 }, Chrome.CellKind.Navy);
         else if (compound.Length > 0) c.Text(compound, t.Label with { Size = 20 }, 190, 11, 90, 30, t.LabelColor, HAlign.Right, t.TextShadow);
 
         for (int i = 0; i < 4; i++)
