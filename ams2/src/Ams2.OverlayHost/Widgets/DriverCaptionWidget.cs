@@ -37,7 +37,7 @@ public sealed class DriverCaptionWidget : IWidget
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 500;
+    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Winner10Width = 410;
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
     public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field)
@@ -134,14 +134,14 @@ public static class CaptionPlate
             c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
             return;
         }
-        float w = WinnerWidth, h = Height;
+        float w = Winner10Width, h = Height;
         c.Panel(0, 0, w, h);
         c.Text("WINNER", t.Title, 16, 8, 160, 30, t.AccentFill);
         c.Text(name, BroadcastUi.Fit(c, name, t.Text, 200), 16, 34, 200, 30, t.TextColor, shadow: t.TextShadow);
         c.Text(team, BroadcastUi.Fit(c, team, t.Label, 200), 16, 62, 200, 28, t.LabelColor, shadow: t.TextShadow);
-        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers, 170), 262, 6, 172, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
-        c.Text(dist, t.Label, 262, 34, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
-        c.Text(avg, BroadcastUi.Fit(c, avg, t.Label, 170), 262, 62, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
+        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers, 170), w - 186, 6, 172, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
+        c.Text(dist, t.Label, w - 186, 34, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
+        c.Text(avg, BroadcastUi.Fit(c, avg, t.Label, 170), w - 186, 62, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
     }
 }
 
@@ -149,9 +149,9 @@ public static class CaptionPlate
 public sealed class WinnerWidget : IWidget
 {
     public string Id => "winner";
-    public (float Width, float Height) DesignSize => (_b98 ? CaptionPlate.Winner98Width : CaptionPlate.WinnerWidth, CaptionPlate.Height);
-    bool _b98;
-    public void UseTheme(Theme.Theme theme) => _b98 = theme.Style == ThemeStyle.Broadcast98;
+    public (float Width, float Height) DesignSize => (_style == ThemeStyle.Broadcast98 ? CaptionPlate.Winner98Width : _style == ThemeStyle.Broadcast2000s ? CaptionPlate.WinnerWidth : CaptionPlate.Winner10Width, CaptionPlate.Height);
+    ThemeStyle _style;
+    public void UseTheme(Theme.Theme theme) => _style = theme.Style;
     WidgetSettings _cfg = new() { Id = "winner" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
