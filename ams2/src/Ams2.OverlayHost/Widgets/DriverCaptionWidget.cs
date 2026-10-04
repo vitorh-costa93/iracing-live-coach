@@ -69,11 +69,9 @@ public sealed class DriverCaptionWidget : IWidget
         if (!_cfg.ColumnVisible("always"))
         {
             double hold = ShowFor18, t0 = last;
-            double winnerEnd = b.Winner is { } w ? w.FinishedT + BroadcastUi.WinnerHold + 0.5 : double.NegativeInfinity;
-            // Resultado: entra na bandeirada do jogador, depois da legenda do vencedor (que ocupa o mesmo lugar).
-            if (v == "result" && finished) t0 = Math.Max(_finishT, winnerEnd);
+            // Resultado: entra na bandeirada do jogador. Sem espera pelo vencedor: no 2018 o banner WINNER fica no alto da tela.
+            if (v == "result" && finished) t0 = _finishT;
             alpha = BroadcastUi.Fade(m.Now - t0, hold);
-            if (m.Now < winnerEnd) alpha = 0f;
         }
         BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.Draw18(c, v, car, s.Cars, started, _cfg));
     }

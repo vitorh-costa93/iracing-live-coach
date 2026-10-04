@@ -224,8 +224,10 @@ public sealed class CustomizationPngTests
     [Fact]
     public void Caption_2018_auto_follows_the_race_situation()
     {
-        // Depois da bandeirada do jogador (AMS2_FAKE_FINISH: os 8 primeiros recebem em t=30 s) o automatico mostra o resultado.
+        // Depois da bandeirada do jogador (AMS2_FAKE_FINISH: os 8 primeiros recebem em t=30 s) o automatico mostra o resultado
+        // (no 2018 sem esperar a legenda do vencedor: o banner WINNER fica no alto da tela).
         var finish = new Dictionary<string, string> { ["AMS2_FAKE_FINISH"] = "1" };
+        Assert.Equal(Caption18(new() { ["variant"] = "result" }, 33, finish).Png, Caption18(null, 33, finish).Png);
         Assert.Equal(Caption18(new() { ["variant"] = "result" }, 45, finish).Png, Caption18(null, 45, finish).Png);
         // Com o grid conhecido e mudanca de posicao recente, STARTED / NOW; sem grid, a placa simples.
         var grid = new Dictionary<string, string> { ["AMS2_FAKE_GRID"] = "1" };
@@ -289,6 +291,50 @@ public sealed class CustomizationPngTests
         var longHold = Winner18(new() { ["showFor"] = "30" }, 42, events);
         Assert.NotEqual(shortHold.Png, longHold.Png);
         Assert.Equal(Winner18(null, finish: false, cols: events).Png, shortHold.Png);
+    }
+
+    // ---- Pit lane 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "pittimer")) ----
+
+    /// <summary>Renderiza o pit lane 2018 com AMS2_FAKE_PITS (jogador entra na pit lane em t=16 s, parado de 17 a 20,4 s, sai em 21,4 s).</summary>
+    static (int W, int H, byte[] Png) PitLane18(Dictionary<string, string>? options, double sim)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-p18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "pittimer", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget pittimer --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_PITS"] = "1";
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Fact]
+    public void Pit_lane_2018_options_pit_time_position_and_tick()
+    {
+        var on = PitLane18(null, 19);
+        Assert.Equal((300, 182), (on.W, on.H));
+        // Na pit lane: "PIT 3.0" no lugar do rotulo; desligado volta a "STOP TIME".
+        var noPit = PitLane18(new() { ["showPitTime"] = "false" }, 19);
+        Assert.NotEqual(on.Png, noPit.Png);
+        Assert.Equal(on.Png, PitLane18(new() { ["showPitTime"] = "true" }, 19).Png);
+        // Fora da pit lane (t=23, tempo da parada ainda na tela) a opcao nao muda nada.
+        Assert.Equal(PitLane18(null, 23).Png, PitLane18(new() { ["showPitTime"] = "false" }, 23).Png);
+        // Caixa de posicao e tique: cada um muda o desenho, sem mudar a janela.
+        foreach (var opt in new[] { "showPosition", "showTick" })
+        {
+            var off = PitLane18(new() { [opt] = "false" }, 19);
+            Assert.Equal((on.W, on.H), (off.W, off.H));
+            Assert.NotEqual(on.Png, off.Png);
+        }
     }
 
     // ---- Torre 2018: modos e opcoes do tema (WidgetCatalog.OptionsFor("f1-2018", "standings")) ----

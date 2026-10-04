@@ -144,6 +144,13 @@ public static class WidgetCatalog
                     [O("banner", "Banner superior (WINNER)"), O("podium", "Pódio (2º, vencedor, 3º)"), O("both", "Banner e pódio")], "banner"),
                 new("showFor", "Tempo na tela (s)", OptionKind.Number, null, "12", Min: 5, Max: 30),
             ],
+            // Pit lane do 2018: "PIT LANE" + faixa do piloto + "STOP TIME" ciano; durante a parada "PIT 23.8" no lugar do rotulo.
+            ["pittimer"] =
+            [
+                new("showPitTime", "Tempo na pit lane (\"PIT 23.8\") durante a parada", OptionKind.Toggle, null, "true"),
+                new("showPosition", "Caixa de posição", OptionKind.Toggle, null, "true"),
+                new("showTick", "Tique da cor da classe", OptionKind.Toggle, null, "true"),
+            ],
         },
     };
 

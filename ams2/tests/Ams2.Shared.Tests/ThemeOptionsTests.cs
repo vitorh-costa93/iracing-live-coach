@@ -227,6 +227,25 @@ public class ThemeOptionsTests
     }
 
     [Fact]
+    public void Pit_timer_2018_options_pit_time_position_and_tick()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "pittimer");
+        Assert.Equal(["showPitTime", "showPosition", "showTick"], defs.Select(d => d.Id));
+        Assert.All(defs, d => Assert.Equal((OptionKind.Toggle, "true"), (d.Kind, d.Default)));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "pittimer"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "pittimer"));
+        Assert.Contains("always", WidgetCatalog.Find("pittimer")!.Columns.Select(c => c.Id));
+
+        // Desligar grava "false"; o padrao (true) nao e gravado; nos outros temas nada e gravado.
+        var off = new WidgetSettings { Id = "pittimer", Options = new() { ["ShowTick"] = "false", ["showPosition"] = "true" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["showTick"] = "false" }, off.Options);
+        Assert.Null(new WidgetSettings { Id = "pittimer", Options = new() { ["showPitTime"] = "true" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "pittimer", Options = new() { ["showPitTime"] = "false" } }.Normalized("f1-1998").Options);
+        Assert.Equal("true", new WidgetSettings { Id = "pittimer" }.OptionOr("showPitTime", "true"));
+    }
+
+    [Fact]
     public void Winner_2018_banner_sits_top_center_clear_of_the_tower()
     {
         var w = WidgetLayout.Rect(T2018, "winner")!.Value;

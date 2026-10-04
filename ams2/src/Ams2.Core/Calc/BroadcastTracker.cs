@@ -19,7 +19,9 @@ public sealed record BroadcastState(
     double PlayerStopStartT,
     double PlayerStopSeconds,
     double PlayerStopEndT,
-    WinnerInfo? Winner)
+    WinnerInfo? Winner,
+    bool PlayerInPitLane = false,
+    double PlayerPitLaneStartT = double.NegativeInfinity)
 {
     public static readonly BroadcastState Empty = new(new Dictionary<int, int>(), -1, double.NegativeInfinity, double.NegativeInfinity,
         double.NegativeInfinity, double.NegativeInfinity, false, double.NegativeInfinity, 0, double.NegativeInfinity, null);
@@ -27,6 +29,8 @@ public sealed record BroadcastState(
     public int StopsOf(int carIndex) => Stops.TryGetValue(carIndex, out var n) ? n : 0;
     /// <summary>Tempo parado do jogador: ao vivo enquanto parado, senao a ultima parada.</summary>
     public double PlayerStopNow(double now) => PlayerStopped ? Math.Max(0, now - PlayerStopStartT) : PlayerStopSeconds;
+    /// <summary>Tempo do jogador na pit lane (entrada ate agora); 0 fora dela.</summary>
+    public double PlayerPitLaneNow(double now) => PlayerInPitLane && !double.IsNegativeInfinity(PlayerPitLaneStartT) ? Math.Max(0, now - PlayerPitLaneStartT) : 0;
 }
 
 public sealed class BroadcastTracker
@@ -39,7 +43,8 @@ public sealed class BroadcastTracker
     string _track = "";
     int _lastPitCar = -1, _playerPos, _playerLaps = -1, _leaderLaps;
     double _lastPitT = double.NegativeInfinity, _seenT = double.NegativeInfinity, _posT = double.NegativeInfinity, _lapT = double.NegativeInfinity;
-    bool _stopped;
+    bool _stopped, _inLane;
+    double _laneStart = double.NegativeInfinity;
     double _stopStart = double.NegativeInfinity, _stopSecs, _stopEnd = double.NegativeInfinity;
     WinnerInfo? _winner;
     BroadcastState _state = BroadcastState.Empty;
@@ -51,8 +56,8 @@ public sealed class BroadcastTracker
         _pit.Clear(); _stops.Clear(); _lapSum.Clear(); _laps.Clear();
         _kind = SessionKind.Invalid; _track = "";
         _lastPitCar = -1; _playerPos = 0; _playerLaps = -1; _leaderLaps = 0;
-        _lastPitT = _seenT = _posT = _lapT = _stopStart = _stopEnd = double.NegativeInfinity;
-        _stopped = false; _stopSecs = 0; _winner = null;
+        _lastPitT = _seenT = _posT = _lapT = _stopStart = _stopEnd = _laneStart = double.NegativeInfinity;
+        _stopped = _inLane = false; _stopSecs = 0; _winner = null;
         _state = BroadcastState.Empty;
     }
 
@@ -88,6 +93,10 @@ public sealed class BroadcastTracker
             if (_playerLaps >= 0 && me.LapsCompleted > _playerLaps) _lapT = now;
             _playerLaps = me.LapsCompleted;
 
+            // Pit lane (entrada, box, saida): cronometro proprio para o "PIT 23.8" do 2018.
+            if (me.InPitLane && !_inLane) _laneStart = now;
+            _inLane = me.InPitLane;
+
             bool inBox = me.PitState == PitState.InPit;
             if (inBox && !_stopped) { _stopped = true; _stopStart = now; }
             if (_stopped)
@@ -106,6 +115,6 @@ public sealed class BroadcastTracker
         }
 
         return _state = new BroadcastState(new Dictionary<int, int>(_stops), _lastPitCar, _lastPitT, _seenT, _posT, _lapT,
-            _stopped, _stopStart, _stopSecs, _stopEnd, _winner);
+            _stopped, _stopStart, _stopSecs, _stopEnd, _winner, _inLane, _laneStart);
     }
 }

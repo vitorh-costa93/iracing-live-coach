@@ -54,6 +54,26 @@ public class BroadcastTrackerTests
     }
 
     [Fact]
+    public void Player_pit_lane_timer_runs_from_lane_entry_to_exit()
+    {
+        var sim = new Sim(Len, (3000, 50), (2900, 50)) { PlayerIndex = 0 };
+        var t = new BroadcastTracker();
+        void Run(double secs) { for (int i = 0; i < secs * 10; i++) { sim.Step(0.1); t.Update(sim.Now, sim.Snapshot()); } }
+        Run(1);
+        Assert.False(t.State.PlayerInPitLane);
+        Assert.Equal(0, t.State.PlayerPitLaneNow(sim.Now));
+        sim.Pit[0] = PitState.DrivingIntoPits; Run(2);
+        sim.Pit[0] = PitState.InPit; Run(3);
+        Assert.True(t.State.PlayerInPitLane);
+        Assert.Equal(5.0, t.State.PlayerPitLaneNow(sim.Now), 0.25);
+        sim.Pit[0] = PitState.DrivingOutOfPits; Run(1);
+        Assert.Equal(6.0, t.State.PlayerPitLaneNow(sim.Now), 0.25);
+        sim.Pit[0] = PitState.None; Run(1);
+        Assert.False(t.State.PlayerInPitLane);
+        Assert.Equal(0, t.State.PlayerPitLaneNow(sim.Now));
+    }
+
+    [Fact]
     public void Detects_player_position_change_and_line_crossing()
     {
         var sim = new Sim(Len, (3000, 50), (4950, 50)) { PlayerIndex = 1 };

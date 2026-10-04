@@ -8,10 +8,10 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class PitTimerWidget : IWidget
 {
     public string Id => "pittimer";
-    public (float Width, float Height) DesignSize => _b18 ? (NameW + 110, Head18 + Strip18 + Body18) : (X0 * 2 + (_b98 ? NameW98 : NameW) + TimeW, Y0 * 2 + RowH + 2);
+    public (float Width, float Height) DesignSize => _b18 ? (NameW + 110, Head18 + Gap18 + Strip18 + Body18) : (X0 * 2 + (_b98 ? NameW98 : NameW) + TimeW, Y0 * 2 + RowH + 2);
     bool _b98, _b18;
     public void UseTheme(Theme.Theme theme) { _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = theme.Style == ThemeStyle.Modern2018; }
-    const float Head18 = 36, Strip18 = 42, Body18 = 80;
+    const float Head18 = 38, Gap18 = 4, Strip18 = 44, Body18 = 96;
     WidgetSettings _cfg = new() { Id = "pittimer" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -35,7 +35,12 @@ public sealed class PitTimerWidget : IWidget
                 return;
             }
             var (w, h) = DesignSize;
-            if (t.Style == ThemeStyle.Modern2018) { Draw18(c, t, car, name, time, w, h); return; }
+            if (t.Style == ThemeStyle.Modern2018)
+            {
+                string? lane = ShowPitTime18 && b.PlayerInPitLane ? BroadcastUi.StopTime(b.PlayerPitLaneNow(m.Now)) : null;
+                Draw18(c, t, car, s.Cars, name, time, lane, w);
+                return;
+            }
             c.Panel(0, 0, w, h);
             if (t.Style == ThemeStyle.Broadcast98)
             {
@@ -51,28 +56,70 @@ public sealed class PitTimerWidget : IWidget
         });
     }
 
+    // Opcoes do tema 2018 (WidgetCatalog.OptionsFor("f1-2018", "pittimer")); padrao = ligado (nao gravado).
+    bool Opt18(string id) => !string.Equals(_cfg.OptionOr(id, "true"), "false", StringComparison.OrdinalIgnoreCase);
+    bool ShowPitTime18 => Opt18("showPitTime");
+    bool ShowPosition18 => Opt18("showPosition");
+    bool ShowTick18 => Opt18("showTick");
+
     /// <summary>
     /// Gráfico "PIT LANE" 2018 (ref. f1-2018-pitlane-stoptime.jpg): cabeçalho preto, faixa preta com caixa de posição branca + tique +
-    /// SOBRENOME em negrito, corpo cinza-azulado com "STOP TIME" ciano e o tempo grande em ciano entre colchetes de canto.
-    /// O AMS2 não dá a cor da equipe: o tique usa o vermelho do tema.
+    /// SOBRENOME em negrito, corpo cinza-azulado (canto inferior direito arredondado) com "STOP TIME" ciano e o tempo grande em ciano
+    /// entre colchetes de canto. Na pit lane (opção showPitTime) o rótulo vira "PIT" + tempo na pit lane em branco.
+    /// O AMS2 não dá a cor da equipe: o tique usa a cor da classe.
     /// </summary>
-    static void Draw18(ThemeCanvas c, Theme.Theme t, Ams2.Core.CarSnapshot car, string name, string time, float w, float h)
+    void Draw18(ThemeCanvas c, Theme.Theme t, Ams2.Core.CarSnapshot car, IReadOnlyList<Ams2.Core.CarSnapshot> field, string name, string time, string? pitLane, float w)
     {
-        c.FillRoundRect(0, 0, w, Head18 + 6, 6, t.PanelFill);
-        c.Text("PIT LANE", t.Title with { Weight = 400, Size = 21, Tracking = 1f }, 0, 1, w, Head18, t.TitleColor, HAlign.Center);
-        float sy = Head18;
-        c.FillRect(0, sy, w, Strip18, new Vortice.Win32.Numerics.Color4(0f, 0f, 0f, 0.92f));
-        Chrome.PosBox(c, 8, sy + 5, 32, Strip18 - 10, car.Position.ToString(System.Globalization.CultureInfo.InvariantCulture), t.Numbers with { Size = 20 });
-        Chrome.Tick(c, 50, sy + 9, Strip18 - 18, t.AccentBar);
+        var black = new Vortice.Win32.Numerics.Color4(0f, 0f, 0f, 0.92f);
+        c.FillRect(0, 0, w, Head18, black);
+        c.Text("PIT LANE", t.Title with { Weight = 400, Size = 22, Tracking = 1f }, 0, 1, w, Head18, t.TitleColor, HAlign.Center);
+
+        float sy = Head18 + Gap18, x = 6;
+        c.FillRect(0, sy, w, Strip18, black);
+        if (ShowPosition18)
+        {
+            Chrome.PosBox(c, x, sy + 5, 36, Strip18 - 10, car.Position.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                t.Numbers with { Size = 22 });
+            x += 36 + 10;
+        }
+        if (ShowTick18)
+        {
+            int ci = Math.Max(0, field.Select(f => f.ClassName).Distinct().ToList().IndexOf(car.ClassName));
+            Chrome.Tick(c, x, sy + 10, Strip18 - 20, Chrome.ClassTick(ci), 5);
+            x += 5 + 10;
+        }
+        else if (!ShowPosition18) x = 12;
         string up = name.ToUpperInvariant();
-        c.Text(up, BroadcastUi.Fit(c, up, t.Text, w - 74), 62, sy, w - 66, Strip18, t.TextColor);
+        var nf = t.Text with { Weight = 700, Size = 22 };
+        c.Text(up, BroadcastUi.Fit(c, up, nf, w - x - 10), x, sy, w - x - 8, Strip18, t.TextColor);
+
         float by = sy + Strip18;
-        c.FillRoundRect(0, by, w, Body18, 8, t.SubPanelFill);
-        c.FillRect(0, by, w, 10, t.SubPanelFill);
-        var lf = t.Label with { Weight = 700, Size = 19 };
-        c.Text("STOP", lf, 8, by + 12, 96, 26, t.PitTimeColor, HAlign.Center);
-        c.Text("TIME", lf, 8, by + 38, 96, 26, t.PitTimeColor, HAlign.Center);
-        float bx = 112, bw = w - bx - 12;
-        Chrome.CornerBrackets(c, bx, by + 10, bw, Body18 - 20, t.PitTimeColor);
-        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Size = 40 }, bw - 16), bx, by + 8, bw, Body18 - 16, t.PitTimeColor, HAlign.Center);
-    }}
+        // Corpo num poligono so (sem sobrepor a tinta translucida): so o canto inferior direito arredondado, como na TV.
+        const float r = 12;
+        Span<System.Numerics.Vector2> pts = stackalloc System.Numerics.Vector2[3 + 9 + 1];
+        pts[0] = new(0, by); pts[1] = new(w, by); pts[2] = new(w, by + Body18 - r);
+        for (int i = 1; i <= 9; i++)
+        {
+            float a = MathF.PI / 2 * i / 9;
+            pts[2 + i] = new(w - r + r * MathF.Cos(a), by + Body18 - r + r * MathF.Sin(a));
+        }
+        pts[12] = new(0, by + Body18);
+        c.FillPolygon(pts, t.SubPanelFill);
+        float lw = MathF.Round(w * 0.46f);
+        if (pitLane is not null)
+        {
+            var white = new Vortice.Win32.Numerics.Color4(1f, 1f, 1f, 1f);
+            c.Text("PIT", t.Label with { Weight = 400, Size = 21 }, 4, by + 10, lw, 26, white, HAlign.Center);
+            c.Text(pitLane, BroadcastUi.Fit(c, pitLane, t.Numbers with { Weight = 400, Size = 34 }, lw - 12), 4, by + 34, lw, 46, white, HAlign.Center);
+        }
+        else
+        {
+            var lf = t.Label with { Weight = 700, Size = 23 };
+            c.Text("STOP", lf, 4, by + 16, lw, 30, t.PitTimeColor, HAlign.Center);
+            c.Text("TIME", lf, 4, by + 46, lw, 30, t.PitTimeColor, HAlign.Center);
+        }
+        float bx = lw + 8, bw = w - bx - 16, bt = by + 12, bh = Body18 - 24;
+        Chrome.CornerBrackets(c, bx, bt, bw, bh, t.PitTimeColor, 11, 3);
+        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Weight = 400, Size = 46 }, bw - 16), bx, bt, bw, bh, t.PitTimeColor, HAlign.Center);
+    }
+}
