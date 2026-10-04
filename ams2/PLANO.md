@@ -4,7 +4,7 @@ Estado: rascunho para aprovação. Base: levantamento do V3 (02/10/2026) e decis
 
 ## 1. Escopo
 - App novo e separado, em `ams2/`, com tudo que o Control Center do iRacing tem hoje (widgets, reordenar, escala, fonte, linhas visíveis, colunas, opacidade, perfis nomeados, editor de layout), adaptado aos dados do AMS2.
-- Um tema visual por época da F1: **1998–2001**, **2004–2008**, **2010s**. O tema muda aparência (fontes, cores, formas), não a lógica dos widgets.
+- Um tema visual por época da F1: **1998–2001**, **2004–2008**, **2018** (substituiu o 2010s; gráfico F1 2018–2021). O tema muda aparência (fontes, cores, formas), não a lógica dos widgets.
 - Widgets do MVP: Standings, Relative, Fuel, Tyres, Weather, Inputs (gráfico de pedais). Radar e StartHelper depois.
 - Fora do escopo do MVP: iRating, licença, SOF, P2P (não existem no AMS2).
 
@@ -14,7 +14,7 @@ Estado: rascunho para aprovação. Base: levantamento do V3 (02/10/2026) e decis
 | Local | Pasta `ams2/` neste repositório; V3 não é alterado |
 | 1998–2001 | Textos em Reddit Sans 800; números com `F1Broadcast98-Box.ttf` e `F1Broadcast98-Values.ttf` (já em `ams2/fonts/`); sombra preta nos valores (~2 px à direita e abaixo, ~60–65%) aplicada pelo renderizador |
 | 2004–2008 | Open Sans Bold; velocímetro analógico com Inputs embutido |
-| 2010s | Visual do mockup aprovado; fonte ainda a definir |
+| 2018 | Gráfico de TV F1 2018–2021 (ref. `reference/f1-2018-analysis.md`); fonte Verdana do sistema (a original é proprietária) |
 | Mockups | `gpt-image-2.5-flare` em `medium`, referências do usuário em `ams2/reference/` |
 
 ## 3. Arquitetura proposta
@@ -59,7 +59,7 @@ Conhecimento da estrutura de Shared Memory do Project CARS 2 que o AMS2 usa (ver
 1. **Validar a estrutura da memória** (versão, offsets, tamanhos) antes de escrever o Core; um deslocamento errado invalida tudo.
 2. **Gaps calculados** podem divergir do que o jogo mostra em pit/volta de largada; precisa de teste em sessão real.
 3. **Licença das fontes construídas**: vêm de gráficos de TV de terceiros. Bom para uso pessoal; revisar antes de distribuir.
-4. **Fonte do tema 2010s**: ainda indefinida (a original, Benton Sans, é comercial).
+4. **Fonte do tema 2018**: Verdana do sistema (a original, Formula1 Display, é proprietária); ver `fonts/README.md`.
 5. **Tela cheia exclusiva** não mostra overlay; documentar para o usuário.
 6. **Regra do projeto**: nunca abrir o overlay enquanto o iRacing está aberto; vale também para testar com o AMS2 aberto (testar com escritor falso e logs).
 7. Reuso futuro: se a duplicação com o V3 incomodar, extrair uma biblioteca de infraestrutura (render, IPC, layout) depois da Fase 3, com o que realmente se repetiu.

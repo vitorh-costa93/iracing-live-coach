@@ -35,7 +35,7 @@ public static class WidgetCatalog
     /// <summary>Ordem padrao = ordem desta lista. Posicoes e escalas padrao reproduzem o layout do usuario no V3/iRacing (v3-layout.json), em pixels de uma tela 1920x1080 (ajustadas por <see cref="ProfileFactory"/>).</summary>
     public static readonly IReadOnlyList<WidgetDef> All =
     [
-        new("standings", "Standings", null, null, null, "", [C("pos", "Posição"), C("name", "Piloto (sigla)"), C("tyre", "Pneu M/B (2004-2008)"), C("class", "Classe"), C("gap", "Gap"), C("table", "Tabela inferior 2 colunas (1998-2001)")], 0, 0, DefaultScale: 0.6f, HasSelection: true,
+        new("standings", "Standings", null, null, null, "", [C("pos", "Posição"), C("name", "Piloto (sigla)"), C("tyre", "Pneu M/B (2004-2008)"), C("class", "Classe (2018: no lugar do logo)"), C("gap", "Gap (2018: coluna clara, \"Leader\")"), C("table", "Tabela inferior 2 colunas (1998-2001)")], 0, 0, DefaultScale: 0.6f, HasSelection: true,
             WidthColumns: [C("pos", "Posição"), C("name", "Nome"), C("gap", "Gap")], Caps: DisplayCaps.Name | DisplayCaps.Gap),
         new("relative", "Relative", 1, 4, 3, "Linhas por lado", [C("pos", "Posição"), C("name", "Piloto"), C("gap", "Gap"), C("bar", "Barra do vizinho (2004-2008) / tempo dividido (1998-2001)")], 1430, 925, DefaultVisible: false, DefaultScale: 0.58f,
             WidthColumns: [C("pos", "Posição"), C("name", "Nome"), C("gap", "Gap")], Caps: DisplayCaps.Name | DisplayCaps.Gap),
