@@ -173,6 +173,43 @@ public sealed class WidgetVm : Notify
 
     static readonly HashSet<string> DisplayProps = [nameof(NameChoice), nameof(CarNumber), nameof(GapDecimals), nameof(GapSign), nameof(GapSuffix), nameof(LapStyle), nameof(LapDecimals), nameof(SpeedChoice), nameof(TempChoice), nameof(FuelChoice)];
 
+    // ---- Mostrar em (filtro por tipo de sessao) ----
+    bool _inPractice = true, _inQualify = true, _inRace = true;
+    /// <summary>Caixas "Treino", "Classificação" e "Corrida". Pelo menos uma fica marcada (desmarcar a ultima e ignorado).</summary>
+    public bool ShowPractice { get => _inPractice; set => SetSession(ref _inPractice, value, nameof(ShowPractice)); }
+    public bool ShowQualify { get => _inQualify; set => SetSession(ref _inQualify, value, nameof(ShowQualify)); }
+    public bool ShowRace { get => _inRace; set => SetSession(ref _inRace, value, nameof(ShowRace)); }
+
+    void SetSession(ref bool field, bool value, string prop)
+    {
+        if (!value && (_inPractice ? 1 : 0) + (_inQualify ? 1 : 0) + (_inRace ? 1 : 0) <= 1 && field) { Raise(prop); return; }
+        if (!Set(ref field, value, prop)) return;
+        Raise(nameof(Summary));
+        if (!_loading) Edited?.Invoke(this, nameof(Sessions));
+    }
+
+    /// <summary>Grupos marcados (ordem canonica).</summary>
+    public string[] Sessions => SessionIds.All.Where(id => id switch { SessionIds.Practice => _inPractice, SessionIds.Qualify => _inQualify, _ => _inRace }).ToArray();
+    /// <summary>Grupos para o perfil: null quando iguais ao padrao do widget.</summary>
+    string[]? BuildSessions() => SessionIds.SameSet(Sessions, Def.Sessions) ? null : Sessions;
+
+    void LoadSessions(IReadOnlyList<string> ids)
+    {
+        _inPractice = ids.Contains(SessionIds.Practice, StringComparer.OrdinalIgnoreCase);
+        _inQualify = ids.Contains(SessionIds.Qualify, StringComparer.OrdinalIgnoreCase);
+        _inRace = ids.Contains(SessionIds.Race, StringComparer.OrdinalIgnoreCase);
+        Raise(nameof(ShowPractice)); Raise(nameof(ShowQualify)); Raise(nameof(ShowRace));
+    }
+
+    /// <summary>Volta as caixas "Mostrar em" ao padrao do widget (o patch enviado limpa o campo no perfil).</summary>
+    public void ResetSessions()
+    {
+        bool changed = !SessionIds.SameSet(Sessions, Def.Sessions);
+        LoadSessions(Def.Sessions);
+        Raise(nameof(Summary));
+        if (changed && !_loading) Edited?.Invoke(this, nameof(Sessions));
+    }
+
     /// <summary>Volta texto, formato e larguras ao padrao (Restaurar padroes do widget).</summary>
     public void ResetCustomization()
     {
@@ -223,7 +260,7 @@ public sealed class WidgetVm : Notify
     public string FontChoice { get => _font; set => Edit(ref _font, value, nameof(FontChoice)); }
     public bool DropTarget { get => _dropTarget; set => Set(ref _dropTarget, value); }
 
-    public string Summary => (Visible ? "" : "oculto · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "") + (HasSelection ? $" · top {TopCount} + perto {NearCount}" : "") + (HasRadarOptions ? $" · {RadarRange} m · sens. {RadarSensitivity}" : "");
+    public string Summary => (Visible ? "" : "oculto · ") + (SessionIds.SameSet(Sessions, SessionIds.All) ? "" : "só " + string.Join("/", Sessions.Select(SessionIds.Label)) + " · ") + $"{Scale:0.00}x · {OpacityPct:0}%" + (SupportsRows ? $" · {Rows} linhas" : "") + (HasSelection ? $" · top {TopCount} + perto {NearCount}" : "") + (HasRadarOptions ? $" · {RadarRange} m · sens. {RadarSensitivity}" : "");
 
     /// <summary>Carrega do modelo sem disparar <see cref="Edited"/>.</summary>
     public void Load(WidgetSettings s)
@@ -239,6 +276,7 @@ public sealed class WidgetVm : Notify
             foreach (var c in Columns) c.Load(s.ColumnVisible(c.Def.Id));
             foreach (var w in Widths) w.Load((int)Math.Round(s.WidthFactor(w.Def.Id) * 100));
             foreach (var o in ThemeOptions) o.Load(s.Option(o.Def.Id));
+            LoadSessions(s.EffectiveSessions);
             TextScalePct = (int)Math.Round((s.TextScale ?? 1f) * 100);
             FontWeightChoice = s.FontWeight ?? 0;
             TextColor = s.TextColor ?? ""; LabelColor = s.LabelColor ?? ""; ValueColor = s.ValueColor ?? "";
@@ -272,6 +310,7 @@ public sealed class WidgetVm : Notify
         TextColor = TextColor, LabelColor = LabelColor, ValueColor = ValueColor,
         Display = BuildDisplay(),
         Options = BuildOptions(),
+        Sessions = BuildSessions(),
     }.Normalized();
 
     /// <summary>Patch IPC so com o campo que mudou.</summary>
@@ -288,6 +327,7 @@ public sealed class WidgetVm : Notify
         nameof(Columns) => Columns.All(c => c.IsVisible) ? new WidgetPatch { AllColumns = true } : new WidgetPatch { Columns = Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray() },
         nameof(Widths) => new WidgetPatch { ColumnWidths = BuildWidths() ?? [] },
         nameof(ThemeOptions) => new WidgetPatch { Options = BuildOptions() ?? [] },
+        nameof(Sessions) => new WidgetPatch { Sessions = BuildSessions() ?? [] },   // vazio = padrao do widget
         nameof(TextScalePct) => new WidgetPatch { TextScale = TextScalePct / 100f },
         nameof(FontWeightChoice) => new WidgetPatch { FontWeight = FontWeightChoice },
         nameof(TextColor) => new WidgetPatch { TextColor = TextColor },

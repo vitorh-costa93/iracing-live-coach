@@ -9,9 +9,12 @@ public sealed record WidgetDef(
     int? MinRows, int? MaxRows, int? DefaultRows, string RowsLabel,
     IReadOnlyList<ColumnDef> Columns,
     int DefaultX, int DefaultY, bool DefaultVisible = true, float DefaultScale = 1f, bool HasSelection = false, bool HasRadarOptions = false,
-    IReadOnlyList<ColumnDef>? WidthColumns = null, DisplayCaps Caps = DisplayCaps.None, IReadOnlyList<string>? Themes = null)
+    IReadOnlyList<ColumnDef>? WidthColumns = null, DisplayCaps Caps = DisplayCaps.None, IReadOnlyList<string>? Themes = null, IReadOnlyList<string>? DefaultSessions = null)
 {
     public bool SupportsRows => MinRows.HasValue;
+    /// <summary>Grupos de sessao (<see cref="SessionIds"/>) em que o widget aparece quando o perfil nao define <see cref="WidgetSettings.Sessions"/>.
+    /// Nulo em <see cref="DefaultSessions"/> = todas (comportamento dos widgets que ja existiam antes do filtro, para nao mudar perfis).</summary>
+    public IReadOnlyList<string> Sessions => DefaultSessions ?? SessionIds.All;
     /// <summary>Colunas com largura ajustavel (% da largura do tema).</summary>
     public IReadOnlyList<ColumnDef> Widths => WidthColumns ?? [];
     /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
@@ -99,6 +102,10 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
+        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. Desenho nas etapas 2-4 (hoje placeholders).
+        new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
+        new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
+        new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
     ];
 
     /// <summary>Colunas criadas no esquema 3: entram visiveis nas listas de colunas salvas por perfis antigos (migracao).</summary>

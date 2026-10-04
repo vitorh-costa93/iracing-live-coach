@@ -22,8 +22,16 @@ public sealed record CarSnapshot(
     string TyreSupplier = "",   // "M" Michelin, "B" Bridgestone, "" desconhecido (sufixo "(M)"/"(B)" do nome do carro)
     string OriginalName = "",   // so no carro do jogador: nome que o jogo deu (perfil), preservado quando Name e substituido por um nome de exibicao
     double PosX = 0, double PosY = 0, double PosZ = 0,   // WorldPosition (m); Y = altura
-    double Yaw = 0)                                       // Orientations[i][1] (rad). Rumo de avanco = Yaw + pi (confirmado em sessao real, ver radar-notes.md)
+    double Yaw = 0,                                       // Orientations[i][1] (rad). Rumo de avanco = Yaw + pi (confirmado em sessao real, ver radar-notes.md)
+    // mCurrentSector{1,2,3}Times / mFastestSector{1,2,3}Times por carro (s; <= 0 = sem dado). Nao conferidos em sessao real: o QualiLapTracker
+    // so os usa quando sao plausiveis e cai para o tempo derivado da troca de Sector quando faltam.
+    double CurSector1 = 0, double CurSector2 = 0, double CurSector3 = 0,
+    double BestSector1 = 0, double BestSector2 = 0, double BestSector3 = 0)
 {
+    /// <summary>Tempo do setor <paramref name="k"/> (0..2) da volta corrente, como a memoria informa (<= 0 = sem dado).</summary>
+    public double CurSector(int k) => k switch { 0 => CurSector1, 1 => CurSector2, 2 => CurSector3, _ => 0 };
+    /// <summary>Melhor tempo do setor <paramref name="k"/> (0..2) informado pela memoria (<= 0 = sem dado).</summary>
+    public double BestSector(int k) => k switch { 0 => BestSector1, 1 => BestSector2, 2 => BestSector3, _ => 0 };
     /// <summary>true se o jogo informou posicao (tudo zero = sem pose, p.ex. carro ainda nao posicionado).</summary>
     public bool HasPose => PosX != 0 || PosY != 0 || PosZ != 0 || Yaw != 0;
     /// <summary>Progresso total na corrida em metros (voltas completas + distância na volta).</summary>

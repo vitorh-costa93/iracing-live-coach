@@ -38,7 +38,9 @@ public static class SnapshotMapper
                 IsPlayer: i == playerIdx,
                 TyreSupplier: SupplierFromCarName(Text(raw.CarNames, i * Const.StringLen, Const.StringLen)),
                 PosX: p.WorldPosition[0], PosY: p.WorldPosition[1], PosZ: p.WorldPosition[2],
-                Yaw: raw.Orientations[i * 3 + 1]));
+                Yaw: raw.Orientations[i * 3 + 1],
+                CurSector1: raw.CurrentSector1Times[i], CurSector2: raw.CurrentSector2Times[i], CurSector3: raw.CurrentSector3Times[i],
+                BestSector1: raw.FastestSector1Times[i], BestSector2: raw.FastestSector2Times[i], BestSector3: raw.FastestSector3Times[i]));
         }
 
         cars = AssignClassPositions(cars);

@@ -15,7 +15,7 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart|racecontrol] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart|racecontrol|qualitower|qualilap|qualiresult] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
 ///                       [--text-scale 0.6..2] [--settings ARQUIVO.json]   (so com --png: tamanho do texto, que redimensiona o widget; ou o WidgetSettings
@@ -31,6 +31,10 @@ namespace Ams2.OverlayHost;
 ///   Variaveis do --fake: AMS2_FAKE_PITS=1 (+ AMS2_FAKE_PITSTOP=N s parado do jogador), AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_RADAR=1 (4 carros orbitando
 ///   o jogador: frente, direita, atras, esquerda; ciclo de 12 s; com --png o radar fica sempre visivel; --cols none = so com carro proximo) e AMS2_FAKE_BOARD=1 (corrida de
 ///   20 carros com volta de ~20 s para o widget rotativo inferior; linha do tempo em ams2/reference/board-spec.md).
+///   AMS2_FAKE_QUALI=1 (so --fake/--png): sessao de CLASSIFICACAO (filtro de sessao = "qualify") de 20 carros, pista de 2100 m, relogio 15:00
+///   decrescente, tempos variados, OUT LAP (carros 15/16 saem da garagem em t=5/8 s), NO TIME (18/19 na garagem), IN PIT (17) e o jogador
+///   (indice 5) em voltas de ~30,5 s com setores diferentes: cruza a linha em t=10,75 s e t~41,2 s (S1/S2 da volta 2 em t~21/31 s).
+///   Com --png imprime a tabela ([QUALI]) e a volta do jogador ([QUALILAP]); widgets qualitower/qualilap/qualiresult ainda sao placeholders.
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program
@@ -165,6 +169,20 @@ internal static class Program
         {
             Console.WriteLine($"[RADAR] valido={rf.Valid} alcance={rf.RangeMeters:0}m carros={rf.Count} alertaE={rf.AlertLeft} alertaD={rf.AlertRight} aoLadoE={rf.AlongLeft} aoLadoD={rf.AlongRight} distE={rf.LeftGap:0.0} distD={rf.RightGap:0.0}");
             foreach (var rc in rf.Cars) Console.WriteLine($"   #{rc.Index} frente={rc.Forward:0.0} direita={rc.Right:0.0} {rc.Side} {rc.Zone} velRel={rc.RelSpeed:0.0}");
+        }
+        if (m.Session?.Kind == Ams2.Core.SessionKind.Qualify && m.Quali is { } q)
+        {
+            Console.WriteLine($"[QUALI] sessao={m.SessionGroup} restante={q.TimeRemaining:0.0}s linhas={q.Rows.Count}");
+            foreach (var r in q.Rows)
+                Console.WriteLine($"[QUALI] {r.Rank} #{r.Car.Index} {r.Car.Name} {r.Status} {(r.BestLap is { } b ? b.ToString("0.000", CultureInfo.InvariantCulture) : "-")} {(r.GapToFirst is { } g ? g.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture) : "-")}{(r.IsPlayer ? " (voce)" : "")}");
+            if (m.QualiLap is { CarIndex: >= 0 } ql)
+            {
+                static string T(double? v) => v is { } x ? x.ToString("0.000", CultureInfo.InvariantCulture) : "-";
+                Console.WriteLine($"[QUALILAP] volta={ql.Lap} setor={ql.Sector + 1} tempo={T(ql.Elapsed)} pit={ql.InPit} outlap={ql.OutLap} melhor={T(ql.PersonalBestLap)} lider={T(ql.LeaderBestLap)}#{ql.LeaderIndex}");
+                Console.WriteLine($"[QUALILAP] setores={string.Join(" ", ql.Sectors.Select(x => x is null ? "-" : $"{T(x.Time)}:{x.Mark}"))} pessoais={string.Join(" ", ql.PersonalBestSectors.Select(T))} gerais={string.Join(" ", ql.OverallBestSectors.Select(T))}");
+                if (ql.LastSplit is { } sp) Console.WriteLine($"[QUALILAP] parcial S{sp.Sector} {T(sp.Elapsed)} dPessoal={T(sp.DeltaPersonal)} dLider={T(sp.DeltaLeader)}");
+                if (ql.LastResult is { } lr) Console.WriteLine($"[QUALILAP] resultado volta={lr.Lap} tempo={T(lr.LapTime)} pos={lr.Position} gap={T(lr.GapToFirst)} dPessoal={T(lr.DeltaPersonal)} melhorou={lr.Improved}");
+            }
         }
         foreach (var r in m.Relative) Console.WriteLine($"   P{r.Car.Position} {RelativeWidget.Code(r.Car.Name)} {(r.IsPlayer ? "(voce)" : RelativeWidget.FormatGap(r))}");
         return 0;

@@ -9,7 +9,7 @@ namespace Ams2.OverlayHost.Data;
 /// Escritor falso em processo (modo --fake): simula uma corrida de 8 carros numa pista de 7004 m, sem o jogo
 /// e sem tocar no mapa real $pcars2$. O estado é função do relógio, então é determinístico para o --png.
 /// </summary>
-public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? radar = null) : IRawMemorySource
+public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? radar = null, bool? quali = null) : IRawMemorySource
 {
     public const double TrackLength = 7004;
     const double Speed = 60; // m/s
@@ -100,6 +100,31 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     static readonly bool RadarEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_RADAR") == "1";
     readonly bool _radar = radar ?? RadarEnv;
 
+    // AMS2_FAKE_QUALI=1 (so --fake/--png): classificacao (SessionState 3) de 20 carros numa pista de 2100 m (setores de 700 m), relogio de
+    // 15:00 decrescente (EventTimeRemaining em ms, como o mapper espera). Jogador = indice 5: larga da linha em t=0 em volta lancada e faz
+    // voltas de ~30,5 s com setores diferentes a cada volta (QualiPlayerSectors, ciclo de 4); melhor/ultima volta do jogador so mudam ao
+    // cruzar a linha. Sem mCurrentSectorNTimes (o QualiLapTracker deriva os setores); os outros carros com tempo trazem mFastestSectorNTimes.
+    // Estados: 17 parado no box (IN PIT, com tempo); 18 e 19 na garagem sem tempo (NO TIME); 15 sai da garagem em t=5 s com tempo e
+    // 16 em t=8 s sem tempo (OUT LAP ate cruzar a linha; o 16 ganha o tempo ao fim da volta lancada seguinte, t~70 s).
+    public const double QualiTrackLength = 2100, QualiSessionSeconds = 900;
+    public const int QualiPlayerIndex = 5;
+    /// <summary>O jogador ja estava na pista havia 20 s em t=0: cruza a linha em t=10,75 s (volta 1 = 30,75 s) e fecha a volta 2 em t~41,2 s.</summary>
+    public const double QualiPlayerLead = 20;
+    static readonly bool QualiEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_QUALI") == "1";
+    readonly bool _quali = quali ?? QualiEnv;
+    static readonly string[] QualiNames =
+    [
+        "Michael Schumacher", "Fernando Alonso", "Kimi Raikkonen", "Giancarlo Fisichella", "Jenson Button", "Player",
+        "Rubens Barrichello", "Felipe Massa", "Juan Pablo Montoya", "Jarno Trulli", "Ralf Schumacher", "Mark Webber",
+        "Nick Heidfeld", "Jacques Villeneuve", "David Coulthard", "Christian Klien", "Takuma Sato", "Vitantonio Liuzzi",
+        "Tiago Monteiro", "Christijan Albers",
+    ];
+    /// <summary>Melhor volta alvo de cada carro (s); 0 = sem tempo (o do jogador vem das voltas simuladas).</summary>
+    static readonly double[] QualiBest = [30.102, 30.245, 30.388, 30.471, 30.533, 0, 30.612, 30.705, 30.790, 30.861, 30.944, 31.020, 31.115, 31.207, 31.302, 31.390, 31.488, 31.560, 0, 0];
+    /// <summary>Setores do jogador por volta (ciclo de 4): 30,75 / 30,48 / 30,52 / 30,21 s.</summary>
+    public static readonly double[][] QualiPlayerSectors = [[10.30, 9.95, 10.50], [10.15, 10.02, 10.31], [10.22, 9.90, 10.40], [10.05, 9.88, 10.28]];
+    static readonly double[] QualiSectorShare = [0.335, 0.325, 0.340];
+
     uint _seq;
 
     public bool TryRead(out RawSharedMemory raw)
@@ -107,19 +132,20 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         double t = clock();
         raw = default;
         raw.Version = Const.ExpectedVersion;
-        raw.GameState = 2; raw.SessionState = 5; raw.RaceState = 2;
-        raw.ViewedParticipantIndex = _radar ? 0 : _board ? BoardPlayerIndex : PlayerIndex;
-        raw.NumParticipants = _radar ? RadarNames.Length : _board ? BoardField.Length : Field.Length;
-        raw.TrackLength = (float)(_radar ? RadarTrackLength : _board ? BoardTrackLength : TrackLength);
+        raw.GameState = 2; raw.SessionState = _quali ? 3u : 5u; raw.RaceState = 2;
+        raw.ViewedParticipantIndex = _quali ? QualiPlayerIndex : _radar ? 0 : _board ? BoardPlayerIndex : PlayerIndex;
+        raw.NumParticipants = _quali ? QualiNames.Length : _radar ? RadarNames.Length : _board ? BoardField.Length : Field.Length;
+        raw.TrackLength = (float)(_quali ? QualiTrackLength : _radar ? RadarTrackLength : _board ? BoardTrackLength : TrackLength);
         raw.LapsInEvent = _board ? (Finish ? 3u : 20u) : Finish ? 1u : 44u;
         if (uint.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_FLAG"), out uint flag)) raw.HighestFlagColour = flag;
         raw.NumSectors = 3;
-        raw.EventTimeRemaining = -1;
+        raw.EventTimeRemaining = _quali ? (float)(Math.Max(0, QualiSessionSeconds - t) * 1000) : -1;
         Put(raw.TrackLocation, TrackName);
         Put(raw.CarName, PlayerCarName);
         Put(raw.CarClassName, "F1");
 
-        if (_radar) FillRadarField(ref raw, t);
+        if (_quali) FillQualiField(ref raw, t);
+        else if (_radar) FillRadarField(ref raw, t);
         else if (_board) FillBoardField(ref raw, t);
         else for (int i = 0; i < Field.Length; i++)
         {
@@ -147,7 +173,7 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
 
         raw.FuelCapacity = 95;
         raw.FuelLevel = (float)Math.Max(0.05, 0.34 - t * 0.0004);
-        raw.Speed = (float)(Launch && !_radar && !_board ? LaunchSpeed(t) : Speed); raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
+        raw.Speed = (float)(_quali ? raw.Speeds[QualiPlayerIndex] : Launch && !_radar && !_board ? LaunchSpeed(t) : Speed); raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
         // Auxilio de teste visual: AMS2_FAKE_GEAR (-1 = R, 0 = N) e AMS2_FAKE_KPH sobrescrevem marcha/velocidade do jogador.
         if (int.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_GEAR"), out int fg)) raw.Gear = fg;
         if (double.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_KPH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double fk)) raw.Speed = (float)(fk / 3.6);
@@ -164,6 +190,90 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         _seq += 2; // par = memória estável
         raw.SequenceNumber = _seq;
         return true;
+    }
+
+    /// <summary>Volta do jogador no modo classificacao: voltas completas, distancia na volta, velocidade, ultima e melhor volta (-1 = nenhuma).</summary>
+    public static (int Laps, double Dist, double Speed, double Last, double Best) QualiPlayerAt(double t)
+    {
+        double sec = QualiTrackLength / 3, start = 0, last = -1, best = -1;
+        for (int lap = 0; ; lap++)
+        {
+            var st = QualiPlayerSectors[lap % QualiPlayerSectors.Length];
+            double lapTime = st[0] + st[1] + st[2];
+            if (t < start + lapTime)
+            {
+                double x = Math.Max(0, t - start), d = 0;
+                for (int k = 0; k < 3; k++)
+                {
+                    if (x < st[k]) return (lap, d + sec * x / st[k], sec / st[k], last, best);
+                    x -= st[k]; d += sec;
+                }
+                return (lap, QualiTrackLength - 1e-3, sec / st[2], last, best);
+            }
+            start += lapTime; last = lapTime; best = best < 0 ? lapTime : Math.Min(best, lapTime);
+        }
+    }
+
+    static void FillQualiField(ref RawSharedMemory raw, double t)
+    {
+        int n = QualiNames.Length;
+        var best = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            ref var p = ref raw.Participants[i];
+            p.IsActive = 1;
+            Put(MemoryMarshal.CreateSpan(ref p.Name[0], 64), QualiNames[i]);
+            Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), i == QualiPlayerIndex ? PlayerCarName : "Formula Classic Gen2 (" + (i % 3 == 0 ? "B" : "M") + ")");
+            Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
+            raw.RaceStates[i] = 2;
+            int laps; double d, v; uint pit = 0; double last = -1;
+            if (i == QualiPlayerIndex)
+            {
+                var pl = QualiPlayerAt(t + QualiPlayerLead);
+                laps = pl.Laps + 2; d = pl.Dist; v = pl.Speed; last = pl.Last; best[i] = pl.Best;
+            }
+            else if (i is 17 or 18 or 19)
+            {
+                laps = i == 17 ? 4 : 0; d = 120; v = 0; pit = i == 17 ? 2u : 4u; best[i] = QualiBest[i] > 0 ? QualiBest[i] : -1;
+            }
+            else if (i is 15 or 16)
+            {
+                double exit = i == 15 ? 5 : 8, target = QualiBest[i];
+                double sp = QualiTrackLength / (target + 0.8);
+                int baseLaps = i == 15 ? 3 : 0;   // o 16 ainda nao completou volta nenhuma na sessao
+                if (t < exit) { laps = baseLaps; d = 120; v = 0; pit = 4; }
+                else
+                {
+                    double total = 120 + sp * (t - exit);
+                    int extra = (int)Math.Floor(total / QualiTrackLength);
+                    laps = baseLaps + extra; d = total - extra * QualiTrackLength; v = sp; pit = t - exit < 1 ? 5u : 0u;
+                }
+                best[i] = i == 15 || laps >= 2 ? target : -1;
+            }
+            else
+            {
+                double sp = QualiTrackLength / (QualiBest[i] + 0.6 + 0.05 * (i % 4));
+                double total = 400 + i * 97 + sp * t;
+                laps = 3 + (int)Math.Floor(total / QualiTrackLength); d = total % QualiTrackLength; v = sp; best[i] = QualiBest[i];
+                last = QualiBest[i] + 0.6;
+            }
+            p.LapsCompleted = (uint)laps; p.CurrentLap = (uint)laps + 1;
+            p.CurrentLapDistance = (float)d;
+            p.CurrentSector = Math.Min(2, (int)(d / QualiTrackLength * 3));
+            raw.Speeds[i] = (float)v;
+            raw.PitModes[i] = pit;
+            raw.FastestLapTimes[i] = (float)best[i];
+            raw.LastLapTimes[i] = (float)last;
+            if (i != QualiPlayerIndex && best[i] > 0)
+            {
+                raw.FastestSector1Times[i] = (float)(best[i] * QualiSectorShare[0]);
+                raw.FastestSector2Times[i] = (float)(best[i] * QualiSectorShare[1]);
+                raw.FastestSector3Times[i] = (float)(best[i] * QualiSectorShare[2]);
+            }
+        }
+        // Posicao do jogo na classificacao: por melhor volta; sem tempo por ultimo (na ordem do indice).
+        var order = Enumerable.Range(0, n).OrderBy(i => best[i] > 0 ? 0 : 1).ThenBy(i => best[i] > 0 ? best[i] : i).ToArray();
+        for (int k = 0; k < n; k++) raw.Participants[order[k]].RacePosition = (uint)(k + 1);
     }
 
     static void FillRadarField(ref RawSharedMemory raw, double t)

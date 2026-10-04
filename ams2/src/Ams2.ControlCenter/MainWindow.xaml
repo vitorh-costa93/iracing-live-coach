@@ -171,6 +171,16 @@
                             <TextBlock Text="Fonte do texto" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                             <ComboBox x:Name="FontCombo" Height="32" SelectedItem="{Binding FontChoice, Mode=TwoWay}" Margin="0,0,0,14"/>
 
+                            <StackPanel x:Name="SessionsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Mostrar em" Style="{StaticResource Muted}" Margin="0,0,0,6"
+                                           ToolTip="Tipos de sessão em que o widget aparece (como no iRacing). Fora de uma sessão (menu) todos aparecem."/>
+                                <WrapPanel>
+                                    <CheckBox Content="Treino" IsChecked="{Binding ShowPractice, Mode=TwoWay}" Margin="0,0,16,0" ToolTip="Treino, teste e time attack"/>
+                                    <CheckBox Content="Classificação" IsChecked="{Binding ShowQualify, Mode=TwoWay}" Margin="0,0,16,0"/>
+                                    <CheckBox Content="Corrida" IsChecked="{Binding ShowRace, Mode=TwoWay}" ToolTip="Volta de apresentação e corrida"/>
+                                </WrapPanel>
+                            </StackPanel>
+
                             <StackPanel x:Name="RowsPanel" Margin="0,0,0,14">
                                 <TextBlock Text="{Binding RowsLabel}" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                                 <StackPanel Orientation="Horizontal">

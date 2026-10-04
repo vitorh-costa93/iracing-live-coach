@@ -44,6 +44,10 @@ public sealed record HostState
     public List<ThemeDef> Themes { get; init; } = [];
     /// <summary>Nome de exibicao do jogador por modelo de carro: carro atual detectado e modelos ja vistos.</summary>
     public PlayerNamesState PlayerNames { get; init; } = new();
+    /// <summary>Grupo da sessao atual do jogo (<see cref="SessionIds"/>); null = sem sessao/tipo invalido (nao filtra).</summary>
+    public string? Session { get; init; }
+    /// <summary>Widgets com janela escondida pelo filtro de sessao (<see cref="WidgetSettings.Sessions"/>) neste momento.</summary>
+    public List<string> HiddenBySession { get; init; } = [];
 }
 
 /// <summary>

@@ -40,6 +40,15 @@ public sealed record WidgetSettings
     public DisplayOptions? Display { get; init; }
     /// <summary>Opcoes proprias do tema (<see cref="WidgetCatalog.OptionsFor"/>): id -> valor. Ausente = padrao da <see cref="OptionDef"/>. Null = tudo padrao.</summary>
     public Dictionary<string, string>? Options { get; init; }
+    /// <summary>Grupos de sessao em que o widget aparece (<see cref="SessionIds"/>: "practice", "qualify", "race"). Null = padrao do widget
+    /// (<see cref="WidgetDef.Sessions"/>); a normalizacao grava null quando igual ao padrao ou vazio (sem bloco no JSON).</summary>
+    public string[]? Sessions { get; init; }
+
+    /// <summary>Grupos efetivos (nunca vazio): os gravados ou o padrao do widget.</summary>
+    [JsonIgnore] public IReadOnlyList<string> EffectiveSessions => Sessions is { Length: > 0 } s ? s : WidgetCatalog.Find(Id)?.Sessions ?? SessionIds.All;
+
+    /// <summary>O widget aparece no grupo de sessao <paramref name="session"/>? Null (sem sessao / tipo invalido) = nao filtra.</summary>
+    public bool ShowsIn(string? session) => session is null || EffectiveSessions.Contains(session, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Valor gravado da opcao do tema (null = padrao; use <see cref="OptionOr"/> ou o Default da <see cref="OptionDef"/>).</summary>
     public string? Option(string id) => Options is not null && Options.TryGetValue(id, out var v) ? v : null;
@@ -107,6 +116,7 @@ public sealed record WidgetSettings
             ValueColor = ColorHex.Normalize(ValueColor),
             Display = Display?.Normalized(),
             Options = NormalizeOptions(themeId),
+            Sessions = NormalizeSessions(),
             TopCount = top, NearCount = near,
             RadarRange = radar ? Math.Clamp(EffectiveRadarRange, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange) : null,
             RadarSensitivity = radar ? Math.Clamp(EffectiveRadarSensitivity, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity) : null,
@@ -116,6 +126,14 @@ public sealed record WidgetSettings
             Rows = rows,
             Columns = cols,
         };
+    }
+
+    string[]? NormalizeSessions()
+    {
+        var c = SessionIds.Canonical(Sessions);
+        if (c is null) return null;
+        var def = WidgetCatalog.Find(Id);
+        return SessionIds.SameSet(c, def?.Sessions ?? SessionIds.All) ? null : c;
     }
 
     Dictionary<string, string>? NormalizeOptions(string? themeId)
@@ -170,6 +188,8 @@ public sealed record WidgetPatch
     public DisplayOptions? Display { get; init; }
     /// <summary>Substitui o mapa inteiro de opcoes do tema (vazio = todas no padrao).</summary>
     public Dictionary<string, string>? Options { get; init; }
+    /// <summary>Substitui os grupos de sessao (vazio = volta ao padrao do widget).</summary>
+    public string[]? Sessions { get; init; }
 
     /// <param name="themeId">Tema do perfil: valida as <see cref="WidgetSettings.Options"/> (null = so descarta entradas vazias).</param>
     public WidgetSettings ApplyTo(WidgetSettings s, string? themeId = null) => (s with
@@ -195,6 +215,7 @@ public sealed record WidgetPatch
         ValueColor = ValueColor ?? s.ValueColor,
         Display = Display ?? s.Display,
         Options = Options ?? s.Options,
+        Sessions = Sessions ?? s.Sessions,
     }).Normalized(themeId);
 
     /// <summary>Junta dois patches (b vence a): usado pelo Control Center para agrupar edicoes antes do envio.</summary>
@@ -210,7 +231,7 @@ public sealed record WidgetPatch
         AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
         ColumnWidths = b.ColumnWidths ?? a.ColumnWidths, TextScale = b.TextScale ?? a.TextScale, FontWeight = b.FontWeight ?? a.FontWeight,
         TextColor = b.TextColor ?? a.TextColor, LabelColor = b.LabelColor ?? a.LabelColor, ValueColor = b.ValueColor ?? a.ValueColor,
-        Display = b.Display ?? a.Display, Options = b.Options ?? a.Options,
+        Display = b.Display ?? a.Display, Options = b.Options ?? a.Options, Sessions = b.Sessions ?? a.Sessions,
     };
 }
 

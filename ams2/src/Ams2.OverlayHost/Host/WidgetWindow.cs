@@ -38,8 +38,12 @@ internal sealed class WidgetWindow : IDisposable
     /// <summary>Medição de fps de render (marca a cada quadro desenhado).</summary>
     public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
     public WidgetSettings Settings { get; private set; }
-    public bool Visible => Settings.Visible && (_gateOpen || _widget.IgnoresDrivingGate);
+    public bool Visible => Settings.Visible && SessionAllowed && (_gateOpen || _widget.IgnoresDrivingGate);
     bool _gateOpen = true;
+    string? _session;
+    /// <summary>Filtro de sessao (<see cref="WidgetSettings.Sessions"/>): o widget aparece no grupo da sessao atual? Sem sessao = sim.
+    /// Vale tambem no modo de edicao (para posicionar os de classificacao, edite numa sessao de classificacao ou no menu).</summary>
+    public bool SessionAllowed => Settings.ShowsIn(_session);
     public bool Editing => _win.EditMode;
     /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>
     public bool HighFrequency => Visible && _widget.HighFrequency;
@@ -123,6 +127,14 @@ internal sealed class WidgetWindow : IDisposable
     {
         if (_gateOpen == open) return;
         _gateOpen = open;
+        _win.SetVisible(Visible);
+    }
+
+    /// <summary>Grupo da sessao atual ("practice"/"qualify"/"race"; null = nao filtra).</summary>
+    public void SetSession(string? session)
+    {
+        if (_session == session) return;
+        _session = session;
         _win.SetVisible(Visible);
     }
 

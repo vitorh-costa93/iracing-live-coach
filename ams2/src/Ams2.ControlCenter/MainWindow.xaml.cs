@@ -392,6 +392,7 @@ public partial class MainWindow : Window
         if (vm.HasRadarOptions) { vm.RadarRange = WidgetCatalog.DefaultRadarRange; vm.RadarSensitivity = WidgetCatalog.DefaultRadarSensitivity; }
         foreach (var c in vm.Columns) c.IsVisible = d.ColumnVisible(c.Def.Id);
         vm.ResetCustomization();
+        vm.ResetSessions();
         vm.X = d.X; vm.Y = d.Y;
     }
 

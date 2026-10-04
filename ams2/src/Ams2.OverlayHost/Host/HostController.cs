@@ -31,6 +31,7 @@ internal sealed class HostController : IDisposable
     HostTheme _theme;
     bool _edit;
     bool _gate = true; // espelha o estado das janelas (WidgetWindow nasce aberta)
+    string? _session;  // grupo da sessao atual (filtro WidgetSettings.Sessions); null = nao filtra
     DateTime? _saveAt;
 
     public HostController(OverlayDataProvider provider, ProfileStore store, bool fake, string? themeId, string? profileName, string[]? onlyWidgets, bool persist)
@@ -234,6 +235,8 @@ internal sealed class HostController : IDisposable
             Widgets = _profile.Ordered.ToList(),
             Themes = ThemeCatalog.All.Select(t => t with { Available = t.Available && Themes.All.Any(x => x.Id == t.Id) }).ToList(),
             PlayerNames = _provider.Names?.State() ?? new(),
+            Session = _session,
+            HiddenBySession = _windows.Values.Where(w => !w.SessionAllowed).Select(w => w.Id).ToList(),
         };
     }
 
@@ -308,6 +311,14 @@ internal sealed class HostController : IDisposable
             // Regra unica: widgets so aparecem com o jogador no carro (ou editando o layout). Oculto = janelas escondidas, sem Render e sem vblank.
             bool gate = _edit || model.PlayerDriving;
             if (gate != _gate) { _gate = gate; foreach (var w in _windows.Values) w.SetGate(gate); }
+            // Filtro por tipo de sessao (Treino/Classificacao/Corrida) escolhido no Control Center; sem sessao nao filtra.
+            var session = model.SessionGroup;
+            if (session != _session)
+            {
+                _session = session;
+                foreach (var w in _windows.Values) w.SetSession(session);
+                _ipc?.Broadcast(new IpcMessage { Event = IpcEvents.StateChanged, State = BuildState() });
+            }
             bool lowDue = now + LowSlack >= nextLow;
             if (lowDue) { nextLow += LowPeriod; if (nextLow < now - LowPeriod) nextLow = now + LowPeriod; }
             bool high = false;

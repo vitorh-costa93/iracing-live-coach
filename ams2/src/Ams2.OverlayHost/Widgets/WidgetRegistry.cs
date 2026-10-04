@@ -7,7 +7,7 @@ namespace Ams2.OverlayHost.Widgets;
 /// <summary>Cria widgets pelo id (usado por --widget). Os widgets não conhecem o tema: só pedem tokens ao canvas.</summary>
 public static class WidgetRegistry
 {
-    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol"];
+    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "qualitower", "qualilap", "qualiresult"];
 
     public static IWidget Create(string? id) => (id ?? "relative").ToLowerInvariant() switch
     {
@@ -33,11 +33,15 @@ public static class WidgetRegistry
     };
 }
 
-/// <summary>Widget do catalogo ainda nao implementado no host: nao desenha nada.</summary>
+/// <summary>Widget do catalogo ainda nao implementado no host: nao desenha nada. Tamanho = o provisorio de <see cref="WidgetLayout.DesignSizes"/>
+/// do tema (1x1 se nao houver), para a janela ocupar o lugar previsto no layout.</summary>
 public sealed class PlaceholderWidget(string id) : IWidget
 {
+    (float, float) _size = (1, 1);
     public string Id { get; } = id;
-    public (float Width, float Height) DesignSize => (1, 1);
+    public (float Width, float Height) DesignSize => _size;
+    public void UseTheme(Theme.Theme theme)
+        => _size = WidgetLayout.DesignSizes.TryGetValue(theme.Id, out var t) && t.TryGetValue(Id, out var sz) ? sz : (1, 1);
     public void Configure(WidgetSettings settings) { }
     public void Draw(ThemeCanvas canvas, OverlayModel model) { }
 }
