@@ -30,15 +30,11 @@ Os contornos desenhados à mão (`glyphs_*.py`) são refinados por síntese: `op
 - `BarlowSemiCondensed-Regular.ttf` (400) e `BarlowSemiCondensed-SemiBold.ttf` (600): cópia dos arquivos já usados no V3 (`v3\src\IracingLiveCoach.OverlayHost\Assets\Fonts`). Família DirectWrite: "Barlow Semi Condensed".
 - Licença: SIL OFL 1.1 (`OFL-Barlow.txt`). Copyright 2017 The Barlow Project Authors.
 
-## Tema 2018 (F1 2018–2021): Verdana, fonte do sistema
-- **Aviso:** a fonte original do gráfico de TV da F1 2018–2021 é a **Formula1 Display** (Regular/Bold/Wide), **proprietária** da
-  Formula One; não está nem deve ser incluída neste projeto.
-- Escolha: **Verdana** (instalada em todo Windows; não é copiada para `fonts\` e não é redistribuída). Comparada contra os quadros de
-  `reference\f1-2018-*.jpg` junto com as candidatas desta pasta (Barlow Semi Condensed 600, Open Sans 700, Reddit Sans 800) e outras
-  do sistema (Bahnschrift, Segoe UI, Tahoma, Trebuchet, Corbel): "Sebastian VETTEL" e as siglas da torre são largas e firmes, e só a
-  Verdana chega perto da largura (≈ 95 % da largura do vídeo para a mesma altura de maiúscula; Open Sans/Segoe ≈ 80 %, Bahnschrift ≈ 75 %,
-  Barlow bem mais estreita). Tem os pesos que o tema usa: regular (gaps, nome próprio), negrito (siglas, SOBRENOME) e itálico (número do carro).
-- Diferença conhecida: a Formula1 Display é geométrica (O quase quadrado, R de perna reta); a Verdana é humanista. Se no futuro houver
-  uma fonte livre larga e geométrica, basta trocar a família nos tokens de `Themes.F1_2018` (Theme.cs).
-- O renderizador procura primeiro a coleção desta pasta e depois as fontes instaladas no Windows (`FontLibrary.SystemHas`); sem a
-  família, cai em Segoe UI.
+## Tema 2018 (F1 2018–2021): Formula1 Display
+- **Aviso:** a Formula1 Display (Regular/Bold/Wide) é fonte **proprietária** da Formula One. O usuário baixou e forneceu os arquivos para uso
+  pessoal neste app; por isso `Formula1Display-Regular/Bold/Wide.ttf` ficam **fora do git** (`.gitignore`) e não devem ser redistribuídos.
+  Num clone limpo eles não existem: o tema cai em Segoe UI até os arquivos serem copiados de novo para esta pasta.
+- Os arquivos originais (`Formula1-*_web_0.ttf`) foram copiados com a tabela `name` reescrita (famílias "Formula1 Disp R", "Formula1 Disp B",
+  "Formula1 Disp W", peso 400, sem nameID 16/17) para o DirectWrite tratar cada um como família própria. Os tokens do tema usam a família
+  virtual "Formula1 Display": `ThemeCanvas.Format` escolhe Bold (peso >= 600) ou Regular. A Wide só aparece se escolhida em "Fonte do texto".
+- Antes (sem a fonte): Verdana do sistema, a mais próxima entre as livres/instaladas.

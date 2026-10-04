@@ -90,6 +90,8 @@ public sealed unsafe class ThemeCanvas : IDisposable
         // So a familia de numeros "especial" (1998: F1 Broadcast, sem letras) e preservada; quando numeros e texto usam a mesma familia (2004, 2010s) a troca vale para tudo.
         bool specialNumbers = Theme.Numbers.Family != Theme.Text.Family;
         if (_fontOverride is not null && !(specialNumbers && font.Family == Theme.Numbers.Family)) font = font with { Family = _fontOverride };
+        // "Formula1 Display" e uma familia virtual: cada peso e um arquivo proprio (Regular/Bold), escolhido pelo peso pedido.
+        if (font.Family == "Formula1 Display") font = font with { Family = font.Weight >= 600 ? "Formula1 Disp B" : "Formula1 Disp R", Weight = 400 };
         bool has = _gfx.Fonts.Has(font.Family);
         // Fora da coleção própria: fonte instalada no Windows (Verdana do tema 2018, fonte escolhida no Control Center); senão Segoe UI.
         string family = has || _gfx.Fonts.SystemHas((IDWriteFactory*)_gfx.DWriteFactory, font.Family) ? font.Family : "Segoe UI";

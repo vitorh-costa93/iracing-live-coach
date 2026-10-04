@@ -497,3 +497,4 @@ ams2/.env
 # AMS2 build output
 ams2/**/bin/
 ams2/**/obj/
+ams2/fonts/Formula1Display-*.ttf

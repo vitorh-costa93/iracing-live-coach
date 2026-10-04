@@ -165,16 +165,17 @@ public static class Themes
     /// <summary>
     /// F1 2018–2021 (gráfico de TV da F1 a partir de 2018; ref. ams2\reference\f1-2018-analysis.md): painéis pretos translúcidos de
     /// cantos retos, texto branco sem sombra, caixa de posição branca arredondada com número preto, filete vermelho F1, roxo de melhor
-    /// volta, ciano dos tempos de pit e amarelo de Safety Car. Fonte: Verdana (sistema), a mais próxima da Formula1 Display (proprietária)
-    /// entre as disponíveis: larga e firme; regular nos valores e no nome próprio, negrito nas siglas e sobrenomes, itálico no número.
+    /// volta, ciano dos tempos de pit e amarelo de Safety Car. Fonte: Formula1 Display (fornecida pelo usuário, proprietária, fora do git:
+    /// ams2onts\Formula1Display-*.ttf; sem os arquivos cai em Segoe UI). "Formula1 Display" é uma família virtual: peso >= 600 usa o
+    /// arquivo Bold, senão o Regular (ThemeCanvas.Format); regular nos valores e no nome próprio, negrito nas siglas e sobrenomes, itálico no número.
     /// </summary>
     public static readonly Theme F1_2018 = new(
         Id: "f1-2018",
         DisplayName: "F1 2018",
-        Title: new FontToken("Verdana", 700, 22f, 1.5f),
-        Label: new FontToken("Verdana", 400, 18f),
-        Text: new FontToken("Verdana", 700, 22f),
-        Numbers: new FontToken("Verdana", 400, 21f),
+        Title: new FontToken("Formula1 Display", 700, 22f, 1.5f),
+        Label: new FontToken("Formula1 Display", 400, 18f),
+        Text: new FontToken("Formula1 Display", 700, 22f),
+        Numbers: new FontToken("Formula1 Display", 400, 21f),
         PanelFill: Rgb(5, 6, 10, 0.88f),
         PanelBorder: Rgb(0, 0, 0, 0f),
         TitleColor: Rgb(255, 255, 255),
