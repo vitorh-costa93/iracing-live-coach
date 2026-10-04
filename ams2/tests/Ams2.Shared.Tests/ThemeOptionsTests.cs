@@ -316,4 +316,63 @@ public class ThemeOptionsTests
         Assert.True(w.Y < 100);
         Assert.True(w.X > tower.X + tower.W, $"banner x={w.X} encosta na torre (ate {tower.X + tower.W})");
     }
+
+    [Fact]
+    public void Race_start_2018_options_target_best_showFor_and_always()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "racestart");
+        Assert.Equal(["target", "showBest", "showFor", "always"], defs.Select(d => d.Id));
+        Assert.Equal((OptionKind.Choice, "200"), (defs[0].Kind, defs[0].Default));
+        Assert.Equal(["100", "200"], defs[0].Choices!.Select(c => c.Value));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[1].Kind, defs[1].Default));
+        Assert.Equal((OptionKind.Number, "10", 5, 30), (defs[2].Kind, defs[2].Default, defs[2].Min, defs[2].Max));
+        Assert.Equal((OptionKind.Toggle, "false"), (defs[3].Kind, defs[3].Default));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "racestart"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "racestart"));
+
+        // Padroes (200 / true / 10 / false) nao sao gravados; invalidos sao descartados.
+        Assert.Null(new WidgetSettings { Id = "racestart", Options = new() { ["target"] = "200", ["showBest"] = "true", ["showFor"] = "10", ["always"] = "false" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "racestart", Options = new() { ["target"] = "300" } }.Normalized(T2018).Options);
+        var s = new WidgetSettings { Id = "racestart", Options = new() { ["target"] = "100", ["showBest"] = "False", ["always"] = "TRUE" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["target"] = "100", ["showBest"] = "false", ["always"] = "true" }, s.Options);
+        var n = new WidgetSettings { Id = "racestart", Options = new() { ["showFor"] = "20" } }.Normalized(T2018);
+        Assert.Equal("20", n.OptionOr("showFor", "10"));
+        Assert.Equal("200", new WidgetSettings { Id = "racestart" }.OptionOr("target", "200"));
+    }
+
+    [Fact]
+    public void Race_start_exists_only_in_the_2018_theme()
+    {
+        var def = WidgetCatalog.Find("racestart")!;
+        Assert.Equal("Race Start", def.DisplayName);
+        Assert.True(def.InTheme(T2018));
+        Assert.False(def.InTheme("f1-1998"));
+        Assert.False(def.InTheme("f1-2004"));
+        var rs = ProfileFactory.CreateDefault("x", T2018).Get("racestart")!;
+        Assert.True(rs.Visible);
+        Assert.Null(rs.Options);
+        foreach (var theme in new[] { "f1-1998", "f1-2004" })
+        {
+            Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("racestart"));
+            Assert.False(WidgetLayout.DesignSizes[theme].ContainsKey("racestart"));
+            var p = ProfileFactory.CreateDefault("x", theme);
+            var extra = p with { Widgets = [.. p.Widgets, new WidgetSettings { Id = "racestart", Order = 99 }] };
+            Assert.DoesNotContain(extra.Normalized().Widgets, w => w.Id == "racestart");
+        }
+    }
+
+    [Fact]
+    public void Race_start_2018_sits_on_the_right_clear_of_the_other_widgets()
+    {
+        var r = WidgetLayout.Rect(T2018, "racestart")!.Value;
+        Assert.Equal((1600.0, 560.0, 195.0, 190.0), r);
+        foreach (var other in WidgetCatalog.ForTheme(T2018).Select(d => d.Id).Where(id => id != "racestart"))
+        {
+            if (WidgetLayout.Rect(T2018, other) is not { } o) continue;
+            bool overlap = r.X < o.X + o.W && o.X < r.X + r.W && r.Y < o.Y + o.H && o.Y < r.Y + r.H;
+            Assert.False(overlap, $"racestart sobrepoe {other} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+        Assert.True(r.X + r.W <= WidgetLayout.RefWidth && r.Y + r.H <= WidgetLayout.RefHeight);
+    }
 }

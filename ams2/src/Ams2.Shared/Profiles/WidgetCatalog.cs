@@ -95,6 +95,8 @@ public static class WidgetCatalog
             Caps: DisplayCaps.Name | DisplayCaps.Speed),
         // Exclusivo do 2018: painel "LIVE SPEED" da TV (velocidade do jogador em km/h e mph). Unidades e visibilidade nas opcoes do tema.
         new("livespeed", "Live Speed", null, null, null, "", [], 1600, 400, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
+        // Exclusivo do 2018: "RACE START 0-200km/h" da TV (tempo do jogador de 0 a 100/200 km/h na largada + melhor anterior da pista+carro).
+        new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
     ];
 
     /// <summary>Colunas criadas no esquema 3: entram visiveis nas listas de colunas salvas por perfis antigos (migracao).</summary>
@@ -160,6 +162,14 @@ public static class WidgetCatalog
                     [O("both", "Ambos (km/h e mph)"), O("kph", "Só km/h"), O("mph", "Só mph")], "both"),
                 new("showName", "Nome do piloto", OptionKind.Toggle, null, "true"),
                 new("always", "Sempre visível (senão só com o jogador no carro)", OptionKind.Toggle, null, "false"),
+            ],
+            // Race Start do 2018: aparece ao alcancar o alvo na largada e fica showFor s; "always" mostra sempre o ultimo resultado.
+            ["racestart"] =
+            [
+                new("target", "Alvo", OptionKind.Choice, [O("100", "0-100 km/h"), O("200", "0-200 km/h")], "200"),
+                new("showBest", "Mostrar o melhor anterior (BEST) da pista e carro", OptionKind.Toggle, null, "true"),
+                new("showFor", "Tempo na tela após alcançar o alvo (s)", OptionKind.Number, null, "10", Min: 5, Max: 30),
+                new("always", "Sempre visível (mostra o último resultado)", OptionKind.Toggle, null, "false"),
             ],
         },
     };

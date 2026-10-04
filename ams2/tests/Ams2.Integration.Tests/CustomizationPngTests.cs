@@ -59,6 +59,7 @@ public sealed class CustomizationPngTests
     [InlineData("pittimer", "f1-2018")]
     [InlineData("board", "f1-2018")]
     [InlineData("livespeed", "f1-2018")]
+    [InlineData("racestart", "f1-2018")]
     public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
     {
         var a = Render($"--widget {widget} --theme {theme}");
@@ -336,6 +337,55 @@ public sealed class CustomizationPngTests
             Assert.Equal((on.W, on.H), (off.W, off.H));
             Assert.NotEqual(on.Png, off.Png);
         }
+    }
+
+    // ---- Race Start 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "racestart")); AMS2_FAKE_LAUNCH=1 = verde em t=1 s, 200 km/h em t~5,6 s ----
+
+    static (int W, int H, byte[] Png) RaceStart18(Dictionary<string, string>? options, double sim)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-rs18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "racestart", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget racestart --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_LAUNCH"] = "1";
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Fact]
+    public void Race_start_2018_appears_after_the_target_and_honours_the_options()
+    {
+        var shown = RaceStart18(null, 8);                  // 4.6 s alcancado em t~5,6 s: na tela
+        Assert.Equal((300, 292), (shown.W, shown.H));
+        var grid = RaceStart18(null, 0.5);                 // ainda no grid: nada
+        var gone = RaceStart18(null, 30);                  // passou showFor (10 s): some
+        Assert.NotEqual(shown.Png, grid.Png);
+        Assert.Equal(grid.Png, gone.Png);
+        Assert.Equal(shown.Png, RaceStart18(new() { ["target"] = "200", ["showBest"] = "true" }, 8).Png);
+        // showFor 30: ainda na tela em t=30; "always": o ultimo resultado fica, e antes da largada mostra "-.-" + BEST.
+        Assert.Equal(shown.Png, RaceStart18(new() { ["showFor"] = "30" }, 30).Png);
+        Assert.Equal(shown.Png, RaceStart18(new() { ["always"] = "true" }, 30).Png);
+        var alwaysGrid = RaceStart18(new() { ["always"] = "true" }, 0.5);
+        Assert.NotEqual(grid.Png, alwaysGrid.Png);
+        Assert.NotEqual(shown.Png, alwaysGrid.Png);
+        // Alvo 100: aparece antes (2.3 s, t~3,3 s) e com outro titulo/tempo.
+        var t100 = RaceStart18(new() { ["target"] = "100" }, 5);
+        Assert.NotEqual(grid.Png, t100.Png);
+        Assert.NotEqual(shown.Png, t100.Png);
+        Assert.Equal(grid.Png, RaceStart18(null, 5).Png);   // 200 ainda nao alcancado em t=5
+        // Sem BEST: a placa perde a segunda faixa (102 de projeto).
+        var noBest = RaceStart18(new() { ["showBest"] = "false" }, 8);
+        Assert.Equal((300, 190), (noBest.W, noBest.H));
     }
 
     // ---- Live Speed 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "livespeed")) ----

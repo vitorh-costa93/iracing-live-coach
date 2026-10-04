@@ -20,7 +20,8 @@ public sealed record OverlayModel(
     BoardState? Board = null,
     RadarFrame? Radar = null,
     bool PlayerDriving = false,   // regra unica de visibilidade dos widgets (PlayerDrivingTracker): so true quando o jogador esta no carro
-    IReadOnlyDictionary<int, int>? Grid = null)   // grid de largada (GridTracker): indice do carro -> posicao de largada; vazio = desconhecido
+    IReadOnlyDictionary<int, int>? Grid = null,   // grid de largada (GridTracker): indice do carro -> posicao de largada; vazio = desconhecido
+    LaunchState? Launch = null)                   // largada do jogador 0-100/0-200 km/h (LaunchTracker) + melhor guardado da pista+carro
 {
     public static readonly OverlayModel Empty = new(false, ReadStatus.Disconnected, 0, 0, null, [], null, [], null);
 }
@@ -67,6 +68,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly FuelTracker _fuel = new();
     readonly BroadcastTracker _broadcast = new();
     readonly GridTracker _grid = new();
+    readonly LaunchTracker _launch;
     readonly BoardTracker _board;
     /// <summary>Radar lateral (pose de mundo dos carros). As opcoes (alcance, sensibilidade) vem do perfil, pelo host.</summary>
     public RadarTracker Radar { get; } = new();
@@ -86,9 +88,10 @@ public sealed class OverlayDataProvider : IDisposable
     double _namesRefreshAt;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
-        Func<IRawMemorySource>? inputSource = null, PlayerNameStore? names = null)
+        Func<IRawMemorySource>? inputSource = null, PlayerNameStore? names = null, LaunchStore? launch = null)
     {
         _names = names;
+        _launch = new LaunchTracker(launch);
         Inputs = new InputRing(clock);
         if (inputSource is not null) _sampler = new InputSampler(inputSource(), Inputs, clock, InputStats);
         _reader = new SharedMemoryReader(source);
@@ -137,7 +140,7 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
@@ -151,7 +154,8 @@ public sealed class OverlayDataProvider : IDisposable
             var radar = Radar.Update(s, now);
             bool driving = _driving.Update(now, s);
             var grid = s.InSession ? _grid.Update(s) : _grid.Grid;
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid);
+            var launch = s.InSession ? _launch.Update(now, s) : _launch.State;
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid, launch);
         }
         else
         {

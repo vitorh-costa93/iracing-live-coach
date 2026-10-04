@@ -60,6 +60,8 @@ public static class WidgetLayout
             ["radar"] = new(900, 585, 1f),
             // Live Speed (so 2018) na coluna da direita, abaixo do Fuel (que termina em y~369): 195x128 em (1600, 400).
             ["livespeed"] = new(1600, 400, 0.65f),
+            // Race Start (so 2018) abaixo do Live Speed (termina em y=528), a direita do Pit Lane (x<=1550): 195x190 em (1600, 560).
+            ["racestart"] = new(1600, 560, 0.65f),
         },
     };
 
@@ -81,7 +83,7 @@ public static class WidgetLayout
             {
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
-                ["livespeed"] = (300, 196),
+                ["livespeed"] = (300, 196), ["racestart"] = (300, 292),
             },
         };
 

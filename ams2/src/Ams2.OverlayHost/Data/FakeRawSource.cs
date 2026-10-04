@@ -26,6 +26,24 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     // AMS2_FAKE_FINISH=1 encerra a corrida de 1 volta do lider em t=31 s.
     static readonly bool Pits = Environment.GetEnvironmentVariable("AMS2_FAKE_PITS") == "1";
     static readonly bool Finish = Environment.GetEnvironmentVariable("AMS2_FAKE_FINISH") == "1";
+    // AMS2_FAKE_LAUNCH=1 (so --fake, campo padrao): o jogador espera parado no grid (NotStarted) ate t=1 s e larga com aceleracao
+    // constante: 100 km/h em ~2,3 s e 200 km/h em ~4,6 s apos o verde (t~5,6 s), depois segue a 60 m/s. FakeLaunchStore = melhor anterior 2.4 / 4.8 s.
+    static readonly bool Launch = Environment.GetEnvironmentVariable("AMS2_FAKE_LAUNCH") == "1";
+    public const double LaunchGreenT = 1, LaunchAccel = 200 / 3.6 / 4.6;
+    public const string TrackName = "Spa-Francorchamps", PlayerCarName = "Formula Classic Gen2";
+    static double LaunchSpeed(double t) => t < LaunchGreenT ? 0 : Math.Min(Speed, LaunchAccel * (t - LaunchGreenT));
+
+    /// <summary>Melhores de largada da previa: em memoria (nunca o launch.json do usuario); com AMS2_FAKE_LAUNCH=1 ja traz um melhor anterior.</summary>
+    public static Ams2.Core.Calc.LaunchStore FakeLaunchStore()
+    {
+        var st = Ams2.Core.Calc.LaunchStore.InMemory();
+        if (Launch)
+        {
+            string key = Ams2.Core.Calc.LaunchStore.Key(TrackName, "", PlayerCarName);
+            st.Offer(key, 100, 2.41); st.Offer(key, 200, 4.83);
+        }
+        return st;
+    }
     static uint FakePit(int i, double t)
     {
         if (!Pits || i is 4 or 6 or 7) return 0;
@@ -93,8 +111,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         if (uint.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_FLAG"), out uint flag)) raw.HighestFlagColour = flag;
         raw.NumSectors = 3;
         raw.EventTimeRemaining = -1;
-        Put(raw.TrackLocation, "Spa-Francorchamps");
-        Put(raw.CarName, "Formula Classic Gen2");
+        Put(raw.TrackLocation, TrackName);
+        Put(raw.CarName, PlayerCarName);
         Put(raw.CarClassName, "F1");
 
         if (_radar) FillRadarField(ref raw, t);
@@ -116,7 +134,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
             Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), i == PlayerIndex ? "Formula Classic Gen2" : "Formula Classic Gen2 (" + (i % 3 == 0 ? "B" : "M") + ")");
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
             raw.Speeds[i] = (float)speed;
-            raw.RaceStates[i] = (uint)(Finish && i == 0 && t >= 31 ? 3 : 2);
+            raw.RaceStates[i] = (uint)(Finish && i == 0 && t >= 31 ? 3 : Launch && i == PlayerIndex && t < LaunchGreenT ? 1 : 2);
+            if (Launch && i == PlayerIndex) raw.Speeds[i] = (float)LaunchSpeed(t);
             raw.PitModes[i] = FakePit(i, t);
             raw.FastestLapTimes[i] = 103.972f + i * 0.31f;
             raw.LastLapTimes[i] = 104.5f + i * 0.2f;
@@ -124,7 +143,7 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
 
         raw.FuelCapacity = 95;
         raw.FuelLevel = (float)Math.Max(0.05, 0.34 - t * 0.0004);
-        raw.Speed = (float)Speed; raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
+        raw.Speed = (float)(Launch && !_radar && !_board ? LaunchSpeed(t) : Speed); raw.Rpm = 12400; raw.MaxRpm = 18000; raw.Gear = 4; raw.NumGears = 7;
         // Auxilio de teste visual: AMS2_FAKE_GEAR (-1 = R, 0 = N) e AMS2_FAKE_KPH sobrescrevem marcha/velocidade do jogador.
         if (int.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_GEAR"), out int fg)) raw.Gear = fg;
         if (double.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_KPH"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double fk)) raw.Speed = (float)(fk / 3.6);

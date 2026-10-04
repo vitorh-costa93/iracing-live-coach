@@ -15,7 +15,7 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
 ///                       [--text-scale 0.6..2] [--settings ARQUIVO.json]   (so com --png: tamanho do texto, que redimensiona o widget; ou o WidgetSettings
@@ -119,7 +119,8 @@ internal static class Program
         var wall = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = fake ? () => simNow : () => wall.Elapsed.TotalSeconds;
         var names = PlayerNameStore.InMemory(); // a previa nunca toca no player-names.json do usuario
-        using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names);
+        // Largada: a previa nunca toca no launch.json do usuario (melhor anterior do AMS2_FAKE_LAUNCH so em memoria).
+        using var provider = new OverlayDataProvider(FakeOrReal(fake, clock), clock, names: names, launch: fake ? FakeRawSource.FakeLaunchStore() : LaunchStore.InMemory());
         // Radar: sem --cols o previa usa o padrao do perfil (painel estilo V3; "native" liga o indicador nativo).
         string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
         // --settings: o WidgetSettings do perfil em JSON (larguras, formato, texto...); as outras opcoes do widget na linha de comando nao se aplicam.
@@ -200,7 +201,9 @@ internal static class Program
         // Amostrador de entradas dedicado (fonte propria): grava na taxa do jogo, independente do passo de 60 Hz do provider.
         // Nomes por modelo: arquivo em --profiles-dir (ou %AppData%). O --fake sem --profiles-dir e o --player-name ficam so em memoria.
         var names = o.PlayerName is not null || (o.Fake && o.ProfilesDir is null) ? PlayerNameStore.InMemory() : new PlayerNameStore(o.ProfilesDir);
-        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock), names: names);
+        // Melhores de largada (RACE START 2018): launch.json em --profiles-dir (ou %AppData%); --fake sem --profiles-dir fica so em memoria.
+        var launch = o.Fake && o.ProfilesDir is null ? FakeRawSource.FakeLaunchStore() : new LaunchStore(LaunchStore.DefaultPath(o.ProfilesDir));
+        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock), names: names, launch: launch);
         provider.Start(60);
         if (o.PlayerName is not null) ForceName(provider, names, o.PlayerName);
 
