@@ -297,7 +297,8 @@ public sealed class BoardWidget : IWidget
                 string rn = rightName.ToUpperInvariant();
                 c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, nameW), rx - nameW - 10, by + 18, nameW + 10, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right, t.TextShadow);
                 float prev = c.Opacity; c.Opacity = prev * live;
-                c.Text(Fmt.IsEmpty ? sg.GapText.TrimStart('+', '-') : Fmt.FormatGap(sg.GapSeconds, defaultSign: false), t.Numbers with { Size = 44 }, ox + w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.ValueShadow);
+                string gapTxt = Fmt.IsEmpty ? sg.GapText.TrimStart('+', '-') : Fmt.FormatGap(sg.GapSeconds, defaultSign: false);
+                c.Text(gapTxt, BroadcastUi.Fit(c, gapTxt, t.Numbers with { Size = 44 }, 220), ox + w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.ValueShadow);
                 c.Opacity = prev;
                 break;
             }
