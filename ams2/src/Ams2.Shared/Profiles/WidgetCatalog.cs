@@ -102,7 +102,7 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
-        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower desenhado nos 3 temas; o resto ainda placeholder.
+        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower e qualilap desenhados nos 3 temas; qualiresult ainda placeholder.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -200,6 +200,16 @@ public static class WidgetCatalog
                 new("showClock", "Relógio da sessão no cabeçalho", OptionKind.Toggle, null, "true"),
                 new("showAtRisk", "Cartão \"DRIVER AT RISK\" (piloto no corte)", OptionKind.Toggle, null, "true"),
             ],
+            // Placa de volta do 2018: tempo corrente, comparativo (lider ou melhor pessoal), barra S1 S2 S3, resultado "1:18.917 +0.685 7"
+            // e painel "SECTOR n / SOBRENOME / tempo" ao fechar S1/S2.
+            ["qualilap"] =
+            [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showSectors", "Barra de setores S1 S2 S3", OptionKind.Toggle, null, "true"),
+                new("showSectorPanel", "Painel de setor (SECTOR n) ao fechar S1/S2", OptionKind.Toggle, null, "true"),
+                new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+                new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
+            ],
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -212,6 +222,14 @@ public static class WidgetCatalog
                 new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
                 new("showClock", "Caixa do relógio da sessão (Q | m:ss)", OptionKind.Toggle, null, "true"),
             ],
+            // Barra de volta do 2004: nome em celula branca, tempo em celula preta, faixa de setores e [posicao][+0.471] em laranja.
+            ["qualilap"] =
+            [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showSectors", "Faixa de setores S1 S2 S3", OptionKind.Toggle, null, "true"),
+                new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+                new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
+            ],
         },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -222,6 +240,14 @@ public static class WidgetCatalog
                 new("columns", "Colunas", OptionKind.Choice, [O("2", "Duas colunas (como na TV)"), O("1", "Uma coluna")], "2"),
                 new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
                 new("showClock", "Cabeçalho com o relógio da sessão", OptionKind.Toggle, null, "true"),
+            ],
+            // Tempo corrente do 1998: NOME + tempo com sombra; no resultado tempo da volta, diferenca e "FINISH LINE".
+            ["qualilap"] =
+            [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showSpeed", "Velocidade na linha de chegada (resultado)", OptionKind.Toggle, null, "true"),
+                new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+                new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
             ],
         },
     };

@@ -43,8 +43,9 @@ public static class WidgetLayout
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 957, 0.5f),
             ["radar"] = new(900, 585, 1f),
             // Classificacao: lista de 2 colunas (834x182 x1.0) no canto da torre, terminando em x=866 antes do Lap Counter (x>=867, visivel
-            // em todas as sessoes); placa de volta dentro do Board; resultado (provisorio) abaixo da lista.
-            ["qualitower"] = new(32, 24, 1f), ["qualilap"] = new(660, 900, 1f), ["qualiresult"] = new(320, 220, 1f),
+            // em todas as sessoes); tempo corrente (640x124) embaixo ao centro, no lugar do Board, entre o Winner (x<=572) e o Inputs (x>=1542),
+            // abaixo do Pit Timer (y<=831); resultado (provisorio) abaixo da lista.
+            ["qualitower"] = new(32, 24, 1f), ["qualilap"] = new(640, 900, 1f), ["qualiresult"] = new(320, 220, 1f),
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -53,8 +54,9 @@ public static class WidgetLayout
             ["pitstops"] = new(32, 560, 1f), ["pittimer"] = new(769, 790, 1.3f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 690, 0.6f),
             ["radar"] = new(900, 585, 1f),
-            // Classificacao: torre de siglas + caixa do relogio (400x314 x1.4 = 560x440) no lugar da Standings; resultado (provisorio) a direita dela.
-            ["qualitower"] = new(32, 24, 1.4f), ["qualilap"] = new(660, 900, 1f), ["qualiresult"] = new(640, 200, 1f),
+            // Classificacao: torre de siglas + caixa do relogio (400x314 x1.4 = 560x440) no lugar da Standings; resultado (provisorio) a direita dela;
+            // barra de volta (278x126 x1.3 = 362x164) embaixo ao centro, abaixo do Pit Timer (y<=845), entre o Winner (x<=615) e o Inputs (x>=1700).
+            ["qualitower"] = new(32, 24, 1.4f), ["qualilap"] = new(779, 880, 1.3f), ["qualiresult"] = new(640, 200, 1f),
         },
         ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -74,8 +76,9 @@ public static class WidgetLayout
             ["racestart"] = new(1600, 560, 0.65f),
             // Race Control (so 2018) acima a direita da torre (que termina em x=295): 240x149 em (320, 40), antes do banner WINNER (x>=570).
             ["racecontrol"] = new(320, 40, 0.8f),
-            // Classificacao: torre no lugar da Standings; resultado abaixo do Race Control (termina em y=189) e acima do Pit Stops (y>=600).
-            ["qualitower"] = new(50, 40, 0.86f), ["qualilap"] = new(660, 900, 1f), ["qualiresult"] = new(320, 200, 1f),
+            // Classificacao: torre no lugar da Standings; resultado abaixo do Race Control (termina em y=189) e acima do Pit Stops (y>=600);
+            // placa de volta + painel de setor (664x152) embaixo ao centro, abaixo do Pit Stops/Pit Lane (y<=742) e antes do Inputs (x>=1542).
+            ["qualitower"] = new(50, 40, 0.86f), ["qualilap"] = new(628, 890, 1f), ["qualiresult"] = new(320, 200, 1f),
         },
     };
 
@@ -87,20 +90,20 @@ public static class WidgetLayout
             {
                 ["standings"] = (191, 372), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 144), ["inputs"] = (692, 197),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (360, 42), ["winner"] = (450, 94), ["board"] = (840, 196), ["radar"] = (120, 190),
-                ["qualitower"] = (834, 182), ["qualilap"] = (600, 120), ["qualiresult"] = (500, 340),
+                ["qualitower"] = (834, 182), ["qualilap"] = (640, 124), ["qualiresult"] = (500, 340),
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 630),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (590, 164), ["radar"] = (120, 190),
-                ["qualitower"] = (400, 314), ["qualilap"] = (600, 120), ["qualiresult"] = (500, 340),
+                ["qualitower"] = (400, 314), ["qualilap"] = (278, 126), ["qualiresult"] = (500, 340),
             },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
                 ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186),
-                ["qualitower"] = (284, 626), ["qualilap"] = (600, 120), ["qualiresult"] = (500, 340),
+                ["qualitower"] = (284, 626), ["qualilap"] = (664, 152), ["qualiresult"] = (500, 340),
             },
         };
 

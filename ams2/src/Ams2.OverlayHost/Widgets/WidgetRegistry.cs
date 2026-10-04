@@ -28,6 +28,7 @@ public static class WidgetRegistry
         "racestart" => new RaceStartWidget(),
         "racecontrol" => new RaceControlWidget(),
         "qualitower" => new QualiTowerWidget(),
+        "qualilap" => new QualiLapWidget(),
         // Id do catalogo (p.ex. widget exclusivo de um tema) ainda sem desenho: janela vazia em vez de cair no Relative.
         var other when WidgetCatalog.Find(other) is not null => new PlaceholderWidget(WidgetCatalog.Find(other)!.Id),
         _ => new RelativeWidget(),

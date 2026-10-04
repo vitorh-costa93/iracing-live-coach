@@ -683,4 +683,74 @@ public sealed class CustomizationPngTests
         // Jogador sem tempo (t=5 s): entra no fim da lista com "NO TIME" no lugar da diferenca.
         Assert.NotEqual(d.Png, QualiTower(null, 5, theme: T).Png);
     }
+    // ---- Placa de volta da classificacao (WidgetCatalog.OptionsFor(tema, "qualilap")); AMS2_FAKE_QUALI=1: em t=5 s o inicio da volta
+    // nao foi visto (tempo corrente desconhecido: oculta sem "always"), volta lancada a partir de t=10,75 s, S1 em t~20,9 s, S2 em t~30,9 s,
+    // resultado da volta (30.480, P5) em t~41,2 s ----
+
+    static (int W, int H, byte[] Png) QualiLap(string theme, double sim, Dictionary<string, string>? options = null)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-ql-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualilap", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget qualilap --theme {theme} --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_QUALI"] = "1";
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Theory]
+    [InlineData("f1-2018", 664, 152)]
+    [InlineData("f1-2004", 278, 126)]
+    [InlineData("f1-1998", 640, 124)]
+    public void Quali_lap_hides_without_a_flying_lap_and_draws_running_time_and_result(string theme, int w, int h)
+    {
+        // t=5: volta sem inicio observado = oculta (dois quadros vazios iguais); com "always" desenha a placa.
+        var hidden = QualiLap(theme, 5);
+        Assert.Equal((w, h), (hidden.W, hidden.H));
+        Assert.Equal(hidden.Png, QualiLap(theme, 7).Png);
+        var always = QualiLap(theme, 5, new() { ["always"] = "true" });
+        Assert.Equal((w, h), (always.W, always.H));
+        Assert.True(always.Png.Length > hidden.Png.Length, $"{hidden.Png.Length} -> {always.Png.Length}");
+        // t=20: tempo corrente da volta lancada (parcial); t=45: resultado da volta (mesma janela).
+        var running = QualiLap(theme, 20);
+        Assert.Equal((w, h), (running.W, running.H));
+        Assert.True(running.Png.Length > hidden.Png.Length);
+        Assert.NotEqual(running.Png, QualiLap(theme, 20.5).Png);   // o tempo corre
+        var result = QualiLap(theme, 45);
+        Assert.Equal((w, h), (result.W, result.H));
+        Assert.NotEqual(running.Png, result.Png);
+        // showFor=3: o resultado (cruzou ha ~3,8 s) ja saiu; fica o tempo corrente da volta seguinte.
+        Assert.NotEqual(result.Png, QualiLap(theme, 45, new() { ["showFor"] = "3" }).Png);
+        // Comparar com o melhor pessoal muda o comparativo (nome/tempo ou diferenca).
+        Assert.NotEqual(QualiLap(theme, 22).Png, QualiLap(theme, 22, new() { ["compareTo"] = "personal" }).Png);
+    }
+
+    [Fact]
+    public void Quali_lap_2018_sector_panel_and_sector_bar_options()
+    {
+        const string T = "f1-2018";
+        var split = QualiLap(T, 22);
+        var noPanel = QualiLap(T, 22, new() { ["showSectorPanel"] = "false" });
+        Assert.True(noPanel.W < split.W && noPanel.H == split.H, $"{split.W}x{split.H} -> {noPanel.W}x{noPanel.H}");
+        Assert.NotEqual(split.Png, QualiLap(T, 22, new() { ["showSectors"] = "false" }).Png);
+        // O painel de setor sai depois de alguns segundos (S1 em t~20,9 s): mesma janela, outro desenho.
+        Assert.NotEqual(split.Png, QualiLap(T, 26).Png);
+    }
+
+    [Fact]
+    public void Quali_lap_2004_sector_strip_and_1998_speed_options()
+    {
+        Assert.NotEqual(QualiLap("f1-2004", 22).Png, QualiLap("f1-2004", 22, new() { ["showSectors"] = "false" }).Png);
+        Assert.NotEqual(QualiLap("f1-1998", 45).Png, QualiLap("f1-1998", 45, new() { ["showSpeed"] = "false" }).Png);
+    }
 }

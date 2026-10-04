@@ -530,4 +530,54 @@ public class ThemeOptionsTests
             Assert.False(overlap, $"qualitower ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {w.Id} ({o.X},{o.Y} {o.W}x{o.H})");
         }
     }
+    [Theory]
+    [InlineData("f1-2018", new[] { "compareTo", "showSectors", "showSectorPanel", "showFor", "always" })]
+    [InlineData("f1-2004", new[] { "compareTo", "showSectors", "showFor", "always" })]
+    [InlineData("f1-1998", new[] { "compareTo", "showSpeed", "showFor", "always" })]
+    public void Quali_lap_options_per_theme(string theme, string[] ids)
+    {
+        var defs = WidgetCatalog.OptionsFor(theme, "qualilap");
+        Assert.Equal(ids, defs.Select(d => d.Id));
+        var cmp = defs.Single(d => d.Id == "compareTo");
+        Assert.Equal((OptionKind.Choice, "leader"), (cmp.Kind, cmp.Default));
+        Assert.Equal(["leader", "personal"], cmp.Choices!.Select(c => c.Value));
+        var showFor = defs.Single(d => d.Id == "showFor");
+        Assert.Equal((OptionKind.Number, "6", 3.0, 15.0), (showFor.Kind, showFor.Default, showFor.Min, showFor.Max));
+        Assert.Equal((OptionKind.Toggle, "false"), (defs.Single(d => d.Id == "always").Kind, defs.Single(d => d.Id == "always").Default));
+        foreach (var d in defs.Where(d => d.Id is "showSectors" or "showSectorPanel" or "showSpeed")) Assert.Equal((OptionKind.Toggle, "true"), (d.Kind, d.Default));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+
+        // Padroes nao sao gravados; escolha canonica, numero limitado, invalidos e opcoes de outros temas descartados.
+        var defaults = defs.ToDictionary(d => d.Id, d => d.Default);
+        Assert.Null(new WidgetSettings { Id = "qualilap", Options = defaults }.Normalized(theme).Options);
+        var s = new WidgetSettings { Id = "qualilap", Options = new() { ["compareTo"] = "Personal", ["showFor"] = "99", ["always"] = "True", ["bogus"] = "1", ["eliminationFrom"] = "5" } }.Normalized(theme);
+        Assert.Equal(new Dictionary<string, string> { ["compareTo"] = "personal", ["showFor"] = "15", ["always"] = "true" }, s.Options);
+        Assert.Equal("3", new WidgetSettings { Id = "qualilap", Options = new() { ["showFor"] = "1" } }.Normalized(theme).Option("showFor"));
+        Assert.Null(new WidgetSettings { Id = "qualilap", Options = new() { ["compareTo"] = "rival" } }.Normalized(theme).Options);
+        if (theme != T2018) Assert.Null(new WidgetSettings { Id = "qualilap", Options = new() { ["showSectorPanel"] = "false" } }.Normalized(theme).Options);
+        if (theme == "f1-1998") Assert.Null(new WidgetSettings { Id = "qualilap", Options = new() { ["showSectors"] = "false" } }.Normalized(theme).Options);
+        else Assert.Null(new WidgetSettings { Id = "qualilap", Options = new() { ["showSpeed"] = "false" } }.Normalized(theme).Options);
+    }
+
+    [Theory]
+    [InlineData("f1-2018", 664f, 152f)]
+    [InlineData("f1-2004", 278f, 126f)]
+    [InlineData("f1-1998", 640f, 124f)]
+    public void Quali_lap_sits_bottom_center_and_clears_the_widgets_visible_in_qualifying(string theme, float w, float h)
+    {
+        Assert.Equal((w, h), WidgetLayout.DesignSizes[theme]["qualilap"]);
+        var q = WidgetLayout.Rect(theme, "qualilap")!.Value;
+        // Embaixo ao centro: metade de baixo da tela, centro horizontal perto do meio, dentro da tela.
+        Assert.True(q.Y > WidgetLayout.RefHeight / 2 && q.Y + q.H <= WidgetLayout.RefHeight - 20, $"y={q.Y} h={q.H}");
+        Assert.True(Math.Abs(q.X + q.W / 2 - WidgetLayout.RefWidth / 2) < 60, $"centro x={q.X + q.W / 2}");
+        var profile = ProfileFactory.CreateDefault("x", theme, WidgetLayout.RefWidth, WidgetLayout.RefHeight);
+        foreach (var x in profile.Widgets.Where(x => x.Visible && x.Id != "qualilap"))
+        {
+            if (WidgetLayout.ExclusiveGroups.Any(g => g.Contains("qualilap") && g.Contains(x.Id))) continue;
+            if (!WidgetCatalog.Find(x.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.Rect(theme, x.Id) is not { } o) continue;
+            bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
+            Assert.False(overlap, $"qualilap ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+    }
 }
