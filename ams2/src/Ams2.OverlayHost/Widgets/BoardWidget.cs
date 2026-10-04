@@ -20,11 +20,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class BoardWidget : IWidget
 {
     public string Id => "board";
-    enum Style { S98, S04, S10 }
+    enum Style { S98, S04, S18 }
     Style _style = Style.S98;
     WidgetSettings _cfg = new() { Id = "board" };
 
-    public void UseTheme(Theme.Theme theme) => _style = theme.Style switch { ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2018 => Style.S10, _ => Style.S98 };
+    public void UseTheme(Theme.Theme theme) => _style = theme.Style switch { ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2018 => Style.S18, _ => Style.S98 };
     public void Configure(WidgetSettings s) => _cfg = s;
 
     /// <summary>
@@ -36,7 +36,7 @@ public sealed class BoardWidget : IWidget
         get
         {
             var (bw, bh) = _style switch { Style.S98 => (840f, 196f), Style.S04 => (590f, 164f), _ => (760f, 210f) };
-            float tower = _style switch { Style.S98 => 2 * T98Edge + 2 * T98ColW + T98ColGap, Style.S04 => 2 * T04ColW + T04ColGap + 8, _ => 2 * T10Edge + 2 * T10ColW + T10ColGap };
+            float tower = _style switch { Style.S98 => 2 * T98Edge + 2 * T98ColW + T98ColGap, Style.S04 => 2 * T04ColW + T04ColGap + 8, _ => 2 * T18Edge + 2 * T18ColW + T18ColGap };
             return (Math.Max(bw, Math.Max(tower, LapsWidth)), bh);
         }
     }
@@ -136,15 +136,15 @@ public sealed class BoardWidget : IWidget
     // Torre: geometria por estilo.
     const float T98Edge = 20, T98ColGap = 36, T98Box = 36, T98Pitch = 40;
     const float T04Pos = 38, T04Pitch = 33, T04H = 31, T04ColGap = 28;
-    const float T10Edge = 20, T10ColGap = 32, T10Box = 36, T10Pitch = 42;
+    const float T18Edge = 20, T18ColGap = 32, T18Box = 36, T18Pitch = 42;
     float T98NameW => NameW(220);
     float T98GapW => GapW(110);
     float T98ColW => T98Box + 14 + T98NameW + T98GapW;   // 380 no padrão
     float T04Name => NameW(84);
     float T04Gap => GapW(96);
-    float T10NameW => NameW(196);
-    float T10GapW => GapW(100);
-    float T10ColW => T10Box + 12 + T10NameW + T10GapW;   // 344 no padrão
+    float T18NameW => NameW(196);
+    float T18GapW => GapW(100);
+    float T18ColW => T18Box + 12 + T18NameW + T18GapW;   // 344 no padrão
 
     float T04ColW => T04Pos + T04Name + T04Gap;
 
@@ -167,12 +167,12 @@ public sealed class BoardWidget : IWidget
                 {
                     Style.S98 => (2 * T98Edge + 2 * T98ColW + T98ColGap, 12 + 4 * T98Pitch + (ind ? 24 : 8)),
                     Style.S04 => (2 * T04ColW + T04ColGap + 8, 4 * T04Pitch + (ind ? 30 : 0)),
-                    _ => (2 * T10Edge + 2 * T10ColW + T10ColGap, 14 + 3 * T10Pitch + 34 + 14 + (ind ? 22 : 0)),
+                    _ => (2 * T18Edge + 2 * T18ColW + T18ColGap, 14 + 3 * T18Pitch + 34 + 14 + (ind ? 22 : 0)),
                 };
             }
             case BoardMode.SectorGap: return _style switch { Style.S98 => (800, 108), Style.S04 => (552, 62), _ => (600, 96) };
             case BoardMode.LapComparison: return (LapsWidth, _style switch { Style.S98 => 170, Style.S04 => 118, _ => 190 });
-            case BoardMode.DriverPlate: return (334, 94);
+            case BoardMode.DriverPlate: return (_style == Style.S18 ? CaptionPlate.Driver18Width : 334, 94);
             default: return (0, 0);
         }
     }
@@ -192,6 +192,7 @@ public sealed class BoardWidget : IWidget
     {
         var t = c.Theme;
         if (_style != Style.S04) c.Panel(ox, oy, cw, ch);
+        if (_style == Style.S18) c.FillRect(ox, oy, cw, t.TitleBarHeight, t.AccentBar);   // 2018: filete vermelho F1 no topo
         foreach (var e in tw.Entries)
         {
             float ea = EntryAlpha(e, tw, now);
@@ -205,7 +206,7 @@ public sealed class BoardWidget : IWidget
                 {
                     case Style.S98: Row98(c, t, e, ox + T98Edge + e.Column * (T98ColW + T98ColGap) + dx, oy + 12 + e.Row * T98Pitch); break;
                     case Style.S04: Row04(c, t, e, ox + 4 + e.Column * (T04ColW + T04ColGap) + dx, oy + e.Row * T04Pitch); break;
-                    default: Row10(c, t, e, ox + T10Edge + e.Column * (T10ColW + T10ColGap) + dx, oy + 14 + e.Row * T10Pitch); break;
+                    default: Row18(c, t, e, ox + T18Edge + e.Column * (T18ColW + T18ColGap) + dx, oy + 14 + e.Row * T18Pitch); break;
                 }
             }
             finally { c.Opacity = prev; }
@@ -217,7 +218,7 @@ public sealed class BoardWidget : IWidget
             {
                 case Style.S98: c.Text(txt, t.Label with { Size = 17 }, ox + cw - T98Edge - 70, oy + ch - 24, 70, 20, t.LabelColor, HAlign.Right); break;
                 case Style.S04: { float w = c.Measure(txt, t.Label with { Size = 16 }) + 18; Chrome.Caption(c, ox + cw - 4 - w, oy + 4 * T04Pitch + 4, txt, 24, t.Label with { Size = 16 }, Chrome.CellKind.Navy); break; }
-                default: c.Text(txt, t.Label with { Size = 18 }, ox + cw - T10Edge - 70, oy + ch - 14 - 22, 70, 20, t.LabelColor, HAlign.Right); break;
+                default: c.Text(txt, t.Label with { Size = 18 }, ox + cw - T18Edge - 70, oy + ch - 14 - 22, 70, 20, t.LabelColor, HAlign.Right); break;
             }
         }
     }
@@ -251,16 +252,17 @@ public sealed class BoardWidget : IWidget
         Chrome.BlackCell(c, x, y, T04Gap, T04H, TowerGap(e), t.Numbers);
     }
 
-    void Row10(ThemeCanvas c, Theme.Theme t, BoardTowerEntry e, float x, float y)
+    void Row18(ThemeCanvas c, Theme.Theme t, BoardTowerEntry e, float x, float y)
     {
-        if (e.IsPlayer) c.FillRoundRect(x - 8, y - 4, T10ColW + 16, 42, 6, new Color4(1, 1, 1, 0.10f));
-        Chrome.AccentBox(c, x, y, T10Box, 34, Num(e.Position), t.Numbers);
-        float nx = x + T10Box + 12, nameW = T10NameW;
+        // 2018: linha da torre [caixa branca][SOBRENOME negrito][gap regular numa coluna mais clara]; o líder mostra "Leader".
+        float gx = x + T18ColW - T18GapW;
+        c.FillRect(gx, y - 3, T18GapW, 40, t.GapCellFill);
+        Chrome.PosBox(c, x, y, T18Box, 34, Num(e.Position), t.Numbers with { Size = 21 });
+        float nx = x + T18Box + 12, nameW = T18NameW;
         string name = _cfg.Name(e.Name, e.CarIndex, e.ShortName).ToUpperInvariant();
-        c.Text(name, BroadcastUi.Fit(c, name, t.Text, nameW), nx, y - 1, nameW + 6, 34, e.IsPlayer ? t.PlayerColor : t.TextColor);
-        string gap = e.GapKind == BoardGapKind.Leader ? e.GapText.ToUpperInvariant() : TowerGap(e);
-        float gw = Math.Max(140, T10GapW + 40);
-        c.Text(gap, t.Numbers, x + T10ColW - gw, y - 1, gw, 34, t.AccentFill, HAlign.Right);
+        c.Text(name, BroadcastUi.Fit(c, name, t.Text, nameW), nx, y, nameW + 6, 34, e.IsPlayer ? t.PlayerColor : t.TextColor);
+        string gap = e.GapKind == BoardGapKind.Leader ? "Leader" : TowerGap(e);
+        c.Text(gap, BroadcastUi.Fit(c, gap, t.Numbers, T18GapW - 14), gx, y, T18GapW - 10, 34, t.ValueColor, HAlign.Right);
     }
 
     // ------------------------------------------------------------------ SectorGap
@@ -326,7 +328,7 @@ public sealed class BoardWidget : IWidget
                 Chrome.AccentBox(c, ox + w - 16 - 40, y, 40, 38, Num(right.Position), t.Numbers);
                 c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, 190), ox + w - 68 - 200, y - 1, 200, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right);
                 float prev = c.Opacity; c.Opacity = prev * live;
-                c.Text(gapText, t.Numbers with { Size = 38 }, ox + w / 2 - 80, y - 2, 160, 40, t.AccentFill, HAlign.Center);
+                c.Text(gapText, t.Numbers with { Size = 34 }, ox + w / 2 - 80, y - 2, 160, 40, t.ValueColor, HAlign.Center);
                 c.Opacity = prev;
                 break;
             }
@@ -421,7 +423,7 @@ public sealed class BoardWidget : IWidget
                     c.Text(LapTime(r.PlayerTime), t.Numbers, cx, y1 - 1, timeW - 6, h, t.ValueColor, HAlign.Right);
                     c.Text(LapTime(r.NeighborTime), t.Numbers, cx, y2 - 1, timeW - 6, h, t.ValueColor, HAlign.Right);
                     if (r.Delta is null) { c.Text(Fmt.NoGap, t.Numbers, cx, y3 - 1, timeW - 6, h, t.LabelColor, HAlign.Right); continue; }
-                    c.FillRoundRect(cx + 6, y3, timeW - 6, h, 4, r.PlayerFaster ? GreenFill : Orange);
+                    c.FillRoundRect(cx + 6, y3, timeW - 6, h, t.BoxRadius, r.PlayerFaster ? t.ThrottleColor : t.BrakeColor);
                     c.Text(Delta(r.Delta), t.Numbers, cx + 6, y3 - 1, timeW - 6 - 8, h, new Color4(1, 1, 1, 1), HAlign.Right);
                 }
                 break;
@@ -454,13 +456,12 @@ public sealed class BoardWidget : IWidget
                 Chrome.Box(c, rx + 40, y + headH, 56, rowH * 2, Num(d.Position), t.Numbers with { Size = 38 }, posKind, HAlign.Center, 0);
                 break;
             }
-            case Style.S10:
+            case Style.S18:
             {
-                c.Panel(ox, oy, w, h);
-                Chrome.AccentBox(c, ox + 16, oy + 16, 58, h - 32, Num(d.Position), t.Numbers with { Size = 36 });
-                c.Text(name, BroadcastUi.Fit(c, name, t.Text, 165), ox + 90, oy + 14, 170, 34, t.TextColor);
-                c.Text(team, BroadcastUi.Fit(c, team, t.Label, 165), ox + 90, oy + 48, 170, 30, t.LabelColor);
-                if (TyreCol && d.TyreSupplier.Length > 0) c.Text(d.TyreSupplier, t.Label, ox + w - 56, oy + 48, 40, 30, t.ValueColor, HAlign.Center);
+                // 2018: mesma placa da legenda de piloto (caixa de posição, tique, "Nome SOBRENOME", número em itálico, equipe).
+                string full = _cfg.Fmt.Name is null && _cfg.Fmt.CarNumber != true ? d.Name : name;
+                CaptionPlate.Plate18(c, ox, oy, CaptionPlate.Driver18Width, h, d.Position, full, CarNumber(d), team, bigBox: false);
+                if (TyreCol && d.TyreSupplier.Length > 0) c.Text(d.TyreSupplier, t.Label with { Weight = 700 }, ox + CaptionPlate.Driver18Width - 50, oy + 50, 36, 32, t.ValueColor, HAlign.Center);
                 break;
             }
             default:

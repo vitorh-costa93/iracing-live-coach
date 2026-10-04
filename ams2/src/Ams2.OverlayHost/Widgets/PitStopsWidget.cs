@@ -23,7 +23,9 @@ public sealed class PitStopsWidget : IWidget
     // Colunas: posicao (opcional), nome e paradas com largura configuravel (perfil: % do tema).
     float PosW => _cfg.ColumnVisible("pos") ? 36 : 0;
     float NameW => MathF.Round(_cfg.Width("name", 190));
-    float StopsW => MathF.Round(_cfg.Width("stops", 110));
+    float StopsW => MathF.Round(_cfg.Width("stops", _b18 ? 56 : 110));   // 2018: so o numero de paradas
+    bool _b18;
+    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     float ColW => PosW + NameW + StopsW;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
@@ -54,6 +56,13 @@ public sealed class PitStopsWidget : IWidget
             c.FillRect(w - 154, 0, 150, 24, new Vortice.Win32.Numerics.Color4(21 / 255f, 150 / 255f, 176 / 255f, 0.97f));
             c.Text("PIT STOPS", t.Label with { Size = 20 }, w - 154, -1, 150, 24, new Vortice.Win32.Numerics.Color4(1, 1, 1, 1), HAlign.Center, t.TextShadow);
         }
+        else if (t.Style == ThemeStyle.Modern2018)
+        {
+            // Modo "PIT STOPS" da torre 2018: filete vermelho no topo, título centralizado, coluna de paradas mais clara (só o número).
+            c.FillRect(0, 0, w, 4, t.AccentBar);
+            c.FillRect(0, 4, w, h - 4, t.PanelFill);
+            c.Text("PIT STOPS", t.Title with { Size = 19 }, 0, 4, w, HeadH - 2, t.TitleColor, HAlign.Center);
+        }
         else if (!b04) { c.Panel(0, 0, w, h); Chrome.Header(c, "PIT STOPS", 16, 2, 200, underline: false); }
         else Chrome.HeaderCell(c, X0 + PosW, Y0, NameW, HeadH, "PIT STOPS", t.Label);
         for (int i = 0; i < page.Count; i++)
@@ -63,6 +72,16 @@ public sealed class PitStopsWidget : IWidget
             float x = X0 + col * (ColW + ColGap), y = Y0 + HeadH + row * Pitch;
             string name = _cfg.Name(car, BroadcastUi.ShortName(car, field)), stops = BroadcastUi.Stops(b.StopsOf(car.Index));
             if (b98) { name = name.ToUpperInvariant(); stops = stops.ToUpperInvariant(); }
+            if (t.Style == ThemeStyle.Modern2018)
+            {
+                float sx = x + PosW + NameW;
+                c.FillRect(sx, y - 1, StopsW, Pitch, t.GapCellFill);
+                if (PosW > 0) Chrome.PosBox(c, x + 4, y, PosW - 6, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 19 });
+                string up = name.ToUpperInvariant();
+                c.Text(up, BroadcastUi.Fit(c, up, t.Text with { Size = 20 }, NameW - 18), x + PosW + 8, y, NameW - 10, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor);
+                c.Text(b.StopsOf(car.Index).ToString(CultureInfo.InvariantCulture), t.Numbers, sx, y, StopsW - 12, RowH, t.ValueColor, HAlign.Right);
+                continue;
+            }
             if (b04)
             {
                 if (PosW > 0) Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text);

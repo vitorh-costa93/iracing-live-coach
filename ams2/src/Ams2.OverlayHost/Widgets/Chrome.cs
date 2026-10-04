@@ -13,7 +13,7 @@ public static class Chrome
         if (maxRight < float.MaxValue)
         {
             float tw = c.Measure(title, t.Title);
-            float used = t.Style switch { ThemeStyle.Modern2018 => x + 16 + tw + 16, ThemeStyle.Broadcast2000s => x + tw, _ => x + tw + 10 };
+            float used = t.Style switch { ThemeStyle.Modern2018 => x + tw, ThemeStyle.Broadcast2000s => x + tw, _ => x + tw + 10 };
             float k = t.Style == ThemeStyle.Broadcast2000s ? 0.5f : 1f;
             barWidth = Math.Clamp((maxRight - used) / k, 0, barWidth);
             if (barWidth < 12) underline = false;
@@ -21,10 +21,9 @@ public static class Chrome
         switch (t.Style)
         {
             case ThemeStyle.Modern2018:
-                // Barra inclinada vermelha antes do título; sublinhado fino claro até barWidth.
-                c.Line(x + 1, y + 24, x + 8, y + 6, t.AccentBar, 3.2f);
-                c.Text(title, t.Title, x + 16, y, 260, 30, t.TitleColor);
-                if (underline) c.GradientBar(x, y + 31, barWidth + c.Measure(title, t.Title) + 16, t.TitleBarHeight, t.TitleBar);
+                // Título branco em caixa alta com tracking e filete vermelho F1 logo abaixo (como "PIT STOPS" / "GAINED/LOST" da torre).
+                c.Text(title, t.Title, x, y, 300, 30, t.TitleColor);
+                if (underline) c.FillRect(x, y + 31, barWidth + c.Measure(title, t.Title) + t.Title.Tracking * title.Length, t.TitleBarHeight, t.AccentBar);
                 break;
             case ThemeStyle.Broadcast2000s:
                 Caption(c, x, y + 2, title, kind: CellKind.Navy);
@@ -175,7 +174,68 @@ public static class Chrome
     {
         var t = c.Theme;
         c.FillRoundRect(x, y, w, h, t.BoxRadius, fill ?? t.AccentFill);
+        // 2018: número preto em negrito na caixa branca.
+        if (t.Style == ThemeStyle.Modern2018) font = font with { Weight = Math.Max(font.Weight, 700) };
         c.Text(text, font, x, y - 1, w, h, t.AccentInk, HAlign.Center);
+    }
+
+    // ---- Vocabulário 2018–2021 (ref. f1-2018-analysis.md) ----
+
+    /// <summary>Caixa de posição 2018: quadrado branco arredondado com número preto em negrito; <paramref name="fill"/> troca a cor (verde/vermelho de ganho/perda).</summary>
+    public static void PosBox(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, Color4? fill = null)
+    {
+        var t = c.Theme;
+        c.FillRoundRect(x, y, w, h, t.BoxRadius, fill ?? t.AccentFill);
+        c.Text(text, font with { Weight = Math.Max(font.Weight, 700) }, x, y, w, h, fill is null ? t.AccentInk : new Color4(1, 1, 1, 1), HAlign.Center);
+    }
+
+    /// <summary>Tique vertical (cor da equipe na TV; aqui cor neutra/da classe, o AMS2 não informa a cor da equipe).</summary>
+    public static void Tick(ThemeCanvas c, float x, float y, float h, Color4 color, float w = 4) => c.FillRect(x, y, w, h, color);
+
+    /// <summary>Cor neutra do tique da classe: tons fixos por índice de classe (sem cores de equipe, que o AMS2 não expõe).</summary>
+    public static Color4 ClassTick(int classIndex) => (classIndex % 4) switch
+    {
+        0 => C(225, 6, 0),
+        1 => C(40, 120, 220),
+        2 => C(30, 170, 90),
+        _ => C(230, 150, 20),
+    };
+
+    /// <summary>Marcador de melhor volta: quadrado roxo com um cronômetro branco desenhado (sem glifo).</summary>
+    public static void FastestMarker(ThemeCanvas c, float x, float y, float s)
+    {
+        var t = c.Theme;
+        c.FillRect(x, y, s, s, t.FastestFill);
+        float cx = x + s / 2, cy = y + s / 2 + s * 0.06f, r = s * 0.28f;
+        var w = new Color4(1, 1, 1, 1);
+        c.StrokeEllipse(cx, cy, r, r, w, Math.Max(1.6f, s * 0.07f));
+        c.FillRect(cx - s * 0.08f, y + s * 0.12f, s * 0.16f, s * 0.08f, w);           // botão
+        c.Line(cx, cy, cx + r * 0.55f, cy - r * 0.55f, w, Math.Max(1.4f, s * 0.06f)); // ponteiro
+    }
+
+    /// <summary>Colchetes de canto ciano em volta do tempo de parada (gráfico PIT LANE).</summary>
+    public static void CornerBrackets(ThemeCanvas c, float x, float y, float w, float h, Color4 color, float len = 10, float th = 2.5f)
+    {
+        c.FillRect(x, y, len, th, color); c.FillRect(x, y, th, len, color);
+        c.FillRect(x + w - len, y, len, th, color); c.FillRect(x + w - th, y, th, len, color);
+        c.FillRect(x, y + h - th, len, th, color); c.FillRect(x, y + h - len, th, len, color);
+        c.FillRect(x + w - len, y + h - th, len, th, color); c.FillRect(x + w - th, y + h - len, th, len, color);
+    }
+
+    /// <summary>"Nome SOBRENOME" em dois pesos (nome regular, sobrenome negrito em caixa alta), como na legenda 2018. Devolve a largura usada.</summary>
+    public static float TwoWeightName(ThemeCanvas c, string fullName, FontToken bold, float x, float y, float h, float maxW, Color4 color)
+    {
+        var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        string first = parts.Length > 1 ? string.Join(' ', parts[..^1]) + " " : "";
+        string last = (parts.Length > 0 ? parts[^1] : fullName).ToUpperInvariant();
+        var reg = bold with { Weight = 400 };
+        // Reduz os dois juntos até caber.
+        while (bold.Size > 14 && c.Measure(first, reg) + c.Measure(last, bold) > maxW) { bold = bold with { Size = bold.Size - 1 }; reg = reg with { Size = bold.Size }; }
+        float fw = c.Measure(first, reg);
+        if (first.Length > 0) c.Text(first, reg, x, y, fw + 6, h, color);
+        float lw = c.Measure(last, bold);
+        c.Text(last, bold, x + fw, y, lw + 6, h, color);
+        return fw + lw;
     }
 
     /// <summary>Célula clara atrás de um nome (2004–2008); sem efeito nos outros temas. Devolve a cor de tinta do nome.</summary>

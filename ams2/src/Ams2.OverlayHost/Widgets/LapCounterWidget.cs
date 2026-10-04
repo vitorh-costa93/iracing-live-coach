@@ -12,7 +12,9 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class LapCounterWidget : IWidget
 {
     public string Id => "lapcounter";
-    public (float Width, float Height) DesignSize => (132, 40);
+    public (float Width, float Height) DesignSize => _b18 ? (168, 82) : (132, 40);
+    bool _b18;
+    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     public void Configure(WidgetSettings s) { }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
@@ -20,6 +22,18 @@ public sealed class LapCounterWidget : IWidget
         var t = c.Theme;
         var (w, h) = DesignSize;
         string text = Format(m);
+        if (t.Style == ThemeStyle.Modern2018)
+        {
+            // Cabeçalho da torre 2018: topo arredondado, "LAP" largo com tracking, filete fino, "n / N" regular; filete vermelho embaixo.
+            c.FillRoundRect(0, 0, w, h - 4, 7, t.PanelFill);
+            c.FillRect(0, h - 12, w, 8, t.PanelFill);
+            c.Text("LAP", t.Title with { Size = 26, Tracking = 4 }, 0, 4, w + 4, 34, t.TitleColor, HAlign.Center);
+            c.FillRect(34, 40, w - 68, 1.2f, new Vortice.Win32.Numerics.Color4(1f, 1f, 1f, 0.45f));
+            string n = text.StartsWith("--") ? "- / -" : text.StartsWith("Lap ") ? text[4..] : text.Replace("/", " / ");
+            c.Text(n, t.Numbers with { Size = 26 }, 0, 42, w, 32, t.ValueColor, HAlign.Center);
+            c.FillRect(0, h - 4, w, 4, t.AccentBar);
+            return;
+        }
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
             Chrome.WhiteCell(c, 4, 3, w - 8, h - 8, text, t.Numbers, HAlign.Center);

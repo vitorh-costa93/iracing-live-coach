@@ -166,8 +166,9 @@ public sealed class RadarWidget : IWidget
     {
         ThemeStyle.Broadcast2000s => new Look(new(0f, 0f, 0f, 0.42f), new(1f, 1f, 1f, 0.35f), 1f, 0f, 1.5f, new(1f, 1f, 1f, 0.22f),
             Player: new(1f, 1f, 1f, 1f), Other: new(0.62f, 0.62f, 0.68f, 1f), Alert: t.BrakeColor, Accent: t.AccentBar, TopAccent: true),
-        ThemeStyle.Modern2018 => new Look(new(12 / 255f, 20 / 255f, 35 / 255f, 0.80f), t.PanelBorder, t.BorderWidth, t.CornerRadius, 3.5f, new(1f, 1f, 1f, 0.14f),
-            Player: new(0f, 201 / 255f, 232 / 255f, 1f), Other: new(166 / 255f, 176 / 255f, 187 / 255f, 1f), Alert: t.BrakeColor, Accent: t.AccentBar, TopAccent: false),
+        // 2018: painel preto translúcido de cantos retos com o filete vermelho F1 no topo; jogador branco (as zonas de aviso usam amarelo/vermelho), demais cinza-claro.
+        ThemeStyle.Modern2018 => new Look(t.PanelFill, new(0f, 0f, 0f, 0f), 0f, 0f, 2.5f, new(1f, 1f, 1f, 0.14f),
+            Player: t.AccentFill, Other: new(200 / 255f, 202 / 255f, 208 / 255f, 1f), Alert: t.BrakeColor, Accent: t.AccentBar, TopAccent: true),
         _ => new Look(new(28 / 255f, 35 / 255f, 38 / 255f, 0.62f), new(1f, 1f, 1f, 0.12f), 1f, 0f, 2.5f, new(176 / 255f, 178 / 255f, 170 / 255f, 0.30f),
             Player: t.LabelColor, Other: new(190 / 255f, 196 / 255f, 196 / 255f, 1f), Alert: t.BrakeColor, Accent: t.NumberColor, TopAccent: false),
     };

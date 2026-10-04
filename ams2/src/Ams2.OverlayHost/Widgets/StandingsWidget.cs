@@ -24,13 +24,10 @@ public sealed class StandingsWidget : IWidget
     float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
     const float SepH = 14;
     public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
-        
-        : (_b04 ? Width2004 : _b10 ? Math.Max(Layout().Width, MinWidth10) : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
-    bool _b04, _b98, _b10;
-    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b10 = theme.Style == ThemeStyle.Modern2018; }
-    /// <summary>2010s: cabecalho "RACE" + "LAP n / N" (mockup v5) empurra as linhas para baixo.</summary>
-    float Top => _b10 && !TableMode ? RowTop + HeaderH10 : RowTop;
-    const float HeaderH10 = 36, MinWidth10 = 240; // cabecalho "RACE" + "LAP n / N" precisa de largura mesmo sem a coluna de gap
+        : _b18 ? Size18 : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
+    bool _b04, _b98, _b18;
+    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = theme.Style == ThemeStyle.Modern2018; }
+    float Top => RowTop;
     /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
     bool TableMode => _b98 && _cfg.ColumnVisible("table");
     float Pitch => _b04 ? RowPitch2000s : RowPitch;
@@ -85,11 +82,11 @@ public sealed class StandingsWidget : IWidget
         var jumps = picks.Select(p => p.GapBefore).ToList();
 
         if (TableMode) { c.Panel(0, 0, w, h); DrawTable(c, t, rows, m); return; }
+        if (_b18) { DrawTower18(c, t, m, rows, jumps, classes); return; }
         var L = Layout();
         int gapCount = jumps.Count(j => j);
         // Painel só até a última linha usada (o espaço do "..." não ocupado fica transparente).
         c.Panel(0, 0, w, Math.Min(h, Top + rows.Count * Pitch + gapCount * SepH + 2));
-        if (_b10) DrawHeader10(c, t, m, w);
         float yShift = 0;
         for (int i = 0; i < rows.Count; i++)
         {
@@ -136,7 +133,7 @@ public sealed class StandingsWidget : IWidget
     {
         if (t.Style == ThemeStyle.Broadcast98)
             return r.Car.Position == 1 && r.Car.CurrentLap > 0 ? "LAP " + r.Car.CurrentLap.ToString(CultureInfo.InvariantCulture) : Gap(r, defaultSign: false);
-        if (t.Style == ThemeStyle.Modern2018 && r.Car.Position == 1) return "–";
+        if (t.Style == ThemeStyle.Modern2018 && r.Car.Position == 1) return "Leader";
         return Gap(r);
     }
 
@@ -148,11 +145,86 @@ public sealed class StandingsWidget : IWidget
         return r.GapToLeader is { } g ? f.FormatGap(g, defaultSign) : f.NoGap;
     }
 
-    void DrawHeader10(ThemeCanvas c, Theme.Theme t, OverlayModel m, float w)
+    // ---- Torre 2018–2021 (ref. f1-2018-tower-*.jpg): cabeçalho "LAP" + "n / N" com topo arredondado, filete vermelho, linhas
+    // [caixa branca][SIGLA][classe no lugar do logo][coluna de gap mais clara]; marcador roxo de melhor volta à esquerda, fora do
+    // painel; pilotos fora da corrida em bloco cinza no fim, sem caixa de posição. O líder mostra "Leader".
+    const float M18 = 34, Head18W = 168, Head18H = 78, Rule18 = 4, Pad18 = 5, Pitch18 = 40, Box18 = 32, ClassW18 = 34;
+    float Box18W => MathF.Round(_cfg.Width("pos", Box18));
+    float Name18W => MathF.Round(_cfg.Width("name", 78));
+    float Gap18W => MathF.Round(_cfg.Width("gap", 118));
+    float Top18 => Head18H + Rule18 + Pad18;
+
+    /// <summary>Colunas da torre 2018: x da caixa, do nome, da classe e início da coluna de gap; largura total da torre (sem a margem do marcador).</summary>
+    (float Box, float Name, float Class, float Gap, float Width) Cols18()
     {
-        Chrome.Header(c, "RACE", 14, 6, w - 28 - c.Measure("RACE", t.Title) - 16);
+        float x = M18 + 6, box = x, name = 0, cls = 0, gap = 0;
+        if (_cfg.ColumnVisible("pos")) x += Box18W + 10;
+        if (_cfg.ColumnVisible("name")) { name = x; x += Name18W + 6; }
+        if (_cfg.ColumnVisible("class")) { cls = x; x += ClassW18 + 6; }
+        if (_cfg.ColumnVisible("gap")) { gap = x; x += Gap18W; } else x += 2;
+        return (box, name, cls, gap, Math.Max(x - M18, Head18W));
+    }
+
+    (float, float) Size18 => (M18 + Cols18().Width, Top18 + Rows * Pitch18 + SepReserve + Pad18);
+
+    static bool IsOut(StandingRow r) => r.Car.RaceState is RaceState.Retired or RaceState.Dnf or RaceState.Disqualified;
+
+    void DrawTower18(ThemeCanvas c, Theme.Theme t, OverlayModel m, List<StandingRow> rows, List<bool> jumps, List<string> classes)
+    {
+        var L = Cols18();
+        float tw = L.Width, x0 = M18;
+        int gapCount = jumps.Count(j => j);
+        float bodyH = rows.Count * Pitch18 + gapCount * SepH + 2 * Pad18;
+        // Cabeçalho: topo arredondado, "LAP" largo com tracking, filete fino, "n / N" regular.
+        float hw = Head18W;
+        c.FillRoundRect(x0, 0, hw, Head18H, 7, t.PanelFill);
+        c.FillRect(x0, Head18H - 8, hw, 8, t.PanelFill);
+        c.Text("LAP", t.Title with { Size = 26, Tracking = 4 }, x0, 4, hw + 4, 34, t.TitleColor, HAlign.Center);
+        c.FillRect(x0 + 34, 40, hw - 68, 1.2f, new Vortice.Win32.Numerics.Color4(1f, 1f, 1f, 0.45f));
         string lc = LapCounterWidget.Format(m);
-        if (!lc.StartsWith("--")) c.Text("LAP " + lc.Replace("Lap ", "").Replace("/", " / "), t.Label, w - 160 - 14, 6, 160, 30, t.LabelColor, HAlign.Right);
+        lc = lc.StartsWith("--") ? "- / -" : lc.StartsWith("Lap ") ? lc[4..] : lc.Replace("/", " / ");
+        c.Text(lc, t.Numbers with { Size = 26 }, x0, 42, hw, 32, t.ValueColor, HAlign.Center);
+        // Filete vermelho e corpo.
+        c.FillRect(x0, Head18H, tw, Rule18, t.AccentBar);
+        float by = Head18H + Rule18;
+        c.FillRect(x0, by, tw, bodyH, t.PanelFill);
+        if (_cfg.ColumnVisible("gap")) c.FillRect(L.Gap, by, x0 + tw - L.Gap, bodyH, t.GapCellFill);
+
+        double fastest = m.Standings.Where(r => r.Car.BestLapTime > 0).Select(r => r.Car.BestLapTime).DefaultIfEmpty(0).Min();
+        float yShift = 0;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var r = rows[i];
+            if (jumps[i])
+            {
+                yShift += SepH;
+                float cy = Top18 + i * Pitch18 + yShift - (SepH + Pitch18 - Box18) / 2;
+                for (int k = -1; k <= 1; k++) c.FillEllipse(L.Box + Box18W / 2 + k * 8, cy, 2.2f, 2.2f, t.LabelColor);
+            }
+            float y = Top18 + i * Pitch18 + yShift, rh = Box18;
+            bool o = IsOut(r);
+            if (o) c.FillRect(x0, y - (Pitch18 - Box18) / 2, tw, Pitch18, t.OutFill);
+            if (fastest > 0 && !o && r.Car.BestLapTime == fastest) Chrome.FastestMarker(c, 0, y, Box18);
+            if (_cfg.ColumnVisible("pos") && !o) Chrome.PosBox(c, L.Box, y, Box18W, rh, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 });
+            if (_cfg.ColumnVisible("name"))
+            {
+                string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+                var ink = o ? t.OutInk : r.IsPlayer ? t.PlayerColor : t.TextColor;
+                c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, Name18W + 4), L.Name, y, Name18W + 12, rh, ink);
+            }
+            if (_cfg.ColumnVisible("class"))
+            {
+                // No lugar do logo da equipe (o AMS2 não tem logos): letra da classe numa caixinha neutra.
+                int ci = Math.Min(classes.IndexOf(r.Car.ClassName), 25);
+                c.FillRoundRect(L.Class + 2, y + 3, ClassW18 - 4, rh - 6, 3, t.BadgeFill);
+                c.Text(((char)('A' + ci)).ToString(), t.Label with { Weight = 700 }, L.Class + 2, y + 3, ClassW18 - 4, rh - 6, o ? t.OutInk : t.BadgeInk, HAlign.Center);
+            }
+            if (_cfg.ColumnVisible("gap"))
+            {
+                string g = o ? "OUT" : r.Car.Position == 1 ? "Leader" : Gap(r);
+                c.Text(g, BroadcastUi.Fit(c, g, t.Numbers, Gap18W - 14), L.Gap, y, Gap18W - 10, rh, o ? t.OutInk : t.ValueColor, HAlign.Right);
+            }
+        }
     }
 
     // Tabela inferior 1998–2001 (faixa do GP do Brasil 2003): 2 colunas x N linhas, [caixa amarela][NOME][gap amarelo à direita]; o líder mostra "LAP n".

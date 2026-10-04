@@ -185,6 +185,7 @@ public sealed class InputsWidget : IWidget
         // A fonte de numeros do f1-1998 (F1 Broadcast 98 Values) so tem digitos: "N" e "R" caiam numa fonte do sistema fina e
         // destoante. Letras usam a fonte do titulo (mesma familia/peso do "GEAR" e do "KPH").
         var gf = g.Length == 1 && !char.IsDigit(g[0]) && t.Numbers.Family.StartsWith("F1 Broadcast", StringComparison.Ordinal) ? t.Title with { Size = 36 } : t.Numbers;
+        if (t.Style == ThemeStyle.Modern2018) gf = t.Numbers with { Weight = Math.Max(t.Numbers.Weight, 700), Size = 30 };   // caixa branca com número preto em negrito
         c.Text(g, gf, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
         c.Text(Math.Round(speed).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
         c.Text(unit, t.Label with { Size = 21 }, GearCx - 50, 144, 100, 28, t.TitleColor, HAlign.Center, t.TextShadow);

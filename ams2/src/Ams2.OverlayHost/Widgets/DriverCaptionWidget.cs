@@ -15,7 +15,9 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => (CaptionPlate.DriverWidth, CaptionPlate.Height);
+    public (float Width, float Height) DesignSize => (_b18 ? CaptionPlate.Driver18Width : CaptionPlate.DriverWidth, CaptionPlate.Height);
+    bool _b18;
+    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -37,7 +39,27 @@ public sealed class DriverCaptionWidget : IWidget
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Winner10Width = 410;
+    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480, Winner18Width = 660;
+
+    /// <summary>
+    /// Placa 2018 (ref. f1-2018-driver-caption.jpg / f1-2018-result-caption.jpg): placa preta translúcida, caixa de posição branca
+    /// (grande no resultado), tique vertical, "Nome SOBRENOME" em dois pesos, número do carro em itálico e a equipe embaixo.
+    /// O AMS2 não informa cor/logo da equipe: tique no vermelho do tema e número em cinza claro, sem logos. Devolve a borda direita do texto.
+    /// </summary>
+    public static float Plate18(ThemeCanvas c, float x, float y, float w, float h, int position, string fullName, string number, string team, bool bigBox, float rightReserve = 0)
+    {
+        var t = c.Theme;
+        c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
+        float box = bigBox ? h - 16 : 42, bx = x + 10, byy = bigBox ? y + 8 : y + 10;
+        Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = bigBox ? 40 : 24 });
+        float tx = bx + box + 12;
+        Chrome.Tick(c, tx, y + 14, bigBox ? 34 : 32, t.AccentBar);
+        float nx = tx + 14, maxName = w - (nx - x) - 56 - rightReserve;
+        float nw = Chrome.TwoWeightName(c, fullName, t.Text with { Size = 26 }, nx, y + 8, 40, maxName, t.TextColor);
+        if (number.Length > 0) c.Text(number, t.Numbers with { Size = 26, Italic = true }, nx + nw + 14, y + 8, 70, 40, t.LabelColor);
+        if (team.Length > 0) c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 20 }, w - (nx - x) - 20 - rightReserve), nx, y + 50, w - (nx - x) - 16 - rightReserve, 32, t.LabelColor);
+        return nx + nw;
+    }
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
     /// <summary>Legenda do piloto; <paramref name="cfg"/> traz o formato do nome e as colunas "team"/"tyre" (equipe e fornecedor de pneus).</summary>
@@ -59,13 +81,11 @@ public static class CaptionPlate
             return;
         }
         if (t.Style == ThemeStyle.Broadcast98) { DriverBand(c, car, field, name, team); return; }
-        // 2010s: painel do tema com caixa de posicao, nome, equipe e fornecedor.
-        float w = DriverWidth, h = Height;
-        c.Panel(0, 0, w, h);
-        Chrome.AccentBox(c, 16, 16, 58, h - 32, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 36 });
-        c.Text(name, BroadcastUi.Fit(c, name, t.Text, 165), 90, 14, 170, 34, t.TextColor, shadow: t.TextShadow);
-        c.Text(team, BroadcastUi.Fit(c, team, t.Label, 165), 90, 48, 170, 30, t.LabelColor, shadow: t.TextShadow);
-        if (car.TyreSupplier.Length > 0) c.Text(car.TyreSupplier, t.Label, w - 56, 48, 40, 30, t.ValueColor, HAlign.Center, t.TextShadow);
+        // 2018: placa preta com caixa de posição, tique, "Nome SOBRENOME", número em itálico e equipe; fornecedor de pneus no canto.
+        // Sem formato de nome escolhido, o nome completo (a TV mostra nome + sobrenome); com formato, o do perfil.
+        string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
+        Plate18(c, 0, 0, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false);
+        if (car.TyreSupplier.Length > 0) c.Text(car.TyreSupplier, t.Label with { Weight = 700 }, Driver18Width - 50, 50, 36, 32, t.ValueColor, HAlign.Center);
     }
 
     const float BandTop = 26, TagH = 24;
@@ -140,14 +160,18 @@ public static class CaptionPlate
             c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
             return;
         }
-        float w = Winner10Width, h = Height;
-        c.Panel(0, 0, w, h);
-        c.Text("WINNER", t.Title, 16, 8, 160, 30, t.AccentFill);
-        c.Text(name, BroadcastUi.Fit(c, name, t.Text, 200), 16, 34, 200, 30, t.TextColor, shadow: t.TextShadow);
-        c.Text(team, BroadcastUi.Fit(c, team, t.Label, 200), 16, 62, 200, 28, t.LabelColor, shadow: t.TextShadow);
-        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers, 170), w - 186, 6, 172, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
-        c.Text(dist, t.Label, w - 186, 34, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
-        c.Text(avg, BroadcastUi.Fit(c, avg, t.Label, 170), w - 186, 62, 172, 28, t.ValueColor, HAlign.Right, t.TextShadow);
+        // 2018: legenda de resultado (caixa de posição branca grande, nome em dois pesos, número em itálico, equipe) e, à direita,
+        // tempo total, distância e média num bloco separado por filete vertical.
+        float w = Winner18Width, h = Height;
+        string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
+        float statsW = stats ? 150 : 0;
+        Plate18(c, 0, 0, w, h, 1, full, CarNumber(car), team, bigBox: true, rightReserve: stats ? statsW + 24 : 0);
+        if (!stats) return;
+        float sx = w - statsW - 12;
+        c.FillRect(sx - 12, 14, 1.5f, h - 28, t.Divider);
+        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Size = 22 }, statsW), sx, 8, statsW, 30, t.ValueColor, HAlign.Right);
+        c.Text(dist, BroadcastUi.Fit(c, dist, t.Label, statsW), sx, 36, statsW, 26, t.LabelColor, HAlign.Right);
+        c.Text(avg, BroadcastUi.Fit(c, avg, t.Label, statsW), sx, 60, statsW, 26, t.LabelColor, HAlign.Right);
     }
 }
 
@@ -155,7 +179,7 @@ public static class CaptionPlate
 public sealed class WinnerWidget : IWidget
 {
     public string Id => "winner";
-    public (float Width, float Height) DesignSize => (_style == ThemeStyle.Broadcast98 ? CaptionPlate.Winner98Width : _style == ThemeStyle.Broadcast2000s ? CaptionPlate.WinnerWidth : CaptionPlate.Winner10Width, CaptionPlate.Height);
+    public (float Width, float Height) DesignSize => (_style == ThemeStyle.Broadcast98 ? CaptionPlate.Winner98Width : _style == ThemeStyle.Broadcast2000s ? CaptionPlate.WinnerWidth : CaptionPlate.Winner18Width, CaptionPlate.Height);
     ThemeStyle _style;
     public void UseTheme(Theme.Theme theme) => _style = theme.Style;
     WidgetSettings _cfg = new() { Id = "winner" };
