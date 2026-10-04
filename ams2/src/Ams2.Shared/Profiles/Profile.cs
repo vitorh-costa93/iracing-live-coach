@@ -309,11 +309,12 @@ public static class ProfileFactory
         double fx = screenWidth / 1920.0, fy = screenHeight / 1080.0;
         var list = WidgetCatalog.ForTheme(themeId).Select((d, i) => new { d, i, slot = WidgetLayout.Get(themeId, d.Id) }).Select(e => new WidgetSettings
         {
-            Id = e.d.Id, Visible = e.d.DefaultVisible, Order = e.i,
+            Id = e.d.Id, Visible = e.d.DefaultVisible && !WidgetLayout.HiddenIn(themeId, e.d.Id), Order = e.i,
             X = (int)Math.Round(e.slot.X * fx), Y = (int)Math.Round(e.slot.Y * fy),
             Rows = e.d.DefaultRows, TopCount = e.d.HasSelection ? WidgetCatalog.DefaultTopCount : null, NearCount = e.d.HasSelection ? WidgetCatalog.DefaultNearCount : null, Scale = (float)Math.Round(e.slot.Scale * fy, 3),
             // Standings: so posicao + sigla; gap e classe sao opcionais. Board 1998: so legenda de pneus + indicador de pagina.
-            Columns = e.d.Id == "standings" ? ["pos", "name"]
+            // 2018: a torre da TV tem a coluna clara (gap/intervalo/...); o logo da equipe (classe) continua opcional.
+            Columns = e.d.Id == "standings" ? (string.Equals(ThemeCatalog.Canonical(themeId), "f1-2018", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"] : ["pos", "name"])
                 : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre", "page"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]

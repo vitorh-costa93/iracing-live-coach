@@ -17,6 +17,17 @@ public static class WidgetLayout
     /// <summary>Widgets de evento que ocupam o mesmo lugar na TV (nunca aparecem juntos): podem se sobrepor.</summary>
     public static readonly IReadOnlyList<string[]> ExclusiveGroups = [["drivercaption", "winner"]];
 
+    /// <summary>Widgets desligados no perfil padrao do tema (alem dos DefaultVisible=false do catalogo). 2018: a torre tem o cabecalho
+    /// "LAP n / N" integrado (o Lap Counter seria repetido) e a TV nao tem o Board.</summary>
+    static readonly Dictionary<string, string[]> HiddenByDefault = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["f1-2018"] = ["lapcounter", "board"],
+    };
+
+    /// <summary>O widget comeca desligado no perfil padrao do tema?</summary>
+    public static bool HiddenIn(string themeId, string widgetId)
+        => HiddenByDefault.TryGetValue(ThemeCatalog.Canonical(themeId), out var h) && h.Contains(widgetId, StringComparer.OrdinalIgnoreCase);
+
     static readonly Dictionary<string, Dictionary<string, Slot>> Slots = new(StringComparer.OrdinalIgnoreCase)
     {
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
@@ -38,10 +49,12 @@ public static class WidgetLayout
         ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
             // 2018: torre em x~80/y~46 da TV (o projeto reserva 34 a esquerda para o marcador roxo), cabecalho "LAP" com ~67 px de altura;
+            // Lap Counter e Board desligados por padrao (HiddenByDefault): as posicoes ficam para quem religar. A torre (284x628 de projeto)
+            // reserva embaixo o titulo do modo, o bloco BATTLE / faixas da bandeirada e o bloco OUT (transparentes quando sem uso): Pit Stops desce para y=600.
             // PIT LANE no centro-direita; legenda/resultado embaixo a esquerda.
             ["standings"] = new(50, 40, 0.86f), ["lapcounter"] = new(888, 24, 0.86f),
             ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 960, 1f), ["winner"] = new(32, 960, 0.85f), ["board"] = new(600, 845, 1.1f),
-            ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(1250, 560, 1f),
+            ["pitstops"] = new(32, 600, 0.9f), ["pittimer"] = new(1250, 560, 1f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 957, 0.5f),
             ["radar"] = new(900, 585, 1f),
         },
@@ -63,7 +76,7 @@ public static class WidgetLayout
             },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (202, 426), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
+                ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (480, 94), ["pitstops"] = (608, 156), ["pittimer"] = (300, 158), ["winner"] = (660, 94), ["board"] = (760, 210), ["radar"] = (120, 190),
             },
         };

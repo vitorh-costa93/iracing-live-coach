@@ -178,4 +178,76 @@ public sealed class CustomizationPngTests
         var a = Pixels("--widget drivercaption --theme f1-2018", new WidgetSettings { Id = "drivercaption", Columns = ["always", "team", "tyre"] });
         var b = Pixels("--widget drivercaption --theme f1-2018", new WidgetSettings { Id = "drivercaption", Columns = ["always", "team", "tyre"], Display = new DisplayOptions { Name = NameStyle.FullName, CarNumber = true } });
         Assert.NotEqual(a, b);
-    }}
+    }
+
+    // ---- Torre 2018: modos e opcoes do tema (WidgetCatalog.OptionsFor("f1-2018", "standings")) ----
+
+    /// <summary>Renderiza a torre 2018 com as opcoes do tema e variaveis extras do escritor falso; devolve (largura, altura, bytes do PNG).</summary>
+    static (int W, int H, byte[] Png) Tower18(Dictionary<string, string>? options, double sim = 20, Dictionary<string, string>? env = null)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-t18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "standings", Columns = ["pos", "name", "gap"], Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget standings --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_BOARD"] = "1";
+        foreach (var (k, v) in env ?? []) psi.Environment[k] = v;
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Theory]
+    [InlineData("gap")]
+    [InlineData("interval")]
+    [InlineData("gainedlost")]
+    [InlineData("pitstops")]
+    [InlineData("bestlap")]
+    [InlineData("auto")]
+    public void Every_2018_tower_mode_renders_in_the_same_window_and_draws_its_own_column(string mode)
+    {
+        var grid = new Dictionary<string, string> { ["AMS2_FAKE_GRID"] = "1" };
+        var gap = Tower18(null, env: grid);
+        var r = Tower18(new() { ["mode"] = mode }, env: grid);
+        // A janela tem tamanho fixo (reserva do titulo/BATTLE/bandeirada): trocar o modo, inclusive o automatico, nao muda o tamanho.
+        Assert.Equal((gap.W, gap.H), (r.W, r.H));
+        Assert.True(r.Png.Length > 500);
+        if (mode != "gap") Assert.NotEqual(gap.Png, r.Png);
+    }
+
+    [Fact]
+    public void Tower_2018_states_yellow_flag_finish_and_out_block_change_the_drawing()
+    {
+        var normal = Tower18(null, 63);
+        var yellow = Tower18(null, 63, new() { ["AMS2_FAKE_FLAG"] = "6" });
+        Assert.NotEqual(normal.Png, yellow.Png);
+        // Nomes completos sob bandeira: liga/desliga muda o desenho.
+        Assert.NotEqual(yellow.Png, Tower18(new() { ["fullNames"] = "false" }, 63, new() { ["AMS2_FAKE_FLAG"] = "6" }).Png);
+        var finish = Tower18(null, 35, new() { ["AMS2_FAKE_FINISH"] = "1" });
+        Assert.Equal((normal.W, normal.H), (finish.W, finish.H));
+        Assert.NotEqual(Tower18(null, 35).Png, finish.Png);
+        var outs = Tower18(null, 20, new() { ["AMS2_FAKE_OUT"] = "1" });
+        Assert.NotEqual(Tower18(null, 20).Png, outs.Png);
+    }
+
+    [Fact]
+    public void Tower_2018_battle_and_out_block_options()
+    {
+        // O jogador do escritor falso (board) anda a < 1 s dos vizinhos: o bloco BATTLE aparece e some com a opcao.
+        var on = Tower18(null);
+        var off = Tower18(new() { ["battle"] = "false" });
+        Assert.NotEqual(on.Png, off.Png);
+        // Sem o bloco OUT a janela fica mais baixa (sem a reserva das linhas cinza).
+        var noOut = Tower18(new() { ["outBlock"] = "false" });
+        Assert.True(noOut.H < on.H, $"{on.H} -> {noOut.H}");
+        Assert.Equal(on.W, noOut.W);
+    }
+}

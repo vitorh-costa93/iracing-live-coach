@@ -58,6 +58,13 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     // Atraso de cada carro para o lider (s) no inicio (pelotao de 2 s para sobrar intervalo livre na volta de 20 s); o ultimo leva +1 volta.
     static readonly double[] BoardGaps = [0, 0.239, 0.33, 0.45, 0.58, 0.66, 0.79, 0.88, 0.97, 1.08, 1.17, 1.29, 1.38, 1.47, 1.55, 1.63, 1.74, 1.83, 1.92, 2.0];
     static readonly bool BoardEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_BOARD") == "1";
+    // Auxilios da torre 2018 (so --fake, modo board): AMS2_FAKE_GRID=1 = os carros ficam no grid (NotStarted) ate t=1 s numa ordem
+    // diferente da de corrida (GAINED/LOST com ganhos e perdas); AMS2_FAKE_OUT=1 = carros 17 e 18 fora da corrida (Retired/DNF);
+    // AMS2_FAKE_FINISH=1 = corrida de 3 voltas, os 8 primeiros recebem a bandeirada em t=30 s; AMS2_FAKE_FLAG=N = HighestFlagColour (6 = amarela).
+    static readonly bool GridEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_GRID") == "1";
+    static readonly bool OutEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_OUT") == "1";
+    /// <summary>Indices dos carros na ordem do grid (1o, 2o, ...) do AMS2_FAKE_GRID.</summary>
+    static readonly int[] BoardGrid = [1, 0, 2, 5, 3, 4, 6, 9, 7, 8, 10, 13, 11, 12, 14, 15, 17, 16, 18, 19];
     readonly bool _board = board ?? BoardEnv;
 
     // AMS2_FAKE_RADAR=1 (so --fake): o jogador (indice 0) segue em reta a 60 m/s e 4 carros orbitam em torno dele numa elipse de 20 m (frente/tras) x 3,2 a 7,5 m (lados, uma amplitude por carro),
@@ -82,7 +89,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         raw.ViewedParticipantIndex = _radar ? 0 : _board ? BoardPlayerIndex : PlayerIndex;
         raw.NumParticipants = _radar ? RadarNames.Length : _board ? BoardField.Length : Field.Length;
         raw.TrackLength = (float)(_radar ? RadarTrackLength : _board ? BoardTrackLength : TrackLength);
-        raw.LapsInEvent = Finish ? 1u : _board ? 20u : 44u;
+        raw.LapsInEvent = _board ? (Finish ? 3u : 20u) : Finish ? 1u : 44u;
+        if (uint.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_FLAG"), out uint flag)) raw.HighestFlagColour = flag;
         raw.NumSectors = 3;
         raw.EventTimeRemaining = -1;
         Put(raw.TrackLocation, "Spa-Francorchamps");
@@ -215,7 +223,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
             Put(MemoryMarshal.CreateSpan(ref raw.CarNames[i * 64], 64), BoardField[i].Car);
             Put(MemoryMarshal.CreateSpan(ref raw.CarClassNames[i * 64], 64), "F1");
             raw.Speeds[i] = pit == 2 ? 0f : (float)v;
-            raw.RaceStates[i] = 2;
+            raw.RaceStates[i] = GridEnv && t < 1 ? 1u : OutEnv && i is 17 ? 5u : OutEnv && i is 18 ? 6u : Finish && t >= 30 && pos <= 8 ? 3u : 2u;
+            if (GridEnv && t < 1) p.RacePosition = (uint)(Array.IndexOf(BoardGrid, i) + 1);
             raw.PitModes[i] = pit;
             double lapTime = BoardTrackLength / v + 0.12 * Math.Sin(laps * 1.7 + i);
             raw.LastLapTimes[i] = laps >= 1 ? (float)lapTime : -1f;

@@ -124,6 +124,10 @@ public static class WidgetCatalog
                 new("mode", "Modo da coluna", OptionKind.Choice,
                     [O("gap", "Gap para o líder"), O("interval", "Intervalo (carro à frente)"), O("gainedlost", "Posições ganhas/perdidas"),
                      O("pitstops", "Paradas nos boxes"), O("bestlap", "Melhor volta"), O("auto", "Automático (alterna como na TV)")], "gap"),
+                new("modeSeconds", "Automático: segundos por modo", OptionKind.Number, null, "10", Min: 5, Max: 30),
+                new("battle", "Bloco \"BATTLE FOR\" (jogador a menos de 1 s de alguém)", OptionKind.Toggle, null, "true"),
+                new("fullNames", "Nomes completos sob bandeira amarela / Safety Car", OptionKind.Toggle, null, "true"),
+                new("outBlock", "Pilotos fora da corrida no bloco cinza \"OUT\" (senão ocultos)", OptionKind.Toggle, null, "true"),
             ],
         },
     };

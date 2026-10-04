@@ -12,13 +12,40 @@ public class ThemeOptionsTests
     [Fact]
     public void Standings_2018_has_mode_option_and_other_themes_have_none()
     {
-        var o = Assert.Single(WidgetCatalog.OptionsFor(T2018, "standings"));
+        var defs = WidgetCatalog.OptionsFor(T2018, "standings");
+        var o = defs[0];
         Assert.Equal(("mode", OptionKind.Choice, "gap"), (o.Id, o.Kind, o.Default));
         Assert.Equal(["gap", "interval", "gainedlost", "pitstops", "bestlap", "auto"], o.Choices!.Select(c => c.Value));
-        Assert.Single(WidgetCatalog.OptionsFor("f1-2010s", "standings"));   // id antigo do tema
+        Assert.Equal(5, WidgetCatalog.OptionsFor("f1-2010s", "standings").Count);   // id antigo do tema
         Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "standings"));
         Assert.Empty(WidgetCatalog.OptionsFor(T2018, "fuel"));
         Assert.Empty(WidgetCatalog.OptionsFor("nao-existe", "standings"));
+    }
+
+    [Fact]
+    public void Standings_2018_options_mode_seconds_battle_full_names_and_out_block()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "standings");
+        Assert.Equal(["mode", "modeSeconds", "battle", "fullNames", "outBlock"], defs.Select(d => d.Id));
+        var secs = defs.Single(d => d.Id == "modeSeconds");
+        Assert.Equal((OptionKind.Number, "10", 5.0, 30.0), (secs.Kind, secs.Default, secs.Min, secs.Max));
+        foreach (var id in new[] { "battle", "fullNames", "outBlock" })
+        {
+            var d = defs.Single(x => x.Id == id);
+            Assert.Equal((OptionKind.Toggle, "true"), (d.Kind, d.Default));
+        }
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+
+        // Valores: numero limitado a 5..30, toggles canonicos, padroes nao sao gravados.
+        var s = new WidgetSettings
+        {
+            Id = "standings",
+            Options = new() { ["modeSeconds"] = "99", ["battle"] = "False", ["fullNames"] = "true", ["outBlock"] = "sim" },
+        }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["modeSeconds"] = "30", ["battle"] = "false" }, s.Options);
+        Assert.Equal("5", new WidgetSettings { Id = "standings", Options = new() { ["modeSeconds"] = "1" } }.Normalized(T2018).Option("modeSeconds"));
+        Assert.Null(new WidgetSettings { Id = "standings", Options = new() { ["modeSeconds"] = "10" } }.Normalized(T2018).Options);
+        Assert.Equal("true", new WidgetSettings { Id = "standings" }.OptionOr("outBlock", "true"));
     }
 
     [Fact]
