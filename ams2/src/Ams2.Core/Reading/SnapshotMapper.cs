@@ -60,8 +60,8 @@ public static class SnapshotMapper
                 wheels, raw.BrakeBias)
             : null;
 
-        // mEventTimeRemaining é documentado em milissegundos (UNSET = -1). Confirmar em sessão real.
-        double? remaining = raw.EventTimeRemaining >= 0 ? raw.EventTimeRemaining / 1000.0 : null;
+        // mEventTimeRemaining vem em SEGUNDOS no AMS2 (confirmado em sessao real: 502 -> 8:22; UNSET = -1).
+        double? remaining = raw.EventTimeRemaining >= 0 ? raw.EventTimeRemaining : null;
 
         return new SessionSnapshot(
             raw.Version, raw.SequenceNumber,

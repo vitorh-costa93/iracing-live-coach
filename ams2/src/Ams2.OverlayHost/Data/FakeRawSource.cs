@@ -101,7 +101,7 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     readonly bool _radar = radar ?? RadarEnv;
 
     // AMS2_FAKE_QUALI=1 (so --fake/--png): classificacao (SessionState 3) de 20 carros numa pista de 2100 m (setores de 700 m), relogio de
-    // 15:00 decrescente (EventTimeRemaining em ms, como o mapper espera). Jogador = indice 5: larga da linha em t=0 em volta lancada e faz
+    // 15:00 decrescente (EventTimeRemaining em segundos, como o AMS2). Jogador = indice 5: larga da linha em t=0 em volta lancada e faz
     // voltas de ~30,5 s com setores diferentes a cada volta (QualiPlayerSectors, ciclo de 4); melhor/ultima volta do jogador so mudam ao
     // cruzar a linha. Sem mCurrentSectorNTimes (o QualiLapTracker deriva os setores); os outros carros com tempo trazem mFastestSectorNTimes.
     // Estados: 17 parado no box (IN PIT, com tempo); 18 e 19 na garagem sem tempo (NO TIME); 15 sai da garagem em t=5 s com tempo e
@@ -143,7 +143,7 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         raw.LapsInEvent = _board ? (Finish ? 3u : 20u) : Finish ? 1u : 44u;
         if (uint.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_FLAG"), out uint flag)) raw.HighestFlagColour = flag;
         raw.NumSectors = 3;
-        raw.EventTimeRemaining = _quali ? (float)(Math.Max(0, (QualiEndEnv ? QualiEndAt : QualiSessionSeconds) - t) * 1000) : -1;
+        raw.EventTimeRemaining = _quali ? (float)(Math.Max(0, (QualiEndEnv ? QualiEndAt : QualiSessionSeconds) - t) ) : -1;
         if (_quali && QualiEndEnv && t >= QualiEndAt) raw.HighestFlagColour = 11;   // FLAG_COLOUR_CHEQUERED
         Put(raw.TrackLocation, TrackName);
         Put(raw.CarName, PlayerCarName);
