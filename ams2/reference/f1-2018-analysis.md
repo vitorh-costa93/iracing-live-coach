@@ -52,5 +52,28 @@ Mesma placa preta da legenda de piloto, porém com **caixa de posição branca g
 ## Vencedor / pódio (t≈1160 s do vídeo, só visto na folha de contatos)
 Três retratos verticais lado a lado (2º, **1º ao centro e maior**, 3º) com `WINNER` em destaque acima do 1º e `2nd`/`3rd` acima dos outros, sobrenome embaixo de cada retrato, fundo escuro translúcido. Sem fotos no AMS2: usar blocos com posição, sobrenome e cor da equipe.
 
-## Não analisado
-Painel de telemetria do cockpit (≈ 610 s, direita) e gráficos de rádio/ultrapassagem: o navegador embutido ficou instável (painel oculto, `seeked` travando); não são widgets do app.
+## Painéis extras (varredura completa do vídeo, 2ª passada)
+Folhas: `f1-2018-scan-race-t100-850.jpg` (quadros em t = 100, 175, 250, 325 / 400, 475, 550, 625 / 700, 775, 850 s, em ordem de leitura),
+`f1-2018-scan-finish-t925-1190.jpg` (925, 1000, 1075, 1120 / 1140, 1160, 1180, 1190 s) e dois mosaicos de recortes 1:1–2×:
+`f1-2018-crops-livespeed-racestart-radio-caption.jpg` e `f1-2018-crops-pitmap-winner-finishtower.jpg`. `f1-2018-tower-yellowflag.jpg` = bandeira amarela (t≈610 s).
+
+- **Painel de telemetria `LIVE SPEED`** (t≈325 s, direita do quadro, ≈ 170×75 px na tela de 1920): filete vermelho no topo, `LIVE SPEED` branco à esquerda + ícone de velocímetro à direita,
+  nome do piloto centralizado (`HAMILTON`, caixa alta, negrito leve), embaixo dois números **vermelhos (#E6242B) grandes** (`330` KM/H e `205` MPH, separados por uma barra diagonal fina),
+  rótulos `KM/H`/`MPH` em azul-acinzentado (#8FB0BD). Fundo preto ≈ 90 %, canto inferior direito arredondado.
+- **`RACE START 0-200km/h`** (t≈175 s): mesma placa; título branco em duas linhas; para cada piloto uma faixa preta com **tique da cor da equipe** + sobrenome em negrito e abaixo faixa cinza-escura
+  com o tempo grande (`4.6` + `s` pequeno) – comparação entre dois pilotos empilhados.
+- **Rádio** (t≈100 s, `HAMILTON`): placa com equipe no topo (`Mercedes`), **forma de onda ciano (#35E6C8)** em torno da foto, tique + nome em negrito, caixa tracejada ciano com ícone de capacete e a frase em itálico entre aspas.
+  No fim do vídeo reaparece compacta (`McLaren / 1 NORRIS` + forma de onda). Exige áudio do rádio: **não existe no AMS2** (só legenda estática possível).
+- **Legenda `STARTED / NOW`** (t≈175 s): linha superior preta com caixa de posição branca (do grid ATUAL), tique da equipe, `Daniel RICCIARDO`, número em itálico dourado e logo; linha inferior cinza-escura translúcida
+  com `STARTED 2nd | NOW 1st` (rótulos pequenos, ordinais ≈ 3× maiores com sufixo sobrescrito, filete vertical no meio).
+- **Pit lane com mini-mapa** (t≈475 s): `PIT LANE` + `5 | VERSTAPPEN` + `STOP TIME 11.1` (ciano, colchetes de canto) acompanhado de um **mapa da pista** (traçado branco com linha preta, números de curva, bolinhas coloridas = carros por equipe, bandeira xadrez na linha de chegada).
+- **Torre — modo `Interval`** (t≈475 s): cabeçalho de coluna `Interval` no lugar de `Leader`; valores = diferença para o carro da frente (`+0.368`); estado `IN PIT` ciano no lugar do gap; linha de piloto em destaque (RICCIARDO) em faixa preta com nome completo e caixa branca (jogador/foco).
+- **Bandeira amarela** (t≈610 s): cabeçalho `YELLOW FLAG` (amarelo, fundo preto) + faixa amarela com ícone de bandeira e `SECTOR 1` (preto); `PIT EXIT`/`IN PIT` ciano nas linhas; pilotos fora = `OUT` cinza no rodapé.
+- **Safety Car** (t≈625 s): caixa `SAFETY CAR` preta com bandeiras amarelas; torre com **nomes completos** (`LECLERC, PEREZ…`); legendas de envolvidos embaixo (`Lewis HAMILTON 44 | Mercedes`, `Max VERSTAPPEN 33 | Red Bull Racing`), uma em cada canto, com logo da equipe.
+- **`SLOW STOP -11.1s`** (t≈550 s): barra preta fina embaixo do vídeo de repetição com o texto `VERSTAPPEN SLOW STOP -11.1s`.
+- **Fim da corrida** (t≈1075 s): cabeçalho `LAP | 53 / 53` sobre **bandeira xadrez**; as três primeiras linhas viram **faixas altas com retrato** (nome completo da sigla `RICCIARDO`, caixa de posição **roxa** para o 1º, brancas para os demais, mini bandeira xadrez à esquerda); da 4ª em diante linhas normais com `+3.174`.
+  Banner superior `WINNER | Daniel RICCIARDO · McLaren` (≈ 780×90, fundo xadrez recortado + placa preta arredondada e logo da equipe à direita).
+- **Pódio** (t≈1140 s): três cartões verticais (2º, 1º maior, 3º) com `2ND`/`WINNER`/`3RD`, retrato, bandeira do país, nome + sobrenome em negrito e equipe; sem retrato no AMS2: usar cor da equipe/número.
+
+## Sem equivalente no AMS2
+Rádio (áudio), retratos de pilotos, logos de equipe e bandeiras de países não existem na memória compartilhada; usar tique/cor da equipe e texto.
