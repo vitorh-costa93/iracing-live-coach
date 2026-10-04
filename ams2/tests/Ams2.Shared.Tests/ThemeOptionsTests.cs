@@ -580,4 +580,51 @@ public class ThemeOptionsTests
             Assert.False(overlap, $"qualilap ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");
         }
     }
+
+    [Theory]
+    [InlineData("f1-2018", new[] { "rows", "eliminationFrom", "maxEliminated", "showFor", "always" })]
+    [InlineData("f1-2004", new[] { "rows", "eliminationFrom", "showFor", "always" })]
+    [InlineData("f1-1998", new[] { "rows", "eliminationFrom", "showFor", "always" })]
+    public void Quali_result_options_per_theme(string theme, string[] ids)
+    {
+        var defs = WidgetCatalog.OptionsFor(theme, "qualiresult");
+        Assert.Equal(ids, defs.Select(d => d.Id));
+        OptionDef D(string id) => defs.Single(d => d.Id == id);
+        Assert.Equal((OptionKind.Number, "10", 3.0, 30.0), (D("rows").Kind, D("rows").Default, D("rows").Min, D("rows").Max));
+        Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (D("eliminationFrom").Kind, D("eliminationFrom").Default, D("eliminationFrom").Min, D("eliminationFrom").Max));
+        Assert.Equal((OptionKind.Number, "15", 5.0, 60.0), (D("showFor").Kind, D("showFor").Default, D("showFor").Min, D("showFor").Max));
+        Assert.Equal((OptionKind.Toggle, "false"), (D("always").Kind, D("always").Default));
+        if (theme == T2018) Assert.Equal((OptionKind.Number, "5", 3.0, 5.0), (D("maxEliminated").Kind, D("maxEliminated").Default, D("maxEliminated").Min, D("maxEliminated").Max));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+
+        // Padroes nao sao gravados; numeros limitados; toggle canonico; invalidos e opcoes de outros temas descartados.
+        Assert.Null(new WidgetSettings { Id = "qualiresult", Options = defs.ToDictionary(d => d.Id, d => d.Default) }.Normalized(theme).Options);
+        var s = new WidgetSettings { Id = "qualiresult", Options = new() { ["rows"] = "1", ["eliminationFrom"] = "99", ["showFor"] = "100", ["always"] = "True", ["bogus"] = "1", ["mode"] = "fastesttyre" } }.Normalized(theme);
+        Assert.Equal(new Dictionary<string, string> { ["rows"] = "3", ["eliminationFrom"] = "30", ["showFor"] = "60", ["always"] = "true" }, s.Options);
+        Assert.Equal("5", new WidgetSettings { Id = "qualiresult", Options = new() { ["showFor"] = "1" } }.Normalized(theme).Option("showFor"));
+        if (theme == T2018) Assert.Equal("3", new WidgetSettings { Id = "qualiresult", Options = new() { ["maxEliminated"] = "1" } }.Normalized(theme).Option("maxEliminated"));
+        else Assert.Null(new WidgetSettings { Id = "qualiresult", Options = new() { ["maxEliminated"] = "4" } }.Normalized(theme).Options);
+    }
+
+    [Theory]
+    [InlineData("f1-2018", 500f, 382f)]
+    [InlineData("f1-2004", 256f, 406f)]
+    [InlineData("f1-1998", 834f, 262f)]
+    public void Quali_result_sits_in_a_free_area_and_clears_every_widget_visible_in_qualifying(string theme, float w, float h)
+    {
+        // Sem grupo exclusivo: a torre de classificacao continua na tela quando o resultado aparece.
+        Assert.DoesNotContain(WidgetLayout.ExclusiveGroups, g => g.Contains("qualiresult"));
+        Assert.Equal((w, h), WidgetLayout.DesignSizes[theme]["qualiresult"]);
+        var q = WidgetLayout.Rect(theme, "qualiresult")!.Value;
+        Assert.True(q.X >= 0 && q.Y >= 0 && q.X + q.W <= WidgetLayout.RefWidth && q.Y + q.H <= WidgetLayout.RefHeight, $"{q}");
+        var profile = ProfileFactory.CreateDefault("x", theme, WidgetLayout.RefWidth, WidgetLayout.RefHeight);
+        Assert.True(profile.Widgets.Single(x => x.Id == "qualiresult").Visible);
+        foreach (var x in profile.Widgets.Where(x => x.Visible && x.Id != "qualiresult"))
+        {
+            if (!WidgetCatalog.Find(x.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.Rect(theme, x.Id) is not { } o) continue;
+            bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
+            Assert.False(overlap, $"qualiresult ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+    }
 }

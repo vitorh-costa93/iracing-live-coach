@@ -23,7 +23,8 @@ public sealed record OverlayModel(
     IReadOnlyDictionary<int, int>? Grid = null,   // grid de largada (GridTracker): indice do carro -> posicao de largada; vazio = desconhecido
     LaunchState? Launch = null,                   // largada do jogador 0-100/0-200 km/h (LaunchTracker) + melhor guardado da pista+carro
     QualiTableState? Quali = null,                // tabela de melhores voltas (QualiTable + OutLapTracker) e relogio da sessao
-    QualiLapState? QualiLap = null)               // volta em andamento do jogador: setores, parciais e resultado (QualiLapTracker)
+    QualiLapState? QualiLap = null,               // volta em andamento do jogador: setores, parciais e resultado (QualiLapTracker)
+    QualiEndState? QualiEnd = null)               // fim da classificacao (QualiEndTracker): instante do fim e mudancas da tabela depois dele
 {
     /// <summary>Grupo da sessao para o filtro de visibilidade ("practice"/"qualify"/"race"); null = sem dados ou tipo invalido (nao filtra).</summary>
     public string? SessionGroup => Connected ? SessionGroups.IdOf(Session?.Kind) : null;
@@ -76,6 +77,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly LaunchTracker _launch;
     readonly OutLapTracker _outLaps = new();
     readonly QualiLapTracker _qualiLap = new();
+    readonly QualiEndTracker _qualiEnd = new();
     readonly BoardTracker _board;
     /// <summary>Radar lateral (pose de mundo dos carros). As opcoes (alcance, sensibilidade) vem do perfil, pelo host.</summary>
     public RadarTracker Radar { get; } = new();
@@ -147,7 +149,7 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); _qualiEnd.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
@@ -166,7 +168,8 @@ public sealed class OverlayDataProvider : IDisposable
             if (s.InSession) _outLaps.Update(s);
             var quali = s.InSession ? QualiTable.Build(s, _outLaps.IsOutLap) : null;
             var qualiLap = s.InSession ? _qualiLap.Update(now, s) : null;
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid, launch, quali, qualiLap);
+            var qualiEnd = quali is not null ? _qualiEnd.Update(now, s, quali) : null;
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid, launch, quali, qualiLap, qualiEnd);
         }
         else
         {

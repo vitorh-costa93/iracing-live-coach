@@ -51,6 +51,78 @@ public static class QualiTable
 }
 
 /// <summary>
+/// Fim da sessao de classificacao: instante em que acabou (<see cref="EndedAt"/>) e instantes em que a tabela mudou depois disso
+/// (<see cref="Changes"/>: voltas finais que entram depois do relogio zerar). Null = sessao em andamento.
+/// </summary>
+public sealed record QualiEndState(double EndedAt, IReadOnlyList<double> Changes)
+{
+    /// <summary>
+    /// Janela de exibicao do resultado por <paramref name="showFor"/> s: comeca no fim da sessao; uma mudanca da tabela enquanto o
+    /// resultado esta na tela estende a janela (mudanca + showFor) sem reiniciar; uma mudanca depois que ele saiu abre uma janela nova.
+    /// </summary>
+    public (double Start, double End) Window(double showFor)
+    {
+        double start = EndedAt, end = EndedAt + showFor;
+        foreach (var c in Changes)
+        {
+            if (c < end) end = Math.Max(end, c + showFor);
+            else { start = c; end = c + showFor; }
+        }
+        return (start, end);
+    }
+}
+
+/// <summary>
+/// Detecta o fim da classificacao: relogio zerado (<see cref="SessionSnapshot.TimeRemainingSeconds"/> &lt;= 0), bandeira xadrez
+/// (FLAG_COLOUR_CHEQUERED) ou todos os carros com a bandeirada (nenhum em corrida e pelo menos um Finished). Volta a null quando a
+/// sessao recomeca (relogio de novo positivo, sem xadrez).
+/// </summary>
+public sealed class QualiEndTracker
+{
+    const uint FlagChequered = 11;
+    const int MaxChanges = 64;
+    double? _endedAt;
+    readonly List<double> _changes = [];
+    int _sig;
+    QualiEndState? _state;
+
+    public QualiEndState? State => _state;
+
+    public void Reset() { _endedAt = null; _changes.Clear(); _sig = 0; _state = null; }
+
+    public static bool Ended(SessionSnapshot s, double? remaining)
+        => remaining is <= 0 || s.FlagColour == FlagChequered
+           || s.Cars.Count > 0 && s.Cars.Any(c => c.RaceState == RaceState.Finished) && !s.Cars.Any(c => c.RaceState == RaceState.Racing);
+
+    /// <summary>Assinatura da tabela: ordem dos carros e melhores voltas (ms).</summary>
+    static int Signature(QualiTableState q)
+    {
+        var h = new HashCode();
+        foreach (var r in q.Rows) { h.Add(r.Car.Index); h.Add(r.BestLap is { } b ? (long)Math.Round(b * 1000) : -1L); }
+        return h.ToHashCode();
+    }
+
+    public QualiEndState? Update(double now, SessionSnapshot s, QualiTableState q)
+    {
+        if (!Ended(s, q.TimeRemaining ?? s.TimeRemainingSeconds)) { if (_endedAt is not null) Reset(); return null; }
+        int sig = Signature(q);
+        if (_endedAt is null)
+        {
+            _endedAt = now; _sig = sig;
+            _state = new QualiEndState(now, []);
+        }
+        else if (sig != _sig)
+        {
+            _sig = sig;
+            _changes.Add(now);
+            if (_changes.Count > MaxChanges) _changes.RemoveAt(0);
+            _state = new QualiEndState(_endedAt.Value, _changes.ToArray());
+        }
+        return _state;
+    }
+}
+
+/// <summary>
 /// Volta de saida: a volta (CurrentLap) em que o carro foi visto pela ultima vez no pit lane ou na garagem continua sendo "OUT LAP"
 /// depois que ele volta para a pista, ate cruzar a linha (CurrentLap muda). Vale com o box antes ou depois da linha.
 /// </summary>

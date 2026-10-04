@@ -102,7 +102,7 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
-        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower e qualilap desenhados nos 3 temas; qualiresult ainda placeholder.
+        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -210,6 +210,15 @@ public static class WidgetCatalog
                 new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
                 new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
             ],
+            // Resultado da classificacao do 2018: bloco "ELIMINATED" (uma faixa por eliminado, +gap grande) e tabela "CLASSIFICATION".
+            ["qualiresult"] =
+            [
+                new("rows", "Linhas da tabela (o jogador sempre aparece)", OptionKind.Number, null, "10", Min: 3, Max: 30),
+                new("eliminationFrom", "Bloco ELIMINATED: posição do primeiro eliminado (0 = desligado)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("maxEliminated", "Bloco ELIMINATED: máximo de pilotos", OptionKind.Number, null, "5", Min: 3, Max: 5),
+                new("showFor", "Tempo na tela após o fim da sessão (s)", OptionKind.Number, null, "15", Min: 5, Max: 60),
+                new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
+            ],
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -230,6 +239,14 @@ public static class WidgetCatalog
                 new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
                 new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
             ],
+            // Resultado do 2004: faixa de siglas [posicao][SIGLA][tempo/+gap], eliminados com a caixa de posicao vermelha.
+            ["qualiresult"] =
+            [
+                new("rows", "Linhas da lista (o jogador sempre aparece)", OptionKind.Number, null, "10", Min: 3, Max: 30),
+                new("eliminationFrom", "Eliminados: posição do primeiro eliminado (0 = desligado)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("showFor", "Tempo na tela após o fim da sessão (s)", OptionKind.Number, null, "15", Min: 5, Max: 60),
+                new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
+            ],
         },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -248,6 +265,14 @@ public static class WidgetCatalog
                 new("showSpeed", "Velocidade na linha de chegada (resultado)", OptionKind.Toggle, null, "true"),
                 new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
                 new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
+            ],
+            // Resultado do 1998: lista completa em duas colunas [caixa amarela][NOME], 1o com o tempo, demais a diferenca sem "+".
+            ["qualiresult"] =
+            [
+                new("rows", "Pilotos na lista (o jogador sempre aparece)", OptionKind.Number, null, "10", Min: 3, Max: 30),
+                new("eliminationFrom", "Eliminados: posição do primeiro eliminado (0 = desligado)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("showFor", "Tempo na tela após o fim da sessão (s)", OptionKind.Number, null, "15", Min: 5, Max: 60),
+                new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
             ],
         },
     };

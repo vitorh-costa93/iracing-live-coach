@@ -753,4 +753,70 @@ public sealed class CustomizationPngTests
         Assert.NotEqual(QualiLap("f1-2004", 22).Png, QualiLap("f1-2004", 22, new() { ["showSectors"] = "false" }).Png);
         Assert.NotEqual(QualiLap("f1-1998", 45).Png, QualiLap("f1-1998", 45, new() { ["showSpeed"] = "false" }).Png);
     }
+
+    // ---- Resultado da classificacao (WidgetCatalog.OptionsFor(tema, "qualiresult")); AMS2_FAKE_QUALI=1 + AMS2_FAKE_QUALI_END=1: a sessao
+    // acaba em t=45 s (relogio 0:00 + xadrez), o jogador ja e P5 (30.480); depois o 16 marca tempo em t~70 s (muda a tabela) ----
+
+    static (int W, int H, byte[] Png) QualiResult(string theme, double sim, Dictionary<string, string>? options = null, bool end = true, string? keep = null)
+    {
+        string png = keep ?? Path.Combine(Path.GetTempPath(), $"ams2-qr-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(Path.Combine(Path.GetTempPath(), $"ams2-qr-{Guid.NewGuid():N}"), ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualiresult", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget qualiresult --theme {theme} --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_QUALI"] = "1";
+        psi.Environment["AMS2_FAKE_QUALI_END"] = end ? "1" : "0";
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(60000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { if (keep is null) File.Delete(png); File.Delete(json); }
+    }
+
+    [Theory]
+    [InlineData("f1-2018", 500, 382)]
+    [InlineData("f1-2004", 256, 406)]
+    [InlineData("f1-1998", 834, 262)]
+    public void Quali_result_appears_at_the_end_of_the_session_for_showFor_seconds(string theme, int w, int h)
+    {
+        // Sessao em andamento: oculto (dois quadros vazios iguais); com "always" desenha a lista atual na mesma janela.
+        var running = QualiResult(theme, 30, end: false);
+        Assert.Equal((w, h), (running.W, running.H));
+        Assert.Equal(running.Png, QualiResult(theme, 40, end: false).Png);
+        var always = QualiResult(theme, 30, new() { ["always"] = "true" }, end: false);
+        Assert.Equal((w, h), (always.W, always.H));
+        Assert.True(always.Png.Length > running.Png.Length + 1000, $"{running.Png.Length} -> {always.Png.Length}");
+        // Fim em t=45: visivel em t=50; em t=64 (19 s depois, sem mudanca na tabela) ja saiu; showFor=30 ainda mostra.
+        var shown = QualiResult(theme, 50);
+        Assert.Equal((w, h), (shown.W, shown.H));
+        Assert.True(shown.Png.Length > running.Png.Length + 1000);
+        Assert.Equal(running.Png, QualiResult(theme, 64).Png);
+        Assert.True(QualiResult(theme, 64, new() { ["showFor"] = "30" }).Png.Length > running.Png.Length + 1000);
+        // Volta final depois do fim (o 16 marca tempo em t~70 s): o resultado volta.
+        Assert.True(QualiResult(theme, 76).Png.Length > running.Png.Length + 1000);
+        // Linhas e eliminados: menos linhas = janela menor (1998: duas colunas); eliminados mudam o desenho.
+        Assert.True(QualiResult(theme, 50, new() { ["rows"] = "4" }).H < h);
+        var zone = QualiResult(theme, 50, new() { ["eliminationFrom"] = "4" });
+        Assert.NotEqual(shown.Png, zone.Png);
+    }
+
+    [Fact]
+    public void Quali_result_2018_eliminated_block_reserves_maxEliminated_strips()
+    {
+        const string T = "f1-2018";
+        var d = QualiResult(T, 50);
+        var zone = QualiResult(T, 50, new() { ["eliminationFrom"] = "16" });
+        Assert.Equal(d.W, zone.W);
+        Assert.True(zone.H > d.H, $"{d.H} -> {zone.H}");
+        var three = QualiResult(T, 50, new() { ["eliminationFrom"] = "16", ["maxEliminated"] = "3" });
+        Assert.True(three.H < zone.H && three.H > d.H, $"{d.H} < {three.H} < {zone.H}");
+        // So o 2018 tem o bloco: nos outros temas o corte so pinta as caixas (mesma janela).
+        Assert.Equal(QualiResult("f1-2004", 50).H, QualiResult("f1-2004", 50, new() { ["eliminationFrom"] = "16" }).H);
+    }
 }

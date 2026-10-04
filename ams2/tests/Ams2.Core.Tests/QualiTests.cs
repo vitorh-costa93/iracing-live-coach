@@ -234,3 +234,46 @@ public class QualiLapTrackerTests
         Assert.Equal(1, st.LeaderIndex);
     }
 }
+
+public class QualiEndTrackerTests
+{
+    static SessionSnapshot Snap(double? remaining, double[] best, uint flag = 0, RaceState state = RaceState.Racing)
+    {
+        var sim = new Sim(3000, (100, 50), (200, 50), (300, 50)) { PlayerIndex = 1 };
+        var s = sim.Snapshot();
+        return s with { Kind = SessionKind.Qualify, TimeRemainingSeconds = remaining, FlagColour = flag,
+            Cars = s.Cars.Select(c => c with { BestLapTime = best[c.Index], LapsCompleted = 3, RaceState = state }).ToList() };
+    }
+
+    static QualiEndState? Step(QualiEndTracker t, double now, SessionSnapshot s) => t.Update(now, s, QualiTable.Build(s));
+
+    [Fact]
+    public void Ends_on_zero_clock_chequered_flag_or_everyone_finished_and_resets_on_a_new_session()
+    {
+        double[] best = [61.2, 60.9, 61.5];
+        var t = new QualiEndTracker();
+        Assert.Null(Step(t, 10, Snap(30, best)));
+        Assert.Null(Step(t, 11, Snap(null, best)));                         // sem relogio e sem bandeira: em andamento
+        var e = Step(t, 40, Snap(0, best));
+        Assert.Equal(40, e!.EndedAt);
+        Assert.Empty(e.Changes);
+        Assert.Equal(40, Step(t, 41, Snap(0, best))!.EndedAt);              // continua o mesmo fim
+        Assert.Null(Step(t, 50, Snap(900, best)));                          // nova sessao
+        Assert.Equal(60, Step(new QualiEndTracker(), 60, Snap(300, best, flag: 11))!.EndedAt);
+        Assert.Equal(70, Step(new QualiEndTracker(), 70, Snap(300, best, state: RaceState.Finished))!.EndedAt);
+    }
+
+    [Fact]
+    public void Records_table_changes_after_the_end_and_the_display_window_extends_or_reopens()
+    {
+        var t = new QualiEndTracker();
+        Step(t, 100, Snap(0, [61.2, 60.9, 61.5]));
+        Step(t, 105, Snap(0, [61.2, 60.9, 61.5]));                          // nada mudou
+        var e = Step(t, 108, Snap(0, [61.2, 60.9, 60.7]))!;                  // volta final: muda a ordem
+        Assert.Equal([108.0], e.Changes);
+        Assert.Equal((100.0, 123.0), e.Window(15));                          // estendida sem reiniciar
+        var late = new QualiEndState(100, [108, 140]);
+        Assert.Equal((140.0, 155.0), late.Window(15));                       // depois que saiu: janela nova
+        Assert.Equal((100.0, 115.0), new QualiEndState(100, []).Window(15));
+    }
+}

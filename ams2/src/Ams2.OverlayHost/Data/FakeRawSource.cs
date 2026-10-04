@@ -111,6 +111,10 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
     /// <summary>O jogador ja estava na pista havia 20 s em t=0: cruza a linha em t=10,75 s (volta 1 = 30,75 s) e fecha a volta 2 em t~41,2 s.</summary>
     public const double QualiPlayerLead = 20;
     static readonly bool QualiEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_QUALI") == "1";
+    /// <summary>AMS2_FAKE_QUALI_END=1: a sessao acaba em t=<see cref="QualiEndAt"/> s (relogio 0:00 e bandeira xadrez), depois da volta
+    /// 30.480 do jogador (t~41,2 s); os carros seguem na pista (o 16 marca tempo em t~70 s), como as voltas finais depois do fim do tempo.</summary>
+    public const double QualiEndAt = 45;
+    static readonly bool QualiEndEnv = Environment.GetEnvironmentVariable("AMS2_FAKE_QUALI_END") == "1";
     readonly bool _quali = quali ?? QualiEnv;
     static readonly string[] QualiNames =
     [
@@ -139,7 +143,8 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         raw.LapsInEvent = _board ? (Finish ? 3u : 20u) : Finish ? 1u : 44u;
         if (uint.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_FLAG"), out uint flag)) raw.HighestFlagColour = flag;
         raw.NumSectors = 3;
-        raw.EventTimeRemaining = _quali ? (float)(Math.Max(0, QualiSessionSeconds - t) * 1000) : -1;
+        raw.EventTimeRemaining = _quali ? (float)(Math.Max(0, (QualiEndEnv ? QualiEndAt : QualiSessionSeconds) - t) * 1000) : -1;
+        if (_quali && QualiEndEnv && t >= QualiEndAt) raw.HighestFlagColour = 11;   // FLAG_COLOUR_CHEQUERED
         Put(raw.TrackLocation, TrackName);
         Put(raw.CarName, PlayerCarName);
         Put(raw.CarClassName, "F1");
