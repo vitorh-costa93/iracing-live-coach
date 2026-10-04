@@ -238,6 +238,59 @@ public sealed class CustomizationPngTests
         Assert.NotEqual(shortHold.Png, longHold.Png);
     }
 
+    // ---- Vencedor 2018: estilos (WidgetCatalog.OptionsFor("f1-2018", "winner")) ----
+
+    /// <summary>Renderiza o vencedor 2018 depois da bandeirada (AMS2_FAKE_FINISH: os 8 primeiros recebem em t=30 s); devolve (largura, altura, bytes do PNG).</summary>
+    static (int W, int H, byte[] Png) Winner18(Dictionary<string, string>? options, double sim = 40, string[]? cols = null, bool finish = true)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-w18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "winner", Columns = cols ?? ["always", "team", "stats"], Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget winner --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_BOARD"] = "1";
+        if (finish) psi.Environment["AMS2_FAKE_FINISH"] = "1";
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Fact]
+    public void Winner_2018_styles_banner_podium_and_both()
+    {
+        var banner = Winner18(null);
+        var podium = Winner18(new() { ["style"] = "podium" });
+        var both = Winner18(new() { ["style"] = "both" });
+        // Banner 780x90 (padrao), pódio 780x380, ambos = banner + 14 + pódio.
+        Assert.Equal((780, 90), (banner.W, banner.H));
+        Assert.Equal((780, 380), (podium.W, podium.H));
+        Assert.Equal((780, 90 + 14 + 380), (both.W, both.H));
+        Assert.Equal(banner.Png, Winner18(new() { ["style"] = "banner" }).Png);
+        // Sem bandeirada nada aparece; com ela, o desenho muda. Equipe/estatisticas desligadas mudam o banner.
+        Assert.NotEqual(banner.Png, Winner18(null, finish: false).Png);
+        Assert.NotEqual(banner.Png, Winner18(null, cols: ["always"]).Png);
+        Assert.NotEqual(podium.Png, Winner18(new() { ["style"] = "podium" }, cols: ["always", "stats"]).Png);
+    }
+
+    [Fact]
+    public void Winner_2018_show_for_controls_the_time_on_screen()
+    {
+        // Bandeirada em t=30 s: 12 s depois (t=42) o banner ja sumiu com showFor=5 e segue visivel com 30.
+        string[] events = ["team", "stats"];
+        var shortHold = Winner18(new() { ["showFor"] = "5" }, 42, events);
+        var longHold = Winner18(new() { ["showFor"] = "30" }, 42, events);
+        Assert.NotEqual(shortHold.Png, longHold.Png);
+        Assert.Equal(Winner18(null, finish: false, cols: events).Png, shortHold.Png);
+    }
+
     // ---- Torre 2018: modos e opcoes do tema (WidgetCatalog.OptionsFor("f1-2018", "standings")) ----
 
     /// <summary>Renderiza a torre 2018 com as opcoes do tema e variaveis extras do escritor falso; devolve (largura, altura, bytes do PNG).</summary>

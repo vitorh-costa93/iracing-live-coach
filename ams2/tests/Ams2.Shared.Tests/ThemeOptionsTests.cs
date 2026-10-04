@@ -199,4 +199,41 @@ public class ThemeOptionsTests
         Assert.Null(new WidgetSettings { Id = "drivercaption", Options = new() { ["variant"] = "result" } }.Normalized("f1-1998").Options);
         Assert.Equal("auto", new WidgetSettings { Id = "drivercaption" }.OptionOr("variant", "auto"));
     }
+
+    [Fact]
+    public void Winner_2018_options_style_and_show_for()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "winner");
+        Assert.Equal(["style", "showFor"], defs.Select(d => d.Id));
+        var st = defs[0];
+        Assert.Equal((OptionKind.Choice, "banner"), (st.Kind, st.Default));
+        Assert.Equal(["banner", "podium", "both"], st.Choices!.Select(c => c.Value));
+        var secs = defs[1];
+        Assert.Equal((OptionKind.Number, "12", 5.0, 30.0), (secs.Kind, secs.Default, secs.Min, secs.Max));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.All(st.Choices!, c => Assert.False(string.IsNullOrWhiteSpace(c.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "winner"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "winner"));
+        // As colunas existentes continuam valendo (sempre visivel, equipe, estatisticas).
+        Assert.Equal(["always", "team", "stats"], WidgetCatalog.Find("winner")!.Columns.Select(c => c.Id));
+
+        var s = new WidgetSettings { Id = "winner", Options = new() { ["style"] = "Podium", ["showFor"] = "99" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["style"] = "podium", ["showFor"] = "30" }, s.Options);
+        Assert.Equal("5", new WidgetSettings { Id = "winner", Options = new() { ["showFor"] = "1" } }.Normalized(T2018).Option("showFor"));
+        Assert.Null(new WidgetSettings { Id = "winner", Options = new() { ["style"] = "banner", ["showFor"] = "12" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "winner", Options = new() { ["style"] = "xyz" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "winner", Options = new() { ["style"] = "both" } }.Normalized("f1-2004").Options);
+        Assert.Equal("banner", new WidgetSettings { Id = "winner" }.OptionOr("style", "banner"));
+    }
+
+    [Fact]
+    public void Winner_2018_banner_sits_top_center_clear_of_the_tower()
+    {
+        var w = WidgetLayout.Rect(T2018, "winner")!.Value;
+        var tower = WidgetLayout.Rect(T2018, "standings")!.Value;
+        Assert.Equal((780.0, 90.0), (w.W, w.H));
+        Assert.InRange(w.X + w.W / 2, 940, 980);   // centrado na tela de 1920
+        Assert.True(w.Y < 100);
+        Assert.True(w.X > tower.X + tower.W, $"banner x={w.X} encosta na torre (ate {tower.X + tower.W})");
+    }
 }

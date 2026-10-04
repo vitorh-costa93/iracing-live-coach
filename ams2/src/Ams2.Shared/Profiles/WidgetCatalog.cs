@@ -137,6 +137,13 @@ public static class WidgetCatalog
                      O("result", "Resultado (posição final)"), O("auto", "Automático (como na TV)")], "auto"),
                 new("showFor", "Tempo na tela por evento (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
             ],
+            // Vencedor do 2018: banner superior "WINNER | Nome SOBRENOME", pódio com três cartões (2º, vencedor, 3º) ou os dois.
+            ["winner"] =
+            [
+                new("style", "Estilo", OptionKind.Choice,
+                    [O("banner", "Banner superior (WINNER)"), O("podium", "Pódio (2º, vencedor, 3º)"), O("both", "Banner e pódio")], "banner"),
+                new("showFor", "Tempo na tela (s)", OptionKind.Number, null, "12", Min: 5, Max: 30),
+            ],
         },
     };
 

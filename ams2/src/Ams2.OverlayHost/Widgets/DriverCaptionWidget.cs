@@ -82,7 +82,7 @@ public sealed class DriverCaptionWidget : IWidget
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480, Winner18Width = 660;
+    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480;
     /// <summary>Janela da legenda 2018 (todas as variantes): a de resultado é a mais larga, a STARTED / NOW a mais alta. Desenho alinhado embaixo.</summary>
     public const float Caption18Width = 600, Caption18Height = 132, Started18Top = 56;
 
@@ -96,7 +96,7 @@ public static class CaptionPlate
     }
 
     /// <summary>Cor do tique (e do número) do carro: tom fixo da classe (o AMS2 não informa a cor da equipe).</summary>
-    static Color4 ClassColor(CarSnapshot car, IReadOnlyList<CarSnapshot> field)
+    public static Color4 ClassColor(CarSnapshot car, IReadOnlyList<CarSnapshot> field)
         => Chrome.ClassTick(Math.Max(0, field.Select(x => x.ClassName).Distinct().ToList().IndexOf(car.ClassName)));
 
     /// <summary>
@@ -298,37 +298,7 @@ public static class CaptionPlate
             c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
             return;
         }
-        // 2018: legenda de resultado (caixa de posição branca grande, nome em dois pesos, número em itálico, equipe) e, à direita,
-        // tempo total, distância e média num bloco separado por filete vertical.
-        float w = Winner18Width, h = Height;
-        string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
-        float statsW = stats ? 150 : 0;
-        Plate18(c, 0, 0, w, h, 1, full, CarNumber(car), team, bigBox: true, rightReserve: stats ? statsW + 24 : 0);
-        if (!stats) return;
-        float sx = w - statsW - 12;
-        c.FillRect(sx - 12, 14, 1.5f, h - 28, t.Divider);
-        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Size = 22 }, statsW), sx, 8, statsW, 30, t.ValueColor, HAlign.Right);
-        c.Text(dist, BroadcastUi.Fit(c, dist, t.Label, statsW), sx, 36, statsW, 26, t.LabelColor, HAlign.Right);
-        c.Text(avg, BroadcastUi.Fit(c, avg, t.Label, statsW), sx, 60, statsW, 26, t.LabelColor, HAlign.Right);
-    }
-}
-
-/// <summary>Legenda do vencedor: cabecalho vermelho "Winner" + bandeira quadriculada, nome, equipe e coluna preta com tempo, distancia e media. Aparece ao fim da corrida por ~10 s.</summary>
-public sealed class WinnerWidget : IWidget
-{
-    public string Id => "winner";
-    public (float Width, float Height) DesignSize => (_style == ThemeStyle.Broadcast98 ? CaptionPlate.Winner98Width : _style == ThemeStyle.Broadcast2000s ? CaptionPlate.WinnerWidth : CaptionPlate.Winner18Width, CaptionPlate.Height);
-    ThemeStyle _style;
-    public void UseTheme(Theme.Theme theme) => _style = theme.Style;
-    WidgetSettings _cfg = new() { Id = "winner" };
-    public void Configure(WidgetSettings s) => _cfg = s;
-
-    public void Draw(ThemeCanvas c, OverlayModel m)
-    {
-        if (!m.Connected || m.Session is not { } s) return;
-        var b = BroadcastUi.State(m);
-        if (b.Winner is not { } w) return;
-        float alpha = _cfg.ColumnVisible("always") ? 1f : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars, _cfg));
+        // 2018: banner / pódio próprios (Winner18, em WinnerWidget.cs).
+        Winner18.DrawBanner(c, 0, 0, win, field, cfg);
     }
 }
