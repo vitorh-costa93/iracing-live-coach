@@ -102,7 +102,7 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
-        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower desenhado no 2018; o resto ainda placeholder.
+        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower desenhado nos 3 temas; o resto ainda placeholder.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -199,6 +199,29 @@ public static class WidgetCatalog
                     [O("time", "Tempos (1º com tempo, demais +diferença)"), O("fastesttyre", "Pneu mais rápido (composto e décimos)")], "time"),
                 new("showClock", "Relógio da sessão no cabeçalho", OptionKind.Toggle, null, "true"),
                 new("showAtRisk", "Cartão \"DRIVER AT RISK\" (piloto no corte)", OptionKind.Toggle, null, "true"),
+            ],
+        },
+        ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Torre minima de siglas do 2004 (Japao 2008): 1a linha "1 HAM 1:18.232" com o tempo do lider em caixa preta, abaixo so
+            // posicao + sigla (topo + ao redor do jogador), numeros vermelhos na zona de eliminacao e caixa do relogio "Q | m:ss".
+            ["qualitower"] =
+            [
+                new("rows", "Linhas do topo (inclui o líder)", OptionKind.Number, null, "5", Min: 1, Max: 20),
+                new("nearCount", "Pilotos ao redor do jogador", OptionKind.Number, null, "3", Min: 0, Max: 10),
+                new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("showClock", "Caixa do relógio da sessão (Q | m:ss)", OptionKind.Toggle, null, "true"),
+            ],
+        },
+        ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Lista de classificacao do 1998 (Monaco 2003): colunas de caixas amarelas + NOME, 1o com o tempo, demais a diferenca sem "+".
+            ["qualitower"] =
+            [
+                new("rows", "Pilotos na lista (o jogador sempre aparece)", OptionKind.Number, null, "6", Min: 2, Max: 10),
+                new("columns", "Colunas", OptionKind.Choice, [O("2", "Duas colunas (como na TV)"), O("1", "Uma coluna")], "2"),
+                new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("showClock", "Cabeçalho com o relógio da sessão", OptionKind.Toggle, null, "true"),
             ],
         },
     };

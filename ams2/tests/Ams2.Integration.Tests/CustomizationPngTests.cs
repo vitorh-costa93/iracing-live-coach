@@ -636,12 +636,51 @@ public sealed class CustomizationPngTests
         Assert.NotEqual(d.Png, QualiTower(null, env: new() { ["AMS2_FAKE_FLAG"] = "11" }).Png);
     }
 
-    [Theory]
-    [InlineData("f1-1998", 191, 372)]
-    [InlineData("f1-2004", 132, 316)]
-    public void Quali_tower_other_themes_keep_the_placeholder_window(string theme, int w, int h)
+    // ---- Torre de siglas 2004 (WidgetCatalog.OptionsFor("f1-2004", "qualitower")) ----
+
+    [Fact]
+    public void Quali_tower_2004_window_rows_elimination_clock_and_flag_variants()
     {
-        var r = QualiTower(new() { ["eliminationFrom"] = "16" }, theme: theme);
-        Assert.Equal((w, h), (r.W, r.H));
+        const string T = "f1-2004";
+        var d = QualiTower(null, theme: T);
+        Assert.Equal((400, 314), (d.W, d.H));
+        Assert.True(d.Png.Length > 2000);
+        // Zona de eliminacao: so a cor dos numeros muda (jogador P8 no corte), a janela nao.
+        var zone = QualiTower(new() { ["eliminationFrom"] = "8" }, theme: T);
+        Assert.Equal((d.W, d.H), (zone.W, zone.H));
+        Assert.NotEqual(d.Png, zone.Png);
+        // Linhas do topo / janela ao redor do jogador mudam a altura reservada.
+        Assert.True(QualiTower(new() { ["rows"] = "2" }, theme: T).H < d.H);
+        Assert.True(QualiTower(new() { ["nearCount"] = "6" }, theme: T).H > d.H);
+        // Sem a caixa do relogio a janela fica mais estreita, mesma altura.
+        var noClock = QualiTower(new() { ["showClock"] = "false" }, theme: T);
+        Assert.True(noClock.W < d.W && noClock.H == d.H, $"{d.W}x{d.H} -> {noClock.W}x{noClock.H}");
+        // Bandeirada: xadrez no rotulo do relogio.
+        Assert.NotEqual(d.Png, QualiTower(null, env: new() { ["AMS2_FAKE_FLAG"] = "11" }, theme: T).Png);
+        // Todos os pilotos: estados (OUT LAP / IN PIT / NO TIME) do fim do grid aparecem em texto pequeno.
+        Assert.True(QualiTower(new() { ["rows"] = "20" }, theme: T).H > d.H);
+    }
+
+    // ---- Lista de classificacao 1998 (WidgetCatalog.OptionsFor("f1-1998", "qualitower")) ----
+
+    [Fact]
+    public void Quali_tower_1998_columns_rows_elimination_and_clock_variants()
+    {
+        const string T = "f1-1998";
+        var d = QualiTower(null, theme: T);
+        Assert.Equal((834, 182), (d.W, d.H));
+        Assert.True(d.Png.Length > 2000);
+        var zone = QualiTower(new() { ["eliminationFrom"] = "5" }, theme: T);
+        Assert.Equal((d.W, d.H), (zone.W, zone.H));
+        Assert.NotEqual(d.Png, zone.Png);
+        // Uma coluna: metade da largura, o dobro das linhas.
+        var one = QualiTower(new() { ["columns"] = "1" }, theme: T);
+        Assert.True(one.W < d.W && one.H > d.H, $"{d.W}x{d.H} -> {one.W}x{one.H}");
+        Assert.True(QualiTower(new() { ["rows"] = "10" }, theme: T).H > d.H);
+        // Sem o cabecalho do relogio a janela fica mais baixa.
+        var noClock = QualiTower(new() { ["showClock"] = "false" }, theme: T);
+        Assert.True(noClock.W == d.W && noClock.H < d.H, $"{d.W}x{d.H} -> {noClock.W}x{noClock.H}");
+        // Jogador sem tempo (t=5 s): entra no fim da lista com "NO TIME" no lugar da diferenca.
+        Assert.NotEqual(d.Png, QualiTower(null, 5, theme: T).Png);
     }
 }

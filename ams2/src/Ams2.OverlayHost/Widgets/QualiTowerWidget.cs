@@ -17,31 +17,42 @@ namespace Ams2.OverlayHost.Widgets;
 /// segura, sem retrato; a zona abaixo dele mostra a diferença para ele, como na TV). Modo "fastesttyre": título "FASTEST TYRE", coluna
 /// de composto em círculo e tempos em décimos — o AMS2 só informa o composto do jogador, os outros ficam com "-".
 /// Janela de tamanho fixo para as opções: a reserva do bloco de eliminação e do cartão fica transparente quando sem uso.
-/// Nos outros temas ainda não há desenho: tamanho provisório de <see cref="WidgetLayout.DesignSizes"/> e nada desenhado.
+/// 2004 (ref. quali-2004-tower-clock.jpg): torre mínima de siglas — 1ª linha [1 vermelho][SIGLA branca][tempo do líder em caixa preta],
+/// abaixo só [posição][sigla] (topo + ao redor do jogador), número vermelho em caixa clara na zona de eliminação, estado em texto pequeno
+/// ao lado da sigla, e a caixa do relógio "Q | m:ss" (rótulo escuro + relógio em caixa branca) à direita da 1ª linha.
+/// 1998 (ref. quali-1998-classification-list.jpg): lista em colunas [caixa amarela][NOME] com o tempo do 1º ("1:15.259") e a diferença
+/// sem "+" ("0.036") nos demais, fonte de números do tema com sombra; cabeçalho "QUALIFYING" + relógio.
 /// </summary>
 public sealed class QualiTowerWidget : IWidget
 {
     public string Id => "qualitower";
     WidgetSettings _cfg = new() { Id = "qualitower" };
-    bool _b18;
-    (float, float) _placeholder = (1, 1);
+    ThemeStyle _style = ThemeStyle.Broadcast98;
+    bool _b18 => _style == ThemeStyle.Modern2018;
 
-    public void UseTheme(Theme.Theme theme)
-    {
-        _b18 = theme.Style == ThemeStyle.Modern2018;
-        _placeholder = WidgetLayout.DesignSizes.TryGetValue(theme.Id, out var t) && t.TryGetValue(Id, out var sz) ? sz : (1, 1);
-    }
+    public void UseTheme(Theme.Theme theme) { _style = theme.Style; }
 
     public void Configure(WidgetSettings s) { _cfg = s; }
 
-    public (float Width, float Height) DesignSize => _b18 ? Size18 : _placeholder;
+    public (float Width, float Height) DesignSize => _style switch
+    {
+        ThemeStyle.Modern2018 => Size18,
+        ThemeStyle.Broadcast2000s => Size04,
+        _ => Size98,
+    };
 
     // ---- Opções (WidgetCatalog.OptionsFor("f1-2018", "qualitower")) ----
     int Num(string id, int def, int min, int max)
         => double.TryParse(_cfg.OptionOr(id, def.ToString(CultureInfo.InvariantCulture)), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
             ? (int)Math.Clamp(Math.Round(v), min, max) : def;
     bool Flag(string id, bool def) => _cfg.Option(id) is { } v ? !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase) : def;
-    int TopRows => Num("rows", 10, 5, 20);
+    int TopRows => _style switch
+    {
+        ThemeStyle.Modern2018 => Num("rows", 10, 5, 20),
+        ThemeStyle.Broadcast2000s => Num("rows", 5, 1, 20),
+        _ => Num("rows", 6, 2, 10),
+    };
+    int Columns98 => _cfg.OptionOr("columns", "2") == "1" ? 1 : 2;
     int NearRows => Num("nearCount", 3, 0, 10);
     int Cutoff => Num("eliminationFrom", 0, 0, 30);
     bool TyreMode => string.Equals(_cfg.OptionOr("mode", "time"), "fastesttyre", StringComparison.OrdinalIgnoreCase);
@@ -136,7 +147,8 @@ public sealed class QualiTowerWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!_b18) return;   // outros temas: ainda placeholder (janela vazia)
+        if (_style == ThemeStyle.Broadcast2000s) { Draw04(c, m); return; }
+        if (_style == ThemeStyle.Broadcast98) { Draw98(c, m); return; }
         var t = c.Theme;
         var L = Cols();
         float tw = L.Width, x0 = M;
@@ -305,5 +317,167 @@ public sealed class QualiTowerWidget : IWidget
         var vf = t.Numbers with { Size = 28 };
         c.Text(v, BroadcastUi.Fit(c, v, vf, tw - 24), x0, y, tw - 12, CardTimeH, r.Status == QualiStatus.InPit ? t.PitTimeColor : t.ValueColor, HAlign.Right);
         return y + CardTimeH;
+    }
+
+    /// <summary>Estado no lugar do tempo (OUT LAP / NO TIME / IN PIT); null = volta válida para mostrar.</summary>
+    public static string? StateText(QualiRow r) => r.Status switch
+    {
+        QualiStatus.InPit => "IN PIT",
+        QualiStatus.OutLap => "OUT LAP",
+        QualiStatus.NoTime => "NO TIME",
+        _ => r.HasTime ? null : "NO TIME",
+    };
+
+    static int PlayerIndex(IReadOnlyList<QualiRow> rows) { for (int i = 0; i < rows.Count; i++) if (rows[i].IsPlayer) return i; return -1; }
+
+    bool Chequered(OverlayModel m) => m.Session is { } s && (s.FlagColour == FlagChequered || s.TimeRemainingSeconds is <= 0);
+
+    // ---- 2004–2008 (ref. quali-2004-tower-clock.jpg; mesmo vocabulário da mini-torre de corrida, StandingsWidget.DrawRow2000s) ----
+    const float X04 = 4, Top04 = 4, Pos04 = 40, Name04 = 82, Time04 = 124, H04 = 34, Pitch04 = 36, Lead04 = 6;
+    const float ClockGap04 = 16, ClockLab04 = 40, Clock04 = 88;
+    int Capacity04 => TopRows + Math.Max(NearRows, 1);
+    const float ClockX04 = X04 + Pos04 + Name04 + Time04 + ClockGap04;
+    (float, float) Size04 => ((ShowClock ? ClockX04 + ClockLab04 + Clock04 : X04 + Pos04 + Name04 + Time04) + 6,
+        Top04 + Pitch04 + (Capacity04 > 1 ? Lead04 + (Capacity04 - 1) * Pitch04 + SepH : 0) + 2);
+
+    // Linhas abaixo do líder: posição cinza-escura e sigla em célula cinza-clara translúcidas (a TV escurece tudo menos a 1ª linha).
+    static readonly BarStop[] PosStops04 = [new(0f, Rgb(96, 96, 106, 0.9f)), new(1f, Rgb(50, 50, 58, 0.9f))];
+    static readonly BarStop[] NameStops04 = [new(0f, Rgb(232, 232, 236, 0.88f)), new(0.7f, Rgb(214, 214, 220, 0.88f)), new(1f, Rgb(178, 178, 188, 0.88f))];
+    static readonly BarStop[] ZoneStops04 = [new(0f, Rgb(252, 244, 244, 0.94f)), new(1f, Rgb(216, 202, 204, 0.94f))];
+    static readonly Color4 Ink04 = Rgb(58, 58, 66), Red04 = Rgb(206, 22, 30), RowShade04 = new(0.04f, 0.04f, 0.08f, 0.6f);
+
+    void Draw04(ThemeCanvas c, OverlayModel m)
+    {
+        var t = c.Theme;
+        var q = m.Quali;
+        if (ShowClock) DrawClock04(c, t, Chequered(m), q?.TimeRemaining ?? m.Session?.TimeRemainingSeconds);
+        if (!m.Connected || q is null || q.Rows.Count == 0)
+        {
+            Chrome.Notice(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", X04, Top04);
+            return;
+        }
+        var rows = q.Rows;
+        int cut = Cutoff;
+
+        // 1ª linha: [1 vermelho][SIGLA em célula branca][tempo do líder em caixa preta] (sem tempo: o estado em texto pequeno).
+        var lead = rows[0];
+        float x = X04, y = Top04;
+        Chrome.PositionBox(c, x, y, Pos04, H04, lead.Rank, t.Numbers);
+        x += Pos04;
+        string ln = _cfg.Name(lead.Car, RelativeWidget.Code(lead.Car.Name));
+        Chrome.WhiteCell(c, x, y, Name04, H04, ln, BroadcastUi.Fit(c, ln, t.Text, Name04 - 16), ink: lead.IsPlayer ? Chrome.PlayerInk : null);
+        x += Name04;
+        if (lead.BestLap is { } best)
+        {
+            string lt = _cfg.Fmt.FormatLapTime(best);
+            Chrome.BlackCell(c, x, y, Time04, H04, lt, BroadcastUi.Fit(c, lt, t.Numbers, Time04 - 12));
+        }
+        else Chrome.BlackCell(c, x, y, Time04, H04, StateText(lead) ?? "NO TIME", t.Label with { Size = 16 }, HAlign.Center);
+
+        // Abaixo: só posição + sigla do topo e da janela ao redor do jogador; o salto líder -> resto fica só no espaçamento (como na TV),
+        // os outros saltos ganham os três pontos.
+        var picks = StandingsSelector.Select(rows.Count, PlayerIndex(rows), TopRows, NearRows);
+        y = Top04 + Pitch04 + Lead04;
+        int prev = 0;
+        foreach (var p in picks)
+        {
+            if (p.Index == 0) continue;
+            if (p.GapBefore && prev != 0)
+            {
+                for (int k = -1; k <= 1; k++) c.FillEllipse(X04 + Pos04 / 2 + k * 8, y + SepH / 2 - 1, 2.2f, 2.2f, t.TextColor);
+                y += SepH;
+            }
+            DrawRow04(c, t, rows[p.Index], y, cut);
+            y += Pitch04;
+            prev = p.Index;
+        }
+    }
+
+    void DrawRow04(ThemeCanvas c, Theme.Theme t, QualiRow r, float y, int cut)
+    {
+        float x = X04;
+        bool zone = r.InEliminationZone(cut);
+        c.FillRect(x, y + H04, Pos04 + Name04, 1.5f, RowShade04);
+        c.VGradientRect(x, y, Pos04, H04, zone ? ZoneStops04 : PosStops04);
+        if (zone) c.StrokeRect(x + 1, y + 1, Pos04 - 2, H04 - 2, Red04, 2f);
+        c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
+        x += Pos04;
+        c.VGradientRect(x, y, Name04, H04, NameStops04);
+        string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+        c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), x + 8, y - 1, Name04 - 16, H04, r.IsPlayer ? Chrome.PlayerInk : Ink04);
+        x += Name04;
+        if (StateText(r) is not { } st) return;
+        var f = t.Label with { Size = 15 };
+        float sw = c.Measure(st, f) + 14;
+        Chrome.Box(c, x, y + 5, sw, H04 - 10, st, f, Chrome.CellKind.Black, HAlign.Center, 7);
+    }
+
+    /// <summary>Caixa do relógio "Q | m:ss": rótulo escuro + relógio em caixa branca (vermelho nos últimos 60 s); bandeirada: xadrez no rótulo.</summary>
+    static void DrawClock04(ThemeCanvas c, Theme.Theme t, bool chequered, double? remaining)
+    {
+        float x = ClockX04, y = Top04;
+        if (chequered) Chrome.Checkered(c, x, y, ClockLab04, H04);
+        else Chrome.Box(c, x, y, ClockLab04, H04, "Q", t.Text, Chrome.CellKind.Black, HAlign.Center, 0);
+        bool red = chequered || remaining is { } r && r < 60;
+        Chrome.WhiteCell(c, x + ClockLab04, y, Clock04, H04, Clock(remaining), t.Numbers, HAlign.Center, red ? Red04 : null);
+    }
+
+    // ---- 1998–2001 (ref. quali-1998-classification-list.jpg; vocabulário da tabela inferior, StandingsWidget.DrawTable) ----
+    const float X98 = 22, Top98 = 12, Head98 = 42, Pitch98 = 40, Box98H = 34, Box98W = 36, Name98 = 196, Val98 = 136, ColGap98 = 30, Bottom98 = 8;
+    const float ColW98 = Box98W + 12 + Name98 + Val98;
+    int PerCol98 => (TopRows + Columns98 - 1) / Columns98;
+    (float, float) Size98 => (2 * X98 + Columns98 * ColW98 + (Columns98 - 1) * ColGap98, Top98 + (ShowClock ? Head98 : 0) + PerCol98 * Pitch98 + Bottom98);
+
+    void Draw98(ThemeCanvas c, OverlayModel m)
+    {
+        var t = c.Theme;
+        var (w, h) = Size98;
+        var q = m.Quali;
+        c.Panel(0, 0, w, h);
+        float y0 = Top98;
+        if (ShowClock)
+        {
+            // Cabeçalho simples: "QUALIFYING" + barra do tema e o relógio amarelo à direita (vermelho nos últimos 60 s / bandeirada).
+            double? remaining = q?.TimeRemaining ?? m.Session?.TimeRemainingSeconds;
+            string clk = Clock(remaining);
+            float cw = c.Measure(clk, t.Numbers) + t.Numbers.Tracking * clk.Length, right = w - X98;
+            Chrome.Header(c, "QUALIFYING", X98, Top98, 2000, true, right - cw - 18);
+            bool red = Chequered(m) || remaining is { } r && r < 60;
+            c.Text(clk, t.Numbers, right - cw - 6, Top98 - 1, cw + 10, 32, red ? t.BrakeColor : t.ValueColor, HAlign.Right, t.ValueShadow);
+            y0 += Head98;
+        }
+        if (!m.Connected || q is null || q.Rows.Count == 0)
+        {
+            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, X98, y0, w - 2 * X98, Box98H, t.LabelColor, shadow: t.TextShadow);
+            return;
+        }
+        var rows = q.Rows;
+        int cut = Cutoff, per = PerCol98;
+        var field = rows.Select(r => r.Car).ToList();
+        // Topo da lista e o jogador sempre visível (entra no lugar do último se estiver fora).
+        var picks = StandingsSelector.Select(rows.Count, PlayerIndex(rows), TopRows - 1, 1);
+        for (int i = 0; i < picks.Count && i < per * Columns98; i++)
+        {
+            var r = rows[picks[i].Index];
+            float x = X98 + (i / per) * (ColW98 + ColGap98), y = y0 + (i % per) * Pitch98;
+            string rank = r.Rank.ToString(CultureInfo.InvariantCulture);
+            if (r.InEliminationZone(cut))
+            {
+                c.FillRect(x, y, Box98W, Box98H, t.BrakeColor);
+                c.Text(rank, t.Numbers, x, y - 1, Box98W, Box98H, Rgb(255, 255, 255), HAlign.Center);
+            }
+            else Chrome.AccentBox(c, x, y, Box98W, Box98H, rank, t.Numbers);
+            string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
+            c.Text(name, BroadcastUi.Fit(c, name, t.Text, Name98), x + Box98W + 12, y - 1, Name98, Box98H, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+            float vx = x + ColW98 - Val98;
+            if (StateText(r) is { } st)
+                c.Text(st, t.Label, vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.TextShadow);
+            else
+            {
+                // 1º com o tempo; demais a diferença sem "+" (como "0.036" na TV), salvo se o perfil pedir o sinal.
+                string v = r.Rank == 1 || r.GapToFirst is not { } g ? _cfg.Fmt.FormatLapTime(r.BestLap!.Value) : _cfg.Fmt.FormatGap(Math.Max(0, g), defaultSign: false);
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, Val98 - 6), vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.ValueShadow);
+            }
+        }
     }
 }
