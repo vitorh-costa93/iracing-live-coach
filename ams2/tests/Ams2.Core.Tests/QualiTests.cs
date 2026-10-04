@@ -56,6 +56,15 @@ public class QualiTableTests
         Assert.Equal(2, q.Leader!.Car.Index);
         Assert.Equal(600, q.TimeRemaining);
 
+        // Texto no lugar do tempo (TV): so sem tempo. Com tempo, o tempo/gap fica mesmo no box ou em volta de saida.
+        Assert.Null(q.Rows[0].StateText);                      // #2: com tempo e IN PIT -> mostra o tempo
+        Assert.Null(q.Rows[1].StateText);
+        Assert.Equal("OUT LAP", q.Rows[3].StateText);
+        Assert.Equal("NO TIME", q.Rows[4].StateText);
+        Assert.Equal("NO TIME", q.Rows[5].StateText);
+        Assert.Null((q.Rows[1] with { Status = QualiStatus.OutLap }).StateText);   // lider/2o em volta de saida: o tempo nao some
+        Assert.Equal("IN PIT", (q.Rows[3] with { Status = QualiStatus.InPit }).StateText);   // no box sem tempo: IN PIT
+
         Assert.False(q.Rows[3].InEliminationZone(5));
         Assert.True(q.Rows[4].InEliminationZone(5));
         Assert.True(q.Rows[5].InEliminationZone(5));

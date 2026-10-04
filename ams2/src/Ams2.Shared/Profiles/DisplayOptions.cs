@@ -127,6 +127,33 @@ public static class DisplayFormat
         return (letters.Length >= 3 ? letters[..3] : letters).ToUpperInvariant();
     }
 
+    /// <summary>
+    /// Siglas de 3 letras unicas no campo, na ordem recebida (o chamador passa uma ordem estavel, ex. indice do carro).
+    /// Sem colisao = <see cref="Code3"/> do sobrenome ("TRU"). Colisao: o 1o fica com a sigla base; os demais usam inicial do nome +
+    /// 2 letras do sobrenome ("MTR"); se ainda colidir, 2 letras do sobrenome + digito ("TR2", "TR3"...). Nunca toma a sigla base de outro.
+    /// </summary>
+    public static string[] UniqueCodes(IReadOnlyList<string> names)
+    {
+        var words = names.Select(Words).ToArray();
+        var codes = words.Select(w => w.Length == 0 ? "" : Code3(w[^1])).ToArray();
+        var used = new HashSet<string>(codes.Where(c => c.Length > 0), StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < codes.Length; i++)
+        {
+            if (codes[i].Length == 0 || seen.Add(codes[i])) continue;   // primeira ocorrencia mantem a sigla base
+            var w = words[i];
+            string last = new(w[^1].Where(char.IsLetter).ToArray());
+            string two = (last.Length >= 2 ? last[..2] : last).ToUpperInvariant();
+            char first = w[0].FirstOrDefault(char.IsLetter);
+            string alt = first != default ? char.ToUpperInvariant(first) + two : "";
+            if (alt.Length == 0 || used.Contains(alt))
+                for (int d = 2; ; d++) { alt = two + d.ToString(Inv); if (!used.Contains(alt)) break; }
+            codes[i] = alt;
+            used.Add(alt);
+        }
+        return codes;
+    }
+
     /// <summary>"0.000" com N casas (0 = inteiro, sem ponto).</summary>
     static string Fixed(double v, int decimals) => v.ToString(decimals <= 0 ? "0" : "0." + new string('0', decimals), Inv);
 

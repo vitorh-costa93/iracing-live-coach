@@ -61,8 +61,11 @@ public sealed class StandingsWidget : IWidget
         return new Cols(posX, nameX, badgeCx, gapRight, x + (_cfg.ColumnVisible("gap") ? EdgeRight : BoxX));
     }
 
+    readonly FieldCodes _codes = new();
+
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
+        _codes.Update(m.Standings.Select(r => r.Car));
         var t = c.Theme;
         var (w, h) = DesignSize;
         if (!m.Connected || m.Standings.Count == 0)
@@ -101,7 +104,7 @@ public sealed class StandingsWidget : IWidget
             if (_cfg.ColumnVisible("name"))
             {
                 var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
-                string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+                string nm = _cfg.Name(r.Car, _codes);
                 c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW + 18), L.NameCellX + 8, y, NameCellW + 26, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));
@@ -338,7 +341,7 @@ public sealed class StandingsWidget : IWidget
                 var r = outs[k];
                 if (_cfg.ColumnVisible("name"))
                 {
-                    string nm = fullNames ? FullName18(r, field) : _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+                    string nm = fullNames ? FullName18(r, field) : _cfg.Name(r.Car, _codes);
                     float nw = fullNames ? FullNameW18(c, t, m, mode, active, r, L, 0, true) : Name18W + 4;
                     c.Text(nm, fullNames ? BroadcastUi.Fit(c, nm, _nameFont18, nw) : BroadcastUi.Fit(c, nm, t.Text, nw), L.Name, ry, nw + 8, Box18, t.OutInk);
                 }
@@ -472,7 +475,7 @@ public sealed class StandingsWidget : IWidget
         }
         if (_cfg.ColumnVisible("name"))
         {
-            string nm = fullNames ? FullName18(r, field) : _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+            string nm = fullNames ? FullName18(r, field) : _cfg.Name(r.Car, _codes);
             float nw = fullNames ? FullNameW18(c, t, m, mode, active, r, L, fastest) : Name18W + 4;
             c.Text(nm, BroadcastUi.Fit(c, nm, fullNames ? _nameFont18 : t.Text, nw), L.Name, y, nw + 8, rh, ink);
         }
@@ -647,7 +650,7 @@ public sealed class StandingsWidget : IWidget
         }
         if (_cfg.ColumnVisible("name"))
         {
-            string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+            string nm = _cfg.Name(r.Car, _codes);
             Chrome.WhiteCell(c, x, y, Name04, h, nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), ink: r.IsPlayer ? Chrome.PlayerInk : null);
             x += Name04;
         }

@@ -15,6 +15,21 @@ public class DisplayFormatTests
     public void Name_styles(NameStyle style, string expected) => Assert.Equal(expected, DisplayFormat.Name("Fernando Alonso", style));
 
     [Fact]
+    public void Unique_codes_keep_the_base_code_without_collision_and_disambiguate_repeats()
+    {
+        // Sem colisao: a sigla de sempre.
+        Assert.Equal(["ALO", "SCH", "COS"], DisplayFormat.UniqueCodes(["Fernando Alonso", "Michael Schumacher", "Vitor COSTA"]));
+        // Colisao: o 1o (na ordem recebida) fica com a base; os demais inicial do nome + 2 letras do sobrenome.
+        Assert.Equal(["TRU", "PHI", "MTR"], DisplayFormat.UniqueCodes(["Marty Trundle", "Jonas Phillips", "Mark Trundle"]));
+        Assert.Equal(["SCH", "RSC"], DisplayFormat.UniqueCodes(["Michael Schumacher", "Ralf Schumacher"]));
+        // Ainda colide (mesma inicial): 2 letras do sobrenome + digito; nunca toma a sigla base de outro piloto.
+        Assert.Equal(["TRU", "MTR", "TR2", "TR3"], DisplayFormat.UniqueCodes(["Marty Trundle", "Mark Trundle", "Mike Trundle", "Max Truman"]));
+        Assert.Equal(["TRU", "MTR", "TR2"], DisplayFormat.UniqueCodes(["Marty Trundle", "Max Mtrovic", "Mark Trundle"]));
+        // Nome de uma palavra e vazio.
+        Assert.Equal(["SEN", "SSE", ""], DisplayFormat.UniqueCodes(["Senna", "Senna", " "]));
+    }
+
+    [Fact]
     public void Name_fixes_all_caps_surname_and_prefixes_the_car_number()
     {
         Assert.Equal("Costa", DisplayFormat.Name("Vitor COSTA", NameStyle.LastName));

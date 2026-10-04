@@ -77,9 +77,10 @@ public sealed class SessionFilterTests : IDisposable
         using var client = await StartHost(quali: true);
         await WaitFor(async () => (await client.SendAsync(IpcCommands.GetState))!.Session == SessionIds.Qualify, 8000, "host nao viu a sessao de classificacao");
         var st = (await client.SendAsync(IpcCommands.GetState))!;
-        Assert.Empty(st.HiddenBySession);
-        st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "standings", Patch = new WidgetPatch { Sessions = ["race"] } }))!;
-        Assert.Equal(["standings"], st.HiddenBySession);
+        // Torre de corrida e Board dao lugar a Quali Tower e a Quali Lap (WidgetLayout.ExclusiveGroups): fora da classificacao por padrao.
+        Assert.Equal(["board", "lapcounter", "standings"], st.HiddenBySession.Order());
+        st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "standings", Patch = new WidgetPatch { Sessions = ["qualify", "race"] } }))!;
+        Assert.Equal(["board", "lapcounter"], st.HiddenBySession.Order());
     }
 
     [Fact]

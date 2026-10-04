@@ -42,6 +42,17 @@ public static class BroadcastUi
         return dup ? parts[0][0] + " " + last : last;
     }
 
+    /// <summary>Siglas de 3 letras únicas no campo (<see cref="Ams2.Shared.Profiles.DisplayFormat.UniqueCodes"/>), por índice do carro.
+    /// Ordem estável = índice do carro (a sigla não troca quando as posições mudam).</summary>
+    public static Dictionary<int, string> Codes(IEnumerable<CarSnapshot> field)
+    {
+        var cars = field.GroupBy(c => c.Index).Select(g => g.First()).OrderBy(c => c.Index).ToArray();
+        var codes = Ams2.Shared.Profiles.DisplayFormat.UniqueCodes(cars.Select(c => c.Name).ToArray());
+        var map = new Dictionary<int, string>(cars.Length);
+        for (int i = 0; i < cars.Length; i++) map[cars[i].Index] = codes[i];
+        return map;
+    }
+
     /// <summary>Equipe deduzida do nome do carro: sem o sufixo de fornecedor "(M)"/"(B)" e sem o nome da classe.</summary>
     public static string Team(CarSnapshot car)
     {
@@ -73,4 +84,24 @@ public static class BroadcastUi
             ? $"{(int)ts.TotalHours}:{ts.Minutes:00}:{ts.Seconds:00}.{ts.Milliseconds:000}"
             : $"{ts.Minutes}:{ts.Seconds:00}.{ts.Milliseconds:000}";
     }
+}
+
+/// <summary>
+/// Cache por widget das siglas únicas do campo (<see cref="BroadcastUi.Codes"/>): só recalcula quando os carros (índice/nome) mudam.
+/// <see cref="Update"/> uma vez por quadro; <see cref="Code"/> devolve a sigla única (ou a sigla base para carro fora do campo).
+/// </summary>
+public sealed class FieldCodes
+{
+    (int Index, string Name)[] _key = [];
+    Dictionary<int, string> _map = [];
+
+    public void Update(IEnumerable<CarSnapshot> field)
+    {
+        var key = field.Select(c => (c.Index, c.Name)).ToArray();
+        if (key.AsSpan().SequenceEqual(_key)) return;
+        _key = key;
+        _map = BroadcastUi.Codes(field);
+    }
+
+    public string Code(CarSnapshot car) => _map.TryGetValue(car.Index, out var k) ? k : RelativeWidget.Code(car.Name);
 }

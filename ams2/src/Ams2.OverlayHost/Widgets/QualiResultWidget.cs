@@ -76,9 +76,12 @@ public sealed class QualiResultWidget : IWidget
     static Color4 Rgb(int r, int g, int b, float a = 1f) => new(r / 255f, g / 255f, b / 255f, a);
     static readonly Color4 ZoneFill = Rgb(178, 18, 28), White = Rgb(255, 255, 255);
 
+    readonly FieldCodes _codes = new();
+
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         if (!m.Connected || m.Quali is not { Rows.Count: > 0 } q) return;
+        _codes.Update(q.Rows.Select(r => r.Car));
         float a = Alpha(m.QualiEnd, m.Now, ShowFor, Always);
         BroadcastUi.WithAlpha(c, a, () =>
         {
@@ -201,7 +204,7 @@ public sealed class QualiResultWidget : IWidget
             }
             else Chrome.PositionBox(c, x, y, Pos04, H04, r.Rank, t.Numbers);
             x += Pos04;
-            string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+            string nm = _cfg.Name(r.Car, _codes);
             Chrome.WhiteCell(c, x, y, Name04, H04, nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), ink: r.IsPlayer ? Chrome.PlayerInk : null);
             x += Name04;
             if (Value(r, true) is { } v) Chrome.BlackCell(c, x, y, Time04, H04, v, BroadcastUi.Fit(c, v, t.Numbers, Time04 - 12));

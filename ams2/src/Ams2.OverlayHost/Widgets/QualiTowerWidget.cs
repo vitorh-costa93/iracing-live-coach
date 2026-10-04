@@ -11,8 +11,8 @@ namespace Ams2.OverlayHost.Widgets;
 /// <summary>
 /// Torre de classificação (tabela de melhores voltas, <see cref="QualiTable"/>). Por enquanto só no tema 2018 (ref. quali-2018-tower-*.jpg
 /// e quali-2018-sheet-1.jpg): cabeçalho preto "Q" + relógio da sessão (vermelho nos últimos 60 s; xadrez translúcido sob a bandeirada),
-/// filete vermelho, linhas [caixa de posição][SIGLA][coluna clara]: o 1º mostra o tempo ("1:23.266"), os demais "+0.056"; OUT LAP /
-/// NO TIME / IN PIT (ciano) no lugar do valor; volta recém-melhorada em verde (roxo no 1º) por <see cref="ImprovedHold"/> s.
+/// filete vermelho, linhas [caixa de posição][SIGLA][coluna clara]: o 1º mostra o tempo ("1:23.266"), os demais "+0.056"; quem ainda
+/// não tem tempo mostra OUT LAP / NO TIME / IN PIT (ciano) no lugar do valor (com tempo, o tempo/gap fica sempre); volta recém-melhorada em verde (roxo no 1º) por <see cref="ImprovedHold"/> s.
 /// Com <c>eliminationFrom</c> &gt; 0: bloco "ELIMINATION ZONE" (caixas vermelhas) e cartão "DRIVER AT RISK" (piloto na última posição
 /// segura, sem retrato; a zona abaixo dele mostra a diferença para ele, como na TV). Modo "fastesttyre": título "FASTEST TYRE", coluna
 /// de composto em círculo e tempos em décimos — o AMS2 só informa o composto do jogador, os outros ficam com "-".
@@ -145,8 +145,11 @@ public sealed class QualiTowerWidget : IWidget
 
     // ---- Desenho ----
 
+    readonly FieldCodes _codes = new();
+
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
+        if (m.Quali is { } qc) _codes.Update(qc.Rows.Select(r => r.Car));
         if (_style == ThemeStyle.Broadcast2000s) { Draw04(c, m); return; }
         if (_style == ThemeStyle.Broadcast98) { Draw98(c, m); return; }
         var t = c.Theme;
@@ -270,7 +273,7 @@ public sealed class QualiTowerWidget : IWidget
         else if (r.Rank == 1 && r.HasTime) Chrome.FastestMarker(c, 0, y, Box);
         Color4? fill = improved ? (r.Rank == 1 ? t.FastestFill : Green) : inZone ? ZoneFill : null;
         Chrome.PosBox(c, L.Box, y, BoxW, Box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 }, fill);
-        string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+        string nm = _cfg.Name(r.Car, _codes);
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameW + 4), L.Name, y, NameW + 8, Box, r.IsPlayer ? t.PlayerColor : t.TextColor);
         if (TyreMode)
         {
@@ -287,13 +290,8 @@ public sealed class QualiTowerWidget : IWidget
 
     (string, Color4) Value(Theme.Theme t, QualiRow r, bool improved, double? reference)
     {
-        switch (r.Status)
-        {
-            case QualiStatus.InPit: return ("IN PIT", t.PitTimeColor);
-            case QualiStatus.OutLap: return ("OUT LAP", t.ValueColor);
-            case QualiStatus.NoTime: return ("NO TIME", t.ValueColor);
-        }
-        if (r.BestLap is not { } best) return ("NO TIME", t.ValueColor);
+        // Como na TV: quem tem tempo mostra sempre o tempo/gap; OUT LAP / NO TIME / IN PIT (ciano) só para quem ainda não tem.
+        if (r.BestLap is not { } best) return (StateText(r) ?? "NO TIME", r.Status == QualiStatus.InPit ? t.PitTimeColor : t.ValueColor);
         // Volta recém-melhorada: o tempo inteiro em verde (roxo se virou o melhor geral), como "1:23.420" na TV.
         if (improved) return (LapText(best), r.Rank == 1 ? Rgb(200, 120, 255) : Green);
         if (reference is { } refT) return (GapText(best - refT), t.ValueColor);
@@ -313,20 +311,14 @@ public sealed class QualiTowerWidget : IWidget
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, nw), L.Name, by, nw + 8, Box, r.IsPlayer ? t.PlayerColor : t.TextColor);
         y += CardNameH;
         c.FillRect(x0, y, tw, CardTimeH, t.SubPanelFill);
-        string v = r.Status == QualiStatus.InPit ? "IN PIT" : r.BestLap is { } b ? LapText(b) : r.Status == QualiStatus.OutLap ? "OUT LAP" : "NO TIME";
+        string v = r.BestLap is { } b ? LapText(b) : StateText(r) ?? "NO TIME";
         var vf = t.Numbers with { Size = 28 };
-        c.Text(v, BroadcastUi.Fit(c, v, vf, tw - 24), x0, y, tw - 12, CardTimeH, r.Status == QualiStatus.InPit ? t.PitTimeColor : t.ValueColor, HAlign.Right);
+        c.Text(v, BroadcastUi.Fit(c, v, vf, tw - 24), x0, y, tw - 12, CardTimeH, !r.HasTime && r.Status == QualiStatus.InPit ? t.PitTimeColor : t.ValueColor, HAlign.Right);
         return y + CardTimeH;
     }
 
-    /// <summary>Estado no lugar do tempo (OUT LAP / NO TIME / IN PIT); null = volta válida para mostrar.</summary>
-    public static string? StateText(QualiRow r) => r.Status switch
-    {
-        QualiStatus.InPit => "IN PIT",
-        QualiStatus.OutLap => "OUT LAP",
-        QualiStatus.NoTime => "NO TIME",
-        _ => r.HasTime ? null : "NO TIME",
-    };
+    /// <summary>Estado no lugar do tempo só para quem não tem tempo (<see cref="QualiRow.StateText"/>); null = mostra o tempo/gap.</summary>
+    public static string? StateText(QualiRow r) => r.StateText;
 
     static int PlayerIndex(IReadOnlyList<QualiRow> rows) { for (int i = 0; i < rows.Count; i++) if (rows[i].IsPlayer) return i; return -1; }
 
@@ -364,7 +356,7 @@ public sealed class QualiTowerWidget : IWidget
         float x = X04, y = Top04;
         Chrome.PositionBox(c, x, y, Pos04, H04, lead.Rank, t.Numbers);
         x += Pos04;
-        string ln = _cfg.Name(lead.Car, RelativeWidget.Code(lead.Car.Name));
+        string ln = _cfg.Name(lead.Car, _codes);
         Chrome.WhiteCell(c, x, y, Name04, H04, ln, BroadcastUi.Fit(c, ln, t.Text, Name04 - 16), ink: lead.IsPlayer ? Chrome.PlayerInk : null);
         x += Name04;
         if (lead.BestLap is { } best)
@@ -403,7 +395,7 @@ public sealed class QualiTowerWidget : IWidget
         c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
         x += Pos04;
         c.VGradientRect(x, y, Name04, H04, NameStops04);
-        string nm = _cfg.Name(r.Car, RelativeWidget.Code(r.Car.Name));
+        string nm = _cfg.Name(r.Car, _codes);
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), x + 8, y - 1, Name04 - 16, H04, r.IsPlayer ? Chrome.PlayerInk : Ink04);
         x += Name04;
         if (StateText(r) is not { } st) return;

@@ -75,7 +75,10 @@ public static class WidgetCatalog
     public static readonly IReadOnlyList<WidgetDef> All =
     [
         new("standings", "Standings", null, null, null, "", [C("pos", "Posição"), C("name", "Piloto (sigla)"), C("tyre", "Pneu M/B (2004-2008)"), C("class", "Classe (2018: no lugar do logo)"), C("gap", "Gap (2018: coluna clara, \"Leader\")"), C("table", "Tabela inferior 2 colunas (1998-2001)")], 0, 0, DefaultScale: 0.6f, HasSelection: true,
-            WidthColumns: [C("pos", "Posição"), C("name", "Nome"), C("gap", "Gap")], Caps: DisplayCaps.Name | DisplayCaps.Gap),
+            WidthColumns: [C("pos", "Posição"), C("name", "Nome"), C("gap", "Gap")], Caps: DisplayCaps.Name | DisplayCaps.Gap,
+            // Na classificacao a Quali Tower ocupa o lugar da torre (WidgetLayout.ExclusiveGroups): as duas juntas se sobrepunham e o
+            // painel translucido da Quali Tower deixava ver o "LAP" e as siglas da torre por baixo (texto fantasma no teste de 04/10).
+            DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         new("relative", "Relative", 1, 4, 3, "Linhas por lado", [C("pos", "Posição"), C("name", "Piloto"), C("gap", "Gap"), C("bar", "Barra do vizinho (2004-2008) / tempo dividido (1998-2001)")], 1430, 925, DefaultVisible: false, DefaultScale: 0.58f,
             WidthColumns: [C("pos", "Posição"), C("name", "Nome"), C("gap", "Gap")], Caps: DisplayCaps.Name | DisplayCaps.Gap),
         new("fuel", "Fuel", null, null, null, "", [C("laps", "Voltas"), C("use", "Consumo"), C("add", "Adicionar")], 1133, 931, DefaultScale: 0.66f,
@@ -85,7 +88,7 @@ public static class WidgetCatalog
         new("inputs", "Inputs", null, null, null, "", [C("graph", "Gráfico (acelerador e freio)"), C("bars", "Barras / pedais"), C("gear", "Marcha e velocidade"), C("speedo", "Velocímetro analógico (2004-2008)")], 745, 905, DefaultScale: 0.55f,
             WidthColumns: [C("graph", "Gráfico")], Caps: DisplayCaps.Speed),
         new("radar", "Radar", null, null, null, "", [C("native", "Indicador nativo do AMS2 (senão: painel estilo V3)"), C("always", "Sempre visível (senão só com carro próximo)")], 900, 585, DefaultScale: 1f, HasRadarOptions: true),
-        new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f),
+        new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f, DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         new("drivercaption", "Driver Caption", null, null, null, "", [C("always", "Sempre visível (senão só em eventos)"), C("team", "Equipe"), C("tyre", "Fornecedor de pneus")], 60, 930, DefaultVisible: false, DefaultScale: 0.75f,
             Caps: DisplayCaps.Name),
         new("pitstops", "Pit Stops", 1, 4, 4, "Linhas por coluna", [C("always", "Sempre visível (senão ao entrar nos boxes)"), C("pos", "Posição")], 20, 480, DefaultScale: 0.6f,
@@ -93,7 +96,8 @@ public static class WidgetCatalog
         new("pittimer", "Pit Timer", null, null, null, "", [C("always", "Sempre visível (senão só parado)")], 820, 960, DefaultScale: 0.8f,
             WidthColumns: [C("name", "Nome")], Caps: DisplayCaps.Name),
         new("board", "Board (torre, setor, voltas, legenda)", null, null, null, "", [C("tyre", "Fornecedor de pneus (legenda)"), C("page", "Indicador de página X/Y")], 640, 870,
-            WidthColumns: [C("name", "Nome (torre)"), C("gap", "Gap (torre)"), C("time", "Tempo de volta (comparativo)")], Caps: DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime),
+            WidthColumns: [C("name", "Nome (torre)"), C("gap", "Gap (torre)"), C("time", "Tempo de volta (comparativo)")], Caps: DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime,
+            DefaultSessions: [SessionIds.Practice, SessionIds.Race]),   // idem: a Quali Lap ocupa o lugar do Board na classificacao
         new("winner", "Winner", null, null, null, "", [C("always", "Sempre visível (senão ao fim da corrida)"), C("team", "Equipe"), C("stats", "Tempo, distância e média")], 60, 930, DefaultScale: 0.75f,
             Caps: DisplayCaps.Name | DisplayCaps.Speed),
         // Exclusivo do 2018: painel "LIVE SPEED" da TV (velocidade do jogador em km/h e mph). Unidades e visibilidade nas opcoes do tema.

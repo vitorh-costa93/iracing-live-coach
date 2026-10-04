@@ -18,4 +18,12 @@ public static class WidgetFormat
     }
 
     public static string Name(this WidgetSettings s, CarSnapshot car, string widgetDefault) => s.Name(car.Name, car.Index, widgetDefault);
+
+    /// <summary>Nome de um widget cuja sigla é o padrão: a sigla única do campo (<see cref="FieldCodes"/>) vale também com o perfil em "Sigla".</summary>
+    public static string Name(this WidgetSettings s, CarSnapshot car, FieldCodes codes)
+    {
+        string code = codes.Code(car);
+        if (s.Fmt.Name is not (null or NameStyle.Code3)) return s.Name(car, code);
+        return s.Fmt.CarNumber == true ? "#" + (car.Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) + " " + code : code;
+    }
 }

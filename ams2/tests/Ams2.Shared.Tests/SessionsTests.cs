@@ -22,6 +22,11 @@ public class SessionsTests
                 Assert.False(s.ShowsIn("race"));
                 Assert.False(s.ShowsIn("practice"));
             }
+            else if (d.Id is "standings" or "board" or "lapcounter")   // dao lugar a Quali Tower / Quali Lap na classificacao (WidgetLayout.ExclusiveGroups)
+            {
+                Assert.Equal([SessionIds.Practice, SessionIds.Race], s.EffectiveSessions);
+                Assert.False(s.ShowsIn("qualify"));
+            }
             else Assert.Equal(SessionIds.All, s.EffectiveSessions);
             Assert.True(s.ShowsIn(null));   // sem sessao: nao filtra
         }
@@ -84,9 +89,12 @@ public class SessionsTests
         var back = JsonSerializer.Deserialize<Profile>(json, ProfileStore.Json)!.Normalized();
         Assert.Equal(["practice"], back.Get("fuel")!.Sessions);
 
-        // Perfil antigo (sem o campo e sem os widgets de classificacao): os widgets existentes continuam em todas as sessoes; os novos entram so na classificacao.
-        var old = new Profile { Name = "Velho", ThemeId = "f1-1998", Widgets = [new WidgetSettings { Id = "standings", X = 5 }] }.Normalized();
-        Assert.Equal(SessionIds.All, old.Get("standings")!.EffectiveSessions);
+        // Perfil antigo (sem o campo e sem os widgets de classificacao): os widgets existentes continuam em todas as sessoes, salvo a torre de
+        // corrida e o Board, que dao lugar a Quali Tower / Quali Lap na classificacao; os novos entram so na classificacao.
+        var old = new Profile { Name = "Velho", ThemeId = "f1-1998", Widgets = [new WidgetSettings { Id = "standings", X = 5 }, new WidgetSettings { Id = "fuel" }] }.Normalized();
+        Assert.Equal([SessionIds.Practice, SessionIds.Race], old.Get("standings")!.EffectiveSessions);
+        Assert.Equal([SessionIds.Practice, SessionIds.Race], old.Get("board")!.EffectiveSessions);
+        Assert.Equal(SessionIds.All, old.Get("fuel")!.EffectiveSessions);
         Assert.Equal([SessionIds.Qualify], old.Get("qualitower")!.EffectiveSessions);
 
         var msg = new IpcMessage { Patch = new WidgetPatch { Sessions = ["race"] }, State = new HostState { Session = "qualify", HiddenBySession = ["fuel"] } };

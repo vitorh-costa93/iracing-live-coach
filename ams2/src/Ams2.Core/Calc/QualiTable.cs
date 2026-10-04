@@ -10,6 +10,16 @@ public enum QualiStatus { TimeSet, OutLap, NoTime, InPit }
 public sealed record QualiRow(CarSnapshot Car, int Rank, double? BestLap, double? GapToFirst, QualiStatus Status, bool IsPlayer)
 {
     public bool HasTime => BestLap is not null;
+    /// <summary>
+    /// Texto no lugar do tempo (como na TV): so para quem ainda nao tem tempo — "IN PIT" / "OUT LAP" / "NO TIME". Quem tem tempo mostra
+    /// sempre o tempo/gap, mesmo em volta de saida ou no box (null): o tempo-base do 1o nunca some.
+    /// </summary>
+    public string? StateText => HasTime ? null : Status switch
+    {
+        QualiStatus.InPit => "IN PIT",
+        QualiStatus.OutLap => "OUT LAP",
+        _ => "NO TIME",
+    };
     /// <summary>Zona de eliminacao: posicao igual ou pior que <paramref name="cutoff"/> (opcao "eliminationFrom"; 0 = desligado).</summary>
     public bool InEliminationZone(int cutoff) => cutoff > 0 && Rank >= cutoff;
 }
