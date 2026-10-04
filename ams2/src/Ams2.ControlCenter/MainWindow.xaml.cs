@@ -430,11 +430,22 @@ public partial class MainWindow : Window
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         // Todas as opcoes do widget (linhas, colunas, larguras, formato, texto, radar...) vao no mesmo JSON do perfil (--settings); a previa usa escala 1.
         string settingsJson = Path.ChangeExtension(png, ".json");
-        File.WriteAllText(settingsJson, JsonSerializer.Serialize(vm.ToSettings(0) with { Scale = 1f }, ProfileStore.Json));
-        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", (vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20).ToString(System.Globalization.CultureInfo.InvariantCulture), "--settings", settingsJson })
+        var previewSettings = vm.ToSettings(0) with { Scale = 1f };
+        // Widgets de evento (legenda, paradas, cronometro, vencedor) so aparecem com um evento recente: a previa os fixa (coluna "always") e simula o evento.
+        double sim = vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20;
+        bool eventWidget = vm.Id is "drivercaption" or "pitstops" or "pittimer" or "winner";
+        if (eventWidget)
+        {
+            previewSettings = previewSettings with { Columns = vm.Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).Append("always").Distinct().ToArray() };
+            sim = vm.Id switch { "winner" => 40, "pitstops" => 30, "pittimer" => 18, _ => 20 };
+        }
+        File.WriteAllText(settingsJson, JsonSerializer.Serialize(previewSettings, ProfileStore.Json));
+        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", sim.ToString(System.Globalization.CultureInfo.InvariantCulture), "--settings", settingsJson })
             psi.ArgumentList.Add(a);
         // Radar: carros orbitando o jogador (instante 3 s = um de cada lado); o alcance e a sensibilidade do widget valem na previa.
         if (vm.IsRadar) psi.Environment["AMS2_FAKE_RADAR"] = "1";
+        if (vm.Id == "winner") psi.Environment["AMS2_FAKE_FINISH"] = "1";
+        if (vm.Id is "pitstops" or "pittimer") psi.Environment["AMS2_FAKE_PITS"] = "1";
         // Standings e board: corrida simulada de 20 carros (o campo padrao de 8 nao mostra o topo + janela nem a torre em paginas).
         if (vm.HasSelection || vm.IsBoard) psi.Environment["AMS2_FAKE_BOARD"] = "1";
         try
