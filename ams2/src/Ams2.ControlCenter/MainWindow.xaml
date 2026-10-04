@@ -212,6 +212,26 @@
                                 <TextBlock Text="{Binding RadarSensitivityText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
                             </StackPanel>
 
+                            <StackPanel x:Name="ThemeOptionsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Opções do tema" Style="{StaticResource Muted}" Margin="0,0,0,6" ToolTip="Opções que só existem neste tema."/>
+                                <ItemsControl ItemsSource="{Binding ThemeOptions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Label}" Margin="0,0,0,4" Visibility="{Binding IsChoice, Converter={StaticResource BoolToVis}}"/>
+                                                <ComboBox Height="32" ItemsSource="{Binding Choices}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                          Visibility="{Binding IsChoice, Converter={StaticResource BoolToVis}}"/>
+                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding Checked, Mode=TwoWay}" Visibility="{Binding IsToggle, Converter={StaticResource BoolToVis}}"/>
+                                                <DockPanel Visibility="{Binding IsNumber, Converter={StaticResource BoolToVis}}">
+                                                    <TextBox DockPanel.Dock="Right" Width="80" Text="{Binding NumberText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
                             <StackPanel x:Name="ColumnsPanel" Margin="0,0,0,14">
                                 <TextBlock Text="Colunas visíveis" Style="{StaticResource Muted}" Margin="0,0,0,6"/>
                                 <ItemsControl ItemsSource="{Binding Columns}">

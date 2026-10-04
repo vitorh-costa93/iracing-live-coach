@@ -38,6 +38,13 @@ public sealed record WidgetSettings
     public string? ValueColor { get; init; }
     /// <summary>Formato de nomes, gaps, tempos e unidades. Null = padrao do widget.</summary>
     public DisplayOptions? Display { get; init; }
+    /// <summary>Opcoes proprias do tema (<see cref="WidgetCatalog.OptionsFor"/>): id -> valor. Ausente = padrao da <see cref="OptionDef"/>. Null = tudo padrao.</summary>
+    public Dictionary<string, string>? Options { get; init; }
+
+    /// <summary>Valor gravado da opcao do tema (null = padrao; use <see cref="OptionOr"/> ou o Default da <see cref="OptionDef"/>).</summary>
+    public string? Option(string id) => Options is not null && Options.TryGetValue(id, out var v) ? v : null;
+    /// <summary>Valor gravado da opcao ou <paramref name="fallback"/>.</summary>
+    public string OptionOr(string id, string fallback) => Option(id) ?? fallback;
 
     /// <summary>Escala de render efetiva = escala da janela x tamanho do texto: a fonte maior aumenta o widget inteiro na mesma proporcao.</summary>
     [JsonIgnore] public float RenderScale => Scale * (TextScale ?? 1f);
@@ -56,8 +63,12 @@ public sealed record WidgetSettings
 
     public bool ColumnVisible(string column) => Columns is null || Columns.Contains(column, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Forca limites validos (escala, opacidade, linhas, colunas conhecidas).</summary>
-    public WidgetSettings Normalized()
+    /// <summary>
+    /// Forca limites validos (escala, opacidade, linhas, colunas conhecidas). Com <paramref name="themeId"/>, as <see cref="Options"/> sao
+    /// conferidas com as <see cref="OptionDef"/> do tema (chaves desconhecidas, valores invalidos e valores iguais ao padrao saem);
+    /// sem tema so as entradas vazias saem (o tema nao e conhecido aqui).
+    /// </summary>
+    public WidgetSettings Normalized(string? themeId = null)
     {
         var def = WidgetCatalog.Find(Id);
         int? rows = null;
@@ -95,6 +106,7 @@ public sealed record WidgetSettings
             LabelColor = ColorHex.Normalize(LabelColor),
             ValueColor = ColorHex.Normalize(ValueColor),
             Display = Display?.Normalized(),
+            Options = NormalizeOptions(themeId),
             TopCount = top, NearCount = near,
             RadarRange = radar ? Math.Clamp(EffectiveRadarRange, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange) : null,
             RadarSensitivity = radar ? Math.Clamp(EffectiveRadarSensitivity, WidgetCatalog.MinRadarSensitivity, WidgetCatalog.MaxRadarSensitivity) : null,
@@ -104,6 +116,26 @@ public sealed record WidgetSettings
             Rows = rows,
             Columns = cols,
         };
+    }
+
+    Dictionary<string, string>? NormalizeOptions(string? themeId)
+    {
+        if (Options is null) return null;
+        Dictionary<string, string>? result = null;
+        var defs = themeId is null ? null : WidgetCatalog.OptionsFor(themeId, Id);
+        foreach (var (k, v) in Options)
+        {
+            if (string.IsNullOrWhiteSpace(k) || string.IsNullOrWhiteSpace(v)) continue;
+            string key = k, value = v;
+            if (defs is not null)
+            {
+                var def = defs.FirstOrDefault(d => string.Equals(d.Id, k, StringComparison.OrdinalIgnoreCase));
+                if (def?.Normalize(v) is not { } nv || nv == def.Normalize(def.Default)) continue;   // desconhecida, invalida ou padrao
+                key = def.Id; value = nv;
+            }
+            (result ??= new(StringComparer.OrdinalIgnoreCase))[key] = value;
+        }
+        return result;
     }
 }
 
@@ -136,8 +168,11 @@ public sealed record WidgetPatch
     public string? ValueColor { get; init; }
     /// <summary>Substitui o bloco de formato inteiro (todos os campos nulos = padrao).</summary>
     public DisplayOptions? Display { get; init; }
+    /// <summary>Substitui o mapa inteiro de opcoes do tema (vazio = todas no padrao).</summary>
+    public Dictionary<string, string>? Options { get; init; }
 
-    public WidgetSettings ApplyTo(WidgetSettings s) => (s with
+    /// <param name="themeId">Tema do perfil: valida as <see cref="WidgetSettings.Options"/> (null = so descarta entradas vazias).</param>
+    public WidgetSettings ApplyTo(WidgetSettings s, string? themeId = null) => (s with
     {
         Visible = Visible ?? s.Visible,
         X = X ?? s.X,
@@ -159,7 +194,8 @@ public sealed record WidgetPatch
         LabelColor = LabelColor ?? s.LabelColor,
         ValueColor = ValueColor ?? s.ValueColor,
         Display = Display ?? s.Display,
-    }).Normalized();
+        Options = Options ?? s.Options,
+    }).Normalized(themeId);
 
     /// <summary>Junta dois patches (b vence a): usado pelo Control Center para agrupar edicoes antes do envio.</summary>
     public static WidgetPatch Merge(WidgetPatch a, WidgetPatch b) => new()
@@ -174,7 +210,7 @@ public sealed record WidgetPatch
         AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
         ColumnWidths = b.ColumnWidths ?? a.ColumnWidths, TextScale = b.TextScale ?? a.TextScale, FontWeight = b.FontWeight ?? a.FontWeight,
         TextColor = b.TextColor ?? a.TextColor, LabelColor = b.LabelColor ?? a.LabelColor, ValueColor = b.ValueColor ?? a.ValueColor,
-        Display = b.Display ?? a.Display,
+        Display = b.Display ?? a.Display, Options = b.Options ?? a.Options,
     };
 }
 
@@ -222,17 +258,20 @@ public sealed record Profile
     [JsonIgnore]
     public IEnumerable<WidgetSettings> Ordered => Widgets.OrderBy(w => w.Order);
 
-    /// <summary>Normaliza todos os widgets e garante que todo widget do catalogo exista (os que faltam entram com o padrao).</summary>
+    /// <summary>
+    /// Normaliza todos os widgets (opcoes conferidas com as do tema) e garante que todo widget do catalogo do tema exista (os que faltam
+    /// entram com o padrao); widgets exclusivos de outros temas saem.
+    /// </summary>
     public Profile Normalized(int screenWidth = 1920, int screenHeight = 1080)
     {
         string themeId = ThemeCatalog.Canonical(ThemeId);
         var defaults = ProfileFactory.CreateDefault(Name, themeId, screenWidth, screenHeight);
         var list = new List<WidgetSettings>();
-        foreach (var d in WidgetCatalog.All)
+        foreach (var d in WidgetCatalog.ForTheme(themeId))
         {
             var w = Get(d.Id);
             if (w is not null && SchemaVersion < 3) w = MigrateV3(w);
-            list.Add((w ?? defaults.Get(d.Id)!).Normalized());
+            list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
         return this with { SchemaVersion = CurrentSchemaVersion, ThemeId = themeId, Widgets = ordered };
@@ -264,11 +303,11 @@ public sealed record Profile
 
 public static class ProfileFactory
 {
-    /// <summary>Perfil padrao: posicoes do catalogo escaladas para a tela (referencia 1920x1080).</summary>
+    /// <summary>Perfil padrao: so os widgets do tema, posicoes do catalogo escaladas para a tela (referencia 1920x1080). Opcoes do tema = padrao (sem bloco).</summary>
     public static Profile CreateDefault(string name, string themeId, int screenWidth = 1920, int screenHeight = 1080)
     {
         double fx = screenWidth / 1920.0, fy = screenHeight / 1080.0;
-        var list = WidgetCatalog.All.Select((d, i) => new { d, i, slot = WidgetLayout.Get(themeId, d.Id) }).Select(e => new WidgetSettings
+        var list = WidgetCatalog.ForTheme(themeId).Select((d, i) => new { d, i, slot = WidgetLayout.Get(themeId, d.Id) }).Select(e => new WidgetSettings
         {
             Id = e.d.Id, Visible = e.d.DefaultVisible, Order = e.i,
             X = (int)Math.Round(e.slot.X * fx), Y = (int)Math.Round(e.slot.Y * fy),

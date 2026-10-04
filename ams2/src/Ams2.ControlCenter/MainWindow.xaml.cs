@@ -164,8 +164,8 @@ public partial class MainWindow : Window
         foreach (var s in _profile.Ordered)
         {
             var def = WidgetCatalog.Find(s.Id);
-            if (def is null) continue;
-            var vm = new WidgetVm(def);
+            if (def is null || !def.InTheme(_themeId)) continue;   // so os widgets do tema ativo
+            var vm = new WidgetVm(def, _themeId);
             vm.Load(s);
             vm.Edited += OnWidgetEdited;
             _widgets.Add(vm);
@@ -317,6 +317,7 @@ public partial class MainWindow : Window
         FormatPanel.Visibility = vm.HasFormat ? Visibility.Visible : Visibility.Collapsed;
         BoardModeBar.Visibility = vm.IsBoard ? Visibility.Visible : Visibility.Collapsed;
         ColumnsPanel.Visibility = vm.HasColumns ? Visibility.Visible : Visibility.Collapsed;
+        ThemeOptionsPanel.Visibility = vm.HasThemeOptions ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void OnWidgetEdited(WidgetVm vm, string prop)

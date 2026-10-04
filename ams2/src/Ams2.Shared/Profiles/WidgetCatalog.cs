@@ -9,11 +9,47 @@ public sealed record WidgetDef(
     int? MinRows, int? MaxRows, int? DefaultRows, string RowsLabel,
     IReadOnlyList<ColumnDef> Columns,
     int DefaultX, int DefaultY, bool DefaultVisible = true, float DefaultScale = 1f, bool HasSelection = false, bool HasRadarOptions = false,
-    IReadOnlyList<ColumnDef>? WidthColumns = null, DisplayCaps Caps = DisplayCaps.None)
+    IReadOnlyList<ColumnDef>? WidthColumns = null, DisplayCaps Caps = DisplayCaps.None, IReadOnlyList<string>? Themes = null)
 {
     public bool SupportsRows => MinRows.HasValue;
     /// <summary>Colunas com largura ajustavel (% da largura do tema).</summary>
     public IReadOnlyList<ColumnDef> Widths => WidthColumns ?? [];
+    /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
+    public bool InTheme(string themeId)
+        => Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase));
+}
+
+public enum OptionKind { Choice, Toggle, Number }
+
+/// <summary>Valor de uma opcao do tipo Choice: o valor gravado no perfil e o rotulo do Control Center.</summary>
+public sealed record OptionChoice(string Value, string Label);
+
+/// <summary>
+/// Opcao propria de um widget num tema (p.ex. modo da coluna do Standings no 2018). Valores gravados como texto em
+/// <see cref="WidgetSettings.Options"/>: Choice = um dos <see cref="Choices"/>, Toggle = "true"/"false", Number = numero invariante em [Min, Max].
+/// </summary>
+public sealed record OptionDef(string Id, string Label, OptionKind Kind, IReadOnlyList<OptionChoice>? Choices, string Default, double? Min = null, double? Max = null)
+{
+    /// <summary>Valor canonico (Choice no case do catalogo, Toggle "true"/"false", Number limitado e invariante); null se invalido.</summary>
+    public string? Normalize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        value = value.Trim();
+        switch (Kind)
+        {
+            case OptionKind.Choice:
+                return Choices?.FirstOrDefault(c => string.Equals(c.Value, value, StringComparison.OrdinalIgnoreCase))?.Value;
+            case OptionKind.Toggle:
+                return bool.TryParse(value, out var b) ? (b ? "true" : "false") : null;
+            case OptionKind.Number:
+                if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n) || !double.IsFinite(n)) return null;
+                if (Min is { } mn) n = Math.Max(n, mn);
+                if (Max is { } mx) n = Math.Min(n, mx);
+                return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            default:
+                return null;
+        }
+    }
 }
 
 public static class WidgetCatalog
@@ -71,6 +107,30 @@ public static class WidgetCatalog
     };
 
     public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Widgets do tema, na ordem do catalogo (os exclusivos de outros temas ficam de fora).</summary>
+    public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId));
+
+    static OptionChoice O(string value, string label) => new(value, label);
+
+    /// <summary>Opcoes proprias de cada widget por tema: [tema][widget] -> definicoes. Widgets/temas ausentes = sem opcoes.</summary>
+    static readonly Dictionary<string, Dictionary<string, IReadOnlyList<OptionDef>>> ThemeOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Torre do 2018: o que a coluna clara mostra (a TV alterna gap, intervalo, posicoes ganhas, paradas e melhor volta).
+            ["standings"] =
+            [
+                new("mode", "Modo da coluna", OptionKind.Choice,
+                    [O("gap", "Gap para o líder"), O("interval", "Intervalo (carro à frente)"), O("gainedlost", "Posições ganhas/perdidas"),
+                     O("pitstops", "Paradas nos boxes"), O("bestlap", "Melhor volta"), O("auto", "Automático (alterna como na TV)")], "gap"),
+            ],
+        },
+    };
+
+    /// <summary>Opcoes do widget no tema (vazio = nenhuma).</summary>
+    public static IReadOnlyList<OptionDef> OptionsFor(string themeId, string widgetId)
+        => ThemeOptions.TryGetValue(ThemeCatalog.Canonical(themeId), out var t) && t.TryGetValue(widgetId, out var o) ? o : [];
 }
 
 public sealed record ThemeDef(string Id, string DisplayName, bool Available);

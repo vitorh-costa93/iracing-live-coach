@@ -41,6 +41,30 @@ public sealed class WidthVm : Notify
     public void Load(int pct) { _pct = pct; Raise(nameof(Pct)); }
 }
 
+/// <summary>Opcao propria do tema (<see cref="OptionDef"/>): ComboBox (Choice), CheckBox (Toggle) ou caixa numerica (Number). Valor sempre canonico.</summary>
+public sealed class OptionVm : Notify
+{
+    string _value;
+    public OptionVm(OptionDef def) { Def = def; _value = def.Normalize(def.Default) ?? def.Default; }
+    public OptionDef Def { get; }
+    public string Label => Def.Label;
+    public bool IsChoice => Def.Kind == OptionKind.Choice;
+    public bool IsToggle => Def.Kind == OptionKind.Toggle;
+    public bool IsNumber => Def.Kind == OptionKind.Number;
+    public IReadOnlyList<OptionChoice> Choices => Def.Choices ?? [];
+    /// <summary>Valor canonico atual (padrao da definicao quando nao configurado).</summary>
+    public string Value { get => _value; set { var v = Def.Normalize(value) ?? _value; if (Set(ref _value, v)) { RaiseAll(); Edited?.Invoke(); } } }
+    public bool IsDefault => _value == (Def.Normalize(Def.Default) ?? Def.Default);
+    /// <summary>Toggle ligado/desligado.</summary>
+    public bool Checked { get => _value == "true"; set => Value = value ? "true" : "false"; }
+    /// <summary>Number: texto da caixa (aceita virgula ou ponto; invalido mantem o valor anterior).</summary>
+    public string NumberText { get => _value; set { Value = value.Replace(',', '.'); Raise(); } }
+    public event Action? Edited;
+    void RaiseAll() { Raise(nameof(Value)); Raise(nameof(Checked)); Raise(nameof(NumberText)); }
+    public void Load(string? stored) { _value = Def.Normalize(stored) ?? Def.Normalize(Def.Default) ?? Def.Default; RaiseAll(); }
+    public void Reset() => Value = Def.Default;
+}
+
 /// <summary>Opcao de ComboBox (valor inteiro; -1 = padrao do widget/tema).</summary>
 public sealed record Choice(string Label, int Value);
 
@@ -72,9 +96,11 @@ public sealed class WidgetVm : Notify
     string _font = FontDefault;
     bool _loading;
 
-    public WidgetVm(WidgetDef def)
+    public WidgetVm(WidgetDef def, string themeId)
     {
         Def = def;
+        ThemeOptions = new ObservableCollection<OptionVm>(WidgetCatalog.OptionsFor(themeId, def.Id).Select(o => new OptionVm(o)));
+        foreach (var o in ThemeOptions) o.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(ThemeOptions)); };
         Columns = new ObservableCollection<ColumnVm>(def.Columns.Select(c => new ColumnVm(c)));
         foreach (var c in Columns) c.Edited += () => { if (!_loading) { Raise(nameof(Summary)); Edited?.Invoke(this, nameof(Columns)); } };
         Widths = new ObservableCollection<WidthVm>(def.Widths.Select(c => new WidthVm(c)));
@@ -89,6 +115,16 @@ public sealed class WidgetVm : Notify
 
     public ObservableCollection<WidthVm> Widths { get; }
     public bool HasWidths => Widths.Count > 0;
+    /// <summary>Opcoes proprias do tema ativo (bloco "Opções do tema"; vazio = bloco oculto).</summary>
+    public ObservableCollection<OptionVm> ThemeOptions { get; }
+    public bool HasThemeOptions => ThemeOptions.Count > 0;
+
+    /// <summary>Mapa das opcoes fora do padrao (null = todas no padrao).</summary>
+    Dictionary<string, string>? BuildOptions()
+    {
+        var d = ThemeOptions.Where(o => !o.IsDefault).ToDictionary(o => o.Def.Id, o => o.Value, StringComparer.OrdinalIgnoreCase);
+        return d.Count == 0 ? null : d;
+    }
     public bool HasName => Def.Caps.HasFlag(DisplayCaps.Name);
     public bool HasGap => Def.Caps.HasFlag(DisplayCaps.Gap);
     public bool HasLapTime => Def.Caps.HasFlag(DisplayCaps.LapTime);
@@ -144,6 +180,7 @@ public sealed class WidgetVm : Notify
         NameChoice = -1; CarNumber = false; GapDecimals = -1; GapSign = -1; GapSuffix = false; LapStyle = -1; LapDecimals = -1;
         SpeedChoice = 0; TempChoice = 0; FuelChoice = 0;
         foreach (var w in Widths) w.Pct = 100;
+        foreach (var o in ThemeOptions) o.Reset();
     }
 
     public WidgetDef Def { get; }
@@ -201,6 +238,7 @@ public sealed class WidgetVm : Notify
             FontChoice = s.Font ?? FontDefault;
             foreach (var c in Columns) c.Load(s.ColumnVisible(c.Def.Id));
             foreach (var w in Widths) w.Load((int)Math.Round(s.WidthFactor(w.Def.Id) * 100));
+            foreach (var o in ThemeOptions) o.Load(s.Option(o.Def.Id));
             TextScalePct = (int)Math.Round((s.TextScale ?? 1f) * 100);
             FontWeightChoice = s.FontWeight ?? 0;
             TextColor = s.TextColor ?? ""; LabelColor = s.LabelColor ?? ""; ValueColor = s.ValueColor ?? "";
@@ -233,6 +271,7 @@ public sealed class WidgetVm : Notify
         FontWeight = FontWeightChoice > 0 ? FontWeightChoice : null,
         TextColor = TextColor, LabelColor = LabelColor, ValueColor = ValueColor,
         Display = BuildDisplay(),
+        Options = BuildOptions(),
     }.Normalized();
 
     /// <summary>Patch IPC so com o campo que mudou.</summary>
@@ -248,6 +287,7 @@ public sealed class WidgetVm : Notify
         nameof(FontChoice) => FontChoice == FontDefault ? new WidgetPatch { ClearFont = true } : new WidgetPatch { Font = FontChoice },
         nameof(Columns) => Columns.All(c => c.IsVisible) ? new WidgetPatch { AllColumns = true } : new WidgetPatch { Columns = Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray() },
         nameof(Widths) => new WidgetPatch { ColumnWidths = BuildWidths() ?? [] },
+        nameof(ThemeOptions) => new WidgetPatch { Options = BuildOptions() ?? [] },
         nameof(TextScalePct) => new WidgetPatch { TextScale = TextScalePct / 100f },
         nameof(FontWeightChoice) => new WidgetPatch { FontWeight = FontWeightChoice },
         nameof(TextColor) => new WidgetPatch { TextColor = TextColor },

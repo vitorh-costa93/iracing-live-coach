@@ -77,7 +77,7 @@ internal sealed class HostController : IDisposable
     public void ApplyPatch(string widgetId, WidgetPatch patch)
     {
         var cur = _profile.Get(widgetId);
-        if (cur is not null) UpdateWidget(patch.ApplyTo(cur), orderChanged: false);
+        if (cur is not null) UpdateWidget(patch.ApplyTo(cur, _theme.Id), orderChanged: false);
     }
 
     public void SetEditModeDirect(bool edit) => SetEditMode(edit);
@@ -119,7 +119,7 @@ internal sealed class HostController : IDisposable
                 if (req.Widget is null || req.Patch is null) return Fail("setWidget exige Widget e Patch.");
                 var cur = _profile.Get(req.Widget);
                 if (cur is null) return Fail($"Widget desconhecido: {req.Widget}.");
-                var next = req.Patch.ApplyTo(cur);
+                var next = req.Patch.ApplyTo(cur, _theme.Id);
                 UpdateWidget(next, orderChanged: next.Order != cur.Order);
                 break;
             }
@@ -241,7 +241,7 @@ internal sealed class HostController : IDisposable
 
     void OnUserChanged(WidgetWindow w)
     {
-        _profile = _profile.WithWidget(w.Settings.Normalized());
+        _profile = _profile.WithWidget(w.Settings.Normalized(_theme.Id));
         ScheduleSave();
         _ipc?.Broadcast(new IpcMessage { Event = IpcEvents.StateChanged, State = BuildState() });
     }
