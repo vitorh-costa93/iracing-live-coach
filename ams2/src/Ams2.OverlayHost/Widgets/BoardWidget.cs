@@ -325,11 +325,11 @@ public sealed class BoardWidget : IWidget
                 float y = oy + 46;
                 Chrome.AccentBox(c, ox + 16, y, 40, 38, Num(left.Position), t.Numbers);
                 string ln = leftName.ToUpperInvariant(), rn = rightName.ToUpperInvariant();
-                c.Text(ln, BroadcastUi.Fit(c, ln, t.Text, 190), ox + 68, y - 1, 200, 38, left.IsPlayer ? t.PlayerColor : t.TextColor);
+                c.Text(ln, BroadcastUi.Fit(c, ln, t.Text, 150), ox + 68, y - 1, 200, 38, left.IsPlayer ? t.PlayerColor : t.TextColor);
                 Chrome.AccentBox(c, ox + w - 16 - 40, y, 40, 38, Num(right.Position), t.Numbers);
-                c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, 190), ox + w - 68 - 200, y - 1, 200, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right);
+                c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, 150), ox + w - 68 - 200, y - 1, 200, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right);
                 float prev = c.Opacity; c.Opacity = prev * live;
-                c.Text(gapText, t.Numbers with { Size = 34 }, ox + w / 2 - 80, y - 2, 160, 40, t.ValueColor, HAlign.Center);
+                c.Text(gapText, BroadcastUi.Fit(c, gapText, t.Numbers with { Size = 34 }, 140), ox + w / 2 - 80, y - 2, 160, 40, t.ValueColor, HAlign.Center);
                 c.Opacity = prev;
                 break;
             }
