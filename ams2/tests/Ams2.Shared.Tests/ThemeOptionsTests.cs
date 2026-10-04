@@ -246,6 +246,67 @@ public class ThemeOptionsTests
     }
 
     [Fact]
+    public void Live_speed_2018_options_units_name_and_always()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "livespeed");
+        Assert.Equal(["units", "showName", "always"], defs.Select(d => d.Id));
+        Assert.Equal((OptionKind.Choice, "both"), (defs[0].Kind, defs[0].Default));
+        Assert.Equal(["both", "kph", "mph"], defs[0].Choices!.Select(c => c.Value));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[1].Kind, defs[1].Default));
+        Assert.Equal((OptionKind.Toggle, "false"), (defs[2].Kind, defs[2].Default));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.All(defs[0].Choices!, c => Assert.False(string.IsNullOrWhiteSpace(c.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "livespeed"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "livespeed"));
+
+        // Valores canonicos; padroes (both / true / false) nao sao gravados.
+        var s = new WidgetSettings { Id = "livespeed", Options = new() { ["Units"] = "MPH", ["showName"] = "False", ["always"] = "true" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["units"] = "mph", ["showName"] = "false", ["always"] = "true" }, s.Options);
+        Assert.Null(new WidgetSettings { Id = "livespeed", Options = new() { ["units"] = "both", ["showName"] = "true", ["always"] = "false" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "livespeed", Options = new() { ["units"] = "knots" } }.Normalized(T2018).Options);
+        Assert.Equal("both", new WidgetSettings { Id = "livespeed" }.OptionOr("units", "both"));
+    }
+
+    [Fact]
+    public void Live_speed_exists_only_in_the_2018_theme()
+    {
+        var def = WidgetCatalog.Find("livespeed")!;
+        Assert.Equal("Live Speed", def.DisplayName);
+        Assert.True(def.InTheme(T2018));
+        Assert.True(def.InTheme("f1-2010s"));
+        Assert.False(def.InTheme("f1-1998"));
+        Assert.False(def.InTheme("f1-2004"));
+
+        var p18 = ProfileFactory.CreateDefault("x", T2018);
+        var ls = p18.Get("livespeed")!;
+        Assert.True(ls.Visible);
+        Assert.Null(ls.Options);
+        foreach (var theme in new[] { "f1-1998", "f1-2004" })
+        {
+            Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("livespeed"));
+            Assert.DoesNotContain("livespeed", WidgetCatalog.ForTheme(theme).Select(d => d.Id));
+            Assert.False(WidgetLayout.DesignSizes[theme].ContainsKey("livespeed"));
+            // Perfil 1998/2004 que (por engano) traga o widget: a normalizacao o descarta.
+            var p = ProfileFactory.CreateDefault("x", theme);
+            var extra = p with { Widgets = [.. p.Widgets, new WidgetSettings { Id = "livespeed", Order = 99 }] };
+            Assert.DoesNotContain(extra.Normalized().Widgets, w => w.Id == "livespeed");
+        }
+    }
+
+    [Fact]
+    public void Live_speed_2018_sits_on_the_right_clear_of_the_other_widgets()
+    {
+        var r = WidgetLayout.Rect(T2018, "livespeed")!.Value;
+        Assert.Equal((1600.0, 400.0, 195.0, 128.0), r);
+        foreach (var other in WidgetCatalog.ForTheme(T2018).Select(d => d.Id).Where(id => id != "livespeed"))
+        {
+            if (WidgetLayout.Rect(T2018, other) is not { } o) continue;
+            bool overlap = r.X < o.X + o.W && o.X < r.X + r.W && r.Y < o.Y + o.H && o.Y < r.Y + r.H;
+            Assert.False(overlap, $"livespeed sobrepoe {other} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+    }
+
+    [Fact]
     public void Winner_2018_banner_sits_top_center_clear_of_the_tower()
     {
         var w = WidgetLayout.Rect(T2018, "winner")!.Value;

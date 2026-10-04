@@ -93,6 +93,8 @@ public static class WidgetCatalog
             WidthColumns: [C("name", "Nome (torre)"), C("gap", "Gap (torre)"), C("time", "Tempo de volta (comparativo)")], Caps: DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime),
         new("winner", "Winner", null, null, null, "", [C("always", "Sempre visível (senão ao fim da corrida)"), C("team", "Equipe"), C("stats", "Tempo, distância e média")], 60, 930, DefaultScale: 0.75f,
             Caps: DisplayCaps.Name | DisplayCaps.Speed),
+        // Exclusivo do 2018: painel "LIVE SPEED" da TV (velocidade do jogador em km/h e mph). Unidades e visibilidade nas opcoes do tema.
+        new("livespeed", "Live Speed", null, null, null, "", [], 1600, 400, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
     ];
 
     /// <summary>Colunas criadas no esquema 3: entram visiveis nas listas de colunas salvas por perfis antigos (migracao).</summary>
@@ -150,6 +152,14 @@ public static class WidgetCatalog
                 new("showPitTime", "Tempo na pit lane (\"PIT 23.8\") durante a parada", OptionKind.Toggle, null, "true"),
                 new("showPosition", "Caixa de posição", OptionKind.Toggle, null, "true"),
                 new("showTick", "Tique da cor da classe", OptionKind.Toggle, null, "true"),
+            ],
+            // Live Speed do 2018: velocidade do jogador; padrao so com o jogador no carro (regra PlayerDriving), "always" fixa na tela.
+            ["livespeed"] =
+            [
+                new("units", "Unidades", OptionKind.Choice,
+                    [O("both", "Ambos (km/h e mph)"), O("kph", "Só km/h"), O("mph", "Só mph")], "both"),
+                new("showName", "Nome do piloto", OptionKind.Toggle, null, "true"),
+                new("always", "Sempre visível (senão só com o jogador no carro)", OptionKind.Toggle, null, "false"),
             ],
         },
     };

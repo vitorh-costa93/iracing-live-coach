@@ -38,7 +38,7 @@ internal sealed class WidgetWindow : IDisposable
     /// <summary>Medição de fps de render (marca a cada quadro desenhado).</summary>
     public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
     public WidgetSettings Settings { get; private set; }
-    public bool Visible => Settings.Visible && _gateOpen;
+    public bool Visible => Settings.Visible && (_gateOpen || _widget.IgnoresDrivingGate);
     bool _gateOpen = true;
     public bool Editing => _win.EditMode;
     /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>

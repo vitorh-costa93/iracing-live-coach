@@ -53,7 +53,7 @@ public sealed class HostIpcTests : IDisposable
         Assert.True(st.Fake);
         Assert.Equal("f1-1998", st.Theme);
         Assert.Equal("Padrão", st.ActiveProfile);
-        Assert.Equal(WidgetCatalog.All.Select(w => w.Id), st.Widgets.Select(w => w.Id));
+        Assert.Equal(WidgetCatalog.ForTheme("f1-1998").Select(w => w.Id), st.Widgets.Select(w => w.Id));
         Assert.All(new[] { "f1-1998", "f1-2004", "f1-2018" }, id => Assert.Contains(st.Themes, t => t.Id == id && t.Available));
         await WaitFor(() => client.SendAsync(IpcCommands.GetState).Result!.GameConnected, 8000, "escritor falso nao conectou");
 

@@ -58,6 +58,7 @@ public sealed class CustomizationPngTests
     [InlineData("drivercaption", "f1-2018")]
     [InlineData("pittimer", "f1-2018")]
     [InlineData("board", "f1-2018")]
+    [InlineData("livespeed", "f1-2018")]
     public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
     {
         var a = Render($"--widget {widget} --theme {theme}");
@@ -335,6 +336,48 @@ public sealed class CustomizationPngTests
             Assert.Equal((on.W, on.H), (off.W, off.H));
             Assert.NotEqual(on.Png, off.Png);
         }
+    }
+
+    // ---- Live Speed 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "livespeed")) ----
+
+    static (int W, int H, byte[] Png) LiveSpeed18(Dictionary<string, string>? options)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-ls18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "livespeed", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim 20 --widget livespeed --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Fact]
+    public void Live_speed_2018_units_name_and_always()
+    {
+        var both = LiveSpeed18(null);
+        Assert.Equal((300, 196), (both.W, both.H));
+        Assert.Equal(both.Png, LiveSpeed18(new() { ["units"] = "both" }).Png);
+        var kph = LiveSpeed18(new() { ["units"] = "kph" });
+        var mph = LiveSpeed18(new() { ["units"] = "mph" });
+        Assert.Equal((both.W, both.H), (kph.W, kph.H));
+        Assert.Equal((both.W, both.H), (mph.W, mph.H));
+        Assert.NotEqual(both.Png, kph.Png);
+        Assert.NotEqual(both.Png, mph.Png);
+        Assert.NotEqual(kph.Png, mph.Png);
+        // Sem nome: a placa encolhe a faixa do nome (30 de projeto).
+        var noName = LiveSpeed18(new() { ["showName"] = "false" });
+        Assert.Equal((300, 166), (noName.W, noName.H));
+        // "always" so muda a regra de visibilidade do host, nao o desenho.
+        Assert.Equal(both.Png, LiveSpeed18(new() { ["always"] = "true" }).Png);
     }
 
     // ---- Torre 2018: modos e opcoes do tema (WidgetCatalog.OptionsFor("f1-2018", "standings")) ----

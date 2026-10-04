@@ -18,7 +18,7 @@ public class ProfileTests
     public void Default_profile_has_every_catalog_widget_in_order()
     {
         var p = ProfileFactory.CreateDefault("A", Theme);
-        Assert.Equal(WidgetCatalog.All.Select(w => w.Id), p.Ordered.Select(w => w.Id));
+        Assert.Equal(WidgetCatalog.ForTheme(Theme).Select(w => w.Id), p.Ordered.Select(w => w.Id));
         Assert.All(p.Widgets, w => Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale));
         // o board substitui Relative e Driver Caption no layout padrao (continuam no catalogo, desligados)
         Assert.All(p.Widgets, w => Assert.Equal(w.Id is not ("relative" or "drivercaption"), w.Visible));
@@ -159,7 +159,7 @@ public class ProfileTests
         using var t = new TempStore();
         t.Store.Save(new Profile { Name = "Parcial", ThemeId = Theme, Widgets = [new WidgetSettings { Id = "fuel", X = 5, Y = 6 }] });
         var p = t.Store.Load(Theme, "Parcial")!;
-        Assert.Equal(WidgetCatalog.All.Count, p.Widgets.Count);
+        Assert.Equal(WidgetCatalog.ForTheme(Theme).Count(), p.Widgets.Count);
         Assert.Equal(5, p.Get("fuel")!.X);
     }
 
@@ -219,7 +219,7 @@ public class ProfileTests
     {
         var p = ProfileFactory.CreateDefault("A", Theme).MoveTo("weather", 0);
         Assert.Equal("weather", p.Ordered.First().Id);
-        Assert.Equal(Enumerable.Range(0, WidgetCatalog.All.Count), p.Ordered.Select(w => w.Order));
+        Assert.Equal(Enumerable.Range(0, WidgetCatalog.ForTheme(Theme).Count()), p.Ordered.Select(w => w.Order));
         p = p.MoveTo("weather", 99);
         Assert.Equal("weather", p.Ordered.Last().Id);
     }

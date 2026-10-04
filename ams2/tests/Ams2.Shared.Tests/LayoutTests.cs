@@ -23,7 +23,7 @@ public class LayoutTests
 
     [Theory, MemberData(nameof(Themes))]
     public void Every_widget_has_a_design_size(string theme)
-        => Assert.Equal(WidgetCatalog.All.Select(w => w.Id).Order(), WidgetLayout.DesignSizes[theme].Keys.Order());
+        => Assert.Equal(WidgetCatalog.ForTheme(theme).Select(w => w.Id).Order(), WidgetLayout.DesignSizes[theme].Keys.Order());
 
     [Theory, MemberData(nameof(Themes))]
     public void Default_layout_stays_inside_the_screen(string theme)

@@ -31,6 +31,6 @@ public sealed class DesignSizeTests
             Assert.Equal((w, h), (float.Parse(f[2], CultureInfo.InvariantCulture), float.Parse(f[3], CultureInfo.InvariantCulture)));
             seen++;
         }
-        Assert.Equal(ThemeCatalog.All.Count * WidgetCatalog.All.Count, seen);
+        Assert.Equal(ThemeCatalog.All.Sum(t => WidgetCatalog.ForTheme(t.Id).Count()), seen);
     }
 }

@@ -16,6 +16,8 @@ public interface IWidget
     bool HighFrequency => false;
     /// <summary>true = nada a desenhar agora (p.ex. radar sem carro por perto): o host nao precisa do ritmo de vblank para este widget (60 Hz basta para limpar a janela).</summary>
     bool IsIdle(OverlayModel model) => false;
+    /// <summary>true = a janela fica aberta mesmo com a regra de visibilidade fechada (jogador fora do carro), p.ex. opcao "always" do Live Speed.</summary>
+    bool IgnoresDrivingGate => false;
     void Configure(WidgetSettings settings);
     void Draw(ThemeCanvas canvas, OverlayModel model);
 }
