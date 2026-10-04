@@ -102,7 +102,7 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
-        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. Desenho nas etapas 2-4 (hoje placeholders).
+        // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower desenhado no 2018; o resto ainda placeholder.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -187,6 +187,18 @@ public static class WidgetCatalog
                 new("showSlowStop", "Barra de parada lenta (SLOW STOP -x.xs)", OptionKind.Toggle, null, "true"),
                 new("slowStopLimit", "Parada lenta: considerada lenta se passar desse tempo parado (s)", OptionKind.Number, null, "5", Min: 3, Max: 30),
                 new("showFor", "Tempo na tela da barra de parada lenta (s)", OptionKind.Number, null, "8", Min: 3, Max: 15),
+            ],
+            // Torre de classificacao do 2018: melhores voltas (1o com tempo, demais +diferenca), relogio "Q", zona de eliminacao,
+            // cartao DRIVER AT RISK e modo FASTEST TYRE (o AMS2 so informa o composto do jogador: os outros ficam "-").
+            ["qualitower"] =
+            [
+                new("rows", "Linhas do topo", OptionKind.Number, null, "10", Min: 5, Max: 20),
+                new("nearCount", "Pilotos ao redor do jogador", OptionKind.Number, null, "3", Min: 0, Max: 10),
+                new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
+                new("mode", "Modo", OptionKind.Choice,
+                    [O("time", "Tempos (1º com tempo, demais +diferença)"), O("fastesttyre", "Pneu mais rápido (composto e décimos)")], "time"),
+                new("showClock", "Relógio da sessão no cabeçalho", OptionKind.Toggle, null, "true"),
+                new("showAtRisk", "Cartão \"DRIVER AT RISK\" (piloto no corte)", OptionKind.Toggle, null, "true"),
             ],
         },
     };

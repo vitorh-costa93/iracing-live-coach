@@ -569,4 +569,79 @@ public sealed class CustomizationPngTests
         Assert.True(noOut.H < on.H, $"{on.H} -> {noOut.H}");
         Assert.Equal(on.W, noOut.W);
     }
+
+    // ---- Torre de classificacao 2018 (WidgetCatalog.OptionsFor("f1-2018", "qualitower")); AMS2_FAKE_QUALI=1: jogador P8 com a
+    // 1a volta em t=10,75 s (verde ate ~15,7 s), OUT LAP (16/18), IN PIT (17), NO TIME (19/20) ----
+
+    static (int W, int H, byte[] Png) QualiTower(Dictionary<string, string>? options, double sim = 20, Dictionary<string, string>? env = null, string theme = "f1-2018")
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-qt-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualitower", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget qualitower --theme {theme} --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_QUALI"] = "1";
+        foreach (var (k, v) in env ?? []) psi.Environment[k] = v;
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Fact]
+    public void Quali_tower_2018_default_window_matches_the_layout_and_draws()
+    {
+        var d = QualiTower(null);
+        Assert.Equal((284, 626), (d.W, d.H));
+        Assert.True(d.Png.Length > 2000);
+        // Volta recem-melhorada do jogador (verde) some depois de ImprovedHold s: o desenho muda, a janela nao.
+        var green = QualiTower(null, 13);
+        var later = QualiTower(null, 25);
+        Assert.Equal((green.W, green.H), (later.W, later.H));
+        Assert.NotEqual(green.Png, later.Png);
+        // Linhas do topo e janela ao redor do jogador mudam a altura reservada.
+        Assert.True(QualiTower(new() { ["rows"] = "5" }).H < d.H);
+        Assert.True(QualiTower(new() { ["nearCount"] = "6" }).H > d.H);
+    }
+
+    [Fact]
+    public void Quali_tower_2018_elimination_zone_driver_at_risk_tyre_mode_and_clock_variants()
+    {
+        var d = QualiTower(null);
+        var zone = QualiTower(new() { ["eliminationFrom"] = "16" });
+        Assert.Equal(d.W, zone.W);
+        Assert.True(zone.H > d.H, $"{d.H} -> {zone.H}");
+        // Jogador (P8) exatamente no corte: mesmo tamanho, outro desenho (cartao DRIVER AT RISK com ele).
+        var atCut = QualiTower(new() { ["eliminationFrom"] = "9" });
+        Assert.Equal((zone.W, zone.H), (atCut.W, atCut.H));
+        Assert.NotEqual(zone.Png, atCut.Png);
+        // Sem o cartao: so o titulo ELIMINATION ZONE (reserva menor).
+        var noRisk = QualiTower(new() { ["eliminationFrom"] = "16", ["showAtRisk"] = "false" });
+        Assert.True(noRisk.H < zone.H && noRisk.H > d.H, $"{d.H} < {noRisk.H} < {zone.H}");
+        // FASTEST TYRE: coluna de composto (mais larga) e titulo (mais alta).
+        var tyre = QualiTower(new() { ["mode"] = "fastesttyre" });
+        Assert.True(tyre.W > d.W && tyre.H > d.H, $"{d.W}x{d.H} -> {tyre.W}x{tyre.H}");
+        // Sem relogio: "QUALIFYING" no cabecalho, mesma janela.
+        var noClock = QualiTower(new() { ["showClock"] = "false" });
+        Assert.Equal((d.W, d.H), (noClock.W, noClock.H));
+        Assert.NotEqual(d.Png, noClock.Png);
+        // Bandeirada (FLAG_COLOUR_CHEQUERED): xadrez no cabecalho e relogio vermelho.
+        Assert.NotEqual(d.Png, QualiTower(null, env: new() { ["AMS2_FAKE_FLAG"] = "11" }).Png);
+    }
+
+    [Theory]
+    [InlineData("f1-1998", 191, 372)]
+    [InlineData("f1-2004", 132, 316)]
+    public void Quali_tower_other_themes_keep_the_placeholder_window(string theme, int w, int h)
+    {
+        var r = QualiTower(new() { ["eliminationFrom"] = "16" }, theme: theme);
+        Assert.Equal((w, h), (r.W, r.H));
+    }
 }

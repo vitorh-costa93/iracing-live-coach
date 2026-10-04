@@ -98,7 +98,7 @@ public static class WidgetLayout
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
                 ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186),
-                ["qualitower"] = (284, 628), ["qualilap"] = (600, 120), ["qualiresult"] = (500, 340),
+                ["qualitower"] = (284, 626), ["qualilap"] = (600, 120), ["qualiresult"] = (500, 340),
             },
         };
 

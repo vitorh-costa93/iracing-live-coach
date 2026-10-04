@@ -34,7 +34,7 @@ namespace Ams2.OverlayHost;
 ///   AMS2_FAKE_QUALI=1 (so --fake/--png): sessao de CLASSIFICACAO (filtro de sessao = "qualify") de 20 carros, pista de 2100 m, relogio 15:00
 ///   decrescente, tempos variados, OUT LAP (carros 15/16 saem da garagem em t=5/8 s), NO TIME (18/19 na garagem), IN PIT (17) e o jogador
 ///   (indice 5) em voltas de ~30,5 s com setores diferentes: cruza a linha em t=10,75 s e t~41,2 s (S1/S2 da volta 2 em t~21/31 s).
-///   Com --png imprime a tabela ([QUALI]) e a volta do jogador ([QUALILAP]); widgets qualitower/qualilap/qualiresult ainda sao placeholders.
+///   Com --png imprime a tabela ([QUALI]) e a volta do jogador ([QUALILAP]); qualitower desenhado no f1-2018 (placeholder nos outros temas); qualilap/qualiresult ainda sao placeholders.
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.
 /// </summary>
 internal static class Program

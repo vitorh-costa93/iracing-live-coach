@@ -437,4 +437,46 @@ public class ThemeOptionsTests
             Assert.False(overlap, $"racecontrol sobrepoe {other} ({o.X},{o.Y} {o.W}x{o.H})");
         }
     }
+
+    [Fact]
+    public void Quali_tower_2018_options_rows_near_elimination_mode_clock_and_at_risk()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "qualitower");
+        Assert.Equal(["rows", "nearCount", "eliminationFrom", "mode", "showClock", "showAtRisk"], defs.Select(d => d.Id));
+        Assert.Equal((OptionKind.Number, "10", 5.0, 20.0), (defs[0].Kind, defs[0].Default, defs[0].Min, defs[0].Max));
+        Assert.Equal((OptionKind.Number, "3", 0.0, 10.0), (defs[1].Kind, defs[1].Default, defs[1].Min, defs[1].Max));
+        Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (defs[2].Kind, defs[2].Default, defs[2].Min, defs[2].Max));
+        Assert.Equal((OptionKind.Choice, "time"), (defs[3].Kind, defs[3].Default));
+        Assert.Equal(["time", "fastesttyre"], defs[3].Choices!.Select(c => c.Value));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[4].Kind, defs[4].Default));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[5].Kind, defs[5].Default));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "qualitower"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "qualitower"));
+
+        // Padroes nao sao gravados; numeros limitados; escolha e toggles canonicos; invalidos descartados.
+        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "10", ["nearCount"] = "3", ["eliminationFrom"] = "0", ["mode"] = "time", ["showClock"] = "true", ["showAtRisk"] = "true" } }.Normalized(T2018).Options);
+        var s = new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "2", ["nearCount"] = "50", ["eliminationFrom"] = "16", ["mode"] = "FastestTyre", ["showClock"] = "False", ["showAtRisk"] = "no", ["bogus"] = "1" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["rows"] = "5", ["nearCount"] = "10", ["eliminationFrom"] = "16", ["mode"] = "fastesttyre", ["showClock"] = "false" }, s.Options);
+        Assert.Equal("30", new WidgetSettings { Id = "qualitower", Options = new() { ["eliminationFrom"] = "99" } }.Normalized(T2018).Option("eliminationFrom"));
+        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["mode"] = "gap" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["eliminationFrom"] = "16" } }.Normalized("f1-1998").Options);
+    }
+
+    [Fact]
+    public void Quali_tower_2018_takes_the_tower_corner_and_clears_the_widgets_visible_in_qualifying()
+    {
+        var q = WidgetLayout.Rect(T2018, "qualitower")!.Value;
+        var tower = WidgetLayout.Rect(T2018, "standings")!.Value;
+        Assert.Equal((tower.X, tower.Y), (q.X, q.Y));
+        Assert.Equal((284f, 626f), WidgetLayout.DesignSizes[T2018]["qualitower"]);
+        var profile = ProfileFactory.CreateDefault("x", T2018, WidgetLayout.RefWidth, WidgetLayout.RefHeight);
+        foreach (var w in profile.Widgets.Where(w => w.Visible && w.Id is not ("qualitower" or "standings")))
+        {
+            if (!WidgetCatalog.Find(w.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.Rect(T2018, w.Id) is not { } o) continue;
+            bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
+            Assert.False(overlap, $"qualitower ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {w.Id} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+    }
 }
