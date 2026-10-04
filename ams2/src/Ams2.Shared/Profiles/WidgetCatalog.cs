@@ -129,6 +129,14 @@ public static class WidgetCatalog
                 new("fullNames", "Nomes completos sob bandeira amarela / Safety Car", OptionKind.Toggle, null, "true"),
                 new("outBlock", "Pilotos fora da corrida no bloco cinza \"OUT\" (senão ocultos)", OptionKind.Toggle, null, "true"),
             ],
+            // Legenda do 2018: placa do piloto, variante STARTED / NOW (grid de largada x posicao atual), resultado no fim ou automatico.
+            ["drivercaption"] =
+            [
+                new("variant", "Variante da legenda", OptionKind.Choice,
+                    [O("driver", "Piloto (nome, número e equipe)"), O("startednow", "Largou / Agora (STARTED / NOW)"),
+                     O("result", "Resultado (posição final)"), O("auto", "Automático (como na TV)")], "auto"),
+                new("showFor", "Tempo na tela por evento (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+            ],
         },
     };
 

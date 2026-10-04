@@ -6,6 +6,8 @@ using Vortice.Win32.Graphics.DirectWrite;
 using Vortice.Win32.Numerics;
 using static Vortice.Win32.Apis;
 using D2DGradientStop = Vortice.Win32.Graphics.Direct2D.Common.GradientStop;
+using FigureBegin = Vortice.Win32.Graphics.Direct2D.Common.FigureBegin;
+using FigureEnd = Vortice.Win32.Graphics.Direct2D.Common.FigureEnd;
 
 namespace Ams2.OverlayHost.Theme;
 
@@ -135,6 +137,28 @@ public sealed unsafe class ThemeCanvas : IDisposable
         var rr = new RoundedRect { rect = new RectF(x, y, x + w, y + h), radiusX = radius, radiusY = radius };
         Dc->FillRoundedRectangle(&rr, Solid(color));
     }
+
+    /// <summary>Polígono convexo ou não, preenchido (vértices em unidades de design, fechado automaticamente).</summary>
+    public void FillPolygon(ReadOnlySpan<Vector2> points, Color4 color)
+    {
+        if (points.Length < 3) return;
+        ComPtr<ID2D1Factory> factory = default;
+        Dc->GetFactory(factory.GetAddressOf());
+        ComPtr<ID2D1PathGeometry> path = default;
+        ThrowIfFailed(factory.Get()->CreatePathGeometry(path.GetAddressOf()));
+        ComPtr<ID2D1GeometrySink> sink = default;
+        ThrowIfFailed(path.Get()->Open(sink.GetAddressOf()));
+        sink.Get()->BeginFigure(points[0], FigureBegin.Filled);
+        for (int i = 1; i < points.Length; i++) sink.Get()->AddLine(points[i]);
+        sink.Get()->EndFigure(FigureEnd.Closed);
+        ThrowIfFailed(sink.Get()->Close());
+        Dc->FillGeometry((ID2D1Geometry*)path.Get(), Solid(color), null);
+        sink.Dispose(); path.Dispose(); factory.Dispose();
+    }
+
+    /// <summary>Paralelogramo com bases horizontais: base inferior em [x, x+w] e a superior deslocada de <paramref name="slant"/> (positivo = "/").</summary>
+    public void FillSlant(float x, float y, float w, float h, float slant, Color4 color)
+        => FillPolygon([new(x, y + h), new(x + slant, y), new(x + slant + w, y), new(x + w, y + h)], color);
 
     public void StrokeEllipse(float cx, float cy, float rx, float ry, Color4 color, float width)
     {

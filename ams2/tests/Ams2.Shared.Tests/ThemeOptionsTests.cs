@@ -172,4 +172,31 @@ public class ThemeOptionsTests
         var extra = p with { Widgets = [.. p.Widgets, new WidgetSettings { Id = "nao-existe", Order = 99 }] };
         Assert.DoesNotContain(extra.Normalized().Widgets, w => w.Id == "nao-existe");
     }
+
+    [Fact]
+    public void Driver_caption_2018_options_variant_and_show_for()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "drivercaption");
+        Assert.Equal(["variant", "showFor"], defs.Select(d => d.Id));
+        var v = defs[0];
+        Assert.Equal((OptionKind.Choice, "auto"), (v.Kind, v.Default));
+        Assert.Equal(["driver", "startednow", "result", "auto"], v.Choices!.Select(c => c.Value));
+        var secs = defs[1];
+        Assert.Equal((OptionKind.Number, "6", 3.0, 15.0), (secs.Kind, secs.Default, secs.Min, secs.Max));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.All(v.Choices!, c => Assert.False(string.IsNullOrWhiteSpace(c.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "drivercaption"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "drivercaption"));
+        // As colunas continuam as do catalogo (sempre visivel, equipe, pneus).
+        Assert.Equal(["always", "team", "tyre"], WidgetCatalog.Find("drivercaption")!.Columns.Select(c => c.Id));
+
+        // Valores: variante canonica, segundos limitados a 3..15, padroes nao gravados.
+        var s = new WidgetSettings { Id = "drivercaption", Options = new() { ["variant"] = "StartedNow", ["showFor"] = "99" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["variant"] = "startednow", ["showFor"] = "15" }, s.Options);
+        Assert.Equal("3", new WidgetSettings { Id = "drivercaption", Options = new() { ["showFor"] = "1" } }.Normalized(T2018).Option("showFor"));
+        Assert.Null(new WidgetSettings { Id = "drivercaption", Options = new() { ["variant"] = "auto", ["showFor"] = "6" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "drivercaption", Options = new() { ["variant"] = "xyz" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "drivercaption", Options = new() { ["variant"] = "result" } }.Normalized("f1-1998").Options);
+        Assert.Equal("auto", new WidgetSettings { Id = "drivercaption" }.OptionOr("variant", "auto"));
+    }
 }

@@ -180,6 +180,64 @@ public sealed class CustomizationPngTests
         Assert.NotEqual(a, b);
     }
 
+    // ---- Legenda 2018: variantes (WidgetCatalog.OptionsFor("f1-2018", "drivercaption")) ----
+
+    /// <summary>Renderiza a legenda 2018 (sempre visivel, equipe e pneus) com as opcoes do tema; devolve (largura, altura, bytes do PNG).</summary>
+    static (int W, int H, byte[] Png) Caption18(Dictionary<string, string>? options, double sim = 20, Dictionary<string, string>? env = null, string[]? cols = null)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-c18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "drivercaption", Columns = cols ?? ["always", "team", "tyre"], Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget drivercaption --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        psi.Environment["AMS2_FAKE_BOARD"] = "1";
+        foreach (var (k, v) in env ?? []) psi.Environment[k] = v;
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    [Theory]
+    [InlineData("driver")]
+    [InlineData("startednow")]
+    [InlineData("result")]
+    [InlineData("auto")]
+    public void Every_2018_caption_variant_renders_in_the_same_window(string variant)
+    {
+        var grid = new Dictionary<string, string> { ["AMS2_FAKE_GRID"] = "1" };
+        var driver = Caption18(new() { ["variant"] = "driver" }, env: grid);
+        var r = Caption18(new() { ["variant"] = variant }, env: grid);
+        // Janela fixa (a maior das variantes): trocar a variante nao muda o tamanho.
+        Assert.Equal((driver.W, driver.H), (r.W, r.H));
+        Assert.True(r.Png.Length > 500);
+        if (variant is "startednow" or "result") Assert.NotEqual(driver.Png, r.Png);
+    }
+
+    [Fact]
+    public void Caption_2018_auto_follows_the_race_situation()
+    {
+        // Depois da bandeirada do jogador (AMS2_FAKE_FINISH: os 8 primeiros recebem em t=30 s) o automatico mostra o resultado.
+        var finish = new Dictionary<string, string> { ["AMS2_FAKE_FINISH"] = "1" };
+        Assert.Equal(Caption18(new() { ["variant"] = "result" }, 45, finish).Png, Caption18(null, 45, finish).Png);
+        // Com o grid conhecido e mudanca de posicao recente, STARTED / NOW; sem grid, a placa simples.
+        var grid = new Dictionary<string, string> { ["AMS2_FAKE_GRID"] = "1" };
+        Assert.Equal(Caption18(new() { ["variant"] = "startednow" }, 3, grid).Png, Caption18(null, 3, grid).Png);
+        Assert.Equal(Caption18(new() { ["variant"] = "driver" }, 3).Png, Caption18(null, 3).Png);
+        // Sem "sempre visivel" vale o tempo na tela: 9 s depois de conectar a legenda ja sumiu com showFor=3 e segue visivel com 15.
+        string[] events = ["team", "tyre"];
+        var shortHold = Caption18(new() { ["showFor"] = "3" }, 9, cols: events);
+        var longHold = Caption18(new() { ["showFor"] = "15" }, 9, cols: events);
+        Assert.NotEqual(shortHold.Png, longHold.Png);
+    }
+
     // ---- Torre 2018: modos e opcoes do tema (WidgetCatalog.OptionsFor("f1-2018", "standings")) ----
 
     /// <summary>Renderiza a torre 2018 com as opcoes do tema e variaveis extras do escritor falso; devolve (largura, altura, bytes do PNG).</summary>

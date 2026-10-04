@@ -4,6 +4,7 @@ using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
+using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Widgets;
 
@@ -15,16 +16,33 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => (_b18 ? CaptionPlate.Driver18Width : CaptionPlate.DriverWidth, CaptionPlate.Height);
+    public (float Width, float Height) DesignSize => _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
     bool _b18;
     public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
+    /// <summary>Variante escolhida no perfil (2018): driver, startednow, result ou auto (padrão).</summary>
+    string Variant18 => _cfg.OptionOr("variant", "auto").ToLowerInvariant();
+    /// <summary>Segundos na tela por evento (2018), 3–15, padrão 6.</summary>
+    double ShowFor18 => double.TryParse(_cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 3, 15) : 6;
+    double _finishT = double.NaN;   // primeiro quadro em que o jogador apareceu com a bandeirada (2018)
+
+    /// <summary>
+    /// Variante efetiva do 2018. Automático, como na TV: resultado depois da bandeirada do jogador; STARTED / NOW na 1ª volta da corrida
+    /// e a cada mudança de posição (só com o grid de largada conhecido); a placa simples nos demais eventos (conexão, linha de chegada).
+    /// </summary>
+    public static string EffectiveVariant18(string variant, bool finished, bool hasGrid, bool firstLap, bool positionEvent) => variant switch
+    {
+        "driver" or "startednow" or "result" => variant,
+        _ => finished ? "result" : hasGrid && (firstLap || positionEvent) ? "startednow" : "driver",
+    };
+
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         if (!m.Connected || m.Session is not { } s || s.PlayerCar is not { } car) return;
         var b = BroadcastUi.State(m);
+        if (_b18) { Draw18(c, m, s, car, b); return; }
         float alpha = 1f;
         if (!_cfg.ColumnVisible("always"))
         {
@@ -34,29 +52,149 @@ public sealed class DriverCaptionWidget : IWidget
         }
         BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars, _cfg));
     }
+
+    /// <summary>2018: escolhe a variante, a janela de exibição (showFor) e desenha.</summary>
+    void Draw18(ThemeCanvas c, OverlayModel m, SessionSnapshot s, CarSnapshot car, BroadcastState b)
+    {
+        bool race = s.Kind == SessionKind.Race;
+        bool finished = race && car.RaceState == RaceState.Finished;
+        if (!finished) _finishT = double.NaN;
+        else if (double.IsNaN(_finishT)) _finishT = m.Now;
+        int? started = race && m.Grid is { } g && g.TryGetValue(car.Index, out var gp) && gp > 0 ? gp : null;
+        double last = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
+        // Ultrapassagem = mudança de posição dentro da janela de exibição (mesmo que outro evento, como a linha de chegada, venha junto).
+        bool posEvent = m.Now - b.PlayerPositionChangedT < ShowFor18;
+        string v = EffectiveVariant18(Variant18, finished, started is not null, race && car.LapsCompleted == 0, posEvent);
+        float alpha = 1f;
+        if (!_cfg.ColumnVisible("always"))
+        {
+            double hold = ShowFor18, t0 = last;
+            double winnerEnd = b.Winner is { } w ? w.FinishedT + BroadcastUi.WinnerHold + 0.5 : double.NegativeInfinity;
+            // Resultado: entra na bandeirada do jogador, depois da legenda do vencedor (que ocupa o mesmo lugar).
+            if (v == "result" && finished) t0 = Math.Max(_finishT, winnerEnd);
+            alpha = BroadcastUi.Fade(m.Now - t0, hold);
+            if (m.Now < winnerEnd) alpha = 0f;
+        }
+        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.Draw18(c, v, car, s.Cars, started, _cfg));
+    }
 }
 
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
     public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480, Winner18Width = 660;
+    /// <summary>Janela da legenda 2018 (todas as variantes): a de resultado é a mais larga, a STARTED / NOW a mais alta. Desenho alinhado embaixo.</summary>
+    public const float Caption18Width = 600, Caption18Height = 132, Started18Top = 56;
+
+    /// <summary>Ordinal em inglês separado em número e sufixo (1 st, 2 nd, 3 rd, 11 th, 22 nd...).</summary>
+    public static (string Number, string Suffix) Ordinal(int n)
+    {
+        string num = n.ToString(CultureInfo.InvariantCulture);
+        int h = n % 100, d = n % 10;
+        string sfx = h is >= 11 and <= 13 ? "th" : d switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
+        return (num, sfx);
+    }
+
+    /// <summary>Cor do tique (e do número) do carro: tom fixo da classe (o AMS2 não informa a cor da equipe).</summary>
+    static Color4 ClassColor(CarSnapshot car, IReadOnlyList<CarSnapshot> field)
+        => Chrome.ClassTick(Math.Max(0, field.Select(x => x.ClassName).Distinct().ToList().IndexOf(car.ClassName)));
+
+    /// <summary>
+    /// Legenda 2018 na variante <paramref name="variant"/> (driver, startednow, result), alinhada embaixo da janela <see cref="Caption18Width"/> x <see cref="Caption18Height"/>.
+    /// driver = placa preta (ref. f1-2018-driver-caption.jpg); startednow = linha do piloto + faixa cinza "STARTED 2nd | NOW 1st";
+    /// result = caixa de posição branca grande e ponta diagonal com faixas na cor da classe (ref. f1-2018-result-caption.jpg).
+    /// </summary>
+    public static void Draw18(ThemeCanvas c, string variant, CarSnapshot car, IReadOnlyList<CarSnapshot> field, int? started, WidgetSettings cfg)
+    {
+        var t = c.Theme;
+        string name = cfg.Name(car, BroadcastUi.ShortName(car, field)), team = cfg.ColumnVisible("team") ? BroadcastUi.Team(car) : "";
+        string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
+        string supplier = cfg.ColumnVisible("tyre") ? car.TyreSupplier : "";
+        var tick = ClassColor(car, field);
+        float H = Caption18Height;
+        switch (variant)
+        {
+            case "result":
+                Plate18(c, 0, H - Height, Caption18Width, Height, car.Position, full, CarNumber(car), team, bigBox: true, tick: tick, slantEnd: true);
+                return;
+            case "startednow":
+                StartedNow18(c, car, full, team, started, tick);
+                return;
+            default:
+                Plate18(c, 0, H - Height, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, tick: tick);
+                if (supplier.Length > 0) c.Text(supplier, t.Label with { Weight = 700 }, Driver18Width - 50, H - Height + 50, 36, 32, t.ValueColor, HAlign.Center);
+                return;
+        }
+    }
+
+    /// <summary>Variante STARTED / NOW (ref. 4o recorte de f1-2018-crops-livespeed-racestart-radio-caption.jpg): linha preta com caixa de posição,
+    /// tique, nome e número; embaixo faixa cinza translúcida com os dois ordinais grandes (sufixo sobrescrito) separados por filete vertical.</summary>
+    static void StartedNow18(ThemeCanvas c, CarSnapshot car, string full, string team, int? started, Color4 tick)
+    {
+        var t = c.Theme;
+        float w = Driver18Width, top = Started18Top, bh = Caption18Height - top;
+        c.FillRect(0, 0, w, top, t.PanelFill);
+        Chrome.PosBox(c, 10, 8, 40, 40, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 24 });
+        Chrome.Tick(c, 60, 12, 32, tick);
+        var teamFont = t.Label with { Size = 18 };
+        float teamW = team.Length > 0 ? Math.Min(c.Measure(team, teamFont), 130) : 0;
+        string num = CarNumber(car);
+        float nx = 74, maxName = w - nx - 64 - (teamW > 0 ? teamW + 20 : 0);
+        float nw = Chrome.TwoWeightName(c, full, t.Text with { Size = 26 }, nx, 6, 44, maxName, t.TextColor);
+        c.Text(num, t.Numbers with { Size = 28, Italic = true, Weight = 700 }, nx + nw + 14, 6, 70, 44, tick);
+        if (teamW > 0) c.Text(team, BroadcastUi.Fit(c, team, teamFont, teamW), w - teamW - 14, 6, teamW + 6, 44, t.LabelColor, HAlign.Right);
+
+        c.FillRect(0, top, w, bh, new Color4(38 / 255f, 40 / 255f, 46 / 255f, 0.82f));
+        c.FillRect(w / 2 - 0.75f, top + 16, 1.5f, bh - 32, new Color4(1, 1, 1, 0.35f));
+        var (sn, ss) = started is { } p ? Ordinal(p) : ("-", "");
+        var (nn, ns) = Ordinal(car.Position);
+        OrdinalBlock(c, "STARTED", sn, ss, 0, top, w / 2, bh);
+        OrdinalBlock(c, "NOW", nn, ns, w / 2, top, w / 2, bh);
+    }
+
+    /// <summary>"ROTULO 12th": rótulo pequeno na linha de base do ordinal grande, sufixo pequeno sobrescrito; o conjunto centrado em [x, x+w].</summary>
+    static void OrdinalBlock(ThemeCanvas c, string label, string number, string suffix, float x, float y, float w, float h)
+    {
+        var t = c.Theme;
+        var lf = t.Label with { Size = 20 };
+        const float N = 50;
+        var nf = t.Numbers with { Size = N };
+        var sf = t.Label with { Size = 22 };
+        float lw = c.Measure(label, lf), nw = c.Measure(number, nf), sw = suffix.Length > 0 ? c.Measure(suffix, sf) : 0;
+        float total = lw + 16 + nw + (sw > 0 ? 3 + sw : 0), x0 = x + (w - total) / 2;
+        float cy = y + h / 2 + 1, baseline = cy + N * 0.36f;
+        c.Text(label, lf, x0, baseline - 20 * 0.36f - 14, lw + 6, 28, t.TextColor);
+        c.Text(number, nf, x0 + lw + 16, cy - 36, nw + 6, 72, t.TextColor);
+        if (sw > 0) c.Text(suffix, sf, x0 + lw + 16 + nw + 3, cy - N * 0.36f - 5, sw + 6, 26, t.TextColor);
+    }
 
     /// <summary>
     /// Placa 2018 (ref. f1-2018-driver-caption.jpg / f1-2018-result-caption.jpg): placa preta translúcida, caixa de posição branca
     /// (grande no resultado), tique vertical, "Nome SOBRENOME" em dois pesos, número do carro em itálico e a equipe embaixo.
     /// O AMS2 não informa cor/logo da equipe: tique no vermelho do tema e número em cinza claro, sem logos. Devolve a borda direita do texto.
     /// </summary>
-    public static float Plate18(ThemeCanvas c, float x, float y, float w, float h, int position, string fullName, string number, string team, bool bigBox, float rightReserve = 0)
+    public static float Plate18(ThemeCanvas c, float x, float y, float w, float h, int position, string fullName, string number, string team, bool bigBox, float rightReserve = 0,
+        Color4? tick = null, bool slantEnd = false)
     {
         var t = c.Theme;
-        c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
+        if (slantEnd)
+        {
+            // Ponta direita em diagonal "/" seguida de duas faixas inclinadas (no lugar da bandeira do país): cor da classe e branco.
+            float s = h * 0.42f, gap = 6, f1 = 14, f2 = 8, right = x + w - (gap + f1 + gap + f2);
+            c.FillPolygon([new(x, y), new(right, y), new(right - s, y + h), new(x, y + h)], t.PanelFill);
+            c.FillSlant(right - s + gap, y, f1, h, s, tick ?? t.AccentBar);
+            c.FillSlant(right - s + gap + f1 + gap, y, f2, h, s, new Color4(0.92f, 0.92f, 0.94f, 0.9f));
+            rightReserve += s + gap + f1 + gap + f2;
+        }
+        else c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
         float box = bigBox ? h - 16 : 42, bx = x + 10, byy = bigBox ? y + 8 : y + 10;
         Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = bigBox ? 40 : 24 });
         float tx = bx + box + 12;
-        Chrome.Tick(c, tx, y + 14, bigBox ? 34 : 32, t.AccentBar);
+        Chrome.Tick(c, tx, y + 14, bigBox ? 34 : 32, tick ?? t.AccentBar);
         float nx = tx + 14, maxName = w - (nx - x) - 56 - rightReserve;
         float nw = Chrome.TwoWeightName(c, fullName, t.Text with { Size = 26 }, nx, y + 8, 40, maxName, t.TextColor);
-        if (number.Length > 0) c.Text(number, t.Numbers with { Size = 26, Italic = true }, nx + nw + 14, y + 8, 70, 40, t.LabelColor);
+        if (number.Length > 0)
+            c.Text(number, t.Numbers with { Size = tick is null ? 26 : 28, Italic = true, Weight = tick is null ? t.Numbers.Weight : 700 }, nx + nw + 14, y + 8, 70, 40, tick ?? t.LabelColor);
         if (team.Length > 0) c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 20 }, w - (nx - x) - 20 - rightReserve), nx, y + 50, w - (nx - x) - 16 - rightReserve, 32, t.LabelColor);
         return nx + nw;
     }
