@@ -44,14 +44,18 @@ public sealed class FakeRawSource(Func<double> clock, bool? board = null, bool? 
         }
         return st;
     }
+    // AMS2_FAKE_PITSTOP=N (com AMS2_FAKE_PITS=1): o jogador fica N s parado no box (padrao 3,4 s) - parada lenta do Race Control 2018.
+    static readonly double PlayerStop = double.TryParse(Environment.GetEnvironmentVariable("AMS2_FAKE_PITSTOP"), System.Globalization.NumberStyles.Float,
+        System.Globalization.CultureInfo.InvariantCulture, out double ps) && ps > 0 ? ps : 3.4;
     static uint FakePit(int i, double t)
     {
         if (!Pits || i is 4 or 6 or 7) return 0;
         double s = t - (i == PlayerIndex ? 16 : 8 + i * 2.5);
+        double stop = i == PlayerIndex ? PlayerStop : 3.4;
         if (s < 0) return 0;
-        if (s < 1) return 1;       // DrivingIntoPits
-        if (s < 4.4) return 2;     // InPit
-        return s < 5.4 ? 3u : 0u;  // DrivingOutOfPits
+        if (s < 1) return 1;            // DrivingIntoPits
+        if (s < 1 + stop) return 2;     // InPit
+        return s < 2 + stop ? 3u : 0u;  // DrivingOutOfPits
     }
 
     // AMS2_FAKE_BOARD=1 (so --fake): corrida rapida de 20 carros para o widget rotativo inferior (board): pista de 1400 m,

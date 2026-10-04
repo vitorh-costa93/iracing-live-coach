@@ -60,6 +60,7 @@ public sealed class CustomizationPngTests
     [InlineData("board", "f1-2018")]
     [InlineData("livespeed", "f1-2018")]
     [InlineData("racestart", "f1-2018")]
+    [InlineData("racecontrol", "f1-2018")]
     public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
     {
         var a = Render($"--widget {widget} --theme {theme}");
@@ -388,6 +389,74 @@ public sealed class CustomizationPngTests
         Assert.Equal((300, 190), (noBest.W, noBest.H));
     }
 
+    // ---- Race Control 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "racecontrol")); AMS2_FAKE_FLAG=6 = amarela;
+    // AMS2_FAKE_PITS=1 + AMS2_FAKE_PITSTOP=N = jogador parado de t=17 a 17+N s ----
+
+    static (int W, int H, byte[] Png) RaceControl18(Dictionary<string, string>? options, double sim, Dictionary<string, string>? env = null)
+    {
+        string png = Path.Combine(Path.GetTempPath(), $"ams2-rc18-{Guid.NewGuid():N}.png");
+        string json = Path.ChangeExtension(png, ".json");
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "racecontrol", Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget racecontrol --theme f1-2018 --settings \"{json}\"")
+            { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        foreach (var (k, v) in env ?? []) psi.Environment[k] = v;
+        using var p = Process.Start(psi)!;
+        string o = p.StandardOutput.ReadToEnd();
+        Assert.True(p.WaitForExit(30000));
+        try
+        {
+            Assert.Equal(0, p.ExitCode);
+            var m = Regex.Match(o, @"\[PNG\] .* (\d+)x(\d+) tema=");
+            Assert.True(m.Success, o);
+            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), File.ReadAllBytes(png));
+        }
+        finally { File.Delete(png); File.Delete(json); }
+    }
+
+    static Dictionary<string, string> Yellow => new() { ["AMS2_FAKE_FLAG"] = "6" };
+    static Dictionary<string, string> SlowPit(string seconds) => new() { ["AMS2_FAKE_PITS"] = "1", ["AMS2_FAKE_PITSTOP"] = seconds };
+
+    [Fact]
+    public void Race_control_2018_flag_box_follows_the_flag_and_the_option()
+    {
+        var none = RaceControl18(null, 20);
+        Assert.Equal((300, 186), (none.W, none.H));
+        var yellow = RaceControl18(null, 20, Yellow);
+        Assert.Equal((none.W, none.H), (yellow.W, yellow.H));   // janela fixa
+        Assert.NotEqual(none.Png, yellow.Png);
+        Assert.Equal(yellow.Png, RaceControl18(new() { ["showFlags"] = "true" }, 20, Yellow).Png);
+        Assert.Equal(none.Png, RaceControl18(new() { ["showFlags"] = "false" }, 20, Yellow).Png);
+        // Azul, vermelha e xadrez: caixas diferentes da amarela; verde (1) nao mostra nada.
+        var blue = RaceControl18(null, 20, new() { ["AMS2_FAKE_FLAG"] = "2" });
+        var red = RaceControl18(null, 20, new() { ["AMS2_FAKE_FLAG"] = "5" });
+        var cheq = RaceControl18(null, 20, new() { ["AMS2_FAKE_FLAG"] = "11" });
+        Assert.Equal(4, new[] { yellow.Png, blue.Png, red.Png, cheq.Png }.Select(Convert.ToBase64String).Distinct().Count());
+        Assert.Equal(none.Png, RaceControl18(null, 20, new() { ["AMS2_FAKE_FLAG"] = "1" }).Png);
+    }
+
+    [Fact]
+    public void Race_control_2018_slow_stop_bar_uses_the_limit_and_showFor()
+    {
+        var none = RaceControl18(null, 30);
+        // Parada de 11,1 s (termina em t=28,1): acima do limite de 5 s, na tela por 8 s.
+        var slow = RaceControl18(null, 30, SlowPit("11.1"));
+        Assert.Equal((300, 186), (slow.W, slow.H));
+        Assert.NotEqual(none.Png, slow.Png);
+        Assert.Equal(none.Png, RaceControl18(null, 27, SlowPit("11.1")).Png);                            // ainda parado
+        Assert.Equal(none.Png, RaceControl18(null, 40, SlowPit("11.1")).Png);                            // passou showFor (8 s)
+        Assert.Equal(slow.Png, RaceControl18(new() { ["showFor"] = "15" }, 40, SlowPit("11.1")).Png);   // showFor 15: ainda na tela
+        Assert.Equal(none.Png, RaceControl18(new() { ["showSlowStop"] = "false" }, 30, SlowPit("11.1")).Png);
+        Assert.Equal(none.Png, RaceControl18(new() { ["slowStopLimit"] = "12" }, 30, SlowPit("11.1")).Png);   // abaixo do limite
+        // Parada padrao do fake (3,4 s): normal com o limite padrao, lenta (-0.4s) com limite 3.
+        Assert.Equal(none.Png, RaceControl18(null, 23, SlowPit("3.4")).Png);
+        var short3 = RaceControl18(new() { ["slowStopLimit"] = "3" }, 23, SlowPit("3.4"));
+        Assert.NotEqual(none.Png, short3.Png);
+        Assert.NotEqual(slow.Png, short3.Png);
+        // Bandeira e barra juntas na mesma janela.
+        var both = RaceControl18(null, 30, new() { ["AMS2_FAKE_FLAG"] = "6", ["AMS2_FAKE_PITS"] = "1", ["AMS2_FAKE_PITSTOP"] = "11.1" });
+        Assert.NotEqual(slow.Png, both.Png);
+        Assert.NotEqual(RaceControl18(null, 30, Yellow).Png, both.Png);
+    }
     // ---- Live Speed 2018: opcoes (WidgetCatalog.OptionsFor("f1-2018", "livespeed")) ----
 
     static (int W, int H, byte[] Png) LiveSpeed18(Dictionary<string, string>? options)

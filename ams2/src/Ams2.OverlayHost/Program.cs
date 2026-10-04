@@ -15,7 +15,7 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart|racecontrol] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
 ///                       [--text-scale 0.6..2] [--settings ARQUIVO.json]   (so com --png: tamanho do texto, que redimensiona o widget; ou o WidgetSettings
@@ -28,7 +28,7 @@ namespace Ams2.OverlayHost;
 ///   --measure (so com --fake e --seconds): ao sair imprime fps de render por janela, passos do provider e taxa de amostragem das entradas ([FPS] ...).
 ///   --fake   usa o escritor falso em processo (sem o jogo).
 ///   --png    renderiza um quadro do widget Relative para o arquivo e sai (usa --fake, a menos que --real).
-///   Variaveis do --fake: AMS2_FAKE_PITS=1, AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_RADAR=1 (4 carros orbitando
+///   Variaveis do --fake: AMS2_FAKE_PITS=1 (+ AMS2_FAKE_PITSTOP=N s parado do jogador), AMS2_FAKE_FINISH=1, AMS2_FAKE_GEAR/KPH/RPM/MAXRPM e AMS2_FAKE_RADAR=1 (4 carros orbitando
 ///   o jogador: frente, direita, atras, esquerda; ciclo de 12 s; com --png o radar fica sempre visivel; --cols none = so com carro proximo) e AMS2_FAKE_BOARD=1 (corrida de
 ///   20 carros com volta de ~20 s para o widget rotativo inferior; linha do tempo em ams2/reference/board-spec.md).
 ///   Sair do overlay: Ctrl+Alt+Q (a janela não recebe foco nem cliques) ou --seconds.

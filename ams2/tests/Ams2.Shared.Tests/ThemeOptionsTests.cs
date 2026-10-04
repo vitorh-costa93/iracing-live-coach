@@ -375,4 +375,66 @@ public class ThemeOptionsTests
         }
         Assert.True(r.X + r.W <= WidgetLayout.RefWidth && r.Y + r.H <= WidgetLayout.RefHeight);
     }
+
+    [Fact]
+    public void Race_control_2018_options_flags_slow_stop_limit_and_showFor()
+    {
+        var defs = WidgetCatalog.OptionsFor(T2018, "racecontrol");
+        Assert.Equal(["showFlags", "showSlowStop", "slowStopLimit", "showFor"], defs.Select(d => d.Id));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[0].Kind, defs[0].Default));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[1].Kind, defs[1].Default));
+        Assert.Equal((OptionKind.Number, "5", 3, 30), (defs[2].Kind, defs[2].Default, defs[2].Min, defs[2].Max));
+        Assert.Equal((OptionKind.Number, "8", 3, 15), (defs[3].Kind, defs[3].Default, defs[3].Min, defs[3].Max));
+        Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "racecontrol"));
+        Assert.Empty(WidgetCatalog.OptionsFor("f1-2004", "racecontrol"));
+
+        // Padroes (true / true / 5 / 8) nao sao gravados; invalidos sao descartados.
+        Assert.Null(new WidgetSettings { Id = "racecontrol", Options = new() { ["showFlags"] = "true", ["showSlowStop"] = "true", ["slowStopLimit"] = "5", ["showFor"] = "8" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "racecontrol", Options = new() { ["showFlags"] = "maybe", ["bogus"] = "1" } }.Normalized(T2018).Options);
+        var s = new WidgetSettings { Id = "racecontrol", Options = new() { ["showFlags"] = "False", ["showSlowStop"] = "FALSE" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["showFlags"] = "false", ["showSlowStop"] = "false" }, s.Options);
+        var n = new WidgetSettings { Id = "racecontrol", Options = new() { ["slowStopLimit"] = "12", ["showFor"] = "4" } }.Normalized(T2018);
+        Assert.Equal("12", n.OptionOr("slowStopLimit", "5"));
+        Assert.Equal("4", n.OptionOr("showFor", "8"));
+        Assert.Equal("5", new WidgetSettings { Id = "racecontrol" }.OptionOr("slowStopLimit", "5"));
+    }
+
+    [Fact]
+    public void Race_control_exists_only_in_the_2018_theme()
+    {
+        var def = WidgetCatalog.Find("racecontrol")!;
+        Assert.Equal("Race Control", def.DisplayName);
+        Assert.True(def.DefaultVisible);
+        Assert.True(def.InTheme(T2018));
+        Assert.False(def.InTheme("f1-1998"));
+        Assert.False(def.InTheme("f1-2004"));
+        var rc = ProfileFactory.CreateDefault("x", T2018).Get("racecontrol")!;
+        Assert.True(rc.Visible);
+        Assert.Null(rc.Options);
+        foreach (var theme in new[] { "f1-1998", "f1-2004" })
+        {
+            Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("racecontrol"));
+            Assert.False(WidgetLayout.DesignSizes[theme].ContainsKey("racecontrol"));
+            var p = ProfileFactory.CreateDefault("x", theme);
+            var extra = p with { Widgets = [.. p.Widgets, new WidgetSettings { Id = "racecontrol", Order = 99 }] };
+            Assert.DoesNotContain(extra.Normalized().Widgets, w => w.Id == "racecontrol");
+        }
+    }
+
+    [Fact]
+    public void Race_control_2018_sits_above_right_of_the_tower_clear_of_the_other_widgets()
+    {
+        var r = WidgetLayout.Rect(T2018, "racecontrol")!.Value;
+        Assert.Equal((320.0, 40.0, 240.0, 149.0), r);
+        var tower = WidgetLayout.Rect(T2018, "standings")!.Value;
+        Assert.True(r.X > tower.X + tower.W, $"racecontrol x={r.X} encosta na torre (ate {tower.X + tower.W})");
+        Assert.True(r.Y < 100);
+        foreach (var other in WidgetCatalog.ForTheme(T2018).Select(d => d.Id).Where(id => id != "racecontrol"))
+        {
+            if (WidgetLayout.Rect(T2018, other) is not { } o) continue;
+            bool overlap = r.X < o.X + o.W && o.X < r.X + r.W && r.Y < o.Y + o.H && o.Y < r.Y + r.H;
+            Assert.False(overlap, $"racecontrol sobrepoe {other} ({o.X},{o.Y} {o.W}x{o.H})");
+        }
+    }
 }

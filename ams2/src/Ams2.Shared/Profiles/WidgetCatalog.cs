@@ -97,6 +97,8 @@ public static class WidgetCatalog
         new("livespeed", "Live Speed", null, null, null, "", [], 1600, 400, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "RACE START 0-200km/h" da TV (tempo do jogador de 0 a 100/200 km/h na largada + melhor anterior da pista+carro).
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
+        // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
+        new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
     ];
 
     /// <summary>Colunas criadas no esquema 3: entram visiveis nas listas de colunas salvas por perfis antigos (migracao).</summary>
@@ -170,6 +172,14 @@ public static class WidgetCatalog
                 new("showBest", "Mostrar o melhor anterior (BEST) da pista e carro", OptionKind.Toggle, null, "true"),
                 new("showFor", "Tempo na tela após alcançar o alvo (s)", OptionKind.Number, null, "10", Min: 5, Max: 30),
                 new("always", "Sempre visível (mostra o último resultado)", OptionKind.Toggle, null, "false"),
+            ],
+            // Race Control do 2018: caixa da bandeira (amarela/azul/vermelha/xadrez) e barra de parada lenta do jogador (regra em SlowStopDetector).
+            ["racecontrol"] =
+            [
+                new("showFlags", "Caixa de bandeira (YELLOW FLAG / INCIDENT...)", OptionKind.Toggle, null, "true"),
+                new("showSlowStop", "Barra de parada lenta (SLOW STOP -x.xs)", OptionKind.Toggle, null, "true"),
+                new("slowStopLimit", "Parada lenta: considerada lenta se passar desse tempo parado (s)", OptionKind.Number, null, "5", Min: 3, Max: 30),
+                new("showFor", "Tempo na tela da barra de parada lenta (s)", OptionKind.Number, null, "8", Min: 3, Max: 15),
             ],
         },
     };

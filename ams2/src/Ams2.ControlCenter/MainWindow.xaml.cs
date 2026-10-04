@@ -433,7 +433,7 @@ public partial class MainWindow : Window
         string settingsJson = Path.ChangeExtension(png, ".json");
         var previewSettings = vm.ToSettings(0) with { Scale = 1f };
         // Widgets de evento (legenda, paradas, cronometro, vencedor) so aparecem com um evento recente: a previa os fixa (coluna "always") e simula o evento.
-        double sim = vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : 20;
+        double sim = vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : vm.Id == "racecontrol" ? 30 : 20;
         bool eventWidget = vm.Id is "drivercaption" or "pitstops" or "pittimer" or "winner";
         if (eventWidget)
         {
@@ -447,6 +447,8 @@ public partial class MainWindow : Window
         if (vm.IsRadar) psi.Environment["AMS2_FAKE_RADAR"] = "1";
         if (vm.Id == "winner") psi.Environment["AMS2_FAKE_FINISH"] = "1";
         if (vm.Id is "pitstops" or "pittimer") psi.Environment["AMS2_FAKE_PITS"] = "1";
+        // Race Control 2018: bandeira amarela + parada lenta do jogador (11,1 s parado, termina em t=28,1 s; a previa e tirada em t=30).
+        if (vm.Id == "racecontrol") { psi.Environment["AMS2_FAKE_FLAG"] = "6"; psi.Environment["AMS2_FAKE_PITS"] = "1"; psi.Environment["AMS2_FAKE_PITSTOP"] = "11.1"; }
         // Standings e board: corrida simulada de 20 carros (o campo padrao de 8 nao mostra o topo + janela nem a torre em paginas).
         if (vm.HasSelection || vm.IsBoard) psi.Environment["AMS2_FAKE_BOARD"] = "1";
         try

@@ -37,7 +37,7 @@ Ordem de implementação = ordem da tabela (um subagente Opus por widget; cada u
 | 4 | **Pit Lane** (`pittimer`) | refeito | `PIT LANE` + posição + sobrenome + `STOP TIME` ciano com colchetes; durante o pit `PIT 23.8` | `showPitTime` (tempo na pit lane), `showPosition`, `always` |
 | 5 | **Live Speed** (`livespeed`) | **novo** | placa `LIVE SPEED`, nome, `330 KM/H / 205 MPH` em vermelho | `units`: Ambos / km/h / mph; `showName`; `always` |
 | 6 | **Race Start** (`racestart`) | **novo** | placa `RACE START 0-200km/h`: jogador e melhor anterior com tempo em segundos | `target` (100/200 km/h), `showBest`, `showFor` |
-| 7 | **Race Control** (`racecontrol`) | **novo** | caixa `SAFETY CAR / INCIDENT`, `YELLOW FLAG` e barra `SLOW STOP -11.1s` (parada lenta acima do limite) | `slowStopLimit` (s), `showFlags`, `showSlowStop` |
+| 7 | **Race Control** (`racecontrol`) | **novo** | caixa `SAFETY CAR / INCIDENT`, `YELLOW FLAG` e barra `SLOW STOP -11.1s` (parada lenta acima do limite) | `slowStopLimit` (3–30 s), `showFlags`, `showSlowStop`, `showFor` (3–15 s). **Feito**: sem `SAFETY CAR` (o AMS2 não distingue de amarela); lenta = acima do limite e acima da média das até 3 paradas anteriores do jogador (sem histórico, o limite); valor = tempo perdido para essa referência (`SlowStopDetector`) |
 | — | Inputs, Fuel, Tyres, Weather, Relative, Radar, Board, Pit Stops | mantidos | seguem o reskin atual (a TV não os tem); Board e Relative saem do perfil padrão do 2018 | — |
 
 Fora desta rodada: mini-mapa com carros (fase 2, depende da trilha de pista); rádio (sem áudio).
