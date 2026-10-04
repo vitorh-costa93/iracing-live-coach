@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ams2.Shared.Profiles;
@@ -53,6 +53,11 @@ public sealed class CustomizationPngTests
     [InlineData("inputs", "f1-2018")]
     [InlineData("board", "f1-2004")]
     [InlineData("weather", "f1-1998")]
+    [InlineData("standings", "f1-2018")]
+    [InlineData("lapcounter", "f1-2018")]
+    [InlineData("drivercaption", "f1-2018")]
+    [InlineData("pittimer", "f1-2018")]
+    [InlineData("board", "f1-2018")]
     public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
     {
         var a = Render($"--widget {widget} --theme {theme}");
@@ -66,8 +71,8 @@ public sealed class CustomizationPngTests
     [Fact]
     public void Text_scale_in_the_settings_json_also_resizes()
     {
-        var a = Render("--widget fuel --theme f1-2010s", new WidgetSettings { Id = "fuel" });
-        var b = Render("--widget fuel --theme f1-2010s", new WidgetSettings { Id = "fuel", TextScale = 2f });
+        var a = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel" });
+        var b = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel", TextScale = 2f });
         Assert.Equal((a.W * 2, a.H * 2), (b.W, b.H));
     }
 
@@ -81,6 +86,11 @@ public sealed class CustomizationPngTests
     [InlineData("board", "f1-2018", "name")]
     [InlineData("pitstops", "f1-2004", "name")]
     [InlineData("pittimer", "f1-1998", "name")]
+    [InlineData("standings", "f1-2018", "name")]
+    [InlineData("standings", "f1-2018", "gap")]
+    [InlineData("pitstops", "f1-2018", "stops")]
+    [InlineData("pittimer", "f1-2018", "name")]
+    [InlineData("inputs", "f1-2018", "graph")]
     public void Wider_column_makes_the_widget_wider(string widget, string theme, string column)
     {
         var cols = widget == "standings" ? new[] { "pos", "name", "gap" } : null;
@@ -109,6 +119,8 @@ public sealed class CustomizationPngTests
     [Theory]
     [InlineData("standings", "f1-2004")]
     [InlineData("relative", "f1-2018")]
+    [InlineData("standings", "f1-2018")]
+    [InlineData("drivercaption", "f1-2018")]
     public void Font_override_changes_the_drawing_when_text_and_numbers_share_a_family(string widget, string theme)
     {
         var a = Pixels($"--widget {widget} --theme {theme}", new WidgetSettings { Id = widget });
@@ -137,4 +149,33 @@ public sealed class CustomizationPngTests
         });
         Assert.True(r.W > 0);
     }
-}
+
+    // Tema 2018: cor de "Textos"/"Valores" e peso da fonte chegam na torre (siglas, gaps) e o formato de nome vale na legenda.
+    [Theory]
+    [InlineData("TextColor")]
+    [InlineData("ValueColor")]
+    [InlineData("FontWeight")]
+    public void Text_customization_reaches_the_2018_tower(string what)
+    {
+        var cols = new[] { "pos", "name", "gap" };
+        var a = Pixels("--widget standings --theme f1-2018", new WidgetSettings { Id = "standings", Columns = cols });
+        var s = new WidgetSettings { Id = "standings", Columns = cols };
+        s = what switch { "TextColor" => s with { TextColor = "#00AA00" }, "ValueColor" => s with { ValueColor = "#00AA00" }, _ => s with { FontWeight = 400 } };
+        Assert.NotEqual(a, Pixels("--widget standings --theme f1-2018", s));
+    }
+
+    [Fact]
+    public void Hiding_columns_narrows_the_2018_tower()
+    {
+        var all = Render("--widget standings --theme f1-2018", new WidgetSettings { Id = "standings", Columns = ["pos", "name", "class", "gap"] });
+        var some = Render("--widget standings --theme f1-2018", new WidgetSettings { Id = "standings", Columns = ["pos", "name"] });
+        Assert.True(some.W < all.W, $"{all.W} -> {some.W}");
+    }
+
+    [Fact]
+    public void Name_format_reaches_the_2018_caption()
+    {
+        var a = Pixels("--widget drivercaption --theme f1-2018", new WidgetSettings { Id = "drivercaption", Columns = ["always", "team", "tyre"] });
+        var b = Pixels("--widget drivercaption --theme f1-2018", new WidgetSettings { Id = "drivercaption", Columns = ["always", "team", "tyre"], Display = new DisplayOptions { Name = NameStyle.FullName, CarNumber = true } });
+        Assert.NotEqual(a, b);
+    }}

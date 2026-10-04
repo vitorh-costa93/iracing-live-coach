@@ -37,9 +37,11 @@ public static class WidgetLayout
         },
         ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["standings"] = new(32, 24, 0.95f), ["lapcounter"] = new(867, 24, 1.4f),
-            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 926, 1.2f), ["winner"] = new(32, 926, 1.2f), ["board"] = new(600, 845, 1.1f),
-            ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(744, 780, 1.2f),
+            // 2018: torre em x~80/y~46 da TV (o projeto reserva 34 a esquerda para o marcador roxo), cabecalho "LAP" com ~67 px de altura;
+            // PIT LANE no centro-direita; legenda/resultado embaixo a esquerda.
+            ["standings"] = new(50, 40, 0.86f), ["lapcounter"] = new(888, 24, 0.86f),
+            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(32, 960, 1f), ["winner"] = new(32, 960, 0.85f), ["board"] = new(600, 845, 1.1f),
+            ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(1250, 560, 1f),
             ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 957, 0.5f),
             ["radar"] = new(900, 585, 1f),
         },
@@ -61,8 +63,8 @@ public static class WidgetLayout
             },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (240, 408), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
-                ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (410, 94), ["board"] = (760, 210), ["radar"] = (120, 190),
+                ["standings"] = (202, 426), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
+                ["lapcounter"] = (168, 82), ["drivercaption"] = (480, 94), ["pitstops"] = (608, 156), ["pittimer"] = (300, 158), ["winner"] = (660, 94), ["board"] = (760, 210), ["radar"] = (120, 190),
             },
         };
 
