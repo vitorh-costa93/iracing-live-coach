@@ -173,11 +173,15 @@ public sealed unsafe class DeviceResources : IDisposable
         ThrowIfFailed(_d2dDevice.Get()->CreateDeviceContext(DeviceContextOptions.None, dc.GetAddressOf()));
         _dc = dc;
 
-        ComPtr<IDWriteFactory> dwriteFactory = default;
-        ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwriteFactory.GetAddressOf()));
-        _dwriteFactory = dwriteFactory;
-        Widgets.PanelChrome.SharedFactory = _dwriteFactory.Get();
-        _fontCollection = BuildPrivateFontCollection();
+        // Fonts are CPU-side resources borrowed by widgets; retain them across GPU recovery.
+        if (_dwriteFactory.Get() == null)
+        {
+            ComPtr<IDWriteFactory> dwriteFactory = default;
+            ThrowIfFailed(DWriteCreateFactory(DWriteFactoryType.Shared, __uuidof<IDWriteFactory>(), (void**)dwriteFactory.GetAddressOf()));
+            _dwriteFactory = dwriteFactory;
+            Widgets.PanelChrome.SharedFactory = _dwriteFactory.Get();
+            _fontCollection = BuildPrivateFontCollection();
+        }
 
         ComPtr<IDWriteTextFormat> textFormat = _dwriteFactory.Get()->CreateTextFormat(
             "Segoe UI", 28.0f, fontWeight: FontWeight.SemiBold, localeName: "en-us");
@@ -207,9 +211,9 @@ public sealed unsafe class DeviceResources : IDisposable
     /// behavior rather than taking the overlay down.</summary>
     private ComPtr<IDWriteFontCollection1> BuildPrivateFontCollection()
     {
+        ComPtr<IDWriteFactory3> factory3 = default;
         try
         {
-            ComPtr<IDWriteFactory3> factory3 = default;
             var asFactory3 = _dwriteFactory.As(ref factory3);
             if (asFactory3.Failure)
             {
@@ -286,6 +290,7 @@ public sealed unsafe class DeviceResources : IDisposable
             Console.WriteLine($"[Fonts] Building private font collection threw {ex.GetType().Name}: {ex.Message} -- using system collection.");
             return default;
         }
+        finally { factory3.Dispose(); }
     }
 
     private void BindTargetBitmap()
@@ -390,7 +395,6 @@ public sealed unsafe class DeviceResources : IDisposable
         _dotBrush.Dispose();
         _textBrush.Dispose();
         _textFormat.Dispose();
-        _dwriteFactory.Dispose();
         _dc.Dispose();
         _d2dDevice.Dispose();
         _d2dFactory.Dispose();
@@ -432,5 +436,10 @@ public sealed unsafe class DeviceResources : IDisposable
         return ok;
     }
 
-    public void Dispose() => ReleaseGpuResources();
+    public void Dispose()
+    {
+        ReleaseGpuResources();
+        _fontCollection.Dispose();
+        _dwriteFactory.Dispose();
+    }
 }

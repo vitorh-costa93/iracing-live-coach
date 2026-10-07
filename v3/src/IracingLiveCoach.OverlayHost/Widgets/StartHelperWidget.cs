@@ -47,7 +47,7 @@ public sealed unsafe class StartHelperWidget : IDisposable
     private const double DefaultTargetRpmHigh = 7000;
     private const double DefaultCriticalRpm = 8500;
 
-    public StartHelperWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
+    public StartHelperWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _dwriteFactory = dwriteFactory;
         _fontCollection = fontCollection;
@@ -60,7 +60,7 @@ public sealed unsafe class StartHelperWidget : IDisposable
 
         _telemetry = new TelemetryReader();
         _telemetry.RaceStartUpdated += OnRaceStartUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     private void CreateTextFormats()

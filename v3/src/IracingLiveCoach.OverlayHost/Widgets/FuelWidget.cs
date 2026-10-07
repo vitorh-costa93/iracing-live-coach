@@ -68,7 +68,7 @@ public sealed unsafe class FuelWidget : IDisposable
     private const float WidthDip = 310f;
     private const float PanelHeightDip = 116f;
 
-    public FuelWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
+    public FuelWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _dwriteFactory = dwriteFactory;
         _fontCollection = fontCollection;
@@ -82,7 +82,7 @@ public sealed unsafe class FuelWidget : IDisposable
         _telemetry = new TelemetryReader();
         _telemetry.FuelUpdated += OnFuelUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     private ComPtr<IDWriteTextFormat> MakeFormat(float size, FontWeight weight)

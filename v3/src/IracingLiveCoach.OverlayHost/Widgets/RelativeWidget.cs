@@ -124,7 +124,7 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// previous hardcoded constant (spec §12's auto-width formula).</summary>
     private float TableWidthDip => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_effectiveColumns);
 
-    public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
+    public RelativeWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _flags = flags;
         _dwriteFactory = dwriteFactory;
@@ -142,7 +142,7 @@ public sealed unsafe class RelativeWidget : IDisposable
         _telemetry.FullRelativeUpdated += OnFullRelativeUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.PlayerCarStatusUpdated += OnPlayerCarStatusUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     private void CreateTextFormats()

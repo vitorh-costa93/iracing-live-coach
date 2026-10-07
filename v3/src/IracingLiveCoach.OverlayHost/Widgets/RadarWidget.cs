@@ -45,7 +45,7 @@ public sealed unsafe class RadarWidget : IDisposable
     /// <summary>Size the radar draws at (the overlay fits its window to it).</summary>
     public (float Width, float Height) LastDrawnSize => (WidthDip * _appearance.FontScale, HeightDip * _appearance.FontScale);
 
-    public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
+    public RadarWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _dwriteFactory = dwriteFactory;
         _fontCollection = fontCollection;
@@ -58,7 +58,7 @@ public sealed unsafe class RadarWidget : IDisposable
 
         _telemetry = new TelemetryReader();
         _telemetry.RadarUpdated += OnRadarUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     private void CreateTextFormats()
