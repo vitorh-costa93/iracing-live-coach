@@ -43,3 +43,13 @@ A regra geral de qualy foi revisada: tabela apenas uma passagem na volta de saí
 ## Próximo passo
 
 Usuário revisar composição, fontes e proporções. Implementar um widget por etapa após essa revisão. Para fidelidade dos widgets de corrida restantes e animações precisas, localizar trechos em que as placas efetivamente apareçam; não converter propostas em requisitos históricos sem evidência.
+
+## Ampliação — referência de Mônaco
+
+[Vídeo indicado pelo usuário](https://www.youtube.com/watch?v=rLnIOkXCrSo). Reprodução no mudo e observação seletiva; transcrição utilizada somente para localizar horários, sem reproduzir áudio.
+
+- 4:25: placa francesa MEILLEUR TOUR, retrato de Prost, número/equipe, tempo e duas velocidades; confirma a família visual de volta mais rápida. Não inferir precisão da velocidade pela gravação.
+- Cerca de 6:13: identificação simples SCHUMACHER branca com sombra sobre imagem a bordo, sem faixa/retrato/equipe. Novo mockup `onboard`, separado da legenda completa.
+- 21:20–21:27: placa de intervalo com miniaturas, posições 1/2, SCHUMACHER/SENNA e valor amarelo 12.668 fixo; barra e seta verde. Novo mockup `gap`; limites de transição e contrato em [race-gap.md](race-gap.md).
+
+Seta verde reproduzida como composição observada, com controle para ocultá-la. Sua semântica permanece pendente; não afirmar que ela representa tendência. O mockup não inventa contagem crescente antes do resultado. Seleção pelo vizinho físico mais próximo e um único ponto por volta seguem o pedido do usuário, não um algoritmo comprovado pela transmissão. Fontes, carros e opacidade continuam aproximações para revisão.
