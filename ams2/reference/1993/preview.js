@@ -2,6 +2,8 @@
 const $=id=>document.getElementById(id);
 const Q='https://www.youtube.com/watch?v=UbdPUpVUCDA';
 const scenes={
+ gap:{title:'Corrida · intervalo pontual',tag:'Observado · Mônaco 21:20–21:27',t:1283,url:'https://www.youtube.com/watch?v=rLnIOkXCrSo',description:'Carro da frente à esquerda e perseguidor à direita, posições brancas junto às miniaturas, sobrenomes brancos e intervalo amarelo central com três casas. O resultado 12.668 permanece igual nos quadros observados; não é um contador de setor.',motion:'A seta verde sobre a barra foi observada, mas seu significado não foi confirmado. A sequência demonstra espera → resultado fixo → saída por corte; sua duração é demonstrativa. No AMS2, escolher o vizinho físico mais próximo e medir uma vez por volta.'},
+ onboard:{title:'Corrida · identificação simples a bordo',tag:'Observado · Mônaco 6:13',t:373,url:'https://www.youtube.com/watch?v=rLnIOkXCrSo',description:'Somente SCHUMACHER em branco com sombra, no canto inferior esquerdo, sem faixa, retrato, número ou equipe. É uma apresentação distinta da legenda completa.',motion:'A identificação permanece fixa na imagem a bordo; a duração e a transição exatas ainda não foram medidas.'},
  live:{title:'Volta em andamento',tag:'Observado · 12:52',t:772,description:'SCHUMACHER e seu cronômetro à esquerda; LEHTO e o tempo de referência à direita. A referência permanece quando o relógio ultrapassa esse tempo.',motion:'O cronômetro corre em décimos. A placa permanece fixa; não há necessidade de fazer os tempos deslizar.'},
  split:{title:'Parcial concluído, volta ainda em andamento',tag:'Observado · 13:42',t:822,description:'O cronômetro continua à esquerda; parcial da referência à direita; delta ciano no centro. Abaixo da faixa, o parcial concluído do jogador fica congelado.',motion:'A sequência demonstra placa curta → comparação do parcial → placa curta. A janela de demonstração não é uma medição da transmissão.'},
  result:{title:'Resultado ao completar a volta',tag:'Observado · 13:01 e 14:12',t:781,description:'O tempo final ocupa a esquerda; posição entre parênteses e delta aparecem no centro. O nome e o tempo da referência ficam à direita.',motion:'A posição é um resultado da linha de chegada. Na simulação lenta, o delta permanece ciano; o caso lento é uma proposta de continuidade, não observado neste trecho.'},
@@ -24,7 +26,13 @@ function render(elapsed){
  const lx=bx+bw*.09,rx=bx+bw*.635,cx=w/2;
  const band=()=>`<rect data-board="main" x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#555b56" fill-opacity=".48"/>`;
  let g='',yellow='#ffe05b',cyan='#46d5ef';
- if(scene==='caption'){
+ if(scene==='onboard'){
+  g=text('SCHUMACHER',w*.125,800,'name','start','#f4f4e9',34);
+ }else if(scene==='gap'){
+  const car=(x,color)=>`<g transform="translate(${x},735)"><ellipse cx="68" cy="29" rx="67" ry="8" fill="#252b28"/><path d="M0 17 L25 11 L44 0 H76 L87 10 L135 16 L136 24 H0Z" fill="${color}"/><path d="M50 2 H72 L81 12 H48Z" fill="#ecebdc"/><rect x="119" y="2" width="9" height="18" fill="${color}"/><g fill="#252b28"><circle cx="30" cy="24" r="14"/><circle cx="108" cy="24" r="14"/></g></g>`;
+  g=band()+car(bx+bw*.09,'#b8b958')+car(bx+bw*.70,'#e17363')+text('1',bx+bw*.31,765,'time','start','#f4f4e9',36)+text('2',bx+bw*.91,765,'time','start','#f4f4e9',36)+text('SCHUMACHER',bx+bw*.09,814)+text('SENNA',bx+bw*.70,814)+text('12.668',cx,765,'delta','middle',yellow,44);
+  if($('gapArrow').checked)g+=`<path d="M${cx-115} 807 H${cx+115}" stroke="#d9dcd2" stroke-width="9"/><path d="M${cx-14} 790 L${cx+20} 807 L${cx-14} 824Z" fill="#65cf79"/>`;
+ }else if(scene==='caption'){
   const photo=$('portrait').checked;
   const captionHeight=110*Number($('boardHeight').value)/100;
   g=`<rect data-board="main" x="${w*.19}" y="${707+(110-captionHeight)/2}" width="${bw*.55}" height="${captionHeight}" fill="#555b56" fill-opacity=".48"/>`;
@@ -60,6 +68,18 @@ function tick(now){
 document.querySelectorAll('[data-scene]').forEach(b=>b.addEventListener('click',()=>{stop();scene=b.dataset.scene;render();}));
 document.querySelectorAll('aside input,aside select').forEach(c=>c.addEventListener('input',()=>{if(!playing)render();}));
 $('play').addEventListener('click',()=>{if(playing){stop();return;}playing=true;start=performance.now();lastPhase='';$('play').textContent='Parar sequência';raf=requestAnimationFrame(tick);});
-$('reset').addEventListener('click',()=>{stop();['nameSize','timeSize','deltaSize','boardWidth','boardHeight'].forEach(id=>$(id).value='100');$('weight').value='700';$('aspect').value='wide';$('portrait').checked=true;$('referenceAvailable').checked=true;$('negative').checked=false;render();});
+$('playGap').addEventListener('click',()=>{
+ stop();scene='gap';render();playing=true;const begun=performance.now();
+ function gapTick(now){
+  const s=(now-begun)/1000;
+  if(s>=11){stop();scene='gap';render();$('phase').textContent='Sequência concluída · resultado para revisão';return;}
+  render();const visible=s>=2&&s<9;
+  $('canvas').lastElementChild.style.visibility=visible?'visible':'hidden';
+  $('phase').textContent=s<2?'Medição no ponto da volta · placa oculta':s<9?'Resultado fixo · duração demonstrativa':'Saída por corte · duração demonstrativa';
+  raf=requestAnimationFrame(gapTick);
+ }
+ raf=requestAnimationFrame(gapTick);
+});
+$('reset').addEventListener('click',()=>{stop();['nameSize','timeSize','deltaSize','boardWidth','boardHeight'].forEach(id=>$(id).value='100');$('weight').value='700';$('aspect').value='wide';$('portrait').checked=true;$('referenceAvailable').checked=true;$('negative').checked=false;$('gapArrow').checked=true;render();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing)stop();});
 render();
