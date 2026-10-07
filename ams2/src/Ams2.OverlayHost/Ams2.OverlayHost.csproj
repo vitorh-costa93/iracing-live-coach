@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>Ams2.OverlayHost</RootNamespace>
+    <ApplicationIcon>..\..\assets\ams2-live-coach.ico</ApplicationIcon>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ams2.Core\Ams2.Core.csproj" />
+    <ProjectReference Include="..\Ams2.Shared\Ams2.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Win32.Graphics.Direct3D11" Version="2.5.0" />
+    <PackageReference Include="Vortice.Win32.Graphics.Dxgi" Version="2.5.0" />
+    <PackageReference Include="Vortice.Win32.Graphics.Direct2D" Version="2.5.0" />
+    <PackageReference Include="Vortice.Win32.Graphics.DirectWrite" Version="2.5.0" />
+    <PackageReference Include="Vortice.Win32.Graphics.DirectComposition" Version="2.5.0" />
+    <PackageReference Include="Vortice.Win32.Graphics.Imaging" Version="2.5.0" />
+  </ItemGroup>
+
+  <!-- Fontes do tema: os mesmos arquivos de ams2\fonts, copiados para fonts\ ao lado do exe. -->
+  <ItemGroup>
+    <Content Include="..\..\fonts\*.ttf" Link="fonts\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

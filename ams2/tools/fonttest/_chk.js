@@ -1,0 +1,42 @@
+
+const GOOGLE0="Play,Michroma,Orbitron,Aldrich,Nova Square,Squada One,Goldman,Krona One,Syncopate,Quantico,Armata,Share Tech,Ruda,Exo,Exo 2,Saira,Saira Semi Condensed,Saira Condensed,Chakra Petch,Bai Jamjuree,Oxanium,Tomorrow,Kanit,Rajdhani,Audiowide,Jura,Electrolize,Zen Dots,Russo One,Righteous,Days One,Titillium Web,Teko,Changa,Lexend,Lexend Exa,Lexend Giga,Lexend Zetta,Unbounded,Montserrat,Raleway,Poppins,Nunito,Varela Round,Baloo 2,Quicksand,Comfortaa,Questrial,Sarpanch,Strait,Paytone One,Oswald,Rubik,Hammersmith One,Francois One,Passion One,Chivo,Archivo Black,Archivo,Barlow,Barlow Semi Condensed,Roboto,Open Sans,Asap,Jost,Hind,Maven Pro,Sen,Space Grotesk,Syne,Outfit,Urbanist,Sora,Manrope,Red Hat Display,Plus Jakarta Sans,Lato,Mukta,Cabin,Ubuntu,Signika,Oxygen,Dosis,Abel,Yantramanav,Prompt,Sarabun,Mitr,Krub,K2D,Niramit,Encode Sans Expanded,Encode Sans Semi Expanded,Noto Sans,Fira Sans,Source Sans 3,Inter,DM Sans,Work Sans,Libre Franklin,Public Sans,Mulish,Overpass,IBM Plex Sans,Heebo,Hanken Grotesk,Figtree,Albert Sans,Be Vietnam Pro,Anek Latin,Gantari,Reddit Sans,Onest,Geologica,Wix Madefor Display,Bricolage Grotesque,Instrument Sans,Rethink Sans,Schibsted Grotesk,Familjen Grotesk,Tektur,Bruno Ace,Genos,Gruppo,Nova Flat,Stick No Bills,Racing Sans One,Big Shoulders Display,Smooch Sans,Sofia Sans,Sofia Sans Semi Condensed,Radio Canada,Kumbh Sans,Lexend Deca,Epilogue,Rubik Mono One".split(',');
+const GOOGLE=[...new Set([...GOOGLE0,...['Jost', 'League Spartan', 'Spartan', 'Josefin Sans', 'Kumbh Sans', 'Didact Gothic', 'League Gothic', 'Anton', 'Bebas Neue', 'Antonio', 'Fjalla One', 'Pathway Gothic One', 'Saira Extra Condensed', 'Sofia Sans Extra Condensed', 'Barlow Condensed', 'Archivo Narrow', 'Big Shoulders Display', 'Khand', 'Staatliches', 'Alumni Sans', 'Oswald', 'Teko', 'Roboto Condensed', 'Fira Sans Condensed', 'Fira Sans Extra Condensed', 'Open Sans Condensed', 'Yanone Kaffeesatz', 'Economica', 'Pragati Narrow', 'Voltaire', 'Squada One', 'Bowlby One', 'Fugaz One', 'Rammetto One', 'Sigmar One', 'Titan One', 'Lilita One', 'Luckiest Guy', 'Chango', 'Alfa Slab One', 'Gloock', 'Barlow', 'Montserrat', 'Poppins', 'Outfit', 'Urbanist', 'Raleway', 'Lexend', 'Reddit Sans', 'Hind', 'Mukta', 'Heebo', 'Roboto', 'Open Sans', 'Asap', 'Lato']])];
+const LOCAL=["Segoe UI","Tahoma","Verdana","Trebuchet MS","Corbel","Calibri","Arial","Arial Black","Candara","Franklin Gothic Medium","Franklin Gothic Heavy","Lucida Sans Unicode","Impact","Bahnschrift","Arial Narrow","Century Gothic","Gill Sans MT","Eurostile","Microgramma","Bank Gothic","Agency FB","Tw Cen MT","Berlin Sans FB Demi","Gadugi","Nirmala UI","Leelawadee UI"];
+const links=[];for(let i=0;i<GOOGLE.length;i+=20){const l=document.createElement('link');l.rel='stylesheet';l.crossOrigin='anonymous';
+l.href='https://fonts.googleapis.com/css?family='+GOOGLE.slice(i,i+20).map(n=>n.replace(/ /g,'+')+':400,500,600,700,800,900').join('|')+'&display=swap';document.head.appendChild(l);links.push(l)}
+const regs=[["hires.png", 57, 15, 235, 55, "HAMILTON", "nomes", 0, 0.75], ["hires.png", 523, 15, 735, 55, "VERSTAPPEN", "nomes", 0, 0.75], ["hires.png", 372, 15, 458, 55, "LAP 2", "valores", 0, 0.75], ["hires.png", 795, 15, 890, 55, "4.365", "valores", 0, 0.75], ["hires.png", 24, 19, 48, 51, "1", "digitos", 1, 0.55], ["hires.png", 482, 19, 506, 51, "5", "digitos", 1, 0.55], ["hires.png", 57, 62, 235, 98, "VETTEL", "nomes", 0, 0.75], ["hires.png", 523, 62, 735, 98, "RICCIARDO", "nomes", 0, 0.75], ["hires.png", 372, 62, 458, 98, "0.947", "valores", 0, 0.75], ["hires.png", 795, 62, 890, 98, "5.553", "valores", 0, 0.75], ["hires.png", 24, 66, 48, 94, "2", "digitos", 1, 0.55], ["hires.png", 482, 66, 506, 94, "6", "digitos", 1, 0.55], ["hires.png", 57, 108, 235, 141, "BOTTAS", "nomes", 0, 0.75], ["hires.png", 523, 108, 735, 141, "HULKENBERG", "nomes", 0, 0.75], ["hires.png", 372, 108, 458, 141, "2.643", "valores", 0, 0.75], ["hires.png", 795, 108, 890, 141, "8.629", "valores", 0, 0.75], ["hires.png", 24, 112, 48, 137, "3", "digitos", 1, 0.55], ["hires.png", 482, 112, 506, 137, "7", "digitos", 1, 0.55], ["hires.png", 57, 151, 235, 186, "RAIKKONEN", "nomes", 0, 0.75], ["hires.png", 523, 151, 735, 186, "ALONSO", "nomes", 0, 0.75], ["hires.png", 372, 151, 458, 186, "3.319", "valores", 0, 0.75], ["hires.png", 795, 151, 890, 186, "9.146", "valores", 0, 0.75], ["hires.png", 24, 155, 48, 182, "4", "digitos", 1, 0.55], ["hires.png", 482, 155, 506, 182, "8", "digitos", 1, 0.55]].map(r=>({src:r[0],x0:r[1],y0:r[2],x1:r[3],y1:r[4],t:r[5],g:r[6],inv:r[7],fr:r[8]}));
+function lumOf(d,i){return d[i]*.3+d[i+1]*.59+d[i+2]*.11}
+function stats(l){const s=[...l].sort((a,b)=>a-b);return [s[Math.floor(s.length*.05)],s[Math.floor(s.length*.98)]]}
+function bbox(l,w,h,thr){let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(l[y*w+x]>thr){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}}return [x0,y0,x1-x0+1,y1-y0+1]}
+const N=[96,24];
+function resample(l,w,h,bb,lo,hi){const a=new Float32Array(N[0]*N[1]);for(let y=0;y<N[1];y++)for(let x=0;x<N[0];x++){const sx=Math.min(w-1,Math.floor(bb[0]+(x+.5)*bb[2]/N[0])),sy=Math.min(h-1,Math.floor(bb[1]+(y+.5)*bb[3]/N[1]));a[y*N[0]+x]=Math.max(0,Math.min(1,(l[sy*w+sx]-lo)/(hi-lo)))}return a}
+function corr(a,b){let ma=0,mb=0;for(let i=0;i<a.length;i++){ma+=a[i];mb+=b[i]}ma/=a.length;mb/=b.length;let n=0,da=0,db=0;for(let i=0;i<a.length;i++){const x=a[i]-ma,y=b[i]-mb;n+=x*y;da+=x*x;db+=y*y}return n/Math.sqrt(da*db)}
+const load=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=src});
+(async()=>{
+ const im=await load('hires.png');const base=document.createElement('canvas');base.width=im.width;base.height=im.height;const bg=base.getContext('2d');bg.drawImage(im,0,0);
+ const refs=regs.map(r=>{const w=r.x1-r.x0,h=r.y1-r.y0;const d=bg.getImageData(r.x0,r.y0,w,h).data;const l=new Float32Array(w*h);for(let i=0;i<w*h;i++){let v=lumOf(d,i*4);l[i]=r.inv?255-v:v}const [lo,hi]=stats(l);const bb=bbox(l,w,h,lo+r.fr*(hi-lo));return {t:r.t,g:r.g,ar:bb[2]/bb[3],a:resample(l,w,h,bb,lo,hi)}});
+ await new Promise(r=>setTimeout(r,6000));
+ const avail={};for(const ss of document.styleSheets){let rules;try{rules=ss.cssRules}catch(e){continue}for(const ru of rules){if(ru.type===5){const f=ru.style.fontFamily.replace(/['"]/g,'');(avail[f]=avail[f]||new Set()).add(parseInt(ru.style.fontWeight))}}}
+ const cv=document.createElement('canvas');cv.width=1700;cv.height=220;const g=cv.getContext('2d',{willReadFrequently:true});
+ const cands=[];for(const f of GOOGLE){for(const w of (avail[f]?[...avail[f]]:[]))cands.push([f,w])}for(const f of LOCAL){for(const w of [400,700])cands.push([f,w])}
+ const R={nomes:[],valores:[],digitos:[]};let done=0;
+ for(const [fam,w] of cands){
+  try{await document.fonts.load(`${w} 40px "${fam}"`)}catch(e){}
+  if(!LOCAL.includes(fam)&&!document.fonts.check(`${w} 40px "${fam}"`))continue;
+  const acc={nomes:[0,0,0,0],valores:[0,0,0,0],digitos:[0,0,0,0]};let bad=false;
+  for(const r of refs){
+   g.font=`${w} 100px "${fam}", monospace`;g.letterSpacing='0px';
+   const m=g.measureText(r.t);const H=m.actualBoundingBoxAscent+m.actualBoundingBoxDescent;const W0=m.actualBoundingBoxLeft+m.actualBoundingBoxRight;
+   if(!(H>10)||!(W0>5)){bad=true;break}
+   const n=r.t.length-1;let ls=0;if(n>0){ls=(r.ar*H-W0)/n;ls=Math.max(-3,Math.min(32,ls))}
+   g.letterSpacing=ls+'px';g.fillStyle='#000';g.fillRect(0,0,cv.width,cv.height);g.fillStyle='#fff';g.filter='blur(1.2px)';g.fillText(r.t,40,150);g.filter='none';
+   const d=g.getImageData(0,0,cv.width,cv.height).data;const l=new Float32Array(cv.width*cv.height);for(let i=0;i<l.length;i++)l[i]=lumOf(d,i*4);
+   const bb=bbox(l,cv.width,cv.height,100);if(bb[2]<=2){bad=true;break}
+   const a=acc[r.g];a[0]+=corr(r.a,resample(l,cv.width,cv.height,bb,0,255));a[1]+=ls/100;a[2]+=r.ar/(W0/H);a[3]++;
+  }
+  if(!bad)for(const k in R){const a=acc[k];R[k].push({fam,w,score:a[0]/a[3],ls:a[1]/a[3],sx:a[2]/a[3]})}
+  if(++done%40==0){document.getElementById('out').textContent=`testando ${done}/${cands.length}`;await new Promise(r=>setTimeout(r,0))}
+ }
+ let out='';for(const k in R){R[k].sort((a,b)=>b.score-a.score);out+=`\n== ${k} ==\n`+R[k].slice(0,14).map((r,i)=>`${i+1}. ${r.fam} ${r.w}  forma=${r.score.toFixed(3)}  espaço=${r.ls.toFixed(2)}em  larguraX=${r.sx.toFixed(2)}`).join('\n')}
+ document.getElementById('out').textContent=out;window.DONE=true;
+})();

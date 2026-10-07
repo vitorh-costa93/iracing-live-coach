@@ -18,7 +18,7 @@ function time(v,digits=1){const m=Math.floor(v/60),s=(v-m*60).toFixed(digits).pa
 function background(w){return `<defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#a8b2ac"/><stop offset="1" stop-color="#778672"/></linearGradient><filter id="shadow"><feDropShadow dx="3" dy="4" stdDeviation="1" flood-opacity=".95"/></filter></defs><rect width="${w}" height="960" fill="url(#sky)"/><path d="M0 385 Q${w*.4} 280 ${w} 420 L${w} 960 H0Z" fill="#6e8057"/><path d="M${w*.42} 375 C${w*.8} 560 ${w*.08} 620 ${w*.9} 960 H${w*.24} C${w*.08} 650 ${w*.69} 545 ${w*.34} 375Z" fill="#919590" stroke="#deded0" stroke-width="8"/><path d="M0 395 H${w}" stroke="#536459" stroke-width="25"/><path d="M0 376 H${w}" stroke="#c0c8bb" stroke-width="5"/><g transform="translate(${w*.53},540)"><ellipse cx="0" cy="84" rx="100" ry="12" fill="#363b35" opacity=".5"/><path d="M-60 55 L-37 10 L-13 7 L-9 -9 L9 -9 L13 7 L37 10 L60 55Z" fill="#ccaf34"/><path d="M-9 16 H9 V76 H-9Z" fill="#e6ddc1"/><rect x="-78" y="6" width="156" height="9" fill="#d6c977"/><rect x="-68" y="64" width="136" height="11" fill="#cf3a31"/><g fill="#252d2b"><rect x="-76" y="20" width="25" height="42" rx="6"/><rect x="51" y="20" width="25" height="42" rx="6"/><ellipse cy="12" rx="12" ry="15"/></g></g>`;}
 function render(elapsed){
  if(elapsed===undefined)elapsed=scene==='split'?44.9:67.9;
- const w=$('aspect').value==='wide'?1706.667:1280, slow=$('negative').checked;
+ const w=$('aspect').value==='wide'?1706.667:1280, slow=$('negative').checked, hasReference=$('referenceAvailable').checked;
  $('stage').classList.toggle('wide',w>1280);$('canvas').setAttribute('viewBox',`0 0 ${w} 960`);
  const bw=(w-20)*Number($('boardWidth').value)/100,bx=(w-bw)/2,bh=120*Number($('boardHeight').value)/100,by=712+(120-bh)/2;
  const lx=bx+bw*.09,rx=bx+bw*.635,cx=w/2;
@@ -38,9 +38,9 @@ function render(elapsed){
   g+=text('FASTEST LAP',tx,695,'name','start',cyan,36)+text("1'45.079",bx+bw*.96,695,'time','end','#f4f4e9',44)+text('2',tx,759,'time','start',yellow,32)+text('Alain PROST',tx+38,759)+text('WILLIAMS RENAULT',tx,815,'name','start',yellow,32)+text('233.48',bx+bw*.87,759,'time','end','#f4f4e9',36)+text('Kmh',bx+bw*.96,759,'name','end',cyan,32)+text('145.08',bx+bw*.87,815,'time','end','#f4f4e9',36)+text('Mph',bx+bw*.96,815,'name','end',cyan,32);
  }else{
   g=band()+text('SCHUMACHER',lx,751);
-  if(scene==='live')g+=text(time(slow?elapsed+5.9:elapsed),lx+65,810,'time','start',yellow)+text('LEHTO',rx,751)+text("1'12.830",rx,810,'time','start',yellow);
-  if(scene==='split')g+=text(time(elapsed),lx+65,810,'time','start',yellow)+text('SCHUMACHER',rx,751)+text('42.261',rx,810,'time','start',yellow)+text(slow?'+0.290':'−0.290',cx,810,'delta','middle',cyan)+text(slow?'42.551':'41.971',cx,886,'time','middle',yellow);
-  if(scene==='result')g+=text(slow?"1'13.127":"1'12.533",lx+35,810,'time','start',yellow)+text(slow?'(4)':'(1)',cx,750,'delta','middle',cyan,32)+text(slow?'+0.297':'−0.297',cx,810,'delta','middle',cyan)+text('LEHTO',rx,751)+text("1'12.830",rx,810,'time','start',yellow);
+  if(scene==='live')g+=text(time(slow?elapsed+5.9:elapsed),lx+65,810,'time','start',yellow)+(hasReference?text('LEHTO',rx,751)+text("1'12.830",rx,810,'time','start',yellow):'');
+  if(scene==='split')g+=text(time(elapsed),lx+65,810,'time','start',yellow)+(hasReference?text('SCHUMACHER',rx,751)+text('42.261',rx,810,'time','start',yellow)+text(slow?'+0.290':'−0.290',cx,810,'delta','middle',cyan):'')+text(slow?'42.551':'41.971',cx,886,'time','middle',yellow);
+  if(scene==='result')g+=text(slow?"1'13.127":"1'12.533",lx+35,810,'time','start',yellow)+text(slow?'(4)':'(1)',cx,750,'delta','middle',cyan,32)+(hasReference?text(slow?'+0.297':'−0.297',cx,810,'delta','middle',cyan)+text('LEHTO',rx,751)+text("1'12.830",rx,810,'time','start',yellow):'');
  }
  $('canvas').innerHTML=background(w)+`<g font-family="Arial, sans-serif" filter="url(#shadow)">${g}</g>`;
  const s=scenes[scene];$('sceneTitle').textContent=s.title;$('description').textContent=s.description;$('evidence').textContent=s.tag;$('evidence').classList.toggle('proposal',!s.t);$('motion').textContent=s.motion;
@@ -60,6 +60,6 @@ function tick(now){
 document.querySelectorAll('[data-scene]').forEach(b=>b.addEventListener('click',()=>{stop();scene=b.dataset.scene;render();}));
 document.querySelectorAll('aside input,aside select').forEach(c=>c.addEventListener('input',()=>{if(!playing)render();}));
 $('play').addEventListener('click',()=>{if(playing){stop();return;}playing=true;start=performance.now();lastPhase='';$('play').textContent='Parar sequência';raf=requestAnimationFrame(tick);});
-$('reset').addEventListener('click',()=>{stop();['nameSize','timeSize','deltaSize','boardWidth','boardHeight'].forEach(id=>$(id).value='100');$('weight').value='700';$('aspect').value='wide';$('portrait').checked=true;$('negative').checked=false;render();});
+$('reset').addEventListener('click',()=>{stop();['nameSize','timeSize','deltaSize','boardWidth','boardHeight'].forEach(id=>$(id).value='100');$('weight').value='700';$('aspect').value='wide';$('portrait').checked=true;$('referenceAvailable').checked=true;$('negative').checked=false;render();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing)stop();});
 render();

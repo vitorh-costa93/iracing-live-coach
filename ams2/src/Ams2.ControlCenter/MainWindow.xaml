@@ -1,0 +1,411 @@
+<Window x:Class="Ams2.ControlCenter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Ams2.ControlCenter"
+        Title="AMS2 Live Coach - Control Center" Icon="pack://application:,,,/Assets/ams2-live-coach.ico" Width="1100" Height="700" MinWidth="980" MinHeight="620"
+        Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" WindowStartupLocation="CenterScreen"
+        Topmost="True" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ===== Cabecalho ===== -->
+        <Border Grid.Row="0" Padding="24,16" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="{StaticResource PanelBrush}">
+            <Grid>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="pack://application:,,,/Assets/ams2-live-coach.png" Width="30" Height="30" Margin="0,0,10,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text="AMS2 Live Coach" FontSize="17" FontWeight="SemiBold"/>
+                    <TextBlock Text="Control Center" Style="{StaticResource Muted}" FontSize="14" Margin="10,2,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Border Background="{StaticResource RaisedBrush}" CornerRadius="12" Padding="10,4" Margin="0,0,8,0" ToolTip="Conexão com o processo do overlay (OverlayHost)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="HostDot" Width="8" Height="8" Fill="{StaticResource OffBrush}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="HostText" Text="Overlay: desconectado" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource RaisedBrush}" CornerRadius="12" Padding="10,4" Margin="0,0,16,0" ToolTip="Dados do jogo (memória compartilhada do AMS2)">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="GameDot" Width="8" Height="8" Fill="{StaticResource OffBrush}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="GameText" Text="AMS2: sem dados" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    <ToggleButton x:Name="NamesToggle" Style="{StaticResource ToggleButtonStyle}" Content="Nome do piloto" Margin="0,0,8,0" Click="NamesToggle_Click"
+                                  ToolTip="Nome de exibição do seu carro nos widgets, um por modelo de carro (o jogo usa o nome do perfil)."/>
+                    <ToggleButton x:Name="EditToggle" Style="{StaticResource ToggleButtonStyle}" Content="Editar layout" Click="EditToggle_Click"
+                                  ToolTip="Torna as janelas arrastáveis: arraste para mover (grade/encaixe, Alt desliga), roda do mouse ou canto inferior direito para a escala. Atalho no jogo: Ctrl+Alt+E."/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Aviso: perfil em edicao nao e o ativo -->
+        <Border x:Name="InactiveBanner" Grid.Row="1" Visibility="Collapsed" Background="#2A2412" BorderBrush="#4A3F1A" BorderThickness="0,0,0,1" Padding="24,8">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Ativar agora" Padding="10,3" Click="Activate_Click"/>
+                <TextBlock x:Name="InactiveText" Foreground="{StaticResource WarnBrush}" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="340"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== Tema e perfis ===== -->
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Text="TEMA" Style="{StaticResource SectionTitle}"/>
+                        <ComboBox x:Name="ThemeCombo" Height="32" SelectionChanged="ThemeCombo_SelectionChanged" DisplayMemberPath="Label">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem" BasedOn="{StaticResource {x:Type ComboBoxItem}}">
+                                    <Setter Property="IsEnabled" Value="{Binding IsAvailable}"/>
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
+                        </ComboBox>
+                        <TextBlock Text="PERFIS" Style="{StaticResource SectionTitle}" Margin="0,22,0,8"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="6"/><RowDefinition/></Grid.RowDefinitions>
+                            <Button Grid.Row="0" Grid.Column="0" Content="Novo" Click="NewProfile_Click"/>
+                            <Button Grid.Row="0" Grid.Column="2" Content="Duplicar" Click="DuplicateProfile_Click"/>
+                            <Button Grid.Row="2" Grid.Column="0" Content="Renomear" Click="RenameProfile_Click"/>
+                            <Button Grid.Row="2" Grid.Column="2" Content="Excluir" Style="{StaticResource DangerButton}" Click="DeleteProfile_Click"/>
+                        </Grid>
+                        <Button x:Name="ActivateButton" Content="Ativar perfil" Style="{StaticResource PrimaryButton}" Margin="0,10,0,0" Click="Activate_Click"/>
+                    </StackPanel>
+                    <ListBox x:Name="ProfilesList" SelectionChanged="ProfilesList_SelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="10,8">
+                                    <Border DockPanel.Dock="Right" Background="{StaticResource AccentDimBrush}" CornerRadius="3" Padding="6,1" VerticalAlignment="Center"
+                                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="ATIVO" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- ===== Widgets ===== -->
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="WIDGETS" Style="{StaticResource SectionTitle}" Margin="0"/>
+                        <TextBlock Text="Arraste ≡ para reordenar" Style="{StaticResource Muted}" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <Border DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="12" Background="{StaticResource BgBrush}" CornerRadius="6"
+                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Height="190">
+                        <Grid>
+                            <TextBlock x:Name="PreviewCaption" Text="PRÉVIA" Style="{StaticResource SectionTitle}" VerticalAlignment="Top" Margin="0"/>
+                            <StackPanel x:Name="BoardModeBar" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"
+                                        ToolTip="Modo do board na prévia (dados simulados de uma corrida de 20 carros)">
+                                <ToggleButton Content="Torre" Tag="0" IsChecked="True" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Setor" Tag="1" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Voltas" Tag="2" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1" Margin="0,0,4,0"/>
+                                <ToggleButton Content="Legenda" Tag="3" Click="BoardMode_Click" Style="{StaticResource ToggleButtonStyle}" Padding="10,1"/>
+                            </StackPanel>
+                            <Image x:Name="PreviewImage" Margin="0,22,0,0" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock x:Name="PreviewStatus" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,22,0,0"/>
+                        </Grid>
+                    </Border>
+                    <ListBox x:Name="WidgetsList" AllowDrop="True" SelectionChanged="WidgetsList_SelectionChanged"
+                             PreviewMouseLeftButtonDown="WidgetsList_PreviewMouseLeftButtonDown" PreviewMouseMove="WidgetsList_PreviewMouseMove"
+                             DragOver="WidgetsList_DragOver" DragLeave="WidgetsList_DragLeave" Drop="WidgetsList_Drop">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,2,0,0" Padding="0,8">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="Transparent"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DropTarget}" Value="True"><Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <DockPanel Margin="8,0">
+                                        <TextBlock x:Name="Grip" DockPanel.Dock="Left" Text="&#xE700;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="26"
+                                                   Foreground="{StaticResource MutedBrush}" Cursor="SizeAll" VerticalAlignment="Center" Background="Transparent" Tag="grip"
+                                                   ToolTip="Arrastar para reordenar"/>
+                                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding Visible, Mode=TwoWay}" ToolTip="Mostrar/ocultar"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- ===== Detalhes do widget ===== -->
+            <Border Grid.Column="4" Style="{StaticResource Card}">
+                <Grid>
+                    <TextBlock x:Name="NoSelection" Text="Selecione um widget" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel x:Name="Detail" Margin="0,0,10,0">
+                            <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
+
+                            <DockPanel><TextBlock Text="Largura da janela" Style="{StaticResource Muted}"/><TextBlock Text="{Binding WidthScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="25" Maximum="300" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding WidthScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
+                            <DockPanel><TextBlock Text="Altura da janela" Style="{StaticResource Muted}"/><TextBlock Text="{Binding HeightScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="25" Maximum="300" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding HeightScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
+                            <DockPanel><TextBlock Text="Escala" Style="{StaticResource Muted}"/><TextBlock Text="{Binding Scale, StringFormat={}{0:0.00}x}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="0.5" Maximum="3" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" Value="{Binding Scale, Mode=TwoWay}" Margin="0,4,0,14"/>
+
+                            <DockPanel><TextBlock Text="Opacidade" Style="{StaticResource Muted}"/><TextBlock Text="{Binding OpacityPct, StringFormat={}{0:0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="20" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Value="{Binding OpacityPct, Mode=TwoWay}" Margin="0,4,0,14"/>
+
+                            <TextBlock Text="Fonte do texto" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="FontCombo" Height="32" SelectedItem="{Binding FontChoice, Mode=TwoWay}" Margin="0,0,0,14"/>
+
+                            <StackPanel x:Name="SessionsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Mostrar em" Style="{StaticResource Muted}" Margin="0,0,0,6"
+                                           ToolTip="Tipos de sessão em que o widget aparece (como no iRacing). Fora de uma sessão (menu) todos aparecem."/>
+                                <WrapPanel>
+                                    <CheckBox Content="Treino" IsChecked="{Binding ShowPractice, Mode=TwoWay}" Margin="0,0,16,0" ToolTip="Treino, teste e time attack"/>
+                                    <CheckBox Content="Classificação" IsChecked="{Binding ShowQualify, Mode=TwoWay}" Margin="0,0,16,0"/>
+                                    <CheckBox Content="Corrida" IsChecked="{Binding ShowRace, Mode=TwoWay}" ToolTip="Volta de apresentação e corrida"/>
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="RowsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="{Binding RowsLabel}" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="−" Width="34" Click="RowsMinus_Click"/>
+                                    <TextBlock Text="{Binding Rows}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="RowsPlus_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="SelectionPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Pilotos no topo" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Primeiros N da classificação, sempre visíveis."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Button Content="−" Width="34" Click="TopMinus_Click"/>
+                                    <TextBlock Text="{Binding TopCount}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="TopPlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="Perto de mim (ao redor do jogador)" Style="{StaticResource Muted}" Margin="0,0,0,4"
+                                           ToolTip="Janela centrada no jogador, incluindo ele. Entre o topo e a janela aparece &quot;...&quot; quando há salto de posições."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="−" Width="34" Click="NearMinus_Click"/>
+                                    <TextBlock Text="{Binding NearCount}" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="NearPlus_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="RadarPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Alcance do painel (metros à frente e atrás)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Só vale no estilo painel (coluna &quot;Estilo painel&quot;). O indicador nativo do AMS2 só aparece com carro ao lado."/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <Button Content="−" Width="34" Click="RadarRangeMinus_Click"/>
+                                    <TextBlock Text="{Binding RadarRange, StringFormat={}{0} m}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="RadarRangePlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="Sensibilidade (carro ao lado)" Style="{StaticResource Muted}" Margin="0,0,0,4" ToolTip="Quão longe à frente/atrás ainda conta como &quot;ao lado&quot; (padrão 4 m; 1 = metade, 5 = uma vez e meia). No estilo painel também escala as janelas de aviso."/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="−" Width="34" Click="RadarSensMinus_Click"/>
+                                    <TextBlock Text="{Binding RadarSensitivity}" Width="64" TextAlignment="Center" VerticalAlignment="Center" FontSize="15" FontWeight="SemiBold"/>
+                                    <Button Content="+" Width="34" Click="RadarSensPlus_Click"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding RadarSensitivityText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+                            </StackPanel>
+
+                            <StackPanel x:Name="ThemeOptionsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Opções do tema" Style="{StaticResource Muted}" Margin="0,0,0,6" ToolTip="Opções que só existem neste tema."/>
+                                <ItemsControl ItemsSource="{Binding ThemeOptions}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Label}" Margin="0,0,0,4" Visibility="{Binding IsChoice, Converter={StaticResource BoolToVis}}"/>
+                                                <ComboBox Height="32" ItemsSource="{Binding Choices}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                          Visibility="{Binding IsChoice, Converter={StaticResource BoolToVis}}"/>
+                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding Checked, Mode=TwoWay}" Visibility="{Binding IsToggle, Converter={StaticResource BoolToVis}}"/>
+                                                <DockPanel Visibility="{Binding IsNumber, Converter={StaticResource BoolToVis}}">
+                                                    <TextBox DockPanel.Dock="Right" Width="80" Text="{Binding NumberText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <StackPanel x:Name="ColumnsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Colunas visíveis" Style="{StaticResource Muted}" Margin="0,0,0,6"/>
+                                <ItemsControl ItemsSource="{Binding Columns}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate><CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}" Content="{Binding Label}" Margin="0,0,0,7"/></DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <StackPanel x:Name="WidthsPanel" Margin="0,0,0,14">
+                                <TextBlock Text="Largura das colunas" Style="{StaticResource Muted}" Margin="0,0,0,6"
+                                           ToolTip="% da largura do tema (100% = padrão). O widget cresce ou encolhe junto."/>
+                                <ItemsControl ItemsSource="{Binding Widths}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,6">
+                                                <DockPanel><TextBlock Text="{Binding Label}"/><TextBlock Text="{Binding Pct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                                                <Slider Minimum="50" Maximum="250" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="25" Value="{Binding Pct, Mode=TwoWay}" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <TextBlock Text="TEXTO" Style="{StaticResource SectionTitle}" Margin="0,4,0,8"/>
+                            <DockPanel ToolTip="Altera somente as fontes; largura e altura são ajustadas separadamente."><TextBlock Text="Tamanho do texto" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TextScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="40" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Value="{Binding TextScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
+                            <TextBlock Text="Peso da fonte" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                            <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Weights}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FontWeightChoice, Mode=TwoWay}" Margin="0,0,0,12"/>
+                            <Expander Header="Fontes por elemento" Margin="0,0,0,14" ToolTip="100% herda o tamanho geral; o peso padrão herda o peso geral. Ajustes se aplicam aos elementos presentes neste widget.">
+                                <ItemsControl ItemsSource="{Binding ElementFonts}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <DockPanel><TextBlock Text="{Binding Label}"/><TextBlock Text="{Binding Pct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                                                <Slider Minimum="40" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding Pct, Mode=TwoWay}" Margin="0,4,0,4"/>
+                                                <ComboBox Height="30" ItemsSource="{x:Static local:Choices.Weights}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Weight, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                            <TextBlock Text="Cores (#RRGGBB; vazio = cor do tema)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="Textos" VerticalAlignment="Center" ToolTip="Nomes e títulos"/>
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TextColor, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Margin="0,2,6,2"/>
+                                <Border Grid.Row="0" Grid.Column="2" Width="22" Height="22" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="{Binding TextColor, FallbackValue=Transparent, TargetNullValue=Transparent}"/>
+                                <TextBlock Grid.Row="1" Text="Rótulos" VerticalAlignment="Center" ToolTip="AHEAD/BEHIND, LAPS, AIR... (no 2004 os rótulos ficam em células brancas e seguem a cor de Textos)"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LabelColor, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Margin="0,2,6,2"/>
+                                <Border Grid.Row="1" Grid.Column="2" Width="22" Height="22" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="{Binding LabelColor, FallbackValue=Transparent, TargetNullValue=Transparent}"/>
+                                <TextBlock Grid.Row="2" Text="Valores" VerticalAlignment="Center" ToolTip="Gaps, tempos, números"/>
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ValueColor, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" Margin="0,2,6,2"/>
+                                <Border Grid.Row="2" Grid.Column="2" Width="22" Height="22" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="{Binding ValueColor, FallbackValue=Transparent, TargetNullValue=Transparent}"/>
+                            </Grid>
+
+                            <StackPanel x:Name="FormatPanel" Margin="0,0,0,14">
+                                <TextBlock Text="FORMATO" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+                                <StackPanel Visibility="{Binding HasName, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <TextBlock Text="Nome do piloto" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Names}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding NameChoice, Mode=TwoWay}"/>
+                                    <CheckBox Content="Mostrar número do carro (#N)" IsChecked="{Binding CarNumber, Mode=TwoWay}" Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasGap, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <TextBlock Text="Gap (casas decimais e sinal)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                        <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Decimals}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding GapDecimals, Mode=TwoWay}"/>
+                                        <ComboBox Grid.Column="2" Height="32" ItemsSource="{x:Static local:Choices.Signs}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding GapSign, Mode=TwoWay}"/>
+                                    </Grid>
+                                    <CheckBox Content="Sufixo &quot;s&quot; (1.234s)" IsChecked="{Binding GapSuffix, Mode=TwoWay}" Margin="0,6,0,0"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasLapTime, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <TextBlock Text="Tempo de volta (formato e casas)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="6"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                        <ComboBox Height="32" ItemsSource="{x:Static local:Choices.LapStyles}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding LapStyle, Mode=TwoWay}"/>
+                                        <ComboBox Grid.Column="2" Height="32" ItemsSource="{x:Static local:Choices.Decimals}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding LapDecimals, Mode=TwoWay}"/>
+                                    </Grid>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasSpeed, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <TextBlock Text="Velocidade / distância" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Speeds}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SpeedChoice, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasTemp, Converter={StaticResource BoolToVis}}" Margin="0,0,0,10">
+                                    <TextBlock Text="Temperatura" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Temps}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding TempChoice, Mode=TwoWay}"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasFuel, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="Combustível" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Fuels}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FuelChoice, Mode=TwoWay}"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <TextBlock Text="Posição (px)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="X" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Grid.Column="1" Text="{Binding X, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                <TextBlock Grid.Column="3" Text="Y" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox Grid.Column="4" Text="{Binding Y, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                            </Grid>
+
+                            <Button Content="Restaurar padrões do widget" Click="ResetWidget_Click"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ===== Nome do piloto (um nome de exibicao por modelo de carro) ===== -->
+        <Border x:Name="NamesPanel" Grid.Row="3" Visibility="Collapsed" Padding="24,12,24,14" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Aplicar sugeridos aos sem nome" Padding="10,3" Click="ApplySuggested_Click"
+                            ToolTip="Para cada carro sem nome de exibição, usa o nome de outro piloto com o mesmo carro."/>
+                    <TextBlock Text="NOME DO PILOTO" Style="{StaticResource SectionTitle}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="NamesCurrent" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="230"/><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Modelo do carro" Style="{StaticResource Muted}"/>
+                    <TextBlock Grid.Column="1" Text="Nome no jogo" Style="{StaticResource Muted}"/>
+                    <TextBlock Grid.Column="2" Text="Nome nos widgets (Enter aplica; vazio = o do jogo)" Style="{StaticResource Muted}"/>
+                </Grid>
+                <TextBlock x:Name="NamesEmpty" DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,4,0,0"
+                           Text="Nenhum carro visto ainda: entre numa sessão no AMS2 com o overlay aberto."/>
+                <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="NamesList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="230"/><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/><ColumnDefinition Width="112"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding Model}" TextTrimming="CharacterEllipsis" MaxWidth="190" ToolTip="{Binding Model}"/>
+                                        <Border Background="{StaticResource AccentDimBrush}" CornerRadius="3" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="ATUAL" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding OriginalLabel}" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
+                                               ToolTip="Somente leitura: o nome que o jogo dá ao seu carro"/>
+                                    <TextBox Grid.Column="2" Text="{Binding Name, Mode=OneWay}" Margin="0,0,8,0" Padding="8,3"
+                                             GotKeyboardFocus="NameBox_GotFocus" LostKeyboardFocus="NameBox_LostFocus" PreviewKeyDown="NameBox_KeyDown"/>
+                                    <Button Grid.Column="3" Content="Usar sugerido" Padding="8,3" IsEnabled="{Binding HasSuggestion}" ToolTip="{Binding SuggestionTip}" Click="UseSuggested_Click"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

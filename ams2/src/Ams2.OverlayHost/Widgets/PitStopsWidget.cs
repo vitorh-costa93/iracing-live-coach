@@ -1,0 +1,104 @@
+using System.Globalization;
+using Ams2.Core;
+using Ams2.Core.Calc;
+using Ams2.OverlayHost.Data;
+using Ams2.OverlayHost.Theme;
+using Ams2.Shared.Profiles;
+
+namespace Ams2.OverlayHost.Widgets;
+
+/// <summary>
+/// Lista de paradas da transmissao: grade de 2 colunas x ate 4 linhas ([posicao][nome][N Stops]), em ordem de posicao, em
+/// blocos de 8 pilotos; mostra o bloco do ultimo piloto que entrou nos boxes. Aparece ~8 s apos uma entrada nos boxes (coluna "always" = fixa).
+/// </summary>
+public sealed class PitStopsWidget : IWidget
+{
+    public string Id => "pitstops";
+    public int Rows { get; set; } = 4;
+    WidgetSettings _cfg = new() { Id = "pitstops" };
+    public void Configure(WidgetSettings s) { _cfg = s; Rows = s.Rows ?? 4; }
+    public (float Width, float Height) DesignSize => (X0 * 2 + ColW * 2 + ColGap, Y0 * 2 + HeadH + Rows * Pitch + 2);
+
+    const float X0 = 4, Y0 = 4, ColGap = 36, HeadH = 26, RowH = 28, Pitch = 30;
+    // Colunas: posicao (opcional), nome e paradas com largura configuravel (perfil: % do tema).
+    float PosW => _cfg.ColumnVisible("pos") ? 36 : 0;
+    float NameW => MathF.Round(_cfg.Width("name", 190));
+    float StopsW => MathF.Round(_cfg.Width("stops", _b18 ? 56 : 110));   // 2018: so o numero de paradas
+    bool _b18;
+    readonly Broadcast18Motion _motion18 = new();
+    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
+    float ColW => PosW + NameW + StopsW;
+
+    public void Draw(ThemeCanvas c, OverlayModel m)
+    {
+        if (!m.Connected || m.Session is not { } s) { _motion18.Reset(); return; }
+        var b = BroadcastUi.State(m);
+        float alpha = _cfg.ColumnVisible("always") ? 1f : c.Theme.Style == ThemeStyle.Broadcast2000s
+            ? BroadcastUi.Fade04(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold) : BroadcastUi.Fade(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold);
+        if (_b18 && !_cfg.ColumnVisible("always"))
+            alpha = _motion18.Evaluate(m.Now, b.LastPitEntryT, b.LastPitEntryT + BroadcastUi.PitListHold, b.SessionSeenT);
+        if (alpha <= 0.01f) return;
+        var cars = s.Cars.Where(x => x.Position > 0).OrderBy(x => x.Position).ToList();
+        if (cars.Count == 0) return;
+        int block = Rows * 2, start = 0;
+        int li = b.LastPitCarIndex >= 0 ? cars.FindIndex(x => x.Index == b.LastPitCarIndex) : -1;
+        if (li >= 0) start = li / block * block;
+        var page = cars.Skip(start).Take(block).ToList();
+        if (_b18) BroadcastUi.WithReveal18(c, alpha, DesignSize.Width, DesignSize.Height, () => DrawGrid(c, page, cars, b));
+        else BroadcastUi.WithAlpha(c, alpha, () => DrawGrid(c, page, cars, b));
+    }
+
+    void DrawGrid(ThemeCanvas c, List<CarSnapshot> page, List<CarSnapshot> field, BroadcastState b)
+    {
+        var t = c.Theme;
+        bool b04 = t.Style == ThemeStyle.Broadcast2000s;
+        var (w, h) = DesignSize;
+        bool b98 = t.Style == ThemeStyle.Broadcast98;
+        if (b98)
+        {
+            // Faixa translucida + selo ciano no canto (no lugar do patrocinador da transmissao); linhas em caixa-alta.
+            c.Panel(0, 0, w, h);
+            c.FillRect(w - 154, 0, 150, 24, new Vortice.Win32.Numerics.Color4(21 / 255f, 150 / 255f, 176 / 255f, 0.97f));
+            c.Text("PIT STOPS", t.Label with { Size = 20 }, w - 154, -1, 150, 24, new Vortice.Win32.Numerics.Color4(1, 1, 1, 1), HAlign.Center, t.TextShadow);
+        }
+        else if (t.Style == ThemeStyle.Modern2018)
+        {
+            // Modo "PIT STOPS" da torre 2018: filete vermelho no topo, título centralizado, coluna de paradas mais clara (só o número).
+            c.FillRect(0, 0, w, 4, t.AccentBar);
+            c.FillRect(0, 4, w, h - 4, t.PanelFill);
+            c.Text("PIT STOPS", t.Title with { Size = 19 }, 0, 4, w, HeadH - 2, t.TitleColor, HAlign.Center);
+        }
+        else if (!b04) { c.Panel(0, 0, w, h); Chrome.Header(c, "PIT STOPS", 16, 2, 200, underline: false); }
+        else Chrome.HeaderCell(c, X0 + PosW, Y0, NameW, HeadH, "PIT STOPS", t.Label);
+        for (int i = 0; i < page.Count; i++)
+        {
+            var car = page[i];
+            int col = i / Rows, row = i % Rows;
+            float x = X0 + col * (ColW + ColGap), y = Y0 + HeadH + row * Pitch;
+            string name = _cfg.Name(car, BroadcastUi.ShortName(car, field)), stops = BroadcastUi.Stops(b.StopsOf(car.Index));
+            if (b98) { name = name.ToUpperInvariant(); stops = stops.ToUpperInvariant(); }
+            if (t.Style == ThemeStyle.Modern2018)
+            {
+                float sx = x + PosW + NameW;
+                c.FillRect(sx, y - 1, StopsW, Pitch, t.GapCellFill);
+                if (PosW > 0) Chrome.PosBox(c, x + 4, y, PosW - 6, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 19 });
+                string up = name.ToUpperInvariant();
+                c.Text(up, BroadcastUi.Fit(c, up, t.Text with { Size = 20 }, NameW - 18), x + PosW + 8, y, NameW - 10, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor);
+                c.Text(b.StopsOf(car.Index).ToString(CultureInfo.InvariantCulture), t.Numbers, sx, y, StopsW - 12, RowH, t.ValueColor, HAlign.Right);
+                continue;
+            }
+            if (b04)
+            {
+                if (PosW > 0) Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text with { Element = "position" });
+                Chrome.WhiteCell(c, x + PosW, y, NameW, RowH, name, BroadcastUi.Fit(c, name, t.Text, NameW - 14), ink: car.IsPlayer ? Chrome.PlayerInk : null);
+                Chrome.BlackCell(c, x + PosW + NameW, y, StopsW, RowH, stops, t.Text with { Element = "value" }, HAlign.Right);
+            }
+            else
+            {
+                if (PosW > 0) Chrome.AccentBox(c, x + 12, y + 1, PosW, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Text with { Element = "position" });
+                c.Text(name, BroadcastUi.Fit(c, name, t.Text, NameW - 42), x + PosW + 22, y, NameW - 8, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
+                c.Text(stops, t.Label with { Element = "value" }, x + PosW + NameW - 4, y, StopsW, RowH, t.ValueColor, HAlign.Right, t.TextShadow);
+            }
+        }
+    }
+}
