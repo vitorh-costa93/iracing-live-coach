@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMS2 · Estudo de transmissão 1993</title>
+<link rel="stylesheet" href="style.css">
+<body>
+<header><span class="eyebrow">AMS2 OVERLAY · REFERÊNCIA 1993</span><h1>Corrida e classificação · 1993</h1><p>Mockups para revisão visual e de comportamento. Fundo ilustrativo; dados de demonstração.</p></header>
+<main>
+<section aria-label="Prévia do overlay">
+<nav aria-label="Cenas"><button data-scene="live" aria-pressed="true">Qualy · volta</button><button data-scene="split" aria-pressed="false">Qualy · parcial</button><button data-scene="result" aria-pressed="false">Qualy · resultado</button><button data-scene="caption" aria-pressed="false">Legenda do piloto</button><button data-scene="fastest" aria-pressed="false">Corrida · volta mais rápida</button></nav>
+<div class="stage" id="stage"><svg id="canvas" viewBox="0 0 1280 960" role="img" aria-label="Mockup de cronometragem de 1993"></svg></div>
+<div class="playback"><button id="play">Reproduzir sequência de qualy</button><button id="reset">Restaurar ajustes</button><span id="phase" role="status" aria-live="polite">Prévia estática</span></div>
+<div class="explanation"><span id="evidence" class="badge"></span><h2 id="sceneTitle"></h2><p id="description"></p><a id="source" target="_blank" rel="noreferrer">Abrir trecho de referência ↗</a><p class="muted" id="motion"></p></div>
+</section>
+<aside><h2>Ajustar a prévia</h2><p>Fontes e dimensões independentes. Estes controles demonstram o comportamento esperado no editor.</p>
+<label>Formato<select id="aspect"><option value="classic">4:3 · referência</option><option value="wide" selected>16:9 · adaptação AMS2</option></select></label>
+<label for="nameSize">Fonte dos nomes <output id="nameSizeValue">100%</output><input id="nameSize" type="range" min="60" max="140" value="100"></label>
+<label for="timeSize">Fonte dos tempos <output id="timeSizeValue">100%</output><input id="timeSize" type="range" min="60" max="140" value="100"></label>
+<label for="deltaSize">Fonte do delta <output id="deltaSizeValue">100%</output><input id="deltaSize" type="range" min="60" max="140" value="100"></label>
+<label>Peso dos nomes<select id="weight"><option value="700">700 · referência aproximada</option><option value="600">600</option><option value="400">400</option></select></label>
+<label for="boardWidth">Largura da placa <output id="boardWidthValue">100%</output><input id="boardWidth" type="range" min="70" max="100" value="100"></label>
+<label for="boardHeight">Altura da placa <output id="boardHeightValue">100%</output><input id="boardHeight" type="range" min="80" max="150" value="100"></label>
+<label class="check"><input id="negative" type="checkbox">Simular volta mais lenta</label><label class="check"><input id="portrait" type="checkbox" checked>Retrato demonstrativo na legenda</label>
+<p class="muted">Sem tabela de classificação em tela cheia, conforme sua orientação. Os símbolos de patrocinadores e emissora não fazem parte deste mockup.</p></aside>
+</main>
+<section class="comparison"><h2>Paralelo com o overlay atual</h2><table><thead><tr><th>Elemento</th><th>Hoje · 1998–2001</th><th>Estudo · 1993</th></tr></thead><tbody>
+<tr><td>Volta de qualy</td><td>Qualy Board intercala torre e volta; torre entre 5 e 12 s da volta rápida.</td><td>Placa compacta de volta. Tabela grande excluída; não herdar a janela automática da torre.</td></tr>
+<tr><td>Referência</td><td>Referência à esquerda; jogador à direita.</td><td>Jogador à esquerda; referência à direita. Nome branco e tempos amarelos. Manter a referência até a linha, inclusive numa volta mais lenta.</td></tr>
+<tr><td>Parcial</td><td>Tracker observa S1/S2 e mantém os dados do split.</td><td>Parcial da referência à direita; delta ciano central; parcial concluído do jogador abaixo. Cronômetro continua à esquerda e depois volta à placa curta.</td></tr>
+<tr><td>Resultado</td><td>Posição e delta ao completar; elegibilidade do resultado por 3 s.</td><td>Tempo final à esquerda, posição e delta no centro, referência preservada à direita. Retenção histórica exata ainda precisa de medição.</td></tr>
+<tr><td>Legenda</td><td>Board usa legenda como fallback; nome, carro/equipe e posição.</td><td>Número amarelo, nome branco, equipe amarela e retrato opcional. Foto, nacionalidade e número histórico exigem configuração, não o índice do SDK.</td></tr>
+<tr><td>Setor de corrida</td><td>Vizinho escolhido pela menor distância no setor anterior; inicia ao primeiro dos dois cruzamentos e retém 2 s após o segundo.</td><td>Reaproveitar a regra física autorizada. Sem mockup de setor histórico até localizar uma placa real. Não habilitar por herança dos temas mais recentes.</td></tr>
+<tr><td>Volta mais rápida</td><td>Melhor volta disponível na telemetria; comparativo de três voltas é outra placa.</td><td>Confirmada na Alemanha em 20:33: retrato, piloto, equipe, tempo e velocidade média. Precisa de apresentação própria; não reutilizar o comparativo como se fosse a mesma informação.</td></tr>
+</tbody></table><p>Este estudo não altera o aplicativo publicado. As prévias de entrada/saída usam cortes; as durações da sequência são demonstrativas, sem garantia de equivalência quadro a quadro.</p></section>
+<footer>Referências fornecidas por você · observação no mudo · estudo inicial em 07/10/2026 · <a href="README.md">Evidências e limites</a></footer>
+<script src="preview.js?v=2"></script>
+</body></html>
