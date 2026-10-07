@@ -1,0 +1,365 @@
+using System.Numerics;
+using Ams2.Shared.Profiles;
+using Ams2.OverlayHost.Gfx;
+using Vortice.Win32;
+using Vortice.Win32.Graphics.Direct2D;
+using Vortice.Win32.Graphics.DirectWrite;
+using Vortice.Win32.Numerics;
+using static Vortice.Win32.Apis;
+using D2DGradientStop = Vortice.Win32.Graphics.Direct2D.Common.GradientStop;
+using FigureBegin = Vortice.Win32.Graphics.Direct2D.Common.FigureBegin;
+using FigureEnd = Vortice.Win32.Graphics.Direct2D.Common.FigureEnd;
+
+namespace Ams2.OverlayHost.Theme;
+
+public enum HAlign { Left, Center, Right }
+
+/// <summary>
+/// Superfície de desenho de um widget: aplica o tema (fontes, cores, sombra) e a escala.
+/// Os widgets desenham em unidades de design; <c>scale</c> vira uma transformação do contexto D2D.
+/// Mantém os formatos de texto e o pincel em cache e os refaz quando o device é recriado.
+/// </summary>
+public sealed unsafe class ThemeCanvas : IDisposable
+{
+    readonly DeviceResources _gfx;
+    readonly Dictionary<(FontToken, HAlign), ComPtr<IDWriteTextFormat>> _formats = [];
+    readonly record struct LayoutKey(string Text, FontToken Font, HAlign Align, float Width, float Height);
+    const int LayoutCacheLimit = 512;
+    readonly Dictionary<LayoutKey, ComPtr<IDWriteTextLayout>> _layouts = [];
+    readonly Queue<LayoutKey> _layoutOrder = [];
+
+    void ClearTextResources()
+    {
+        foreach (var layout in _layouts.Values) layout.Dispose();
+        _layouts.Clear(); _layoutOrder.Clear();
+        foreach (var format in _formats.Values) format.Dispose();
+        _formats.Clear();
+    }
+
+    IDWriteTextLayout* Layout(string text, FontToken font, HAlign align, float w, float h)
+    {
+        var key = new LayoutKey(text, font, align, w, h);
+        if (_layouts.TryGetValue(key, out var cached)) return cached.Get();
+        ComPtr<IDWriteTextLayout> layout = default;
+        try
+        {
+            fixed (char* p = text)
+                ThrowIfFailed(_gfx.DWriteFactory->CreateTextLayout(p, (uint)text.Length, Format(font, align), w, h, layout.GetAddressOf()));
+            float tracking = ThemeOverrides.ResolveFont(font, _settings).Tracking;
+            if (tracking != 0)
+            {
+                ComPtr<IDWriteTextLayout1> layout1 = default;
+                ThrowIfFailed(layout.As(ref layout1));
+                using var layout1Scope = layout1;
+                ThrowIfFailed(layout1.Get()->SetCharacterSpacing(0, tracking, 0,
+                    new TextRange { startPosition = 0, length = (uint)text.Length }));
+            }
+            if (_layouts.Count >= LayoutCacheLimit)
+            {
+                var oldest = _layoutOrder.Dequeue();
+                _layouts[oldest].Dispose(); _layouts.Remove(oldest);
+            }
+            _layouts.Add(key, layout); _layoutOrder.Enqueue(key);
+            return layout.Get();
+        }
+        catch { layout.Dispose(); throw; }
+    }
+    ComPtr<ID2D1SolidColorBrush> _brush;
+    int _generation;
+
+    public Theme Theme { get; set; }
+    public float Scale { get; set; }
+    public float WidthScale { get; set; } = 1;
+    public float HeightScale { get; set; } = 1;
+    WidgetSettings _settings = new() { Id = "" };
+    public void ConfigureTypography(WidgetSettings settings)
+    {
+        if (_settings.TextScale == settings.TextScale && _settings.FontWeight == settings.FontWeight &&
+            ReferenceEquals(_settings.ElementFonts, settings.ElementFonts)) return;
+        _settings = settings;
+        ClearTextResources();
+    }
+    /// <summary>Opacidade global do widget (0..1): multiplica o alfa de toda cor desenhada.</summary>
+    public float Opacity { get; set; } = 1f;
+
+    string? _fontOverride;
+    /// <summary>Familia que substitui as fontes de texto do tema; a familia de numeros do tema nunca e trocada.</summary>
+    public string? FontOverride
+    {
+        get => _fontOverride;
+        set
+        {
+            if (_fontOverride == value) return;
+            _fontOverride = value;
+            ClearTextResources();
+        }
+    }
+
+    public ThemeCanvas(DeviceResources gfx, Theme theme, float scale = 1f)
+    {
+        _gfx = gfx; Theme = theme; Scale = scale;
+        _generation = gfx.Generation;
+    }
+
+    ID2D1DeviceContext* Dc => _gfx.Context;
+
+    void EnsureResources()
+    {
+        if (_generation != _gfx.Generation)
+        {
+            ClearTextResources();
+            _brush.Dispose();
+            _brush = default;
+            _generation = _gfx.Generation;
+        }
+        if (_brush.Get() == null)
+        {
+            var c = new Color4(1, 1, 1, 1);
+            ComPtr<ID2D1SolidColorBrush> b = default;
+            ThrowIfFailed(Dc->CreateSolidColorBrush(&c, null, b.GetAddressOf()));
+            _brush = b;
+        }
+    }
+
+    /// <summary>Inicia o quadro: aplica a escala. Chamar entre BeginFrame/EndFrame do <see cref="DeviceResources"/>.</summary>
+    public void Begin()
+    {
+        EnsureResources();
+        var m = Matrix3x2.CreateScale(Scale * WidthScale, Scale * HeightScale);
+        Dc->SetTransform(&m);
+    }
+
+    public void End()
+    {
+        var id = Matrix3x2.Identity;
+        Dc->SetTransform(&id);
+    }
+
+    /// <summary>Scoped design-coordinate clip; disposal always balances the D2D clip stack.</summary>
+    public IDisposable Clip(float x, float y, float w, float h)
+    {
+        var rect = new RectF(x, y, x + Math.Max(0, w), y + Math.Max(0, h));
+        Dc->PushAxisAlignedClip(&rect, AntialiasMode.Aliased);
+        return new ClipScope(this);
+    }
+
+    sealed class ClipScope(ThemeCanvas canvas) : IDisposable
+    {
+        ThemeCanvas? _canvas = canvas;
+        public void Dispose()
+        {
+            if (_canvas is not { } c) return;
+            _canvas = null;
+            c.Dc->PopAxisAlignedClip();
+        }
+    }
+
+    IDWriteTextFormat* Format(FontToken font, HAlign align)
+    {
+        if (_formats.TryGetValue((font, align), out var cached)) return cached.Get();
+        var requested = font;
+        font = ThemeOverrides.ResolveFont(font, _settings);
+        // So a familia de numeros "especial" (1998: F1 Broadcast, sem letras) e preservada; quando numeros e texto usam a mesma familia (2004, 2010s) a troca vale para tudo.
+        bool specialNumbers = Theme.Numbers.Family != Theme.Text.Family;
+        if (_fontOverride is not null && !(specialNumbers && font.Family == Theme.Numbers.Family)) font = font with { Family = _fontOverride };
+        // "Formula1 Display" e uma familia virtual: cada peso e um arquivo proprio (Regular/Bold), escolhido pelo peso pedido.
+        if (font.Family == "Formula1 Display") font = font with { Family = font.Weight >= 600 ? "Formula1 Disp B" : "Formula1 Disp R", Weight = 400 };
+        bool has = _gfx.Fonts.Has(font.Family);
+        // Fora da coleção própria: fonte instalada no Windows (Verdana do tema 2018, fonte escolhida no Control Center); senão Segoe UI.
+        string family = has || _gfx.Fonts.SystemHas((IDWriteFactory*)_gfx.DWriteFactory, font.Family) ? font.Family : "Segoe UI";
+        var collection = has ? (IDWriteFontCollection*)_gfx.Fonts.Collection : null;
+        var fmt = _gfx.DWriteFactory->CreateTextFormat(family, collection, font.Size,
+            fontWeight: (FontWeight)font.Weight, fontStyle: font.Italic ? FontStyle.Italic : FontStyle.Normal, localeName: "en-us");
+        ThrowIfFailed(fmt.Get()->SetParagraphAlignment(ParagraphAlignment.Center));
+        ThrowIfFailed(fmt.Get()->SetWordWrapping(WordWrapping.NoWrap));
+        ThrowIfFailed(fmt.Get()->SetTextAlignment(align switch
+        {
+            HAlign.Center => TextAlignment.Center,
+            HAlign.Right => TextAlignment.Trailing,
+            _ => TextAlignment.Leading,
+        }));
+        _formats[(requested, align)] = fmt;
+        return fmt.Get();
+    }
+
+    ID2D1Brush* Solid(Color4 c)
+    {
+        c = new Color4(c.R, c.G, c.B, c.A * Opacity);
+        _brush.Get()->SetColor(&c);
+        return (ID2D1Brush*)_brush.Get();
+    }
+
+    public void FillRect(float x, float y, float w, float h, Color4 color)
+    {
+        var r = new RectF(x, y, x + w, y + h);
+        Dc->FillRectangle(&r, Solid(color));
+    }
+
+    public void FillEllipse(float cx, float cy, float rx, float ry, Color4 color)
+    {
+        var e = new Ellipse { point = new Vector2(cx, cy), radiusX = rx, radiusY = ry };
+        Dc->FillEllipse(&e, Solid(color));
+    }
+
+    public void FillRoundRect(float x, float y, float w, float h, float radius, Color4 color)
+    {
+        if (radius <= 0.5f) { FillRect(x, y, w, h, color); return; }
+        var rr = new RoundedRect { rect = new RectF(x, y, x + w, y + h), radiusX = radius, radiusY = radius };
+        Dc->FillRoundedRectangle(&rr, Solid(color));
+    }
+
+    /// <summary>Polígono convexo ou não, preenchido (vértices em unidades de design, fechado automaticamente).</summary>
+    public void FillPolygon(ReadOnlySpan<Vector2> points, Color4 color)
+    {
+        if (points.Length < 3) return;
+        ComPtr<ID2D1Factory> factory = default;
+        Dc->GetFactory(factory.GetAddressOf());
+        ComPtr<ID2D1PathGeometry> path = default;
+        ThrowIfFailed(factory.Get()->CreatePathGeometry(path.GetAddressOf()));
+        ComPtr<ID2D1GeometrySink> sink = default;
+        ThrowIfFailed(path.Get()->Open(sink.GetAddressOf()));
+        sink.Get()->BeginFigure(points[0], FigureBegin.Filled);
+        for (int i = 1; i < points.Length; i++) sink.Get()->AddLine(points[i]);
+        sink.Get()->EndFigure(FigureEnd.Closed);
+        ThrowIfFailed(sink.Get()->Close());
+        Dc->FillGeometry((ID2D1Geometry*)path.Get(), Solid(color), null);
+        sink.Dispose(); path.Dispose(); factory.Dispose();
+    }
+
+    /// <summary>Paralelogramo com bases horizontais: base inferior em [x, x+w] e a superior deslocada de <paramref name="slant"/> (positivo = "/").</summary>
+    public void FillSlant(float x, float y, float w, float h, float slant, Color4 color)
+        => FillPolygon([new(x, y + h), new(x + slant, y), new(x + slant + w, y), new(x + w, y + h)], color);
+
+    public void StrokeEllipse(float cx, float cy, float rx, float ry, Color4 color, float width)
+    {
+        var e = new Ellipse { point = new Vector2(cx, cy), radiusX = rx, radiusY = ry };
+        Dc->DrawEllipse(&e, Solid(color), width, null);
+    }
+
+    public void Line(float x1, float y1, float x2, float y2, Color4 color, float width = 1f)
+        => Dc->DrawLine(new Vector2(x1, y1), new Vector2(x2, y2), Solid(color), width, null);
+
+    /// <summary>Traco continuo com vertices fracionarios, entregue em uma unica geometria.</summary>
+    public void Polyline(ReadOnlySpan<Vector2> points, Color4 color, float width = 1f)
+    {
+        if (points.Length < 2) return;
+        using ComPtr<ID2D1Factory> factory = default;
+        Dc->GetFactory(factory.GetAddressOf());
+        using ComPtr<ID2D1PathGeometry> path = default;
+        ThrowIfFailed(factory.Get()->CreatePathGeometry(path.GetAddressOf()));
+        using ComPtr<ID2D1GeometrySink> sink = default;
+        ThrowIfFailed(path.Get()->Open(sink.GetAddressOf()));
+        sink.Get()->BeginFigure(points[0], FigureBegin.Hollow);
+        for (int i = 1; i < points.Length; i++) sink.Get()->AddLine(points[i]);
+        sink.Get()->EndFigure(FigureEnd.Open);
+        ThrowIfFailed(sink.Get()->Close());
+        Dc->DrawGeometry((ID2D1Geometry*)path.Get(), Solid(color), width, null);
+    }
+
+    public void StrokeRect(float x, float y, float w, float h, Color4 color, float width)
+    {
+        float i = width / 2;
+        var r = new RectF(x + i, y + i, x + w - i, y + h - i);
+        Dc->DrawRectangle(&r, Solid(color), width, null);
+    }
+
+    /// <summary>Painel do tema: preenchimento + borda, com canto arredondado se o token pedir.</summary>
+    public void Panel(float x, float y, float w, float h)
+    {
+        var t = Theme;
+        if (t.CornerRadius <= 0.5f)
+        {
+            FillRect(x, y, w, h, t.PanelFill);
+            if (t.BorderWidth > 0) StrokeRect(x, y, w, h, t.PanelBorder, t.BorderWidth);
+            return;
+        }
+        var rr = new RoundedRect { rect = new RectF(x, y, x + w, y + h), radiusX = t.CornerRadius, radiusY = t.CornerRadius };
+        Dc->FillRoundedRectangle(&rr, Solid(t.PanelFill));
+        if (t.BorderWidth > 0)
+        {
+            float i = t.BorderWidth / 2;
+            rr.rect = new RectF(x + i, y + i, x + w - i, y + h - i);
+            Dc->DrawRoundedRectangle(&rr, Solid(t.PanelBorder), t.BorderWidth, null);
+        }
+    }
+
+    /// <summary>Barra horizontal com gradiente (a "barra dourada" ao lado do título).</summary>
+    public void GradientBar(float x, float y, float w, float h, BarStop[] stops)
+    {
+        var d2d = new D2DGradientStop[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            var sc0 = stops[i].Color; var sc = new Color4(sc0.R, sc0.G, sc0.B, sc0.A * Opacity);
+            d2d[i] = new D2DGradientStop { position = stops[i].Position, color = sc };
+        }
+        ComPtr<ID2D1GradientStopCollection> collection = default;
+        fixed (D2DGradientStop* p = d2d)
+            ThrowIfFailed(Dc->CreateGradientStopCollection(p, (uint)d2d.Length, Gamma.Gamma_2_2, ExtendMode.Clamp, collection.GetAddressOf()));
+        using var _c = collection;
+        var props = new LinearGradientBrushProperties { startPoint = new Vector2(x, 0), endPoint = new Vector2(x + w, 0) };
+        ComPtr<ID2D1LinearGradientBrush> brush = default;
+        ThrowIfFailed(Dc->CreateLinearGradientBrush(&props, null, collection.Get(), brush.GetAddressOf()));
+        using var _b = brush;
+        var r = new RectF(x, y, x + w, y + h);
+        Dc->FillRectangle(&r, (ID2D1Brush*)brush.Get());
+    }
+
+    /// <summary>Retângulo com gradiente vertical (paradas com posição 0..1 de cima para baixo).</summary>
+    public void VGradientRect(float x, float y, float w, float h, BarStop[] stops)
+    {
+        var d2d = new D2DGradientStop[stops.Length];
+        for (int i = 0; i < stops.Length; i++)
+        {
+            var sc0 = stops[i].Color; var sc = new Color4(sc0.R, sc0.G, sc0.B, sc0.A * Opacity);
+            d2d[i] = new D2DGradientStop { position = stops[i].Position, color = sc };
+        }
+        ComPtr<ID2D1GradientStopCollection> collection = default;
+        fixed (D2DGradientStop* p = d2d)
+            ThrowIfFailed(Dc->CreateGradientStopCollection(p, (uint)d2d.Length, Gamma.Gamma_2_2, ExtendMode.Clamp, collection.GetAddressOf()));
+        using var _c = collection;
+        var props = new LinearGradientBrushProperties { startPoint = new Vector2(0, y), endPoint = new Vector2(0, y + h) };
+        ComPtr<ID2D1LinearGradientBrush> brush = default;
+        ThrowIfFailed(Dc->CreateLinearGradientBrush(&props, null, collection.Get(), brush.GetAddressOf()));
+        using var _b = brush;
+        var r = new RectF(x, y, x + w, y + h);
+        Dc->FillRectangle(&r, (ID2D1Brush*)brush.Get());
+    }
+
+    /// <summary>Largura natural do texto em unidades de design.</summary>
+    public float Measure(string text, FontToken font)
+    {
+        if (text.Length == 0) return 0;
+        var layout = Layout(text, font, HAlign.Left, 4000f, 200f);
+        TextMetrics m;
+        ThrowIfFailed(layout->GetMetrics(&m));
+        return m.widthIncludingTrailingWhitespace / WidthScale;
+    }
+
+    /// <summary>Texto centralizado verticalmente na caixa, com sombra opcional (desenhada antes, deslocada).</summary>
+    public void Text(string text, FontToken font, float x, float y, float w, float h, Color4 color, HAlign align = HAlign.Left, ShadowToken? shadow = null)
+    {
+        if (text.Length == 0) return;
+        // Geometry can stretch independently; glyphs retain their size and proportions.
+        var textTransform = Matrix3x2.CreateScale(Scale);
+        Dc->SetTransform(&textTransform);
+        x *= WidthScale; y *= HeightScale; w *= WidthScale; h *= HeightScale;
+        try
+        {
+            var layout = Layout(text, font, align, w, h);
+            if (shadow is not null)
+                Dc->DrawTextLayout(new Vector2(x + shadow.OffsetX, y + shadow.OffsetY), layout, Solid(shadow.Color), DrawTextOptions.None);
+            Dc->DrawTextLayout(new Vector2(x, y), layout, Solid(color), DrawTextOptions.None);
+        }
+        finally
+        {
+            var geometryTransform = Matrix3x2.CreateScale(Scale * WidthScale, Scale * HeightScale);
+            Dc->SetTransform(&geometryTransform);
+        }
+    }
+
+    public void Dispose()
+    {
+        ClearTextResources();
+        _brush.Dispose();
+    }
+}

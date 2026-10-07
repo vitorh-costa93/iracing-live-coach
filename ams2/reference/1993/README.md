@@ -34,6 +34,12 @@ Retrato é símbolo original demonstrativo; fotos, número de corrida histórico
 
 Os caminhos acima são relativos a `ams2/src/Ams2.OverlayHost`, `Ams2.Core` ou `Ams2.Shared` conforme o módulo. Levantamento do estado local atual; não prova comportamento em pista. Nenhuma alteração em V2/V3 ou no runtime AMS2 nesta etapa.
 
+## Revisão do usuário — 07/10/2026
+
+Composição de qualy aprovada para seguir. A prévia permite retirar e acrescentar a referência mantendo o cronômetro, como solicitado para a primeira volta lançada. O levantamento de corrida ainda está incompleto: incluir a placa de gap para o carro fisicamente mais próximo em um ponto único da volta. Ver [contrato de gap](race-gap.md); não repetir a cada setor nem declarar desenho/gatilho histórico confirmado sem um trecho.
+
+A regra geral de qualy foi revisada: tabela apenas uma passagem na volta de saída, depois legenda com posição e gap para o líder. O fluxo anterior de torre entre 5–12 segundos de cada volta rápida deve ser removido em todos os temas. O mapa de código acima documenta o estado anterior a essa correção.
+
 ## Próximo passo
 
 Usuário revisar composição, fontes e proporções. Implementar um widget por etapa após essa revisão. Para fidelidade dos widgets de corrida restantes e animações precisas, localizar trechos em que as placas efetivamente apareçam; não converter propostas em requisitos históricos sem evidência.

@@ -1,0 +1,392 @@
+using System.Runtime.InteropServices;
+using Ams2.Core.Calc;
+using Ams2.Core.Raw;
+using Ams2.Core.Reading;
+
+namespace Ams2.Core.Tests;
+
+public class RadarTests
+{
+    [Fact]
+    public void Native_render_gap_moves_between_ticks_and_stops_predicting_after_50ms()
+    {
+        var sim = Scene(0, (0, -3.5));
+        sim.Speeds[1] = 70;
+        var pose = sim.Poses[1];
+        sim.Poses[1] = (pose.X, pose.Y, pose.Z, 0.1);
+        var f = Run(sim);
+        var car = f.Cars[0];
+        Assert.Equal(f.LeftGap, f.RenderGap(true, -1));
+        Assert.Equal(Math.Max(0, Math.Abs(car.Right + car.VRight * 0.01) - f.CarWidthMeters), f.RenderGap(true, 0.01), 6);
+        Assert.NotEqual(f.LeftGap, f.RenderGap(true, 0.01));
+        Assert.Equal(f.RenderGap(true, 0.05), f.RenderGap(true, 10));
+        Assert.True(double.IsNaN(f.RenderGap(false, 0.01)));
+        Assert.True(double.IsNaN(Run(Scene(0, (5, -3.5))).RenderGap(true, 0.01)));
+    }
+    const double Len = 5000;
+
+    /// <summary>Cena: o jogador (indice 0) em (px, pz) com o yaw do jogo; cada carro de <paramref name="others"/> a (frente, direita) metros dele.
+    /// Convencao confirmada em sessao real: rumo = yaw + pi, avanco = (sin h, cos h), direita = (cos h, -sin h).</summary>
+    static Sim Scene(double yaw, params (double Fwd, double Right)[] others)
+    {
+        var cars = new (double, double)[others.Length + 1];
+        cars[0] = (1000, 60);
+        for (int i = 0; i < others.Length; i++) cars[i + 1] = (1000 + others[i].Fwd, 60);
+        var sim = new Sim(Len, cars) { PlayerIndex = 0 };
+        const double px = 120, pz = -340, py = 5;
+        double h = yaw + Math.PI, fx = Math.Sin(h), fz = Math.Cos(h), rx = Math.Cos(h), rz = -Math.Sin(h);
+        sim.Poses[0] = (px, py, pz, yaw);
+        for (int i = 0; i < others.Length; i++)
+            sim.Poses[i + 1] = (px + others[i].Fwd * fx + others[i].Right * rx, py, pz + others[i].Fwd * fz + others[i].Right * rz, yaw);
+        return sim;
+    }
+
+    static RadarFrame Run(Sim sim, RadarOptions? o = null)
+    {
+        var t = new RadarTracker();
+        if (o is not null) t.Options = o;
+        return t.Update(sim.Snapshot(), 0);
+    }
+
+    [Fact]
+    public void Car_on_the_left_and_on_the_right_are_alerts_with_the_correct_side()
+    {
+        var f = Run(Scene(1.327, (0.5, -3.5), (-2, 3.5)));
+        Assert.True(f.Valid);
+        Assert.Equal(2, f.Count);
+        var left = f.Cars[0]; var right = f.Cars[1];
+        Assert.Equal((RadarSide.Left, RadarZone.Alert), (left.Side, left.Zone));
+        Assert.Equal((RadarSide.Right, RadarZone.Alert), (right.Side, right.Zone));
+        Assert.Equal(-3.5, left.Right, 3); Assert.Equal(0.5, left.Forward, 3);
+        Assert.True(f.AlertLeft && f.AlertRight);
+        Assert.Equal(0.5, f.LeftOffset, 3); Assert.Equal(-2, f.RightOffset, 3);
+    }
+
+    [Fact]
+    public void Car_behind_and_ahead_in_the_same_lane_are_warnings_not_side_alerts()
+    {
+        var f = Run(Scene(-2.88, (-6, 0.2), (10, -0.3), (14, 0)));
+        Assert.Equal(3, f.Count);
+        var behind = f.Cars[0]; var ahead = f.Cars[1]; var far = f.Cars[2];
+        Assert.Equal((-6f, RadarSide.Center, RadarZone.Warn), (behind.Forward, behind.Side, behind.Zone));
+        Assert.Equal((10f, RadarSide.Center, RadarZone.Warn), (ahead.Forward, ahead.Side, ahead.Zone));
+        Assert.Equal(RadarZone.Far, far.Zone);
+        Assert.False(f.AlertLeft || f.AlertRight);
+        Assert.Contains(f.Cars.ToArray(), c => c.Forward < 0);   // atras = frente negativa
+    }
+
+    [Theory]
+    [InlineData(0.0)] [InlineData(1.327)] [InlineData(-2.88)] [InlineData(Math.PI)] [InlineData(-Math.PI + 0.01)] [InlineData(2.5)]
+    public void Result_does_not_depend_on_the_player_orientation(double yaw)
+    {
+        var f = Run(Scene(yaw, (4, -3), (-9, 2.5), (11, 0.4)));
+        Assert.Equal(3, f.Count);
+        // ordenado por |frente|: 4, -9, 11
+        Assert.Equal(4, f.Cars[0].Forward, 2); Assert.Equal(-3, f.Cars[0].Right, 2);
+        Assert.Equal(-9, f.Cars[1].Forward, 2); Assert.Equal(2.5, f.Cars[1].Right, 2);
+        Assert.Equal(11, f.Cars[2].Forward, 2); Assert.Equal(0.4, f.Cars[2].Right, 2);
+        Assert.Equal(RadarSide.Left, f.Cars[0].Side); Assert.Equal(RadarSide.Right, f.Cars[1].Side); Assert.Equal(RadarSide.Center, f.Cars[2].Side);
+    }
+
+    [Fact]
+    public void Relative_heading_and_speed_come_from_yaw_difference_and_speeds()
+    {
+        var sim = Scene(0.5, (5, 3.5));
+        sim.Speeds[0] = 60; sim.Speeds[1] = 70;
+        var p = sim.Poses[1]; sim.Poses[1] = (p.X, p.Y, p.Z, 0.5 + 0.2);   // o outro carro virou 0,2 rad para o mesmo lado do yaw
+        var c = Run(sim).Cars[0];
+        Assert.Equal(0.2, c.RelHeading, 3);
+        Assert.Equal(10, c.RelSpeed, 3);
+        Assert.Equal(70 * Math.Cos(0.2) - 60, c.VForward, 2);
+    }
+
+
+    // ---- Estilo nativo (indicador de proximidade): so carro realmente ao lado, com a distancia lateral borda a borda ----
+
+    [Fact]
+    public void Native_car_alongside_on_the_left_or_right_gives_the_lateral_gap_of_that_side_only()
+    {
+        var left = Run(Scene(1.327, (0.5, -3.5)));
+        Assert.True(left.AlongLeft); Assert.False(left.AlongRight);
+        Assert.Equal(1.5, left.LeftGap, 3);                         // 3,5 m centro a centro - 2,0 m de largura
+        var right = Run(Scene(-2.88, (-2, 4.1)));
+        Assert.True(right.AlongRight); Assert.False(right.AlongLeft);
+        Assert.Equal(2.1, right.RightGap, 3);
+    }
+
+    [Theory]
+    [InlineData(3.9, true)] [InlineData(4.3, false)] [InlineData(-3.9, true)] [InlineData(-4.3, false)] [InlineData(7.8, false)] [InlineData(0.2, true)]
+    public void Native_marker_needs_longitudinal_overlap_a_car_4_m_ahead_or_behind_is_not_alongside(double fwd, bool alongside)
+    {
+        // Observado no AMS2: marcador com 3,3 m a frente; sem marcador com 4,3 m (lateral ~4 m).
+        var f = Run(Scene(0.7, (fwd, 4.0)));
+        Assert.Equal(alongside, f.AlongRight);
+        Assert.False(f.AlongLeft);
+    }
+
+    [Fact]
+    public void Native_cars_on_both_sides_are_reported_simultaneously_with_their_own_gaps_and_the_nearest_wins()
+    {
+        var f = Run(Scene(2.0, (1, -5.0), (-1, 3.2), (2, 7.0)));
+        Assert.True(f.AlongLeft && f.AlongRight);
+        Assert.Equal(3.0, f.LeftGap, 3);
+        Assert.Equal(1.2, f.RightGap, 3);                           // dois carros a direita: o de 3,2 m (gap 1,2) vence o de 7 m
+    }
+
+    [Fact]
+    public void Native_lateral_window_is_9_m_and_overlapping_cars_have_gap_zero()
+    {
+        Assert.False(Run(Scene(0.0, (0, 9.5)), new RadarOptions { LateralMeters = 12 }).AlongRight);
+        Assert.Equal(7.0, Run(Scene(0.0, (0, 9.0)), new RadarOptions { LateralMeters = 12 }).RightGap, 3);
+        Assert.Equal(0.0, Run(Scene(0.0, (1, 1.2))).RightGap, 3);
+    }
+
+    [Fact]
+    public void Native_alongside_window_follows_the_sensitivity_and_never_comes_from_far_cars()
+    {
+        var sim = Scene(0.0, (5.5, 4.0));
+        Assert.False(Run(sim).AlongRight);
+        Assert.True(Run(sim, new RadarOptions { Sensitivity = 1.5 }).AlongRight);                  // 4 x 1,5 = 6 m
+        Assert.False(Run(Scene(0.0, (3.0, 4.0)), new RadarOptions { Sensitivity = 0.5 }).AlongRight);   // 4 x 0,5 = 2 m
+        Assert.False(Run(Scene(0.0, (12, 0.5), (-10, -1))).AlongLeft);                              // proximos a frente/atras, nunca ao lado
+    }
+
+    [Fact]
+    public void Native_lapped_car_alongside_still_counts_and_a_car_ahead_in_the_same_lane_does_not()
+    {
+        var sim = new Sim(Len, (3 * Len + 1000, 60), (1000, 55), (1000, 55)) { PlayerIndex = 0 };
+        sim.Poses[0] = (0, 0, 0, Math.PI);
+        sim.Poses[1] = (-3.4, 0, 0.5, Math.PI);                      // retardatario a esquerda, ao lado
+        sim.Poses[2] = (0, 0, 8, Math.PI);                           // outro, 8 m a frente na mesma linha
+        var f = Run(sim);
+        Assert.True(f.AlongLeft); Assert.Equal(1.4, f.LeftGap, 3);
+        Assert.False(f.AlongRight);
+    }
+    [Fact]
+    public void Lapped_cars_count_because_the_radar_is_geometric()
+    {
+        // O retardatario esta 2 voltas atras mas ao lado do jogador: aparece e e Alert.
+        var sim = new Sim(Len, (3 * Len + 1000, 60), (1000, 55)) { PlayerIndex = 0 };
+        sim.Poses[0] = (0, 0, 0, Math.PI);          // rumo 2 pi = 0: avanco +z, direita +x
+        sim.Poses[1] = (3.2, 0, -1, Math.PI);
+        var f = Run(sim);
+        Assert.Equal(1, f.Count);
+        Assert.Equal((RadarSide.Right, RadarZone.Alert), (f.Cars[0].Side, f.Cars[0].Zone));
+        Assert.Equal(3.2, f.Cars[0].Right, 3); Assert.Equal(-1, f.Cars[0].Forward, 3);
+    }
+
+    [Fact]
+    public void Yaw_pi_means_driving_toward_plus_z_and_right_is_plus_x()
+    {
+        var sim = new Sim(Len, (1000, 60), (1010, 60), (1000, 60)) { PlayerIndex = 0 };
+        sim.Poses[0] = (0, 0, 0, Math.PI);
+        sim.Poses[1] = (0, 0, 10, Math.PI);         // 10 m para +z = a frente
+        sim.Poses[2] = (3, 0, 0, Math.PI);          // 3 m para +x = a direita
+        var f = Run(sim);
+        var ahead = f.Cars.ToArray().Single(c => c.Index == 1); var side = f.Cars.ToArray().Single(c => c.Index == 2);
+        Assert.Equal(10, ahead.Forward, 3); Assert.Equal(0, ahead.Right, 3);
+        Assert.Equal(3, side.Right, 3); Assert.Equal(0, side.Forward, 3);
+    }
+
+    [Fact]
+    public void Cars_in_the_pit_lane_are_ignored_unless_the_player_is_also_there()
+    {
+        var sim = Scene(0.3, (4, 3.5), (-5, -3.5));
+        sim.Pit[1] = PitState.InPit;
+        var f = Run(sim);
+        Assert.Equal(1, f.Count); Assert.Equal(2, f.Cars[0].Index);
+
+        sim.Pit[0] = PitState.DrivingOutOfPits;      // o jogador tambem esta nos boxes: o carro 1 volta a contar, o 2 (na pista) sai
+        sim.Pit[1] = PitState.DrivingIntoPits;
+        f = Run(sim);
+        Assert.Equal(1, f.Count); Assert.Equal(1, f.Cars[0].Index);
+
+        sim.Pit[0] = PitState.None; sim.Pit[1] = PitState.InGarage;   // garagem: nunca
+        f = Run(sim);
+        Assert.Equal(2, f.Cars[0].Index);
+    }
+
+    [Fact]
+    public void Range_is_configurable_and_the_lateral_window_applies()
+    {
+        var sim = Scene(1.0, (20, 0), (-18, 2), (3, 9));
+        var def = Run(sim);                                              // alcance 15 m, lateral 7,5 m: ninguem
+        Assert.Equal(0, def.Count); Assert.True(def.Valid); Assert.False(def.AnyNear);
+        var wide = Run(sim, new RadarOptions { RangeMeters = 25 });
+        Assert.Equal(2, wide.Count);                                     // o de 9 m de lateral continua fora
+        Assert.Equal(25, wide.RangeMeters);
+        var clamp = new RadarTracker { Options = new RadarOptions { RangeMeters = 500 } };
+        Assert.Equal(RadarOptions.MaxRange, clamp.Options.RangeMeters);
+        clamp.Options = new RadarOptions { RangeMeters = 1, Sensitivity = double.NaN };
+        Assert.Equal((RadarOptions.MinRange, 1.0), (clamp.Options.RangeMeters, clamp.Options.Sensitivity));
+    }
+
+    [Fact]
+    public void Sensitivity_scales_the_alert_window()
+    {
+        var sim = Scene(0.0, (9, 3.5));
+        Assert.Equal(RadarZone.Warn, Run(sim).Cars[0].Zone);                                              // 9 m: fora dos 7 m
+        Assert.Equal(RadarZone.Alert, Run(sim, new RadarOptions { Sensitivity = 1.5 }).Cars[0].Zone);     // 7 x 1,5 = 10,5 m
+        Assert.Equal(RadarZone.Far, Run(Scene(0.0, (13, 3.5)), new RadarOptions { Sensitivity = 0.5 }).Cars[0].Zone);   // 12 x 0,5 = 6 m
+    }
+
+    [Fact]
+    public void Parallel_track_sections_and_bridges_are_not_neighbours()
+    {
+        // 3 m ao lado no mapa, mas 2,5 km de distancia na volta (pista paralela).
+        var sim = new Sim(Len, (1000, 60), (3500, 60), (1005, 60), (1000, 60)) { PlayerIndex = 0 };
+        sim.Poses[0] = (0, 0, 0, Math.PI);
+        sim.Poses[1] = (3, 0, 0, Math.PI);
+        sim.Poses[2] = (3, 6, 2, Math.PI);          // viaduto: 6 m acima
+        sim.Poses[3] = (-3, 0.5, 0, Math.PI);       // este sim e vizinho (mesma altura, mesma volta)
+        var f = Run(sim);
+        Assert.Equal([3], f.Cars.ToArray().Select(c => c.Index).ToArray());
+    }
+
+    [Fact]
+    public void No_data_outside_a_session_without_a_pose_or_when_alone()
+    {
+        var sim = Scene(0.4, (4, 3));
+        var snap = sim.Snapshot();
+        var t = new RadarTracker();
+        Assert.False(t.Update(snap with { InSession = false }, 0).Valid);
+        Assert.False(RadarFrame.Empty.Valid);
+        Assert.False(t.Update(snap with { Player = null }, 0).Valid);
+
+        sim.Poses.Remove(0);                         // sem pose do jogador
+        Assert.False(Run(sim).Valid);
+
+        var alone = new Sim(Len, (1000, 60)) { PlayerIndex = 0 };
+        alone.Poses[0] = (1, 2, 3, 0.5);
+        Assert.False(Run(alone).Valid);              // sozinho na pista: nada a mostrar
+
+        var garage = new Sim(Len, (1000, 60), (1000, 0)) { PlayerIndex = 0 };
+        garage.Poses[0] = (1, 2, 3, 0.5); garage.Poses[1] = (3, 2, 3, 0.5); garage.Pit[1] = PitState.InGarage;
+        Assert.False(Run(garage).Valid);             // os outros estao na garagem
+    }
+
+    [Fact]
+    public void Qualifying_roster_without_opponent_poses_does_not_enable_radar()
+    {
+        var sim = Scene(0.4, (4, 3));
+        sim.Kind = SessionKind.Qualify;
+        var tracker = new RadarTracker();
+        Assert.True(tracker.Update(sim.Snapshot(), 0).Valid);
+
+        sim.Poses.Remove(1); // Participante ativo na tabela, sem carro fisico informado.
+        var solo = tracker.Update(sim.Snapshot(), 1);
+        Assert.False(solo.Valid);
+        Assert.Equal(0, solo.Count);
+        Assert.False(solo.AlertLeft || solo.AlertRight || solo.AlongLeft || solo.AlongRight);
+        Assert.Same(solo, tracker.Current);
+
+        sim.Poses[1] = (122, 5, -340, 0.4);
+        Assert.True(tracker.Update(sim.Snapshot(), 2).Valid);
+    }
+
+    [Fact]
+    public void Qualifying_with_one_participant_is_hidden_but_opponents_remain_visible()
+    {
+        var solo = Scene(0.4);
+        solo.Kind = SessionKind.Qualify;
+        Assert.False(Run(solo).Valid);
+
+        var multiplayer = Scene(0.4, (2, 3));
+        multiplayer.Kind = SessionKind.Qualify;
+        var frame = Run(multiplayer);
+        Assert.True(frame.Valid);
+        Assert.Equal(1, frame.Count);
+        Assert.True(frame.AlertRight);
+
+        var distant = Scene(0.4, (100, 3));
+        distant.Kind = SessionKind.Qualify;
+        Assert.True(Run(distant).Valid); // Mantem a opcao painel sempre visivel com oponente na pista.
+        Assert.Equal(0, Run(distant).Count);
+    }
+
+    [Fact]
+    public void Qualifying_raw_active_participants_without_pose_do_not_count_as_traffic()
+    {
+        var memory = new FakeMemory { Raw = { SessionState = 3, ViewedParticipantIndex = 0 } };
+        memory.SetCar(0, "Player", "Car", "Class", 1, 1000);
+        memory.SetCar(1, "Opponent", "Car", "Class", 2, 1000);
+        memory.Raw.Participants[0].WorldPosition[0] = 10;
+        var snapshot = SnapshotMapper.Map(in memory.Raw);
+        Assert.Equal(SessionKind.Qualify, snapshot.Kind);
+        Assert.Equal(2, snapshot.Cars.Count);
+        Assert.False(new RadarTracker().Update(snapshot, 0).Valid);
+
+        memory.Raw.Participants[1].WorldPosition[0] = 13;
+        var multiplayer = new RadarTracker().Update(SnapshotMapper.Map(in memory.Raw), 1);
+        Assert.True(multiplayer.Valid);
+        Assert.Equal(1, multiplayer.Count);
+    }
+
+    [Fact]
+    public void Closest_cars_first_and_capped_to_the_frame_capacity()
+    {
+        var others = Enumerable.Range(0, 24).Select(i => (Fwd: -14.0 + i * 1.2, Right: i % 2 == 0 ? 3.0 : -3.0)).ToArray();
+        var f = Run(Scene(0.7, others));
+        Assert.Equal(RadarFrame.Capacity, f.Count);
+        var abs = f.Cars.ToArray().Select(c => Math.Abs(c.Forward)).ToArray();
+        Assert.Equal(abs.Order().ToArray(), abs);
+        Assert.True(abs[^1] < 10);                   // os 16 mais proximos de 24 carros espalhados em 27,6 m
+        var few = Run(Scene(0.7, others), new RadarOptions { MaxCars = 3 });
+        Assert.Equal(3, few.Count);
+    }
+
+    [Fact]
+    public void Update_allocates_nothing_and_published_frames_stay_immutable_for_the_ring()
+    {
+        var snap = Scene(1.1, (3, -3.2), (-6, 3.4), (11, 0.2)).Snapshot();
+        var t = new RadarTracker();
+        for (int i = 0; i < 20; i++) t.Update(snap, i);        // aquecimento (JIT)
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 5000; i++) t.Update(snap, i);
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+
+        var held = t.Update(snap, 100);
+        var copy = held.Cars.ToArray();
+        for (int i = 0; i < RadarTracker.RingSize - 1; i++) t.Update(snap, 101 + i);
+        Assert.Equal(100, held.Time);
+        Assert.Equal(copy, held.Cars.ToArray());
+        Assert.Same(t.Current, t.Current);
+        Assert.Equal(103, t.Current.Time);
+    }
+
+    // ---- Dump real do AMS2 ----
+
+    static RawSharedMemory LoadDump()
+        => MemoryMarshal.Read<RawSharedMemory>(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Data", "ams2-v14-interlagos.bin")));
+
+    [Fact]
+    public void Real_dump_yaw_plus_pi_is_the_direction_of_travel()
+    {
+        // Carros vizinhos na reta de Interlagos (20 a 40 m de distancia na volta): o vetor ate o proximo carro deve ter rumo = yaw + pi.
+        var raw = LoadDump();
+        var s = SnapshotMapper.Map(in raw);
+        var byLap = s.Cars.Where(c => c.LapDistance > 1000 && c.LapDistance < 1300).OrderBy(c => c.LapDistance).ToList();
+        Assert.True(byLap.Count >= 6);
+        for (int i = 0; i + 1 < byLap.Count; i++)
+        {
+            var a = byLap[i]; var b = byLap[i + 1];
+            double heading = Math.Atan2(b.PosX - a.PosX, b.PosZ - a.PosZ);
+            double predicted = a.Yaw + Math.PI;
+            Assert.True(Math.Abs(Math.IEEERemainder(heading - predicted, 2 * Math.PI)) < 0.12, $"carro {a.Index}: rumo {heading:F3} x yaw+pi {predicted:F3}");
+        }
+    }
+
+    [Fact]
+    public void Real_dump_car_27_m_ahead_is_seen_ahead_and_in_the_same_line()
+    {
+        var raw = LoadDump();
+        raw.GameState = 2; raw.ViewedParticipantIndex = 6;                   // lapDist 1112,7; o carro 17 esta em 1139,5 (27 m a frente) e o 13 em 1172 (59 m)
+        var s = SnapshotMapper.Map(in raw);
+        var f = new RadarTracker { Options = new RadarOptions { RangeMeters = 40 } }.Update(s, 0);
+        Assert.True(f.Valid);
+        var c = f.Cars.ToArray().Single(x => x.Index == 17);
+        Assert.InRange(c.Forward, 24, 30);
+        Assert.InRange(Math.Abs(c.Right), 0, 3.5);
+        Assert.Equal(RadarZone.Far, c.Zone);              // 27 m: fora das janelas de aviso
+    }
+}

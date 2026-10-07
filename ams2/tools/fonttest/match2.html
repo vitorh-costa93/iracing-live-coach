@@ -1,0 +1,37 @@
+<!doctype html><meta charset=utf-8>
+<style>body{font:13px monospace;padding:8px}pre{white-space:pre-wrap}</style><pre id=out>carregando...</pre>
+<script>
+const ERA=location.hash.slice(1)||'2010s';
+const GOOGLE=["Open Sans","Noto Sans","Source Sans 3","Lato","Fira Sans","Hind","PT Sans","Istok Web","Mukta","Cabin","Asap","Signika","Nunito Sans","Public Sans","Titillium Web","Encode Sans Semi Expanded","Encode Sans Expanded","Roboto","Ubuntu","Libre Franklin","Work Sans","Karla","DM Sans","Inter","Barlow","Barlow Semi Condensed","Rubik","Mulish","Oxygen","Overpass","Archivo","Archivo Narrow","IBM Plex Sans","Montserrat","Raleway","Oswald","Exo 2","Saira","Saira Semi Condensed","Kanit","Poppins","Lexend","Rajdhani","Manrope","Space Grotesk","Heebo","Assistant","Be Vietnam Pro","Red Hat Display","Sora","Outfit","Figtree","Chivo","Hanken Grotesk","Jost","Urbanist","Anek Latin","Albert Sans","Schibsted Grotesk","Familjen Grotesk","News Cycle","Pathway Gothic One","Arimo"];
+const LOCAL=["Segoe UI","Tahoma","Verdana","Trebuchet MS","Corbel","Calibri","Arial","Candara","Franklin Gothic Medium","Lucida Sans Unicode","Impact","Bahnschrift","Arial Narrow"];
+const WEIGHTS=[400,500,600,700,800,900], LS=[0,0.04,0.08,0.12];
+const link=document.createElement('link');link.rel='stylesheet';
+link.href='https://fonts.googleapis.com/css?family='+GOOGLE.map(n=>n.replace(/ /g,'+')+':400,500,600,700,800,900').join('|')+'&display=swap';document.head.appendChild(link);
+const CFG={
+ '2010s':{light:true,regs:[['r2017.webp',185,575,420,615,'HAMILTON'],['r2017.webp',185,640,330,680,'VETTEL'],['r2017.webp',185,703,350,743,'BOTTAS'],['r2017.webp',185,765,455,805,'RAIKKONEN'],['r2017.webp',838,575,1118,615,'VERSTAPPEN'],['r2017.webp',838,640,1082,680,'RICCIARDO'],['r2017.webp',838,703,1135,743,'HULKENBERG'],['r2017.webp',838,765,1027,805,'ALONSO']]},
+ '1990s':{light:true,regs:[['r98a.webp',115,632,228,662,'IRVINE'],['r98a.webp',115,680,245,712,'FERRARI'],['r98a.webp',795,633,995,662,'FASTEST LAP'],['r98c.webp',732,624,918,652,'HAKKINEN'],['r98c.webp',495,668,615,696,'LAP 10'],['r98d.png',117,632,418,665,'BARRICHELLO'],['r98d.png',117,683,378,713,'STEWART FORD'],['r98b.webp',740,690,935,722,'COULTHARD']]}
+}[ERA];
+const N=[96,24];
+function lumOf(d,i){return d[i]*.3+d[i+1]*.59+d[i+2]*.11}
+function stats(l){const s=[...l].sort((a,b)=>a-b);return [s[Math.floor(s.length*.05)],s[Math.floor(s.length*.98)]]}
+function bbox(l,w,h,thr,light){let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++){const v=l[y*w+x];const ink=light?v>thr:v<thr;if(ink){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}}return [x0,y0,x1-x0+1,y1-y0+1]}
+function resample(l,w,h,bb,light,lo,hi){const a=new Float32Array(N[0]*N[1]);for(let y=0;y<N[1];y++)for(let x=0;x<N[0];x++){const sx=Math.min(w-1,Math.floor(bb[0]+(x+.5)*bb[2]/N[0])),sy=Math.min(h-1,Math.floor(bb[1]+(y+.5)*bb[3]/N[1]));let v=(l[sy*w+sx]-lo)/(hi-lo);v=Math.max(0,Math.min(1,v));a[y*N[0]+x]=light?v:1-v}return a}
+function corr(a,b){let ma=0,mb=0;for(let i=0;i<a.length;i++){ma+=a[i];mb+=b[i]}ma/=a.length;mb/=b.length;let n=0,da=0,db=0;for(let i=0;i<a.length;i++){const x=a[i]-ma,y=b[i]-mb;n+=x*y;da+=x*x;db+=y*y}return n/Math.sqrt(da*db)}
+const load=src=>new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.src=src});
+(async()=>{
+ const imgs={};for(const r of CFG.regs)if(!imgs[r[0]])imgs[r[0]]=await load(r[0]);
+ const refs=CFG.regs.map(r=>{const im=imgs[r[0]];const c=document.createElement('canvas');c.width=im.width;c.height=im.height;const g=c.getContext('2d');g.drawImage(im,0,0);const w=r[3]-r[1],h=r[4]-r[2];const d=g.getImageData(r[1],r[2],w,h).data;const l=new Float32Array(w*h);for(let i=0;i<w*h;i++)l[i]=lumOf(d,i*4);const [lo,hi]=stats(l);const thr=(lo+hi)/2+ (CFG.light?15:0);const bb=bbox(l,w,h,thr,CFG.light);return {t:r[5],ar:bb[2]/bb[3],a:resample(l,w,h,bb,CFG.light,lo,hi)}});
+ await new Promise(r=>setTimeout(r,3000));
+ const res=[];
+ for(const fam of GOOGLE.concat(LOCAL)){for(const w of WEIGHTS){
+  try{await document.fonts.load(`${w} 40px "${fam}"`)}catch(e){}
+  if(GOOGLE.includes(fam)&&!document.fonts.check(`${w} 40px "${fam}"`))continue;
+  for(const ls of LS){let sc=0,arr=0,ok=true;
+   for(const R of refs){const c=document.createElement('canvas');c.width=1800;c.height=220;const g=c.getContext('2d');g.fillStyle=CFG.light?'#000':'#fff';g.fillRect(0,0,c.width,c.height);g.fillStyle=CFG.light?'#fff':'#000';g.font=`${w} 100px "${fam}", monospace`;g.letterSpacing=(ls*100)+'px';g.fillText(R.t,40,150);const d=g.getImageData(0,0,c.width,c.height).data;const l=new Float32Array(c.width*c.height);for(let i=0;i<l.length;i++)l[i]=lumOf(d,i*4);const bb=bbox(l,c.width,c.height,128,CFG.light);if(bb[2]<=2){ok=false;break}sc+=corr(R.a,resample(l,c.width,c.height,bb,CFG.light,0,255));arr+=Math.log((bb[2]/bb[3])/R.ar)}
+   if(ok)res.push({fam,w,ls,score:sc/refs.length,arLog:arr/refs.length});}
+ }}
+ res.sort((a,b)=>(b.score-Math.abs(b.arLog)*0.5)-(a.score-Math.abs(a.arLog)*0.5));
+ document.getElementById('out').textContent=ERA+' ranking\n'+res.slice(0,25).map((r,i)=>`${i+1}. ${r.fam} ${r.w} ls=${r.ls}em  score=${r.score.toFixed(3)}  arLog=${r.arLog.toFixed(3)}`).join('\n');
+ window.DONE=true;
+})();
+</script>
