@@ -10,6 +10,7 @@ public sealed class QualiBoardWidget : IWidget
 {
     public string Id => "qualiboard";
     public (float Width, float Height) DesignSize => (1920, 300);
+    readonly Broadcast93QualiBoard _board93 = new();
     readonly QualiTowerWidget _tower = new();
     readonly QualiLapWidget _lap = new();
     ThemeStyle _style = ThemeStyle.Broadcast98;
@@ -23,6 +24,7 @@ public sealed class QualiBoardWidget : IWidget
     public void Configure(WidgetSettings settings) { _cfg = settings; _tower.Configure(settings); _lap.Configure(settings); }
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
+        if (_style == ThemeStyle.Broadcast93) { _board93.Draw(c, m, _cfg); return; }
         if (_style != ThemeStyle.Broadcast98 || !m.Connected) { _presentation.Reset(); return; }
         if (m.Session is { InSession: false }) return;
         var stage = _presentation.Update(m.QualiLap, m.Now, m.Quali?.Rows.Count ?? 0, track: m.Session?.Track);

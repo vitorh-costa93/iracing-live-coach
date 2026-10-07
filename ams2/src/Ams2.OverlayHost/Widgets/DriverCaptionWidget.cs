@@ -16,11 +16,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
-    bool _b18, _b98;
+    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
+    bool _b18, _b98, _b93;
     readonly Broadcast04Pulse _motion04 = new();
     readonly Broadcast18Motion _motion18 = new();
-    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; }
+    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; }
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -43,6 +43,19 @@ public sealed class DriverCaptionWidget : IWidget
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         if (!m.Connected || m.Session is not { } s || s.PlayerCar is not { } car) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; return; }
+        if (_b93)
+        {
+            if (!m.PlayerDriving || !s.InSession || s.GameState != 2) return;
+            bool qualifying = s.Kind == SessionKind.Qualify;
+            if (qualifying && m.QualiLap is not { OutLap: true, InPit: false }) return;
+            var state93 = BroadcastUi.State(m);
+            double at93 = Math.Max(state93.SessionSeenT, Math.Max(state93.PlayerPositionChangedT, state93.PlayerLapChangedT));
+            if (!_cfg.ColumnVisible("always") && !(m.Now - at93 is >= 0 and < BroadcastUi.CaptionHold)) return;
+            if (!qualifying && string.Equals(_cfg.OptionOr("captionMode", "full"), "onboard", StringComparison.OrdinalIgnoreCase))
+                Broadcast93RaceBoard.Onboard(c, car, s.Cars, _cfg);
+            else Broadcast93RaceBoard.Caption(c, m, _cfg, qualifying);
+            return;
+        }
         var b = BroadcastUi.State(m);
         if (s.Kind == SessionKind.Qualify)
         {

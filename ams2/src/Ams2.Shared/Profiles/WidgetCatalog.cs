@@ -19,7 +19,8 @@ public sealed record WidgetDef(
     public IReadOnlyList<ColumnDef> Widths => WidthColumns ?? [];
     /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
     public bool InTheme(string themeId)
-        => Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase));
+        => (Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase)))
+            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id));
 }
 
 public enum OptionKind { Choice, Toggle, Number }
@@ -115,7 +116,7 @@ public static class WidgetCatalog
         // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
-        new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1998"], DefaultSessions: [SessionIds.Qualify]),
+        new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1993", "f1-1998"], DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
     ];
 
@@ -134,7 +135,15 @@ public static class WidgetCatalog
         => (themeId is null ? All : ForTheme(themeId)).FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Widgets do tema, na ordem do catalogo (os exclusivos de outros temas ficam de fora).</summary>
+    static readonly HashSet<string> Widgets93 = new(StringComparer.OrdinalIgnoreCase)
+        { "board", "qualiboard", "drivercaption", "fuel", "tyres", "weather", "inputs", "radar" };
+    internal static bool Supports93(string id) => Widgets93.Contains(id);
     public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId)).Select(d =>
+        ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
+            ? d with { DisplayName = "Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
+        : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualiboard"
+            ? d with { DisplayName = "Quali Board (volta, parcial e resultado)" }
+        :
         d.Id == "inputs" && string.Equals(ThemeCatalog.Canonical(themeId), "f1-2004", StringComparison.OrdinalIgnoreCase)
             ? d with { DisplayName = "Velocímetro", Columns = d.Columns.Where(c => c.Id != "graph").ToArray(), WidthColumns = [] }
             : d);
@@ -268,6 +277,21 @@ public static class WidgetCatalog
                 new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
             ],
         },
+        ["f1-1993"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["board"] = [
+                new("gapPointPercent", "Ponto de medição do gap (% da volta; 0 = chegada)", OptionKind.Number, null, "0", Min: 0, Max: 99.9),
+                new("gapArrow", "Seta na placa de gap", OptionKind.Toggle, null, "true"),
+                new("gapHoldSeconds", "Duração do resultado do gap (s)", OptionKind.Number, null, "7", Min: 3, Max: 15),
+                new("showFastest", "Mostrar nova volta mais rápida da corrida", OptionKind.Toggle, null, "true"),
+                new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full"),
+            ],
+            ["qualiboard"] = [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showFor", "Duração do resultado da volta (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+            ],
+            ["drivercaption"] = [new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full")],
+        },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["qualiboard"] =
@@ -316,6 +340,7 @@ public static class ThemeCatalog
     /// <summary>Temas conhecidos. Os ainda nao implementados aparecem desabilitados no Control Center.</summary>
     public static readonly IReadOnlyList<ThemeDef> All =
     [
+        new("f1-1993", "F1 1993", true),
         new("f1-1998", "F1 1998-2001", true),
         new("f1-2004", "F1 2004-2008", true),
         new("f1-2018", "F1 2018", true),

@@ -26,6 +26,7 @@ public static class WidgetLayout
     /// "LAP n / N" integrado (o Lap Counter seria repetido) e a TV nao tem o Board.</summary>
     static readonly Dictionary<string, string[]> HiddenByDefault = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["f1-1993"] = ["drivercaption"],
         ["f1-2018"] = ["lapcounter", "board"],
         ["f1-1998"] = ["winner", "pittimer", "qualitower", "qualilap"],
     };
@@ -36,6 +37,12 @@ public static class WidgetLayout
 
     static readonly Dictionary<string, Dictionary<string, Slot>> Slots = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["f1-1993"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f), ["drivercaption"] = new(0, 780, 1f),
+            ["weather"] = new(1696, 24, .65f), ["tyres"] = new(1699, 130, .65f), ["fuel"] = new(1582, 267, .65f),
+            ["inputs"] = new(1542, 620, .5f), ["radar"] = new(900, 585, 1f),
+        },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["standings"] = new(32, 24, 1.15f), ["lapcounter"] = new(867, 24, 1.4f),
@@ -92,6 +99,11 @@ public static class WidgetLayout
     public static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, (float W, float H)>> DesignSizes =
         new Dictionary<string, IReadOnlyDictionary<string, (float, float)>>(StringComparer.OrdinalIgnoreCase)
         {
+            ["f1-1993"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["board"] = (1920, 300), ["qualiboard"] = (1920, 300), ["drivercaption"] = (1920, 300),
+                ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197), ["radar"] = (120, 190),
+            },
             ["f1-1998"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (191, 372), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 144), ["inputs"] = (692, 197),

@@ -29,6 +29,7 @@ public sealed class BoardTracker
 
     readonly BoardOptions _o;
     readonly BoardSector98Tracker _sector98;
+    readonly BoardGap93Tracker _gap93;
 
     // Sessão
     bool _init;
@@ -102,11 +103,14 @@ public sealed class BoardTracker
     {
         _o = options ?? BoardOptions.Default;
         _sector98 = new BoardSector98Tracker(_o);
+        _gap93 = new BoardGap93Tracker(_o.GapPointPercent, _o.GapHoldSeconds, enabled: false);
         Reset();
     }
 
     public BoardOptions Options => _o;
     public BoardState State => _state;
+    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true) =>
+        _gap93.SetOptions(pointPercent, holdSeconds, enabled);
 
     /// <summary>Reset total (reinício de sessão, troca de pista/tipo de sessão, relógio voltou, reconexão).</summary>
     public void Reset()
@@ -121,6 +125,7 @@ public sealed class BoardTracker
         _tower = null; _towerPage = _towerPageCount = -1;
         CloseSector();
         _sector98.Reset();
+        _gap93.Reset();
         _cmpLaps = _cmpNb = _cmpHist = -1; _cmp = null;
         _plate = null; _plateSrc = null;
         _mode = BoardMode.None; _modeSince = 0;
@@ -128,7 +133,7 @@ public sealed class BoardTracker
         _state = BoardState.Empty with { Revision = _rev };
     }
 
-    public BoardState Update(double now, SessionSnapshot s, GapTracker gaps)
+    public BoardState Update(double now, SessionSnapshot s, GapTracker gaps, bool playerDriving = true)
     {
         if (!s.InSession || s.TrackLength <= 0 || s.Cars.Count == 0)
         {
@@ -148,6 +153,7 @@ public sealed class BoardTracker
         _lastNow = now;
         bool race = s.Kind == SessionKind.Race;
         var me = s.PlayerCar;
+        _gap93.Update(now, s, playerDriving);
 
         CollectEvents(now, s);
         _sector98.Update(now, s, _events.Where(e => e.Marker > 0).Select(e => (e.Car, e.Marker, e.T)),
@@ -507,7 +513,7 @@ public sealed class BoardTracker
             case BoardMode.DriverPlate: items = 1; break;
         }
         return new BoardState(mode, _rev, now, race, start, end, Math.Max(0, end - now), items, _tower, _sectorGap, _cmp, _plate)
-        { SectorGap98 = _sector98.State };
+        { SectorGap98 = _sector98.State, Gap93 = _gap93.State };
     }
 
     // ---------------------------------------------------------------- vizinho

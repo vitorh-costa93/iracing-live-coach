@@ -14,7 +14,10 @@ public sealed record QualiSplit(int Sector, double Elapsed, double? DeltaPersona
 /// diferenca para o melhor pessoal anterior, setores e instante (relogio do provider) em que cruzou a linha.
 /// </summary>
 public sealed record QualiLapResult(int Lap, double LapTime, int Position, double? GapToFirst, double? DeltaPersonal, bool Improved, bool Invalid,
-    IReadOnlyList<QualiSector?> Sectors, double At, bool FromMemory);
+    IReadOnlyList<QualiSector?> Sectors, double At, bool FromMemory)
+{
+    public CarSnapshot? ReferenceCar { get; init; }
+}
 
 /// <summary>Volta em andamento do jogador (placa de volta da classificacao).</summary>
 public sealed record QualiLapState(
@@ -243,7 +246,7 @@ public sealed class QualiLapTracker
         double? gap = others.Count > 0 ? lap - others.Min() : null;
         double? dPers = double.IsNaN(before) ? null : lap - before;
         bool improved = !invalid && (double.IsNaN(before) || lap < before);
-        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory);
+        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory) { ReferenceCar = s.Cars.Where(o => o.Index != c.Index && double.IsFinite(o.BestLapTime) && o.BestLapTime > 0).MinBy(o => o.BestLapTime) };
     }
 
     /// <summary>LastLapTime do jogo que muda logo depois da linha e bate com o derivado: vira o tempo oficial do resultado.</summary>
