@@ -45,12 +45,22 @@ internal sealed class HostController : IDisposable
         _profile = store.Load(_theme.Id, name, sw, sh) ?? ProfileFactory.CreateDefault(name, _theme.Id, sw, sh).Normalized(sw, sh);
         BuildWindows();
         ApplyRadarOptions();
+        ApplyGap93Options();
     }
 
     /// <summary>Alcance e sensibilidade do radar (perfil) vao para o tracker do provider; vale no proximo passo de 60 Hz.</summary>
     void ApplyRadarOptions()
     {
         if (_profile.Get("radar") is { } s) _provider.Radar.Options = RadarWidget.OptionsFor(s);
+    }
+
+    void ApplyGap93Options()
+    {
+        var cfg = _profile.Get("board");
+        static double Value(WidgetSettings? settings, string key, string fallback)
+            => double.TryParse(settings?.OptionOr(key, fallback) ?? fallback, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : double.Parse(fallback, System.Globalization.CultureInfo.InvariantCulture);
+        _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), Value(cfg, "gapHoldSeconds", "7"), _theme.Id == "f1-1993");
     }
 
     public Profile Profile => _profile;
@@ -210,6 +220,7 @@ internal sealed class HostController : IDisposable
         }
         RestackByOrder();
         ApplyRadarOptions();
+        ApplyGap93Options();
         if (_persist)
         {
             _store.SetActiveTheme(p.ThemeId);
@@ -230,6 +241,7 @@ internal sealed class HostController : IDisposable
             if ((o.Id == next.Id || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(o, _theme);
         if (orderChanged) RestackByOrder();
         if (next.Id == "radar") ApplyRadarOptions();
+        if (next.Id == "board") ApplyGap93Options();
         ScheduleSave();
     }
 

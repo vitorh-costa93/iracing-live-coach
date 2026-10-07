@@ -19,7 +19,7 @@ public readonly record struct BarStop(float Position, Color4 Color);
 /// pedem tudo ao tema, então trocar de tema muda o visual sem tocar nos widgets.
 /// </summary>
 /// <summary>Família visual do tema: só escolhe como o chrome (cabeçalho, caixas, mostradores) é desenhado, nunca o que o widget mostra.</summary>
-public enum ThemeStyle { Broadcast98, Broadcast2000s, Modern2018 }
+public enum ThemeStyle { Broadcast98, Broadcast2000s, Modern2018, Broadcast93 }
 
 public sealed record Theme(
     string Id,
@@ -218,7 +218,19 @@ public static class Themes
         OutInk: Rgb(170, 172, 178),
         SubPanelFill: Rgb(46, 58, 60, 0.92f));
 
-    public static IReadOnlyList<Theme> All { get; } = [F1_1998, F1_2004, F1_2018];
+    // Arial is an approximation of the observed 1993 lettering, without extracted broadcast assets.
+    public static readonly Theme F1_1993 = F1_1998 with
+    {
+        Id = "f1-1993", DisplayName = "F1 1993", Style = ThemeStyle.Broadcast93,
+        Title = new("Arial", 700, 28), Label = new("Arial", 700, 25),
+        Text = new("Arial", 700, 28), Numbers = new("Arial", 700, 30),
+        PanelFill = Rgb(85, 91, 86, .48f), NumberColor = Rgb(244, 244, 233),
+        ValueColor = Rgb(255, 224, 91), LabelColor = Rgb(70, 213, 239),
+        ReadoutColor = Rgb(70, 213, 239),
+        TextShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
+        ValueShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
+    };
+    public static IReadOnlyList<Theme> All { get; } = [F1_1993, F1_1998, F1_2004, F1_2018];
 
     public static Theme Get(string? id) => id is null ? F1_1998 : All.FirstOrDefault(t => string.Equals(t.Id, Ams2.Shared.Profiles.ThemeCatalog.Canonical(id), StringComparison.OrdinalIgnoreCase)) ?? F1_1998;
 }

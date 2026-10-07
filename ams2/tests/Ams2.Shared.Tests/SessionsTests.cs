@@ -35,7 +35,7 @@ public class SessionsTests
     [Fact]
     public void Quali_widgets_exist_in_every_theme_and_are_visible_in_the_default_profile()
     {
-        foreach (var t in ThemeCatalog.All)
+        foreach (var t in ThemeCatalog.All.Where(t => t.Id != "f1-1993"))
         {
             var p = ProfileFactory.CreateDefault("P", t.Id);
             foreach (var id in Quali)

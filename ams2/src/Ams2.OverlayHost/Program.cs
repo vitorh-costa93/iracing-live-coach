@@ -129,6 +129,12 @@ internal static class Program
         string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
         // --settings: o WidgetSettings do perfil em JSON (larguras, formato, texto...); as outras opcoes do widget na linha de comando nao se aplicam.
         WidgetSettings? fromFile = o.SettingsFile is { } sf ? System.Text.Json.JsonSerializer.Deserialize<WidgetSettings>(File.ReadAllText(sf), ProfileStore.Json) : null;
+        if (Themes.Get(o.ThemeId).Id == "f1-1993")
+        {
+            static double GapOption(WidgetSettings? cfg, string key, double fallback)
+                => double.TryParse(cfg?.Option(key), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : fallback;
+            provider.SetGap93Options(GapOption(fromFile, "gapPointPercent", 0), GapOption(fromFile, "gapHoldSeconds", 7));
+        }
         provider.Radar.Options = RadarWidget.OptionsFor(fromFile is not null && o.Widget == "radar" ? (fromFile with { Id = "radar" }).Normalized()
             : new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
@@ -145,8 +151,8 @@ internal static class Program
             Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
             RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens,
             Columns = cols,
-        }).Normalized();
-        if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized();
+        }).Normalized(theme.Id);
+        if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized(theme.Id);
         widget.Configure(settings);
         // Same independent geometry axes as the live window; font size is configured separately.
         float rs = settings.RenderScale;

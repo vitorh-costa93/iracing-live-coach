@@ -112,6 +112,9 @@ public sealed class OverlayDataProvider : IDisposable
     }
 
     public OverlayModel Current => _current;
+    /// <summary>Configuração dinâmica exclusiva do GAP 1993 (ponto em percentual e retenção em segundos).</summary>
+    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true) =>
+        _board.SetGap93Options(pointPercent, holdSeconds, enabled);
     /// <summary>Nomes de exibicao do jogador por modelo de carro (null = sem substituicao).</summary>
     public PlayerNameStore? Names => _names;
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
@@ -161,14 +164,14 @@ public sealed class OverlayDataProvider : IDisposable
             var standings = s.InSession ? StandingsBuilder.Build(s, _gaps, now) : [];
             var bc = s.InSession ? _broadcast.Update(now, s) : BroadcastState.Empty;
             // Board: depois do GapTracker (usa o gap em tempo). Fora de sessão: estado vazio (o tracker se zera sozinho).
-            var board = _board.Update(now, s, _gaps);
+            bool driving = _driving.Update(now, s);
+            var board = _board.Update(now, s, _gaps, driving);
             // Repetir a mesma escrita do jogo nao e uma nova pose. Preserva o instante da pose
             // para o render continuar extrapolando, em vez de reiniciar o movimento a cada tick.
             var radar = !_wasRadarConnected || s.Sequence != _lastRadarSequence || !s.InSession
                 ? Radar.Update(s, now) : Radar.Current;
             _lastRadarSequence = s.Sequence;
             _wasRadarConnected = true;
-            bool driving = _driving.Update(now, s);
             var grid = s.InSession ? _grid.Update(s) : _grid.Grid;
             var launch = s.InSession ? _launch.Update(now, s) : _launch.State;
             // Classificacao: calculada em toda sessao (barata); os widgets de classificacao decidem quando aparecer.

@@ -13,8 +13,22 @@ public static class LayoutPreview
         => id.StartsWith("quali", StringComparison.Ordinal) ? Qualify.Value : id == "racecontrol"
             ? Race.Value with { Session = Race.Value.Session! with { FlagColour = 6 } }
             : id == "board"
-            ? Race.Value with { Broadcast = Race.Value.Broadcast! with { Winner = null, PlayerStopEndT = double.NegativeInfinity } }
+            ? RaceBoard()
             : Race.Value;
+
+    static OverlayModel RaceBoard()
+    {
+        var model = Race.Value;
+        var player = model.Session!.PlayerCar!;
+        var neighbor = model.Session.Cars.First(c => c.Index != player.Index);
+        return model with
+        {
+            Broadcast = model.Broadcast! with { Winner = null, PlayerStopEndT = double.NegativeInfinity },
+            Board = model.Board! with { Gap93 = new BoardGap93(BoardText.Driver(player, model.Session.Cars),
+                BoardText.Driver(neighbor, model.Session.Cars), true, 1.268, "1.268", model.Now - 1.268,
+                model.Now, model.Now + 7) },
+        };
+    }
 
     static OverlayModel Create(bool quali)
     {

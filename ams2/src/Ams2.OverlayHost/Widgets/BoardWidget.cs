@@ -21,16 +21,17 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class BoardWidget : IWidget
 {
     public string Id => "board";
-    enum Style { S98, S04, S18 }
+    enum Style { S98, S04, S18, S93 }
     Style _style = Style.S98;
     WidgetSettings _cfg = new() { Id = "board" };
     readonly Broadcast98RaceBoard _broadcast98 = new();
+    readonly Broadcast93RaceBoard _broadcast93 = new();
     readonly Broadcast04BoardMotion _motion04 = new();
     readonly Broadcast18BoardPresentation _presentation18 = new();
 
     public void UseTheme(Theme.Theme theme)
     {
-        var style = theme.Style switch { ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2018 => Style.S18, _ => Style.S98 };
+        var style = theme.Style switch { ThemeStyle.Broadcast93 => Style.S93, ThemeStyle.Broadcast2000s => Style.S04, ThemeStyle.Modern2018 => Style.S18, _ => Style.S98 };
         if (style == _style) return;
         _motion04.Reset();
         _presentation18.Reset();
@@ -51,6 +52,7 @@ public sealed class BoardWidget : IWidget
     {
         get
         {
+            if (_style == Style.S93) return (Broadcast93RaceBoard.Width, Broadcast93RaceBoard.Height);
             if (_style == Style.S98) return (Broadcast98RaceBoard.Width, Broadcast98RaceBoard.Height);
             var (bw, bh) = _style switch { Style.S98 => (840f, 196f), Style.S04 => (590f, 164f), _ => (760f, 210f) };
             float tower = _style switch { Style.S98 => 2 * T98Edge + 2 * T98ColW + T98ColGap, Style.S04 => 2 * T04ColW + T04ColGap + 8, _ => 2 * T18Edge + 2 * T18ColW + T18ColGap };
@@ -93,6 +95,7 @@ public sealed class BoardWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
+        if (_style == Style.S93) { _broadcast93.Draw(c, m, _cfg); return; }
         if (_style == Style.S98) { _broadcast98.Draw(c, m, _cfg); return; }
         if (_style == Style.S18 && (!m.Connected || m.Session is null))
         { _presentation18.Reset(); _key = null; _last = _out = null; _lastShown = false; return; }
