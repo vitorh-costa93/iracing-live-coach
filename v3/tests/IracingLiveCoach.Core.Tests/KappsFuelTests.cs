@@ -8,6 +8,24 @@ public sealed class KappsFuelTests
     // player's crossing, rate = the row's consumption, LIR = Laps in Race, leader = class leader's CarIdxLap,
     // yamlLaps = the player's ResultsPositions LapsComplete at the crossing (one lap behind the telemetry).
     [Theory]
+    [InlineData(50.03, true)]
+    [InlineData(49.01, false)]
+    public void Fuel_validity_uses_lap_start_level_even_with_gradual_changes(double maximum, bool rejected)
+    {
+        var tracker = new FuelLapTracker();
+        tracker.Update(Tick(50, .95, 2));
+        tracker.Update(Tick(50, .01, 3));
+        tracker.Update(Tick(49, .4, 3));
+        for (double fuel = 49.005; fuel < maximum; fuel += .005)
+            tracker.Update(Tick(fuel, .5, 3));
+        tracker.Update(Tick(maximum, .6, 3));
+        tracker.Update(Tick(48, .95, 3));
+        var lap = tracker.Update(Tick(47.8, .01, 4))!.Value;
+        Assert.Equal(!rejected, lap.Valid);
+        Assert.Equal(rejected, lap.InvalidReason.HasFlag(FuelLapInvalidReason.Refuel));
+    }
+
+    [Theory]
     //          F       rate    LIR    leader yamlLaps  Kapps LR  Kapps Refuel
     [InlineData(55.43, 2.1979, 38.34, 2, 0, 25.22, 28.62)] // fc_01, lap 2
     [InlineData(53.32, 2.1870, 37.87, 3, 1, 24.38, 25.92)] // fc_03, lap 3
@@ -134,7 +152,7 @@ public sealed class KappsFuelTests
         foreach (var dirty in new Func<double, FuelLapTick>[]
         {
             f => Tick(f + 5, 0.5, 3),                                   // fuel went up
-            f => Tick(f, 0.5, 3, wear: 0.99),                           // tyres changed
+            f => Tick(f, 0.5, 3, wear: 0.99),                           // Kapps invalidates any wear update
             f => Tick(f, 0.5, 3, surface: 1),                           // track -> pit stall
             f => Tick(f, 0.5, 3, flags: 0x4000),                        // caution
             f => Tick(f, 0.5, 3, flags: 0x200),                         // one lap to green
@@ -147,6 +165,45 @@ public sealed class KappsFuelTests
             Assert.False(Lap(t, ref fuel, ref lap, 2.2, dirty)!.Value.Valid);
             Assert.True(Lap(t, ref fuel, ref lap, 2.2)!.Value.Valid); // the next lap counts again
         }
+    }
+
+    [Fact]
+    public void Mid_lap_fuel_rise_below_start_level_keeps_last_available_like_kapps()
+    {
+        var tracker = new FuelLapTracker();
+        var consumption = new FuelConsumption();
+        tracker.Update(Tick(50, .95, 2));
+        tracker.Update(Tick(50, .01, 3));
+        tracker.Update(Tick(49, .5, 3));
+        tracker.Update(Tick(49.05, .51, 3));
+        tracker.Update(Tick(48, .95, 3));
+        var lap = tracker.Update(Tick(47.8, .01, 4))!.Value;
+        Assert.True(lap.Valid);
+        Assert.Equal(FuelLapInvalidReason.None, lap.InvalidReason);
+        consumption.Add(lap, false);
+        var panel = new KappsFuelPanelState();
+        panel.Recompute(47.8, consumption.Average, null, consumption.Last);
+        Assert.Equal(2.2, panel.Snapshot(47.8, 0, false).Rows[2].PerLap!.Value, 8);
+    }
+
+    [Theory]
+    [InlineData(true, FuelLapInvalidReason.Refuel)]
+    [InlineData(false, FuelLapInvalidReason.Tyres)]
+    public void Actual_refuel_and_tyre_replacement_still_clear_last(bool refuel, FuelLapInvalidReason reason)
+    {
+        var tracker = new FuelLapTracker();
+        tracker.Update(Tick(50, .95, 2, wear: .9));
+        tracker.Update(Tick(50, .01, 3, wear: .9));
+        tracker.Update(Tick(refuel ? 55 : 49, .5, 3, wear: refuel ? .9 : 1));
+        tracker.Update(Tick(48, .95, 3));
+        var lap = tracker.Update(Tick(47.8, .01, 4))!.Value;
+        Assert.False(lap.Valid);
+        Assert.True(lap.InvalidReason.HasFlag(reason));
+        var consumption = new FuelConsumption();
+        consumption.Add(new FuelLap(2.1, true, 2), false);
+        consumption.Add(lap, false);
+        Assert.Null(consumption.Last);
+        Assert.Single(consumption.Laps);
     }
 
     [Fact]

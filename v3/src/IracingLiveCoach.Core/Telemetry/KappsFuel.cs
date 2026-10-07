@@ -23,13 +23,20 @@ public readonly record struct FuelLapTick(
     int PlayerLap);
 
 /// <summary>A lap the player just completed: its fuel usage and whether it counts (spec B.2).</summary>
-public readonly record struct FuelLap(double Usage, bool Valid, int LapNumber);
+[Flags]
+public enum FuelLapInvalidReason
+{
+    None = 0, Refuel = 1, Tyres = 2, Surface = 4, Flags = 8,
+    SessionState = 16, PitRoad = 32, NoConsumption = 64, FirstRaceLap = 128,
+}
+
+public readonly record struct FuelLap(double Usage, bool Valid, int LapNumber, FuelLapInvalidReason InvalidReason = FuelLapInvalidReason.None);
 
 /// <summary>
 /// Kapps' fuel lap measurement (spec B.1-B.2). A lap is the LapDistPct wrap (&gt; 0.9 to &lt; 0.1) while on
 /// track; its usage is the fuel at its start minus the fuel at its end. It only counts when:
 ///  * it did not start on pit road (the out-lap never counts, the next one does);
-///  * fuel never went up during it (refuel), LFwearR never changed (tyres), the surface never was -1 and never
+///  * fuel did not exceed the lap-start level, LFwearR did not change, the surface never was -1 and never
 ///    switched between on-track (3) and pit stall (1);
 ///  * no flag bit invalidated it: one-lap-to-green (0x200) without chequered and outside a Test event, or any of
 ///    caution / caution waving / green held / furled (0x4000 | 0x8000 | 0x400 | 0x80000);
@@ -50,30 +57,32 @@ public sealed class FuelLapTracker
     private const int SurfaceOnTrack = 3;
 
     private double _prevPct = double.NaN;
-    private double _prevFuel = double.NaN;
     private double _prevWear = double.NaN;
     private int? _prevSurface;
     private double? _lapStartFuel;
     private int _lapNumber;
     private bool _valid;
+    private FuelLapInvalidReason _invalidReason;
 
     public void Reset()
     {
-        _prevPct = _prevFuel = _prevWear = double.NaN;
+        _prevPct = _prevWear = double.NaN;
         _prevSurface = null;
         _lapStartFuel = null;
         _valid = false;
+        _invalidReason = FuelLapInvalidReason.None;
     }
 
     /// <summary>One tick; returns the lap just completed, if any.</summary>
     public FuelLap? Update(in FuelLapTick t)
     {
-        if (!double.IsNaN(_prevFuel) && t.FuelLevel > _prevFuel + 1e-4) _valid = false;
-        if (!double.IsNaN(_prevWear) && t.LFwearR != _prevWear) _valid = false;
-        if (t.TrackSurface == -1) _valid = false;
-        if (_prevSurface is int ps && ((ps == SurfaceOnTrack && t.TrackSurface == SurfaceInPitStall) || (ps == SurfaceInPitStall && t.TrackSurface == SurfaceOnTrack))) _valid = false;
-        if ((t.SessionFlags & FlagOneLapToGreen) != 0 && (t.SessionFlags & FlagCheckered) == 0 && !t.IsTestEvent) _valid = false;
-        if ((t.SessionFlags & (FlagCaution | FlagCautionWaving | FlagGreenHeld | FlagFurled)) != 0) _valid = false;
+        // Kapps fuel-calc.js compares with lastFuelLevel, latched at the line, not the previous tick.
+        if (_lapStartFuel is double lapStart && t.FuelLevel > lapStart) Invalidate(FuelLapInvalidReason.Refuel);
+        if (!double.IsNaN(_prevWear) && t.LFwearR != _prevWear) Invalidate(FuelLapInvalidReason.Tyres);
+        if (t.TrackSurface == -1) Invalidate(FuelLapInvalidReason.Surface);
+        if (_prevSurface is int ps && ((ps == SurfaceOnTrack && t.TrackSurface == SurfaceInPitStall) || (ps == SurfaceInPitStall && t.TrackSurface == SurfaceOnTrack))) Invalidate(FuelLapInvalidReason.Surface);
+        if ((t.SessionFlags & FlagOneLapToGreen) != 0 && (t.SessionFlags & FlagCheckered) == 0 && !t.IsTestEvent) Invalidate(FuelLapInvalidReason.Flags);
+        if ((t.SessionFlags & (FlagCaution | FlagCautionWaving | FlagGreenHeld | FlagFurled)) != 0) Invalidate(FuelLapInvalidReason.Flags);
 
         FuelLap? completed = null;
         bool crossing = t.IsOnTrack && _prevPct > 0.9 && t.LapDistPct >= 0 && t.LapDistPct < 0.1;
@@ -82,20 +91,30 @@ public sealed class FuelLapTracker
             if (_lapStartFuel is double start)
             {
                 int lapNumber = Math.Max(_lapNumber, t.PlayerLap - 1);
+                if (t.SessionState != Racing) Invalidate(FuelLapInvalidReason.SessionState);
+                if (t.OnPitRoad) Invalidate(FuelLapInvalidReason.PitRoad);
+                if (!(t.FuelLevel < start)) Invalidate(FuelLapInvalidReason.NoConsumption);
+                if (t.IsRace && lapNumber < 2) Invalidate(FuelLapInvalidReason.FirstRaceLap);
                 bool ok = _valid && t.SessionState == Racing && !t.OnPitRoad && (t.SessionFlags & (FlagCaution | FlagCautionWaving)) == 0
                           && t.FuelLevel < start && (!t.IsRace || lapNumber >= 2);
-                completed = new FuelLap(start - t.FuelLevel, ok, lapNumber);
+                completed = new FuelLap(start - t.FuelLevel, ok, lapNumber, _invalidReason);
             }
             _lapStartFuel = t.FuelLevel;
             _lapNumber = t.PlayerLap;
             _valid = !t.OnPitRoad;
+            _invalidReason = t.OnPitRoad ? FuelLapInvalidReason.PitRoad : FuelLapInvalidReason.None;
         }
 
         _prevPct = t.LapDistPct;
-        _prevFuel = t.FuelLevel;
         _prevWear = t.LFwearR;
         _prevSurface = t.TrackSurface;
         return completed;
+    }
+
+    private void Invalidate(FuelLapInvalidReason reason)
+    {
+        _valid = false;
+        _invalidReason |= reason;
     }
 }
 

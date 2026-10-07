@@ -44,7 +44,7 @@ public sealed unsafe class WeatherWidget : IDisposable
     private const float WidthDip = 300f;
     private const float PanelHeightDip = 116f;
 
-    public WeatherWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null)
+    public WeatherWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _dwriteFactory = dwriteFactory;
         _fontCollection = fontCollection;
@@ -57,7 +57,7 @@ public sealed unsafe class WeatherWidget : IDisposable
 
         _telemetry = new TelemetryReader();
         _telemetry.WeatherUpdated += OnWeatherUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     private void CreateTextFormats()

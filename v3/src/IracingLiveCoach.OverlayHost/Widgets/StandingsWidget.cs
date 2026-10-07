@@ -171,7 +171,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// column configuration actually is (spec §12's auto-width formula).</summary>
     private float TableWidth => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_effectiveColumns);
 
-    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
+    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _flags = flags;
         _dwriteFactory = dwriteFactory;
@@ -189,7 +189,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         _telemetry.StandingsUpdated += OnStandingsUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.PlayerCarStatusUpdated += OnPlayerCarStatusUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     /// <summary>(Re)builds every owned text format at its tuned base size times the current
@@ -300,7 +300,9 @@ public sealed unsafe class StandingsWidget : IDisposable
 
             // SOF is that class's own, computed from EVERY driver in the class (not just the rows
             // this widget selected for display).
-            double? classSof = Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
+            double? classSof = session?.ClassSof is { } frozenSof && frozenSof.TryGetValue(group.ClassId, out var fixedSof)
+                ? fixedSof // race: all retained session entrants, including disconnected drivers
+                : Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
 
             PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
             using (PanelChrome.PushClip(dc, panel))
