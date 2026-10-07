@@ -63,4 +63,3 @@ $('play').addEventListener('click',()=>{if(playing){stop();return;}playing=true;
 $('reset').addEventListener('click',()=>{stop();['nameSize','timeSize','deltaSize','boardWidth','boardHeight'].forEach(id=>$(id).value='100');$('weight').value='700';$('aspect').value='wide';$('portrait').checked=true;$('negative').checked=false;render();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing)stop();});
 render();
-
