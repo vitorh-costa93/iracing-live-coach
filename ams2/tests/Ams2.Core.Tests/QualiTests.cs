@@ -203,6 +203,31 @@ public class QualiLapTrackerTests
     }
 
     [Fact]
+    public void Missing_player_car_for_a_few_ticks_does_not_reset_but_a_real_car_change_does()
+    {
+        var rig = new Rig(memoryLapTimes: false);
+        var before = rig.RunTo(25);
+        Assert.NotNull(before.LastSplit);
+        for (int i = 0; i < 2; i++)
+        {
+            rig.Sim.Step(Dt);
+            var s = rig.Sim.Snapshot();
+            rig.T.Update(rig.Sim.Now, s with { Cars = s.Cars.Where(c => c.Index != 0).ToList() });
+        }
+        var back = rig.RunTo(26);
+        Assert.Equal(before.SessionGeneration, back.SessionGeneration);
+        Assert.NotNull(back.LastSplit);
+        var done = rig.RunTo(63);
+        Assert.Equal(before.SessionGeneration, done.SessionGeneration);
+        Assert.Equal(60, done.PersonalBestLap!.Value, 1);
+
+        rig.Sim.Step(Dt);
+        var sw = rig.Sim.Snapshot();
+        sw = sw with { Cars = sw.Cars.Select(c => c.Index == 0 ? c with { CarName = "other car" } : c).ToList() };
+        Assert.True(rig.T.Update(rig.Sim.Now, sw).SessionGeneration > done.SessionGeneration);
+    }
+
+    [Fact]
     public void Pit_exit_rearms_table_even_when_overlay_did_not_draw_in_pit()
     {
         var sim = new Sim(Len, (100, 50)) { Kind = SessionKind.Qualify };

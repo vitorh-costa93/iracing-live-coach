@@ -131,7 +131,8 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
 
     bool Continuous(CarSnapshot c, double now, double len)
     {
-        if (!Eligible(c) || !_previous.TryGetValue(c.Index, out var p) || !Eligible(p.Car) || Identity(c) != Identity(p.Car) || now <= p.T) return false;
+        if (!Eligible(c) || !_previous.TryGetValue(c.Index, out var p) || !Eligible(p.Car) || Identity(c) != Identity(p.Car) || now <= p.T
+            || now - p.T > 2) return false;   // pausa/menu/travada: amostra velha geraria cruzamento interpolado falso
         double delta = c.TotalDistance(len) - p.Car.TotalDistance(len);
         return delta >= -0.5 && delta <= 500 && (c.Sector == p.Car.Sector || c.Sector == (p.Car.Sector + 1) % 3);
     }

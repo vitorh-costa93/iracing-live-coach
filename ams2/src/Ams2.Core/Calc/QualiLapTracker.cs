@@ -123,16 +123,18 @@ public sealed class QualiLapTracker
             || (observedPlayer is { Index: >= 0 and < MaxCars } player && _seen[player.Index] && player.LapsCompleted < _laps[player.Index]);
         if (restarted || s.Kind != _kind || !string.Equals(s.Track, _track, StringComparison.Ordinal)
             || !string.Equals(s.TrackVariation, _variation, StringComparison.Ordinal)
-            || !string.Equals(observedPlayer?.CarName ?? "", _carName, StringComparison.Ordinal)
+            // PlayerCar pode ser null por um instante: so uma troca real de carro (nome nao vazio -> outro nao vazio) reseta.
+            || (!string.IsNullOrEmpty(observedPlayer?.CarName) && _carName.Length > 0 && !string.Equals(observedPlayer!.CarName, _carName, StringComparison.Ordinal))
             || Math.Abs(s.TrackLength - _len) > 1)
         {
             Reset(); _kind = s.Kind; _track = s.Track; _variation = s.TrackVariation;
             _carName = observedPlayer?.CarName ?? ""; _len = s.TrackLength;
         }
+        else if (_carName.Length == 0 && !string.IsNullOrEmpty(observedPlayer?.CarName)) _carName = observedPlayer.CarName;
         _lastNow = now; _remaining = s.TimeRemainingSeconds;
         if (_len <= 0 || s.Cars.Count == 0) return _state = QualiLapState.Empty;
         var pc = s.PlayerCar;
-        if (pc?.Index != _player) { _player = pc?.Index ?? -1; _split = null; _result = null; _prevPlayerBest = pc?.BestLapTime ?? 0; }
+        if (pc is not null && pc.Index != _player) { _player = pc.Index; _split = null; _result = null; _prevPlayerBest = pc.BestLapTime; }
 
         foreach (var c in s.Cars)
         {

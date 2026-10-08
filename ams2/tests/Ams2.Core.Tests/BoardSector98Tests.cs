@@ -201,6 +201,16 @@ public class BoardSector98Tests
     }
 
     [Fact]
+    public void Long_gap_between_samples_discards_previous_sample_and_creates_no_split()
+    {
+        var rig = Rig((900, 100), (950, 100));
+        rig.RunTo(1.1);
+        rig.Sim.Step(15);   // pausa longa: ambos cruzam S2 sem amostras no meio
+        Assert.Null(rig.Tick().SectorGap98);
+        Assert.Null(rig.RunTo(rig.Sim.Now + .5).SectorGap98);
+    }
+
+    [Fact]
     public void Repeated_timestamp_cannot_create_fake_crossing()
     {
         var rig = Rig((900, 100), (950, 100));

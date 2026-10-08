@@ -878,7 +878,8 @@ public class TelemetryReader : IDisposable
         _raceLength.Reset();
         _fuelLaps.Reset();
         _fuelPanel.Reset();
-        _raceRatingField.Reset();
+        // _raceRatingField is NOT reset here: it is bound to the event (RaceRatingField.Enter), so a
+        // session change only clears its progress and an SDK reconnection keeps the whole field.
         _fuelLastPlayerLap = _fuelLastLeaderLap = int.MinValue;
     }
 
@@ -1294,14 +1295,21 @@ public class TelemetryReader : IDisposable
 
             var classified = ordered.Where(r => r.IRating > 1).ToList();
             double? sof = classified.Count > 0 ? Sof.Compute(classified.Select(r => r.IRating)) : null;
-            // Race ratings belong to all session entrants, never just the cars with live positions.
-            // Retain the initial ratings even when a driver leaves the world or the YAML driver list.
+            // Race ratings belong to every driver seen in the event's DriverInfo (Kapps standings2), never
+            // just the cars with live positions: observed in every session of the event, never pruned when a
+            // driver leaves the world or the YAML driver list, cleared only when the event changes.
             Dictionary<int, double?>? classSof = null;
-            if (_isRaceSession)
+            var ratingInfo = _sdk.Data.SessionInfo;
+            if (ratingInfo?.DriverInfo?.Drivers is { } ratingDrivers && _sessionKey is { } ratingSession)
             {
-                _raceRatingField.Observe((_sdk.Data.SessionInfo?.DriverInfo?.Drivers ?? [])
+                var weekend = ratingInfo.WeekendInfo;
+                _raceRatingField.Enter(RatingEventKey.From(weekend?.SessionID ?? 0, weekend?.SubSessionID ?? 0, ratingSession.UniqueId), ratingSession.SessionNum);
+                _raceRatingField.Observe(ratingDrivers
                     .Where(d => d.CarIdx >= 0 && d.CarIdx < IRacingSdkConst.MaxNumCars)
                     .Select(d => new RatingDriver(d.CarIdx, d.CarClassID, d.IRating, d.CarIsPaceCar != 0, d.IsSpectator != 0)));
+            }
+            if (_isRaceSession && _raceRatingField.Count > 0)
+            {
                 sof = _raceRatingField.Sof;
                 classSof = _raceRatingField.ClassSof;
             }
@@ -1314,15 +1322,20 @@ public class TelemetryReader : IDisposable
             if (_sessionKind == SessionKind.Race)
             {
                 var ratingPositions = new List<RatingPosition>();
+                bool officialOrder = _finalResults.Count > 0 || preGreenGrid;
                 foreach (var carIdx in _raceRatingField.CarIndices)
                 {
-                    var officialPosition = _finalResults.TryGetValue(carIdx, out var finalRating)
-                        ? finalRating.Position : preGreenGrid && _grid.TryGetValue(carIdx, out var gridRating)
-                            ? gridRating : _sdk.Data.GetInt("CarIdxPosition", carIdx);
+                    // Official order: final classification (or the grid before the green) only -- a car
+                    // without one gets 0 and is ranked after the classified ones, never by CarIdxPosition.
+                    var officialPosition = _finalResults.Count > 0
+                        ? (_finalResults.TryGetValue(carIdx, out var finalRating) ? finalRating.Position : 0)
+                        : preGreenGrid
+                            ? (_grid.TryGetValue(carIdx, out var gridRating) ? gridRating : 0)
+                            : _sdk.Data.GetInt("CarIdxPosition", carIdx);
                     ratingPositions.Add(new RatingPosition(carIdx, _sdk.Data.GetInt("CarIdxLapCompleted", carIdx),
                         _sdk.Data.GetFloat("CarIdxLapDistPct", carIdx), officialPosition));
                 }
-                deltaByIdx = _raceRatingField.Project(ratingPositions, _finalResults.Count > 0 || preGreenGrid);
+                deltaByIdx = _raceRatingField.Project(ratingPositions, officialOrder);
             }
             else if (_sessionKind == SessionKind.Qualify)
                 foreach (var cls in ordered.GroupBy(r => r.ClassId))
