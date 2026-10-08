@@ -121,10 +121,12 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// <summary>The user's columns with the appearance's horizontal padding applied to every padded
     /// column ("Padding (H)"); what layout and width actually use.</summary>
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
+    private string? _columnSessionType;
 
     private void RebuildEffectiveColumns()
     {
         var cols = _columns.Select(c => _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        cols = ColumnSessionVisibility.Apply(cols, _columnSessionType);
         // Contextual columns hide WITHOUT shrinking the widget (the name takes the space): Overtake only where the
         // session has push-to-pass, Pit only once a car has made a stop.
         if (!_hasP2P) cols = WidgetLayoutEngine.HideKeepingWidth(cols, "overtake");
@@ -295,6 +297,11 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// its own header -- class label, lap, that class's own SOF, clock -- then its rows.</summary>
     private void DrawPanels(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
+        if (_columnSessionType != session?.SessionTypeText)
+        {
+            _columnSessionType = session?.SessionTypeText;
+            RebuildEffectiveColumns();
+        }
         SyncP2PColumn(rows);
         _playerCleanLaps = rows.FirstOrDefault(r => r.IsPlayer)?.CleanLapTimes;
         var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);

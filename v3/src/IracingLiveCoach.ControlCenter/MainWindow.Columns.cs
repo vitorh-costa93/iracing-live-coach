@@ -149,7 +149,30 @@ public partial class MainWindow
 
             var name = new TextBlock { Text = ColumnNames.GetValueOrDefault(key, key), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), FontSize = 16, Opacity = column.Visible ? 1 : 0.55 };
             Grid.SetColumn(name, 3);
-            grid.Children.Add(name);
+            var nameAndSessions = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            nameAndSessions.Children.Add(name);
+            var sessionChoices = new WrapPanel { Margin = new Thickness(8, 3, 0, 3), ToolTip = "Sessões em que esta coluna aparece" };
+            foreach (var (label, sessionKey, allowed) in new[] { ("Practice", "Practice", column.ShowInPractice), ("Qualifying", "Qualify", column.ShowInQualify), ("Corrida", "Race", column.ShowInRace) })
+            {
+                var choice = new CheckBox { Content = label, IsChecked = allowed, FontSize = 11, Margin = new Thickness(0, 0, 8, 0) };
+                void SetSession(bool show)
+                {
+                    if (_buildingColumns || _suppressChangeEvents) return;
+                    UpdateColumn(key, c => sessionKey switch
+                    {
+                        "Practice" => c with { ShowInPractice = show },
+                        "Qualify" => c with { ShowInQualify = show },
+                        _ => c with { ShowInRace = show },
+                    });
+                }
+                choice.Checked += (_, _) => SetSession(true);
+                choice.Unchecked += (_, _) => SetSession(false);
+                System.Windows.Automation.AutomationProperties.SetAutomationId(choice, "ColSession_" + key + "_" + sessionKey);
+                sessionChoices.Children.Add(choice);
+            }
+            nameAndSessions.Children.Add(sessionChoices);
+            Grid.SetColumn(nameAndSessions, 3);
+            grid.Children.Add(nameAndSessions);
 
             var widthBox = new TextBox
             {
@@ -289,7 +312,7 @@ public partial class MainWindow
         _previewHost?.ApplyProfile(_profileStore);
         var entries = snapshot.Select(c => new ColumnConfigEntry(
             c.Key, c.Visible, c.Order, c.WidthPx, c.MinWidthPx, c.WidthMode.ToString(),
-            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx, c.FontFamily, c.FontWeight, c.LapWindow)).ToList();
+            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx, c.FontFamily, c.FontWeight, c.LapWindow, c.ShowInPractice, c.ShowInQualify, c.ShowInRace)).ToList();
         bool sent = await _columnConfigClient.SendAsync(widget, entries);
         ReportSent(sent, "Colunas");
         Debounce("save", SaveProfileStore, 600);

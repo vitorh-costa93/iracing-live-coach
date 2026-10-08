@@ -89,11 +89,13 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// <summary>The user's columns with the appearance's horizontal padding applied to every padded
     /// column ("Padding (H)"); what layout and width actually use.</summary>
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
+    private string? _columnSessionType;
 
     private void RebuildEffectiveColumns()
     {
         var padded = _columns.Select(c => _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
         // No push-to-pass in this session: Overtake hides but the widget keeps its width -- the name takes the space.
+        padded = ColumnSessionVisibility.Apply(padded, _columnSessionType);
         _effectiveColumns = _hasP2P ? padded : WidgetLayoutEngine.HideKeepingWidth(padded, "overtake");
     }
 
@@ -247,6 +249,11 @@ public sealed unsafe class RelativeWidget : IDisposable
     /// a slot with no car is drawn as an empty row.</summary>
     private void DrawPanel(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<RelativeRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
+        if (_columnSessionType != session?.SessionTypeText)
+        {
+            _columnSessionType = session?.SessionTypeText;
+            RebuildEffectiveColumns();
+        }
         // P2P column visibility is already decided in Draw() from the full (unwindowed) field -- see
         // SyncP2PColumn's doc comment for why that must not be redone here from this already-windowed subset.
         var slots = new List<RelativeRow?>();
