@@ -65,7 +65,9 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float GapColumnWidthDip = 66f;
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
-    private const float LapDeltaColumnWidthDip = 68f;
+    private const float LapDeltaColumnWidthDip = 84f;
+    private const float AvgGapColumnWidthDip = 84f;
+    public const int DefaultAvgGapWindow = 5;
     private const float OvertakeColumnWidthDip = 64f;
     private const float PitColumnWidthDip = 68f;
     private const float ColumnGapDip = 6f;
@@ -97,9 +99,11 @@ public sealed unsafe class StandingsWidget : IDisposable
         new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
         new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
         new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 10, DecimalPlaces: 3),
-        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 11),
-        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 12, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 13),
+        // Optional (hidden by default): average of the N fastest clean laps, theirs minus mine.
+        new("avgGap", ColumnWidthMode.Fixed, AvgGapColumnWidthDip, AvgGapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 11, DecimalPlaces: 3, LapWindow: DefaultAvgGapWindow),
+        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 12),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 13, DecimalPlaces: 3),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 14),
     ];
 
     /// <summary>Old saved profiles gain columns added later (posChange) -- see ColumnDefaults.</summary>
@@ -283,6 +287,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         _simulatedPlayer = player;
     }
 
+    private IReadOnlyList<double>? _playerCleanLaps;
     private List<HeaderFieldConfig> _headerFields = HeaderFields.DefaultStandings();
     public void SetHeaderFields(List<HeaderFieldConfig> fields) => _headerFields = HeaderFields.Complete(fields);
 
@@ -291,6 +296,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private void DrawPanels(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
         SyncP2PColumn(rows);
+        _playerCleanLaps = rows.FirstOrDefault(r => r.IsPlayer)?.CleanLapTimes;
         var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);
         float cursorY = y;
         foreach (var group in groups)
@@ -522,6 +528,11 @@ public sealed unsafe class StandingsWidget : IDisposable
                 }
                 case "lapDelta":
                 {
+                    if (row.IsPlayer)
+                    {
+                        DrawTextCell(dc, cellX, y, cellWidth, row.LastLapTime is > 0 ? LapTimeFormatting.FormatTruncated(row.LastLapTime.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
                     // No +/- sign -- the magnitude is shown, colour carries the direction FROM THE PLAYER'S
                     // point of view (Kapps): green = the player was faster (that driver's lap was slower,
                     // delta = theirs - mine > 0), red = the player was slower (delta < 0); zero, unknown or
@@ -533,6 +544,26 @@ public sealed unsafe class StandingsWidget : IDisposable
                     DrawNumericOrDash(dc, cellX, y, cellWidth, deltaValue,
                         v => Math.Abs(v).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture),
                         deltaColor, placement.Column.Alignment);
+                    break;
+                }
+                case "avgGap":
+                {
+                    // Average of the N fastest clean laps, theirs minus mine. Same colour rule as lapDelta:
+                    // green = the player is faster on average, red = slower, neutral on the own row.
+                    int window = placement.Column.LapWindow is > 0 ? placement.Column.LapWindow.Value : DefaultAvgGapWindow;
+                    if (row.IsPlayer)
+                    {
+                        var reference = LapHistory.AverageBest(_playerCleanLaps, window);
+                        DrawTextCell(dc, cellX, y, cellWidth, reference is > 0 ? LapTimeFormatting.FormatTruncated(reference.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
+                    double? avg = row.IsPlayer ? 0.0 : LapHistory.AverageGap(row.CleanLapTimes, _playerCleanLaps, window);
+                    var avgColor = !row.IsPlayer && avg is double a && a != 0.0
+                        ? (a > 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)
+                        : PaletteTokens.NeutralDeltaOrGap;
+                    DrawNumericOrDash(dc, cellX, y, cellWidth, avg,
+                        v => Math.Abs(v).ToString(DecimalFormat(placement.Column.DecimalPlaces, signed: false), CultureInfo.InvariantCulture),
+                        avgColor, placement.Column.Alignment);
                     break;
                 }
                 case "pit":

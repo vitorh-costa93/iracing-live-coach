@@ -734,7 +734,8 @@ public static unsafe class Program
             c.Order,
             c.DecimalPlaces,
             c.FontFamily,
-            c.FontWeight)).ToList();
+            c.FontWeight,
+            c.LapWindow)).ToList();
 
         switch (message.Widget)
         {

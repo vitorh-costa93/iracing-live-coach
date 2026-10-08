@@ -25,9 +25,11 @@ public partial class MainWindow
     {
         ["position"] = "Posição", ["posChange"] = "Posições +/-", ["offset"] = "Offset", ["carNumber"] = "Número", ["brand"] = "Emblema", ["flag"] = "Bandeira",
         ["name"] = "Piloto", ["license"] = "Carteira (SR)", ["iratingDelta"] = "iRating + Δ", ["irating"] = "iRating",
-        ["interval"] = "Interval", ["lastLap"] = "Última volta", ["lapDelta"] = "Δ volta", ["pit"] = "Pit",
+        ["interval"] = "Interval", ["lastLap"] = "Última volta", ["lapDelta"] = "Δ volta", ["avgGap"] = "Gap médio (melhores voltas)", ["pit"] = "Pit",
         ["gap"] = "Gap", ["overtake"] = "Overtake (P2P)",
     };
+
+    private static readonly int[] AvgGapWindows = [3, 5, 10, 20];
 
     private static List<LayoutColumn>? DefaultColumnsFor(string widget) => widget switch
     {
@@ -75,6 +77,13 @@ public partial class MainWindow
                 return (["3.694", "3694", "3.7k"], IRatingFormatBox.SelectedIndex, i => IRatingFormatBox.SelectedIndex = i);
             case "interval": case "gap": case "lapDelta":
                 return (["+0.000", "+0.00", "+0.0", "+0"], 3 - Math.Clamp(column.DecimalPlaces ?? 3, 0, 3), i => SetDecimals(column.Key, 3 - i));
+            case "avgGap":
+            {
+                int window = column.LapWindow ?? 5;
+                int at = Array.IndexOf(AvgGapWindows, window);
+                return (AvgGapWindows.Select(n => $"{n} melhores voltas").ToArray(), at < 0 ? 1 : at,
+                    i => UpdateColumn("avgGap", c => c with { LapWindow = AvgGapWindows[Math.Clamp(i, 0, AvgGapWindows.Length - 1)] }));
+            }
             case "lastLap":
                 return (["m:ss.000", "m:ss.00", "m:ss.0", "m:ss"], 3 - Math.Clamp(column.DecimalPlaces ?? 3, 0, 3), i => SetDecimals(column.Key, 3 - i));
             case "position": return (["Inteiro (1, 2, 3…)"], 0, null);
@@ -280,7 +289,7 @@ public partial class MainWindow
         _previewHost?.ApplyProfile(_profileStore);
         var entries = snapshot.Select(c => new ColumnConfigEntry(
             c.Key, c.Visible, c.Order, c.WidthPx, c.MinWidthPx, c.WidthMode.ToString(),
-            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx, c.FontFamily, c.FontWeight)).ToList();
+            c.Alignment.ToString(), c.DecimalPlaces, c.PaddingLeftPx, c.PaddingRightPx, c.FontFamily, c.FontWeight, c.LapWindow)).ToList();
         bool sent = await _columnConfigClient.SendAsync(widget, entries);
         ReportSent(sent, "Colunas");
         Debounce("save", SaveProfileStore, 600);

@@ -30,6 +30,7 @@ public enum ColumnAlignment { Left, Center, Right }
 /// <param name="Order">Display order among visible columns; reorderable independent of <see cref="Key"/>.</param>
 /// <param name="FontFamily">FontCatalog key; null inherits the widget's family (typography phase 2).</param>
 /// <param name="FontWeight">Null inherits the widget's weight.</param>
+/// <param name="LapWindow">Only the average-gap column: how many of the fastest laps are averaged.</param>
 /// <param name="DecimalPlaces">Null for non-numeric columns; spec §12's per-field configurable precision.</param>
 public sealed record ColumnDefinition(
     string Key,
@@ -43,7 +44,8 @@ public sealed record ColumnDefinition(
     int Order,
     int? DecimalPlaces = null,
     string? FontFamily = null,
-    int? FontWeight = null)
+    int? FontWeight = null,
+    int? LapWindow = null)
 {
     /// <summary>Total footprint of this column including its own padding — what actually gets summed
     /// for the table's auto-width (spec §12: "largura automática de tabela = soma das colunas visíveis + paddings...").</summary>
