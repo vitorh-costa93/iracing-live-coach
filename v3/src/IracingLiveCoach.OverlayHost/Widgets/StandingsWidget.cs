@@ -65,8 +65,8 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float GapColumnWidthDip = 66f;
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
-    private const float LapDeltaColumnWidthDip = 68f;
-    private const float AvgGapColumnWidthDip = 76f;
+    private const float LapDeltaColumnWidthDip = 84f;
+    private const float AvgGapColumnWidthDip = 84f;
     public const int DefaultAvgGapWindow = 5;
     private const float OvertakeColumnWidthDip = 64f;
     private const float PitColumnWidthDip = 68f;
@@ -528,6 +528,11 @@ public sealed unsafe class StandingsWidget : IDisposable
                 }
                 case "lapDelta":
                 {
+                    if (row.IsPlayer)
+                    {
+                        DrawTextCell(dc, cellX, y, cellWidth, row.LastLapTime is > 0 ? LapTimeFormatting.FormatTruncated(row.LastLapTime.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
                     // No +/- sign -- the magnitude is shown, colour carries the direction FROM THE PLAYER'S
                     // point of view (Kapps): green = the player was faster (that driver's lap was slower,
                     // delta = theirs - mine > 0), red = the player was slower (delta < 0); zero, unknown or
@@ -546,6 +551,12 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Average of the N fastest clean laps, theirs minus mine. Same colour rule as lapDelta:
                     // green = the player is faster on average, red = slower, neutral on the own row.
                     int window = placement.Column.LapWindow is > 0 ? placement.Column.LapWindow.Value : DefaultAvgGapWindow;
+                    if (row.IsPlayer)
+                    {
+                        var reference = LapHistory.AverageBest(_playerCleanLaps, window);
+                        DrawTextCell(dc, cellX, y, cellWidth, reference is > 0 ? LapTimeFormatting.FormatTruncated(reference.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
                     double? avg = row.IsPlayer ? 0.0 : LapHistory.AverageGap(row.CleanLapTimes, _playerCleanLaps, window);
                     var avgColor = !row.IsPlayer && avg is double a && a != 0.0
                         ? (a > 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)

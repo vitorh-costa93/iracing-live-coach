@@ -12,7 +12,7 @@ public sealed record HeaderFieldConfig(string Key, bool Visible, string? FontFam
 public static class HeaderFields
 {
     public static readonly IReadOnlyList<string> AllKeys =
-        ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local", "incidents"];
+        ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local", "incidents", "remain"];
 
     public static List<HeaderFieldConfig> DefaultStandings() =>
         Complete([new("class", true), new("lap", true), new("sof", true), new("clock", true)]);
@@ -71,11 +71,22 @@ public static class HeaderFields
             "rubber" => player?.TrackRubberState is { Length: > 0 } r ? "RUBBER " + r.ToUpperInvariant() : null,
             "best" => player?.BestLapTimeSeconds is double bl ? "BEST " + LapTimeFormatting.Format(bl) : null,
             "last" => player?.LastLapTimeSeconds is double ll ? "LAST " + LapTimeFormatting.Format(ll) : null,
+            "remain" => RemainingTimeText(session),
             "clock" => now.ToString("HH:mm", CultureInfo.InvariantCulture),
             "local" => "LOCAL " + now.ToString("HH:mm", CultureInfo.InvariantCulture),
             "incidents" => player?.Incidents is int inc ? $"INC {inc}x" + (player.IncidentLimit is int lim ? $"/{lim}x" : "") : null,
             _ => null,
         };
+    }
+
+    private static string? RemainingTimeText(SessionStatus? session)
+    {
+        if (session?.TimeRemainSeconds is not double remaining || !double.IsFinite(remaining) || remaining < 0 || remaining >= 86400) return null;
+        int seconds = (int)Math.Floor(remaining);
+        string text = $"{seconds / 60}:{seconds % 60:00}";
+        return session.SessionDurationSeconds is double duration && double.IsFinite(duration) && duration > 0 && duration < 86400
+            ? text + "/" + (duration / 60).ToString("0.##", CultureInfo.InvariantCulture)
+            : text;
     }
 
     public static string Compose(IEnumerable<HeaderFieldConfig> fields, SessionStatus? session, PlayerCarStatus? player, DateTime now) =>

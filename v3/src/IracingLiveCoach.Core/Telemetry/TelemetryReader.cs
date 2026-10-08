@@ -58,7 +58,7 @@ public readonly record struct ClassLapInfo(int Lap, double? Projected, int? Fina
 
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
     IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null,
-    IReadOnlyDictionary<int, double?>? ClassSof = null)
+    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null, double? SessionDurationSeconds = null)
 {
     /// <summary>Kapps' per-class count ("14", "2/14") for a class; the whole-field count only when the
     /// session's driver list was not available.</summary>
@@ -1426,6 +1426,7 @@ public class TelemetryReader : IDisposable
         int? totalLaps = null;
         bool totalEstimated = false;
         double? totalProjected = null;
+        double? sessionDuration = null;
         try
         {
             var sessionInfo = _sdk.Data.SessionInfo;
@@ -1436,6 +1437,8 @@ public class TelemetryReader : IDisposable
             var currentSessionNum = LiveSessionNum(sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1);
             var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
             sessionTypeText = session?.SessionType?.ToUpperInvariant() ?? "";
+            var duration = LeadingNumber(session?.SessionTime);
+            if (duration is > 0 and < 86400) sessionDuration = duration;
 
             // In a race the header shows the RACE lap (the leader's), like Kapps' "R 14/30".
             var lap = _isRaceSession && _leaderLap > 0 ? _leaderLap : _sdk.Data.GetInt("Lap");
@@ -1448,7 +1451,10 @@ public class TelemetryReader : IDisposable
         catch { /* session info momentarily incomplete -- leave whatever was resolved */ }
 
         var (flagText, flagColorHex) = DecodeSessionFlag();
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected);
+        // SessionTimeRemain is a huge sentinel (or negative) in lap-limited / unlimited sessions: no minutes then.
+        double? timeRemain = null;
+        try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t is >= 0 and < 86400) timeRemain = t; } catch { }
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain, SessionDurationSeconds: sessionDuration);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),
