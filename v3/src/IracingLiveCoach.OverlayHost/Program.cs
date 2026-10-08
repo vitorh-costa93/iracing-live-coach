@@ -735,7 +735,7 @@ public static unsafe class Program
             c.DecimalPlaces,
             c.FontFamily,
             c.FontWeight,
-            c.LapWindow)).ToList();
+            c.LapWindow, c.ShowInPractice, c.ShowInQualify, c.ShowInRace)).ToList();
 
         switch (message.Widget)
         {

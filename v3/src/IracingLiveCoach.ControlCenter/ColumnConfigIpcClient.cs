@@ -9,7 +9,7 @@ public sealed record ColumnConfigEntry(
     string Key, bool Visible, int Order, float WidthPx, float MinWidthPx,
     string WidthMode, string Alignment, int? DecimalPlaces,
     float PaddingLeftPx, float PaddingRightPx,
-    string? FontFamily = null, int? FontWeight = null, int? LapWindow = null);
+    string? FontFamily = null, int? FontWeight = null, int? LapWindow = null, bool ShowInPractice = true, bool ShowInQualify = true, bool ShowInRace = true);
 
 /// <summary>Same short-lived-connection pattern as <see cref="PlacementIpcClient"/>/<see cref="EditModeIpcClient"/>,
 /// on the dedicated column-config pipe.</summary>
