@@ -2,6 +2,13 @@ using System.Text.Json.Serialization;
 
 namespace Ams2.Shared.Profiles;
 
+/// <summary>Escala de fonte relativa ao tamanho geral; peso nulo herda o peso geral ou do tema.</summary>
+public sealed record ElementFontSettings
+{
+    public float? Scale { get; init; }
+    public int? Weight { get; init; }
+}
+
 /// <summary>Configuracao de um widget (uma janela do overlay). Nulos em Font/Rows/Columns = padrao do tema/widget.</summary>
 public sealed record WidgetSettings
 {
@@ -28,8 +35,14 @@ public sealed record WidgetSettings
     public int? RadarSensitivity { get; init; }
     /// <summary>Largura de cada coluna dimensionavel (<see cref="WidgetDef.Widths"/>), em % da largura do tema (100 = padrao). Null = tudo padrao.</summary>
     public Dictionary<string, int>? ColumnWidths { get; init; }
-    /// <summary>Tamanho do texto (1 = tema). Redimensiona o widget inteiro junto (linhas, colunas, janela), na proporcao.</summary>
+    /// <summary>Tamanho do texto (1 = tema). Altera apenas as fontes, preservando a janela.</summary>
     public float? TextScale { get; init; }
+    /// <summary>Fator independente da largura; 1 volta ao padrao.</summary>
+    public float? WidthScale { get; init; }
+    /// <summary>Fator independente da altura; 1 volta ao padrao.</summary>
+    public float? HeightScale { get; init; }
+    /// <summary>Fontes por elemento semantico. No patch substitui o mapa inteiro; vazio restaura todos.</summary>
+    public Dictionary<string, ElementFontSettings>? ElementFonts { get; init; }
     /// <summary>Peso da fonte dos textos (100-900). Null = o do tema.</summary>
     public int? FontWeight { get; init; }
     /// <summary>Cores "#RRGGBB" que substituem as do tema: textos/titulos, rotulos e valores. Null = tema.</summary>
@@ -55,8 +68,10 @@ public sealed record WidgetSettings
     /// <summary>Valor gravado da opcao ou <paramref name="fallback"/>.</summary>
     public string OptionOr(string id, string fallback) => Option(id) ?? fallback;
 
-    /// <summary>Escala de render efetiva = escala da janela x tamanho do texto: a fonte maior aumenta o widget inteiro na mesma proporcao.</summary>
-    [JsonIgnore] public float RenderScale => Scale * (TextScale ?? 1f);
+    /// <summary>Escala uniforme da janela; fontes e eixos sao independentes.</summary>
+    [JsonIgnore] public float RenderScale => Scale;
+    [JsonIgnore] public float ScaleX => Scale * (WidthScale ?? 1f);
+    [JsonIgnore] public float ScaleY => Scale * (HeightScale ?? 1f);
     /// <summary>Formato efetivo (nunca nulo).</summary>
     [JsonIgnore] public DisplayOptions Fmt => Display ?? DisplayOptions.Empty;
     /// <summary>Fator (0,5..2,5) de largura da coluna; 1 quando nao configurada.</summary>
@@ -79,7 +94,7 @@ public sealed record WidgetSettings
     /// </summary>
     public WidgetSettings Normalized(string? themeId = null)
     {
-        var def = WidgetCatalog.Find(Id);
+        var def = WidgetCatalog.Find(Id, themeId);
         int? rows = null;
         if (def is { SupportsRows: true }) rows = Math.Clamp(Rows ?? def.DefaultRows!.Value, def.MinRows!.Value, def.MaxRows!.Value);
         string[]? cols = Columns;
@@ -109,6 +124,9 @@ public sealed record WidgetSettings
         return this with
         {
             ColumnWidths = widths,
+            WidthScale = NormalizeFactor(WidthScale, WidgetCatalog.MinAxisScale, WidgetCatalog.MaxAxisScale),
+            HeightScale = NormalizeFactor(HeightScale, WidgetCatalog.MinAxisScale, WidgetCatalog.MaxAxisScale),
+            ElementFonts = NormalizeElementFonts(),
             TextScale = textScale,
             FontWeight = FontWeight is { } fw and > 0 ? Math.Clamp((int)Math.Round(fw / 100.0) * 100, 100, 900) : null,
             TextColor = ColorHex.Normalize(TextColor),
@@ -126,6 +144,29 @@ public sealed record WidgetSettings
             Rows = rows,
             Columns = cols,
         };
+    }
+
+    static float? NormalizeFactor(float? value, float min, float max)
+    {
+        if (value is not { } v || !float.IsFinite(v)) return null;
+        var normalized = MathF.Round(Math.Clamp(v, min, max), 2);
+        return normalized == 1f ? null : normalized;
+    }
+
+    Dictionary<string, ElementFontSettings>? NormalizeElementFonts()
+    {
+        Dictionary<string, ElementFontSettings>? result = null;
+        if (ElementFonts is null) return null;
+        foreach (var (key, value) in ElementFonts)
+        {
+            var known = WidgetCatalog.FontElements.FirstOrDefault(d => string.Equals(d.Id, key, StringComparison.OrdinalIgnoreCase));
+            if (known is null || value is null) continue;
+            var scale = NormalizeFactor(value.Scale, WidgetCatalog.MinTextScale, WidgetCatalog.MaxTextScale);
+            int? weight = value.Weight is { } w and > 0 ? Math.Clamp((int)Math.Round(w / 100.0) * 100, 100, 900) : null;
+            if (scale is null && weight is null) continue;
+            (result ??= new(StringComparer.OrdinalIgnoreCase))[known.Id] = new() { Scale = scale, Weight = weight };
+        }
+        return result;
     }
 
     string[]? NormalizeSessions()
@@ -178,6 +219,12 @@ public sealed record WidgetPatch
     /// <summary>Substitui o mapa inteiro de larguras (vazio = todas no padrao).</summary>
     public Dictionary<string, int>? ColumnWidths { get; init; }
     public float? TextScale { get; init; }
+    /// <summary>Fator independente da largura; 1 volta ao padrao.</summary>
+    public float? WidthScale { get; init; }
+    /// <summary>Fator independente da altura; 1 volta ao padrao.</summary>
+    public float? HeightScale { get; init; }
+    /// <summary>Fontes por elemento semantico. No patch substitui o mapa inteiro; vazio restaura todos.</summary>
+    public Dictionary<string, ElementFontSettings>? ElementFonts { get; init; }
     /// <summary>0 = volta ao peso do tema.</summary>
     public int? FontWeight { get; init; }
     /// <summary>"" = volta a cor do tema.</summary>
@@ -209,6 +256,8 @@ public sealed record WidgetPatch
         RadarSensitivity = RadarSensitivity ?? s.RadarSensitivity,
         ColumnWidths = ColumnWidths ?? s.ColumnWidths,
         TextScale = TextScale ?? s.TextScale,
+        WidthScale = WidthScale ?? s.WidthScale, HeightScale = HeightScale ?? s.HeightScale,
+        ElementFonts = ElementFonts ?? s.ElementFonts,
         FontWeight = FontWeight ?? s.FontWeight,
         TextColor = TextColor ?? s.TextColor,
         LabelColor = LabelColor ?? s.LabelColor,
@@ -229,6 +278,8 @@ public sealed record WidgetPatch
         RadarRange = b.RadarRange ?? a.RadarRange, RadarSensitivity = b.RadarSensitivity ?? a.RadarSensitivity,
         Columns = b.AllColumns == true ? null : b.Columns ?? (a.AllColumns == true ? null : a.Columns),
         AllColumns = b.Columns is not null ? null : b.AllColumns ?? a.AllColumns,
+        WidthScale = b.WidthScale ?? a.WidthScale, HeightScale = b.HeightScale ?? a.HeightScale,
+        ElementFonts = b.ElementFonts ?? a.ElementFonts,
         ColumnWidths = b.ColumnWidths ?? a.ColumnWidths, TextScale = b.TextScale ?? a.TextScale, FontWeight = b.FontWeight ?? a.FontWeight,
         TextColor = b.TextColor ?? a.TextColor, LabelColor = b.LabelColor ?? a.LabelColor, ValueColor = b.ValueColor ?? a.ValueColor,
         Display = b.Display ?? a.Display, Options = b.Options ?? a.Options, Sessions = b.Sessions ?? a.Sessions,
@@ -266,7 +317,9 @@ public sealed record Profile
     /// 3: personalizacao (larguras, formato, texto) e colunas novas; listas de colunas salvas ganham as colunas novas (visiveis) e o
     /// Inputs do f1-2004 ganha o grafico (antes desligado por padrao).
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    // 5: the f1-2004 input graph becomes an independent widget/window.
+    // 6: text size is independent; dimensions and semantic font overrides are saved separately.
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Name { get; init; } = "Padrão";
@@ -291,11 +344,61 @@ public sealed record Profile
         foreach (var d in WidgetCatalog.ForTheme(themeId))
         {
             var w = Get(d.Id);
+            if (w is null && d.Id == "inputgraph" && SchemaVersion < 5 && Get("inputs") is { } oldInputs)
+            {
+                if (SchemaVersion < 3) oldInputs = MigrateV3(oldInputs);
+                // Match the old graph's offset before removing it from the speedometer window.
+                var source = (oldInputs with { TextScale = oldInputs.TextScale is { } t && float.IsFinite(t) ? Math.Clamp(t, .6f, 2f) : null }).Normalized();
+                float stack = (source.ColumnVisible("gear") ? 88 : 0) + (source.ColumnVisible("bars") ? 88 : 0);
+                float graphTop = source.ColumnVisible("speedo") ? 498 : stack > 0 ? stack + 4 : 0;
+                w = source with { Id = d.Id, Columns = null, Visible = source.Visible && source.ColumnVisible("graph"),
+                    Y = source.Y + (int)Math.Round(graphTop * source.Scale * (source.TextScale ?? 1f)) };
+            }
+            if (w is null && d.Id == "qualiboard" && SchemaVersion < 4 && Get("qualilap") is { } oldLap)
+            {
+                var target = defaults.Get(d.Id)!;
+                w = oldLap with { Id = d.Id, X = target.X, Y = target.Y, Scale = target.Scale,
+                    Order = target.Order, Visible = oldLap.Visible || Get("qualitower")?.Visible == true };
+            }
             if (w is not null && SchemaVersion < 3) w = MigrateV3(w);
+            if (w is not null && SchemaVersion < 4 && themeId == "f1-1998") w = MigrateBroadcast98(w, defaults.Get(d.Id)!, screenWidth, screenHeight);
+            if (d.Id == "qualiboard" && SchemaVersion < 4 &&
+                (Get("qualitower") is { Visible: true } qt && !LegacySlot(qt, 32, 24, 1, screenWidth, screenHeight) ||
+                 Get("qualilap") is { Visible: true } ql && !LegacySlot(ql, 640, 900, 1, screenWidth, screenHeight)))
+                w = (w ?? defaults.Get(d.Id)!) with { Visible = false };
+            if (w is not null && SchemaVersion < 6)
+            {
+                // v5 TextScale resized the entire window. Preserve its appearance once.
+                var legacyText = w.TextScale is { } ts && float.IsFinite(ts) ? Math.Clamp(ts, .6f, 2f) : 1f;
+                var legacyScale = float.IsFinite(w.Scale) ? Math.Clamp(w.Scale, WidgetCatalog.MinScale, WidgetCatalog.MaxScale) : 1f;
+                var effective = legacyScale * legacyText;
+                var scale = Math.Clamp(effective, WidgetCatalog.MinScale, WidgetCatalog.MaxScale);
+                var overflow = effective / scale;
+                w = w with { Scale = scale, WidthScale = overflow == 1 ? w.WidthScale : overflow,
+                    HeightScale = overflow == 1 ? w.HeightScale : overflow, TextScale = overflow == 1 ? null : overflow };
+            }
             list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
         return this with { SchemaVersion = CurrentSchemaVersion, ThemeId = themeId, Widgets = ordered };
+    }
+
+    static bool LegacySlot(WidgetSettings w, int x, int y, float scale, int sw, int sh)
+        => w.X == (int)Math.Round(x * sw / 1920.0) && w.Y == (int)Math.Round(y * sh / 1080.0)
+            && Math.Abs(w.Scale - (float)Math.Round(scale * sh / 1080.0, 3)) < .001;
+
+    static WidgetSettings MigrateBroadcast98(WidgetSettings w, WidgetSettings target, int sw, int sh)
+    {
+        var old = w.Id switch
+        {
+            "board" => (660, 872, 1f), "drivercaption" or "winner" => (32, 926, 1.2f),
+            "pittimer" => (744, 780, 1.2f), "qualitower" => (32, 24, 1f),
+            "qualilap" => (640, 900, 1f), "inputs" => (1542, 957, .5f), _ => (-1, -1, 0f),
+        };
+        if (old.Item1 < 0 || !LegacySlot(w, old.Item1, old.Item2, old.Item3, sw, sh)) return w;
+        // Only stock placement changes; custom fonts, formats, columns and options survive.
+        return w with { X = target.X, Y = target.Y, Scale = target.Scale,
+            Visible = w.Id is "winner" or "pittimer" or "qualitower" or "qualilap" ? false : w.Visible };
     }
 
     /// <summary>v2 -> v3: colunas criadas na v3 entram visiveis nas listas salvas; Inputs do f1-2004 liga o grafico.</summary>
@@ -336,7 +439,7 @@ public static class ProfileFactory
             // Standings: so posicao + sigla; gap e classe sao opcionais. Board 1998: so legenda de pneus + indicador de pagina.
             // 2018: a torre da TV tem a coluna clara (gap/intervalo/...); o logo da equipe (classe) continua opcional.
             Columns = e.d.Id == "standings" ? (string.Equals(ThemeCatalog.Canonical(themeId), "f1-2018", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"] : ["pos", "name"])
-                : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre", "page"]
+                : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
                 // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos (os campos ficam visiveis).

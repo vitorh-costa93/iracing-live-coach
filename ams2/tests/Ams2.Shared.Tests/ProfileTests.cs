@@ -21,11 +21,11 @@ public class ProfileTests
         Assert.Equal(WidgetCatalog.ForTheme(Theme).Select(w => w.Id), p.Ordered.Select(w => w.Id));
         Assert.All(p.Widgets, w => Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale));
         // o board substitui Relative e Driver Caption no layout padrao (continuam no catalogo, desligados)
-        Assert.All(p.Widgets, w => Assert.Equal(w.Id is not ("relative" or "drivercaption"), w.Visible));
+        Assert.All(p.Widgets, w => Assert.Equal(w.Id is not ("relative" or "drivercaption" or "winner" or "pittimer" or "qualitower" or "qualilap"), w.Visible));
         // composicao da TV: standings no canto superior esquerdo, board embaixo ao centro
         Assert.Equal((32, 24), (p.Get("standings")!.X, p.Get("standings")!.Y));
-        Assert.Equal(872, p.Get("board")!.Y);
-        Assert.InRange(p.Get("board")!.X, 600, 700);
+        Assert.Equal(780, p.Get("board")!.Y);
+        Assert.Equal(0, p.Get("board")!.X);
         Assert.Equal((5, 3), (p.Get("standings")!.TopCount, p.Get("standings")!.NearCount));
         Assert.Null(p.Get("standings")!.Rows);
         Assert.Equal(3, p.Get("relative")!.Rows);
@@ -104,9 +104,9 @@ public class ProfileTests
     }
 
     [Fact]
-    public void Board_defaults_keep_only_tyre_and_page_in_f1_1998()
+    public void Board_defaults_keep_only_tyre_in_f1_1998()
     {
-        Assert.Equal(["tyre", "page"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
+        Assert.Equal(["tyre"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
         Assert.Null(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Columns);   // todas visiveis
         // 2018: a TV nao tem o Board e a torre traz o "LAP n / N": Board e Lap Counter desligados (continuam no perfil); Relative tambem.
         var p18 = ProfileFactory.CreateDefault("x", "f1-2018");

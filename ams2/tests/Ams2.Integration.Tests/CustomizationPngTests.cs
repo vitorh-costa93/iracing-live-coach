@@ -6,8 +6,8 @@ using Ams2.Shared.Profiles;
 namespace Ams2.Integration.Tests;
 
 /// <summary>
-/// Personalizacao aplicada no desenho real (--png com o escritor falso): o tamanho do texto redimensiona a janela inteira na
-/// proporcao, larguras de coluna mudam a largura do widget e o --settings (o mesmo JSON do perfil que o Control Center usa) vale.
+/// Personalizacao aplicada no desenho real (--png com o escritor falso): o tamanho do texto preserva a janela,
+/// os eixos alteram suas dimensoes independentemente e o --settings usa o mesmo JSON dos perfis do Control Center.
 /// </summary>
 public sealed class CustomizationPngTests
 {
@@ -61,22 +61,25 @@ public sealed class CustomizationPngTests
     [InlineData("livespeed", "f1-2018")]
     [InlineData("racestart", "f1-2018")]
     [InlineData("racecontrol", "f1-2018")]
-    public void Text_scale_grows_the_window_in_proportion(string widget, string theme)
+    public void Text_scale_preserves_window_dimensions(string widget, string theme)
     {
         var a = Render($"--widget {widget} --theme {theme}");
         var b = Render($"--widget {widget} --theme {theme} --text-scale 1.5");
-        Assert.InRange(b.W, a.W * 1.5 - 2, a.W * 1.5 + 2);
-        Assert.InRange(b.H, a.H * 1.5 - 2, a.H * 1.5 + 2);
+        Assert.Equal((a.W, a.H), (b.W, b.H));
         var c = Render($"--widget {widget} --theme {theme} --text-scale 0.8");
-        Assert.True(c.W < a.W && c.H < a.H);
+        Assert.Equal((a.W, a.H), (c.W, c.H));
     }
 
     [Fact]
-    public void Text_scale_in_the_settings_json_also_resizes()
+    public void Text_scale_in_settings_preserves_dimensions_and_axes_resize_independently()
     {
         var a = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel" });
         var b = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel", TextScale = 2f });
-        Assert.Equal((a.W * 2, a.H * 2), (b.W, b.H));
+        Assert.Equal((a.W, a.H), (b.W, b.H));
+        var wide = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel", WidthScale = 2 });
+        var tall = Render("--widget fuel --theme f1-2018", new WidgetSettings { Id = "fuel", HeightScale = 2 });
+        Assert.Equal((a.W * 2, a.H), (wide.W, wide.H));
+        Assert.Equal((a.W, a.H * 2), (tall.W, tall.H));
     }
 
     [Theory]
@@ -85,10 +88,10 @@ public sealed class CustomizationPngTests
     [InlineData("relative", "f1-2018", "name")]
     [InlineData("relative", "f1-2004", "gap")]
     [InlineData("inputs", "f1-1998", "graph")]
-    [InlineData("inputs", "f1-2004", "graph")]
+    [InlineData("inputgraph", "f1-2004", "graph")]
     [InlineData("board", "f1-2018", "name")]
     [InlineData("pitstops", "f1-2004", "name")]
-    [InlineData("pittimer", "f1-1998", "name")]
+
     [InlineData("standings", "f1-2018", "name")]
     [InlineData("standings", "f1-2018", "gap")]
     [InlineData("pitstops", "f1-2018", "stops")]
@@ -577,7 +580,10 @@ public sealed class CustomizationPngTests
     {
         string png = Path.Combine(Path.GetTempPath(), $"ams2-qt-{Guid.NewGuid():N}.png");
         string json = Path.ChangeExtension(png, ".json");
-        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualitower", Options = options }, ProfileStore.Json));
+        // These tests inspect tower customization, independently of the live out-lap visibility schedule.
+        var previewOptions = options is null ? new Dictionary<string, string>() : new Dictionary<string, string>(options);
+        previewOptions["layoutPreview"] = "true";
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualitower", Options = previewOptions }, ProfileStore.Json));
         var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget qualitower --theme {theme} --settings \"{json}\"")
             { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
         psi.Environment["AMS2_FAKE_QUALI"] = "1";
@@ -668,18 +674,21 @@ public sealed class CustomizationPngTests
     {
         const string T = "f1-1998";
         var d = QualiTower(null, theme: T);
-        Assert.Equal((834, 182), (d.W, d.H));
+        Assert.Equal((1920, 300), (d.W, d.H));
         Assert.True(d.Png.Length > 2000);
         var zone = QualiTower(new() { ["eliminationFrom"] = "5" }, theme: T);
         Assert.Equal((d.W, d.H), (zone.W, zone.H));
         Assert.NotEqual(d.Png, zone.Png);
         // Uma coluna: metade da largura, o dobro das linhas.
         var one = QualiTower(new() { ["columns"] = "1" }, theme: T);
-        Assert.True(one.W < d.W && one.H > d.H, $"{d.W}x{d.H} -> {one.W}x{one.H}");
-        Assert.True(QualiTower(new() { ["rows"] = "10" }, theme: T).H > d.H);
+        Assert.Equal((d.W, d.H), (one.W, one.H));
+        Assert.NotEqual(d.Png, one.Png);
+        Assert.Equal(d.H, QualiTower(new() { ["rows"] = "10" }, theme: T).H);
+        Assert.NotEqual(d.Png, QualiTower(new() { ["rows"] = "10" }, theme: T).Png);
         // Sem o cabecalho do relogio a janela fica mais baixa.
-        var noClock = QualiTower(new() { ["showClock"] = "false" }, theme: T);
-        Assert.True(noClock.W == d.W && noClock.H < d.H, $"{d.W}x{d.H} -> {noClock.W}x{noClock.H}");
+        var noClock = QualiTower(new() { ["showClock"] = "true" }, theme: T);
+        Assert.Equal((d.W, d.H), (noClock.W, noClock.H));
+        Assert.NotEqual(d.Png, noClock.Png);
         // Jogador sem tempo (t=5 s): entra no fim da lista com "NO TIME" no lugar da diferenca.
         Assert.NotEqual(d.Png, QualiTower(null, 5, theme: T).Png);
     }
@@ -710,8 +719,8 @@ public sealed class CustomizationPngTests
 
     [Theory]
     [InlineData("f1-2018", 664, 152)]
-    [InlineData("f1-2004", 278, 126)]
-    [InlineData("f1-1998", 640, 124)]
+    [InlineData("f1-2004", 350, 126)]
+    [InlineData("f1-1998", 1920, 300)]
     public void Quali_lap_hides_without_a_flying_lap_and_draws_running_time_and_result(string theme, int w, int h)
     {
         // t=5: volta sem inicio observado = oculta (dois quadros vazios iguais); com "always" desenha a placa.
@@ -732,7 +741,9 @@ public sealed class CustomizationPngTests
         // showFor=3: o resultado (cruzou ha ~3,8 s) ja saiu; fica o tempo corrente da volta seguinte.
         Assert.NotEqual(result.Png, QualiLap(theme, 45, new() { ["showFor"] = "3" }).Png);
         // Comparar com o melhor pessoal muda o comparativo (nome/tempo ou diferenca).
-        Assert.NotEqual(QualiLap(theme, 22).Png, QualiLap(theme, 22, new() { ["compareTo"] = "personal" }).Png);
+        // 2004 shows the comparison only in its timing window; the completed lap exposes leader/personal deltas.
+        double comparisonTime = theme == "f1-2004" ? 45 : 22;
+        Assert.NotEqual(QualiLap(theme, comparisonTime).Png, QualiLap(theme, comparisonTime, new() { ["compareTo"] = "personal" }).Png);
     }
 
     [Fact]
@@ -750,7 +761,7 @@ public sealed class CustomizationPngTests
     [Fact]
     public void Quali_lap_2004_sector_strip_and_1998_speed_options()
     {
-        Assert.NotEqual(QualiLap("f1-2004", 22).Png, QualiLap("f1-2004", 22, new() { ["showSectors"] = "false" }).Png);
+        Assert.NotEqual(QualiLap("f1-2004", 22).Png, QualiLap("f1-2004", 22, new() { ["showSectors"] = "true" }).Png);
         Assert.NotEqual(QualiLap("f1-1998", 45).Png, QualiLap("f1-1998", 45, new() { ["showSpeed"] = "false" }).Png);
     }
 

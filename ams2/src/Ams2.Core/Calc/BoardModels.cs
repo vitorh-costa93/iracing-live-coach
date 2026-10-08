@@ -31,6 +31,10 @@ public sealed record BoardOptions
     public int LapComparisonLaps { get; init; } = 3;
     /// <summary>Espera máxima pelo LastLapTime novo depois que LapsCompleted sobe (o jogo pode atualizar com atraso).</summary>
     public double LapTimeSettleSeconds { get; init; } = 1;
+    /// <summary>1993: ponto único da pista em percentual; 0 = linha de chegada (default de produto).</summary>
+    public double GapPointPercent { get; init; } = 0;
+    /// <summary>1993: retenção do resultado concluído, em segundos.</summary>
+    public double GapHoldSeconds { get; init; } = 7;
 
     public static readonly BoardOptions Default = new();
 }
@@ -102,7 +106,11 @@ public sealed record BoardSectorGap(
     bool IsSplit,
     string GapText,
     double OpenT,
-    double CloseT);
+    double CloseT)
+{
+    /// <summary>Stable first observed opening; OpenT can be refined when the second crossing arrives.</summary>
+    public double? WindowStartedT { get; init; }
+}
 
 /// <summary>Uma volta do comparativo. Delta = jogador − vizinho (negativo = jogador mais rápido, verde). null = sem tempo.</summary>
 public sealed record BoardLapRow(int Lap, double? PlayerTime, double? NeighborTime, double? Delta, bool PlayerFaster);
@@ -136,6 +144,11 @@ public sealed record BoardState(
     BoardLapComparison? LapComparison,
     BoardDriver? Plate)
 {
+    /// <summary>Tema 1998: par escolhido no setor anterior; contador desde a primeira passagem, seguido do split congelado.</summary>
+    public BoardSectorGap? SectorGap98 { get; init; }
+    /// <summary>1993: intervalo concluído entre passagens pelo mesmo ponto, sem contador visual.</summary>
+    public BoardGap93? Gap93 { get; init; }
+
     public static readonly BoardState Empty = new(BoardMode.None, 0, 0, false, double.NegativeInfinity, double.PositiveInfinity,
         double.PositiveInfinity, 0, null, null, null, null);
 

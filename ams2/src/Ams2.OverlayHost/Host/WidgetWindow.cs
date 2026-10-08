@@ -35,8 +35,11 @@ internal sealed class WidgetWindow : IDisposable
     bool _dragged;
 
     public string Id { get; }
-    /// <summary>Medição de fps de render (marca a cada quadro desenhado).</summary>
+    /// <summary>Medição de apresentacoes aceitas (nao conta quadros recusados por fila cheia ou device lost).</summary>
     public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
+    long _drawCount;
+    double _drawSeconds, _presentSeconds;
+    public string RenderTiming => _drawCount == 0 ? "" : $"draw={_drawSeconds / _drawCount * 1000:F2}ms present={_presentSeconds / _drawCount * 1000:F2}ms";
     public WidgetSettings Settings { get; private set; }
     public bool Visible => Settings.Visible && SessionAllowed && (_gateOpen || _widget.IgnoresDrivingGate);
     bool _gateOpen = true;
@@ -63,7 +66,7 @@ internal sealed class WidgetWindow : IDisposable
         Settings = settings;
         _widget.UseTheme(theme);
         _widget.Configure(settings);
-        (_w, _h) = PixelSize(settings.RenderScale);
+        (_w, _h) = PixelSize(settings);
         var (x, y) = ClampToScreen(settings.X, settings.Y, _w, _h);
         _win = OverlayWindow.Create($"AMS2 Overlay - {id}", x, y, _w, _h);
         _win.Mouse = OnMouse;
@@ -75,17 +78,20 @@ internal sealed class WidgetWindow : IDisposable
         _win.SetVisible(Visible);
     }
 
-    /// <summary>Tamanho da janela na escala de render (escala x tamanho do texto): a fonte maior aumenta a janela na mesma proporcao.</summary>
-    (int W, int H) PixelSize(float scale)
+    /// <summary>Tamanho da janela pelos eixos de geometria; a escala de fonte não altera estes limites.</summary>
+    (int W, int H) PixelSize(WidgetSettings settings)
     {
         var d = _widget.DesignSize;
-        return ((int)Math.Ceiling(d.Width * scale), (int)Math.Ceiling(d.Height * scale));
+        return ((int)Math.Ceiling(d.Width * settings.ScaleX), (int)Math.Ceiling(d.Height * settings.ScaleY));
     }
 
     void ApplyCanvas()
     {
         _canvas.Theme = ThemeOverrides.Apply(_theme, Settings);
         _canvas.Scale = Settings.RenderScale;
+        _canvas.WidthScale = Settings.WidthScale ?? 1;
+        _canvas.HeightScale = Settings.HeightScale ?? 1;
+        _canvas.ConfigureTypography(Settings);
         _canvas.Opacity = Settings.Opacity;
         _canvas.FontOverride = Settings.Font;
     }
@@ -99,7 +105,7 @@ internal sealed class WidgetWindow : IDisposable
         _theme = theme;
         _widget.UseTheme(theme);
         _widget.Configure(s);
-        var (w, h) = PixelSize(s.RenderScale);
+        var (w, h) = PixelSize(s);
         var (x, y) = ClampToScreen(s.X, s.Y, w, h);
         if (w != _w || h != _h)
         {
@@ -149,16 +155,27 @@ internal sealed class WidgetWindow : IDisposable
     public void Render(OverlayModel model)
     {
         if (!Visible) return;
-        RenderStats.Mark();
+        bool preview = Editing && !model.PlayerDriving;
+        if (preview)
+        {
+            model = LayoutPreview.ForWidget(Id);
+            _widget.Configure(LayoutPreview.Settings(Settings));
+        }
+        double started = Ams2.Core.Calc.RateStats.Now();
         _gfx.BeginFrame();
         _canvas.Begin();
         _widget.Draw(_canvas, model);
-        if (_win.EditMode) DrawEditAdornments();
+        if (_win.EditMode) DrawEditAdornments(preview);
         _canvas.End();
-        _gfx.EndFrame();
+        double drawn = Ams2.Core.Calc.RateStats.Now();
+        if (_gfx.EndFrame()) RenderStats.Mark();
+        _drawCount++;
+        _drawSeconds += drawn - started;
+        _presentSeconds += Ams2.Core.Calc.RateStats.Now() - drawn;
+        if (preview) _widget.Configure(Settings);
     }
 
-    void DrawEditAdornments()
+    void DrawEditAdornments(bool preview)
     {
         var (dw, dh) = _widget.DesignSize;
         float s = Settings.RenderScale;
@@ -168,7 +185,7 @@ internal sealed class WidgetWindow : IDisposable
         float g = GripSize / s;
         _canvas.FillRect(dw - g, dh - g, g, g, EditFill);
         var tag = _theme.Label with { Size = 14f / s };
-        string text = $"{Id.ToUpperInvariant()}  {Settings.Scale:0.00}x";
+        string text = $"{Id.ToUpperInvariant()}  {Settings.Scale:0.00}x" + (preview ? " · PRÉVIA SIMULADA" : "");
         float tw = _canvas.Measure(text, tag) + 12f / s;
         _canvas.FillRect(0, 0, tw, 20f / s, EditFill);
         _canvas.Text(text, tag, 6f / s, 0, tw, 20f / s, new Color4(0.02f, 0.08f, 0.1f, 1f));
@@ -205,7 +222,7 @@ internal sealed class WidgetWindow : IDisposable
                 else
                 {
                     var d = _widget.DesignSize;
-                    float scale = (p.X - _dragStartWinX) / (d.Width * (Settings.TextScale ?? 1f));
+                    float scale = (p.X - _dragStartWinX) / (d.Width * (Settings.WidthScale ?? 1f));
                     SetScale(scale);
                 }
                 break;
@@ -232,7 +249,7 @@ internal sealed class WidgetWindow : IDisposable
         if (Math.Abs(scale - Settings.Scale) < 0.001f) return;
         var b = _win.Bounds;
         Settings = Settings with { Scale = scale, X = b.X, Y = b.Y };
-        var (w, h) = PixelSize(Settings.RenderScale);
+        var (w, h) = PixelSize(Settings);
         _w = w; _h = h;
         _win.MoveResize(b.X, b.Y, w, h);
         Rebuild();

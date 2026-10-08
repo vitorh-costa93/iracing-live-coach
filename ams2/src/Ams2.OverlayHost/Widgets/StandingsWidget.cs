@@ -19,14 +19,19 @@ public sealed class StandingsWidget : IWidget
     /// <summary>Capacidade de linhas: topo + janela (no mínimo o jogador). O tamanho da janela não muda com a posição do jogador.</summary>
     public int Rows => _cfg.EffectiveTop + Math.Max(_cfg.EffectiveNear, 1);
     WidgetSettings _cfg = new() { Id = "standings" };
-    public void Configure(WidgetSettings s) { _cfg = s; }
+    public void Configure(WidgetSettings s) { _cfg = s; _valueHold18.Reset(); _rowMotion18.Reset(); }
     /// <summary>Espaço reservado para o separador "..." (só existe se há topo; o painel só o ocupa quando há salto).</summary>
     float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
     const float SepH = 14;
     public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
         : _b18 ? Size18 : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
     bool _b04, _b98, _b18;
-    public void UseTheme(Theme.Theme theme) { _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = theme.Style == ThemeStyle.Modern2018; }
+    public void UseTheme(Theme.Theme theme)
+    {
+        bool modern = theme.Style == ThemeStyle.Modern2018;
+        if (modern != _b18) { _valueHold18.Reset(); _values18.Clear(); _rowMotion18.Reset(); }
+        _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = modern;
+    }
     float Top => RowTop;
     /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
     bool TableMode => _b98 && _cfg.ColumnVisible("table");
@@ -62,6 +67,9 @@ public sealed class StandingsWidget : IWidget
     }
 
     readonly FieldCodes _codes = new();
+    readonly Broadcast18ValueHold _valueHold18 = new();
+    readonly Broadcast18RowMotion _rowMotion18 = new();
+    readonly Dictionary<(int Car, string Mode), double?> _values18 = [];
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
@@ -70,6 +78,7 @@ public sealed class StandingsWidget : IWidget
         var (w, h) = DesignSize;
         if (!m.Connected || m.Standings.Count == 0)
         {
+            _valueHold18.Reset(); _values18.Clear(); _rowMotion18.Reset();
             c.Panel(0, 0, w, h);
             c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, TableMode ? 24 : NameX, TableMode ? TableTop : RowTop, 340, 30, t.LabelColor, shadow: t.TextShadow);
             return;
@@ -99,7 +108,7 @@ public sealed class StandingsWidget : IWidget
             if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, r, L, y, classes); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
-                Chrome.AccentBox(c, L.PosX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
+                Chrome.AccentBox(c, L.PosX, y, BoxW, BoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" });
             }
             if (_cfg.ColumnVisible("name"))
             {
@@ -118,7 +127,7 @@ public sealed class StandingsWidget : IWidget
                     c.Text(n, t.Numbers, L.GapRight - nw, y, nw + 4, BoxH, t.ValueColor, shadow: t.ValueShadow);
                     c.Text("LAP", t.Label, L.GapRight - nw - 70, y, 66, BoxH, t.ValueColor, HAlign.Right, t.TextShadow);
                 }
-                else c.Text(ListGap(r, t), t.Numbers, L.GapRight - GapTextW, y, GapTextW, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+                else c.Text(ListGap(r, t), t.Numbers with { Element = "gap" }, L.GapRight - GapTextW, y, GapTextW, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
             }
         }
     }
@@ -170,6 +179,7 @@ public sealed class StandingsWidget : IWidget
     public static readonly string[] Modes18 = ["gap", "interval", "gainedlost", "pitstops", "bestlap"];
     string Mode18 => _cfg.OptionOr("mode", "gap").ToLowerInvariant();
     double ModeSeconds18 => double.TryParse(_cfg.OptionOr("modeSeconds", "10"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 5, 30) : 10;
+    double IntervalSeconds18 => double.TryParse(_cfg.OptionOr("intervalSeconds", "1"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Broadcast18ValueHold.Period(v) : 1;
     bool Battle18 => !string.Equals(_cfg.OptionOr("battle", "true"), "false", StringComparison.OrdinalIgnoreCase);
     bool FullNames18 => !string.Equals(_cfg.OptionOr("fullNames", "true"), "false", StringComparison.OrdinalIgnoreCase);
     bool OutBlock18 => !string.Equals(_cfg.OptionOr("outBlock", "true"), "false", StringComparison.OrdinalIgnoreCase);
@@ -201,6 +211,51 @@ public sealed class StandingsWidget : IWidget
 
     static bool IsOut(StandingRow r) => r.Car.RaceState is RaceState.Retired or RaceState.Dnf or RaceState.Disqualified;
 
+    void SampleValues18(OverlayModel m, IReadOnlyList<StandingRow> active, string mode)
+    {
+        var s = m.Session!;
+        // Sorted identity preserves holds during position changes, but replacing a driver resets the roster.
+        string roster = string.Join("|", s.Cars.OrderBy(c => c.Index).Select(c => $"{c.Index}:{c.Name}:{c.CarName}"));
+        _valueHold18.BeginFrame(m.Now, (s.Kind, s.Track, s.TrackVariation, s.TrackLength, s.LapsInEvent,
+            s.InSession, m.Broadcast?.SessionSeenT, roster, mode, IntervalSeconds18));
+        _values18.Clear();
+        var leader = m.Standings[0];
+        for (int i = 0; i < active.Count; i++)
+        {
+            var r = active[i];
+            foreach (string channel in new[] { "gap", "interval" })
+            {
+                var reference = channel == "gap" ? leader : active[Math.Max(0, i - 1)];
+                var key = new Broadcast18ValueKey(r.Car.Index, reference.Car.Index, channel,
+                    r.Car.Position, r.LapsBehind, reference.LapsBehind, r.Car.PitState, r.Car.RaceState,
+                    reference.Car.PitState, reference.Car.RaceState);
+                double? raw = channel == "gap" ? r.GapToLeader : IntervalAhead(active, r);
+                if (InPit18(r) || r.LapsBehind != reference.LapsBehind) raw = null;
+                _values18[(r.Car.Index, channel)] = _valueHold18.Sample(key, raw, m.Now, IntervalSeconds18);
+            }
+        }
+        // OUT rows invalidate immediately, even if they return to the active roster in the next frame.
+        foreach (var r in m.Standings.Where(IsOut))
+            foreach (string channel in new[] { "gap", "interval" })
+                _valueHold18.Sample(new Broadcast18ValueKey(r.Car.Index, -1, channel, 0, 0, 0,
+                    r.Car.PitState, r.Car.RaceState, PitState.None, RaceState.Invalid), null, m.Now);
+    }
+
+    string HeldText18(IReadOnlyList<StandingRow> active, StandingRow r, string channel)
+    {
+        var f = _cfg.Fmt;
+        if (r.Car.Position == 1) return channel == "interval" ? "Interval" : "Leader";
+        int laps = r.LapsBehind;
+        if (channel == "interval")
+        {
+            int i = -1;
+            for (int k = 0; k < active.Count; k++) if (active[k].Car.Index == r.Car.Index) { i = k; break; }
+            laps = i > 0 ? Math.Max(0, laps - active[i - 1].LapsBehind) : 0;
+        }
+        if (laps > 0) return f.FormatLaps(laps);
+        return _values18.GetValueOrDefault((r.Car.Index, channel)) is { } value ? f.FormatGap(value) : f.NoGap;
+    }
+
     /// <summary>Modo efetivo agora: o configurado, ou no automático o da vez (troca a cada <c>modeSeconds</c> do relógio do provider).</summary>
     public static string EffectiveMode18(string mode, double now, double seconds, bool hasGrid)
     {
@@ -228,15 +283,6 @@ public sealed class StandingsWidget : IWidget
         return double.IsNaN(ga) || double.IsNaN(gr) ? null : Math.Max(0, gr - ga);
     }
 
-    string IntervalText(IReadOnlyList<StandingRow> all, StandingRow r)
-    {
-        var f = _cfg.Fmt;
-        int i = -1;
-        for (int k = 0; k < all.Count; k++) if (all[k].Car.Index == r.Car.Index) { i = k; break; }
-        if (i > 0 && r.LapsBehind > all[i - 1].LapsBehind) return f.FormatLaps(r.LapsBehind - all[i - 1].LapsBehind);
-        return IntervalAhead(all, r) is { } v ? f.FormatGap(v) : f.NoGap;
-    }
-
     /// <summary>Sobrenome em caixa alta (nomes completos da TV), respeitando o formato de nome do perfil quando configurado.</summary>
     string FullName18(StandingRow r, IReadOnlyList<CarSnapshot> field) => _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
 
@@ -259,6 +305,7 @@ public sealed class StandingsWidget : IWidget
 
         // Linhas: os pilotos fora da corrida saem da seleção; com outBlock vão para o bloco cinza do fim (até OutMax18), senão somem.
         var active = all.Where(r => !IsOut(r)).ToList();
+        SampleValues18(m, active, mode);
         var outs = OutBlock18 ? all.Where(IsOut).Take(OutMax18).ToList() : [];
         int me = active.FindIndex(r => r.IsPlayer);
         var picks = StandingsSelector.Select(active.Count, me, _cfg.EffectiveTop, _cfg.EffectiveNear);
@@ -310,6 +357,24 @@ public sealed class StandingsWidget : IWidget
 
         double fastest = fastest0(all);
         float y = by + Pad18 + (Pitch18 - Box18) / 2;   // topo da caixa da linha
+        IReadOnlyDictionary<int, float>? visualY = null;
+        // BATTLE and podium bands have different heights: snap their layout so rows cannot cross those bands.
+        if (battleFront >= 0 || finished) _rowMotion18.Reset();
+        else
+        {
+            float targetY = y;
+            var targets = new Dictionary<int, float>();
+            foreach (var pick in picks)
+            {
+                if (pick.GapBefore) targetY += SepH;
+                targets[active[pick.Index].Car.Index] = targetY;
+                targetY += Pitch18;
+            }
+            string roster = string.Join("|", s.Cars.OrderBy(car => car.Index).Select(car => $"{car.Index}:{car.Name}:{car.CarName}"));
+            string selected = string.Join(",", targets.Keys.Order());
+            visualY = _rowMotion18.Evaluate(m.Now, (s.Kind, s.Track, s.TrackVariation, s.InSession,
+                m.Broadcast?.SessionSeenT, roster, selected, by, fullNames), targets);
+        }
         for (int i = 0; i < picks.Count; i++)
         {
             var r = active[picks[i].Index];
@@ -326,7 +391,7 @@ public sealed class StandingsWidget : IWidget
                 continue;
             }
             bool tall = finished && r.Car.Position <= 3;
-            DrawRow18(c, t, m, mode, active, field, classes, r, L, y, fastest, finished, tall, fullNames);
+            DrawRow18(c, t, m, mode, active, field, classes, r, L, visualY?.GetValueOrDefault(r.Car.Index, y) ?? y, fastest, finished, tall, fullNames);
             y += Pitch18 + (tall ? FinishSub : 0);
         }
 
@@ -345,7 +410,7 @@ public sealed class StandingsWidget : IWidget
                     float nw = fullNames ? FullNameW18(c, t, m, mode, active, r, L, 0, true) : Name18W + 4;
                     c.Text(nm, fullNames ? BroadcastUi.Fit(c, nm, _nameFont18, nw) : BroadcastUi.Fit(c, nm, t.Text, nw), L.Name, ry, nw + 8, Box18, t.OutInk);
                 }
-                if (gapCol) c.Text("OUT", t.Numbers, L.Gap, ry, Gap18W - 10, Box18, t.OutInk, HAlign.Right);
+                if (gapCol) c.Text("OUT", t.Numbers with { Element = "label" }, L.Gap, ry, Gap18W - 10, Box18, t.OutInk, HAlign.Right);
             }
         }
     }
@@ -361,7 +426,7 @@ public sealed class StandingsWidget : IWidget
         float right = M18 + L.Width - 10;
         if (!_cfg.ColumnVisible("gap")) return right - L.Name;
         // Nomes completos (como no Safety Car/ENDING da TV): a coluna de valores some; só ficam IN PIT / PIT EXIT e OUT.
-        float vw = isOut ? c.Measure("OUT", t.Numbers) : InPit18(r) ? c.Measure(PitText18(r), t.Numbers) : 0;
+        float vw = isOut ? c.Measure("OUT", t.Numbers with { Element = "label" }) : InPit18(r) ? c.Measure(PitText18(r), t.Numbers with { Element = "label" }) : 0;
         return right - (vw > 0 ? vw + 14 : 0) - L.Name;
     }
 
@@ -371,23 +436,23 @@ public sealed class StandingsWidget : IWidget
     void DrawPit18(ThemeCanvas c, Theme.Theme t, StandingRow r, float x, float y, float w, float h)
     {
         string p = PitText18(r);
-        c.Text(p, BroadcastUi.Fit(c, p, t.Numbers, w - 14), x, y, w - 10, h, t.PitTimeColor, HAlign.Right);
+        c.Text(p, BroadcastUi.Fit(c, p, t.Numbers with { Element = "label" }, w - 14), x, y, w - 10, h, t.PitTimeColor, HAlign.Right);
     }
 
     /// <summary>Largura do valor desenhado por <see cref="DrawValue18"/> na linha.</summary>
     float ValueW18(ThemeCanvas c, Theme.Theme t, OverlayModel m, string mode, IReadOnlyList<StandingRow> active, StandingRow r)
     {
         var f = _cfg.Fmt;
-        if (mode is "gap" or "interval" or "bestlap" && InPit18(r)) return c.Measure(PitText18(r), t.Numbers);
+        if (mode is "gap" or "interval" or "bestlap" && InPit18(r)) return c.Measure(PitText18(r), t.Numbers with { Element = "label" });
         string v = mode switch
         {
             "gainedlost" => "^ 00",
             "pitstops" => BroadcastUi.State(m).StopsOf(r.Car.Index).ToString(CultureInfo.InvariantCulture),
             "bestlap" => r.Car.BestLapTime > 0 ? f.FormatLapTime(r.Car.BestLapTime) : f.NoGap,
-            "interval" => r.Car.Position == 1 ? "Interval" : IntervalText(active, r),
-            _ => r.Car.Position == 1 ? "Leader" : Gap(r),
+            "interval" => HeldText18(active, r, "interval"),
+            _ => HeldText18(active, r, "gap"),
         };
-        return Math.Min(Gap18W - 10, c.Measure(v, t.Numbers));
+        return Math.Min(Gap18W - 10, c.Measure(v, t.Numbers with { Element = mode switch { "gainedlost" => "position", "pitstops" => "value", "bestlap" => "time", _ => "gap" } }));
     }
 
     /// <summary>Cabeçalho: "LAP" + "n / N" (normal), "YELLOW FLAG" + faixa amarela "SECTOR n", ou "LAP | N / N" sobre a bandeira xadrez.</summary>
@@ -455,7 +520,7 @@ public sealed class StandingsWidget : IWidget
         if (finished && r.Car.RaceState == RaceState.Finished) Chrome.Checkered(c, 6, y + 8, 22, 16);
         else if (fastest > 0 && r.Car.BestLapTime == fastest) Chrome.FastestMarker(c, 0, y, Box18);
         if (_cfg.ColumnVisible("pos"))
-            Chrome.PosBox(c, L.Box, y, Box18W, rh, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 },
+            Chrome.PosBox(c, L.Box, y, Box18W, rh, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 21 },
                 tall && r.Car.Position == 1 ? t.FastestFill : null);
         var ink = r.IsPlayer ? t.PlayerColor : t.TextColor;
         if (tall)
@@ -470,7 +535,7 @@ public sealed class StandingsWidget : IWidget
             c.FillRect(M18, sy, L.Width, FinishSub, t.SubPanelFill);
             Chrome.Tick(c, nx, sy + 5, FinishSub - 10, Chrome.ClassTick(ci));
             string team = BroadcastUi.Team(r.Car);
-            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 16 }, nw - 12), nx + 10, sy, nw - 4, FinishSub, t.LabelColor);
+            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Element = "name", Size = 16 }, nw - 12), nx + 10, sy, nw - 4, FinishSub, t.LabelColor);
             return;
         }
         if (_cfg.ColumnVisible("name"))
@@ -501,10 +566,10 @@ public sealed class StandingsWidget : IWidget
             case "gainedlost":
             {
                 int? d = GridTracker.Delta(m.Grid, r.Car);
-                if (d is null) { c.Text(f.NoGap, t.Numbers, x, y, w - 10, h, t.LabelColor, HAlign.Right); return; }
+                if (d is null) { c.Text(f.NoGap, t.Numbers with { Element = "position" }, x, y, w - 10, h, t.LabelColor, HAlign.Right); return; }
                 int n = Math.Abs(d.Value);
                 string num = n.ToString(CultureInfo.InvariantCulture);
-                var nf = t.Numbers with { Size = 22 };
+                var nf = t.Numbers with { Element = "position", Size = 22 };
                 float nw = c.Measure(num, nf);
                 c.Text(num, nf, right - nw - 2, y, nw + 6, h, t.ValueColor);
                 float cx = right - nw - 26, cy = y + h / 2;
@@ -523,19 +588,19 @@ public sealed class StandingsWidget : IWidget
             {
                 bool best = fastest > 0 && r.Car.BestLapTime == fastest;
                 string v = r.Car.BestLapTime > 0 ? f.FormatLapTime(r.Car.BestLapTime) : f.NoGap;
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, w - 14), x, y, w - 10, h, best ? new Vortice.Win32.Numerics.Color4(0.80f, 0.45f, 1f, 1f) : t.ValueColor, HAlign.Right);
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = "time" }, w - 14), x, y, w - 10, h, best ? new Vortice.Win32.Numerics.Color4(0.80f, 0.45f, 1f, 1f) : t.ValueColor, HAlign.Right);
                 return;
             }
             case "interval":
             {
-                string v = r.Car.Position == 1 ? "Interval" : IntervalText(active, r);
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, w - 14), x, y, w - 10, h, t.ValueColor, HAlign.Right);
+                string v = HeldText18(active, r, "interval");
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = "gap" }, w - 14), x, y, w - 10, h, t.ValueColor, HAlign.Right);
                 return;
             }
             default:
             {
-                string v = r.Car.Position == 1 ? "Leader" : Gap(r);
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, w - 14), x, y, w - 10, h, t.ValueColor, HAlign.Right);
+                string v = HeldText18(active, r, "gap");
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = "gap" }, w - 14), x, y, w - 10, h, t.ValueColor, HAlign.Right);
                 return;
             }
         }
@@ -559,14 +624,15 @@ public sealed class StandingsWidget : IWidget
         y += BattleTitleH;
         bool gapCol = _cfg.ColumnVisible("gap");
         float nx = _cfg.ColumnVisible("name") ? L.Name : L.Box + Box18W + 10;
-        float NameW(StandingRow r) => (gapCol ? x0 + tw - 10 - ValueW18(c, t, m, mode, active, r) - 14 : x0 + tw - 8) - nx;
+        float NameW(StandingRow r) => (gapCol ? x0 + tw - 10 - ValueW18(c, t, m,
+            r.Car.Index == back.Car.Index && (mode is "gap" or "interval") ? "interval" : mode, active, r) - 14 : x0 + tw - 8) - nx;
         var nf = MinFont(BroadcastUi.Fit(c, FullName18(front, field), t.Text, NameW(front)), BroadcastUi.Fit(c, FullName18(back, field), t.Text, NameW(back)));
         foreach (var (r, isBack) in new[] { (front, false), (back, true) })
         {
             c.FillRect(x0, y, tw, BattlePitch - 2, dark);
             float by = y + (BattlePitch - 2 - Box18) / 2;
             if (fastest > 0 && r.Car.BestLapTime == fastest) Chrome.FastestMarker(c, 0, by, Box18);
-            if (_cfg.ColumnVisible("pos")) Chrome.PosBox(c, L.Box, by, Box18W, Box18, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 });
+            if (_cfg.ColumnVisible("pos")) Chrome.PosBox(c, L.Box, by, Box18W, Box18, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 21 });
             string nm = FullName18(r, field);
             float nw = NameW(r);
             c.Text(nm, BroadcastUi.Fit(c, nm, nf, nw), nx, by, nw + 8, Box18, r.IsPlayer ? t.PlayerColor : t.TextColor);
@@ -574,8 +640,8 @@ public sealed class StandingsWidget : IWidget
             {
                 if (isBack && mode is "gap" or "interval" && r.Car.PitState == PitState.None)
                 {
-                    string v = IntervalText(active, r);
-                    c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, Gap18W - 14), L.Gap, by, Gap18W - 10, Box18, t.ValueColor, HAlign.Right);
+                    string v = HeldText18(active, r, "interval");
+                    c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = "gap" }, Gap18W - 14), L.Gap, by, Gap18W - 10, Box18, t.ValueColor, HAlign.Right);
                 }
                 else DrawValue18(c, t, m, mode, active, r, L.Gap, by, Gap18W, Box18, fastest);
             }
@@ -602,7 +668,7 @@ public sealed class StandingsWidget : IWidget
         {
             var r = rows[i];
             float x = TableX + (i / per) * (TableColW + TableColGap), y = TableTop + (i % per) * TablePitch;
-            Chrome.AccentBox(c, x, y, TableBoxW, TableBoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers);
+            Chrome.AccentBox(c, x, y, TableBoxW, TableBoxH, r.Car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" });
             string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
             c.Text(name, BroadcastUi.Fit(c, name, t.Text, TableNameW), x + TableBoxW + 14, y - 1, TableNameW, TableBoxH, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
             float right = x + TableColW;
@@ -614,7 +680,7 @@ public sealed class StandingsWidget : IWidget
                 c.Text(n, t.Numbers, right - nw, y, nw + 4, TableBoxH, t.ValueColor, shadow: t.ValueShadow);
                 c.Text("LAP", t.Label, right - nw - 70, y, 66, TableBoxH, t.ValueColor, HAlign.Right, t.TextShadow);
             }
-            else c.Text(Gap(r, defaultSign: false), t.Numbers, right - Math.Max(160, TableGapW), y, Math.Max(160, TableGapW), TableBoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            else c.Text(Gap(r, defaultSign: false), t.Numbers with { Element = "gap" }, right - Math.Max(160, TableGapW), y, Math.Max(160, TableGapW), TableBoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
         }
     }
 
@@ -645,7 +711,7 @@ public sealed class StandingsWidget : IWidget
         {
             // Bandeirada: o lider mostra a bandeira quadriculada no lugar do numero.
             if (r.Car.Position == 1 && r.Car.RaceState == RaceState.Finished) Chrome.Checkered(c, x, y, Pos04, h);
-            else Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers);
+            else Chrome.PositionBox(c, x, y, Pos04, h, r.Car.Position, t.Numbers with { Element = "position" });
             x += Pos04;
         }
         if (_cfg.ColumnVisible("name"))
@@ -664,7 +730,7 @@ public sealed class StandingsWidget : IWidget
             Chrome.Box(c, x, y, Class04, h, ((char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25))).ToString(), t.Text, Chrome.CellKind.Navy, HAlign.Center, 0);
             x += Class04;
         }
-        if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? Gap(r), t.Numbers);
+        if (_cfg.ColumnVisible("gap")) Chrome.BlackCell(c, x, y, Gap04, h, LeaderLap(r) ?? Gap(r), t.Numbers with { Element = "gap" });
     }
 
     /// <summary>2004–2008: a célula do líder mostra a volta atual ("Lap 26"), como na transmissão.</summary>

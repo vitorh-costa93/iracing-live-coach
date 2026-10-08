@@ -14,13 +14,15 @@ namespace Ams2.OverlayHost.Widgets;
 /// </summary>
 public sealed class InputsWidget : IWidget
 {
-    public string Id => "inputs";
+    readonly bool _graphOnly;
+    public InputsWidget(bool graphOnly = false) => _graphOnly = graphOnly;
+    public string Id => _graphOnly ? "inputgraph" : "inputs";
     /// <summary>O grÃ¡fico rola por tempo: precisa de um quadro por vblank para o deslocamento ser contÃ­nuo.</summary>
     public bool HighFrequency => true;
     Theme.Theme _theme = Themes.F1_1998;
     bool Analog => _theme.Style == ThemeStyle.Broadcast2000s;
     public void UseTheme(Theme.Theme theme) => _theme = theme;
-    public (float Width, float Height) DesignSize => Analog ? AnalogSize() : (L.Width, 197);
+    public (float Width, float Height) DesignSize => _graphOnly ? (PlateW, PlotTop + GraphH + PlateBottom) : Analog ? AnalogSize() : (L.Width, 197);
 
     // GrÃ¡fico
     // (o grÃ¡fico e a largura de cada bloco seguem as colunas visÃ­veis; todas visÃ­veis = mockup)
@@ -57,6 +59,12 @@ public sealed class InputsWidget : IWidget
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var t = c.Theme;
+        if (_graphOnly)
+        {
+            DrawGraph2004(c, t, m, m.Connected && m.Session?.Player is not null, 0,
+                new ShadowToken(1.5f, 1.5f, new Color4(0, 0, 0, 0.7f)));
+            return;
+        }
         if (Analog) { DrawAnalog(c, t, m); return; }
         var (w, h) = DesignSize;
         c.Panel(0, 0, w, h);
@@ -73,13 +81,14 @@ public sealed class InputsWidget : IWidget
             return;
         }
 
+        var telemetry = RenderPlayerTelemetry.Read(m.Inputs, p);
         if (graph) DrawTrace(c, t, m.Inputs, lay.GraphX, GY, gw, GH, t.ThrottleColor, t.BrakeColor, 2.2f);
         if (bars)
         {
-            DrawBar(c, t, lay.ThrX, p.Inputs.Throttle, t.ThrottleColor, "THR");
-            DrawBar(c, t, lay.ThrX + BarPitch, p.Inputs.Brake, t.BrakeColor, "BRK");
+            DrawBar(c, t, lay.ThrX, telemetry.Throttle, t.ThrottleColor, "THR");
+            DrawBar(c, t, lay.ThrX + BarPitch, telemetry.Brake, t.BrakeColor, "BRK");
         }
-        if (gear) DrawGear(c, t, lay.GearCx, p.Gear, DisplayFormat.Speed(p.SpeedMps, Unit), DisplayFormat.SpeedLabel(Unit));
+        if (gear) DrawGear(c, t, lay.GearCx, telemetry.Gear, DisplayFormat.Speed(telemetry.SpeedMps, Unit), DisplayFormat.SpeedLabel(Unit));
     }
 
     /// <summary>Legenda Ã  direita, acima do grÃ¡fico: sÃ³ acelerador e freio (o volante saiu do grÃ¡fico).</summary>
@@ -116,58 +125,34 @@ public sealed class InputsWidget : IWidget
 
     // Buffers do grÃ¡fico: criados uma vez (o widget Ã© desenhado a cada vblank; nada Ã© alocado por quadro).
     InputSample[]? _snap;
-    float[] _thr = [], _brk = [];
-    bool[] _ok = [];
-    /// <summary>Quanto tempo o Ãºltimo valor Ã© mantido (zero-order hold) Ã  direita da Ãºltima amostra, em s: cobre o atraso atÃ© a prÃ³xima escrita do jogo.</summary>
+    System.Numerics.Vector2[] _tracePoints = [];
     const double HoldSeconds = 0.05;
 
-    /// <summary>
-    /// GrÃ¡fico de linhas (sem Ã¡rea preenchida): acelerador e freio, uma coluna de pixel por vez com o valor interpolado no instante
-    /// da coluna (10 s = largura do grÃ¡fico). O instante "agora" Ã© o do RENDER (relÃ³gio do anel), nÃ£o o do Ãºltimo passo do provider:
-    /// o grÃ¡fico desloca de forma contÃ­nua por tempo, nÃ£o por amostra. O freio Ã© desenhado por cima (Ã© o que importa ler na frenagem).
-    /// </summary>
+    /// <summary>Vertices no instante real da amostra: o traco inteiro rola em subpixels, sem saltos entre colunas fixas.</summary>
     void DrawTrace(ThemeCanvas c, Theme.Theme t, InputRing? ring, float GX, float GY, float GW, float GH, Color4 thrColor, Color4 brkColor, float width)
     {
         if (ring is null) return;
         const double win = OverlayDataProvider.InputWindowSeconds;
-        int cols = (int)GW;
-        if (_thr.Length < cols) { _thr = new float[cols]; _brk = new float[cols]; _ok = new bool[cols]; }
         var snap = _snap ??= new InputSample[ring.Usable];
         double now = ring.Now;
-        int n = ring.CopyFrom(now - win - 0.25, snap); // um pouco antes da borda esquerda, para interpolar a primeira coluna
+        int n = ring.CopyFrom(now - win - 0.25, snap);
         if (n < 2) return;
-        var thr = _thr; var brk = _brk; var ok = _ok;
-        double firstT = snap[0].T, lastT = snap[n - 1].T;
-        int k = 0;
-        for (int x = 0; x < cols; x++)
-        {
-            double tt = now - win + (x + 0.5) / cols * win;
-            ok[x] = false;
-            if (tt < firstT || tt > lastT + HoldSeconds) continue;
-            if (tt >= lastT) { thr[x] = snap[n - 1].Throttle; brk[x] = snap[n - 1].Brake; ok[x] = true; continue; }
-            while (k < n - 2 && snap[k + 1].T < tt) k++;
-            var a = snap[k]; var b = snap[k + 1];
-            float f = b.T > a.T ? (float)Math.Clamp((tt - a.T) / (b.T - a.T), 0, 1) : 0;
-            thr[x] = a.Throttle + (b.Throttle - a.Throttle) * f;
-            brk[x] = a.Brake + (b.Brake - a.Brake) * f;
-            ok[x] = true;
-        }
-
-        // Linha a 0 % fica meia espessura acima do eixo (nÃ£o some atrÃ¡s dele); 100 % encosta no topo.
+        if (_tracePoints.Length < n + 1) _tracePoints = new System.Numerics.Vector2[ring.Usable + 1];
         float bottom = GY + GH - 1 - width / 2, span = GH - 3 - width;
+        using var clip = c.Clip(GX, GY, GW, GH);
         for (int pass = 0; pass < 2; pass++)
         {
-            var v = pass == 0 ? thr : brk;
-            var col = pass == 0 ? thrColor : brkColor;
-            for (int x = 1; x < cols; x++)
+            for (int i = 0; i < n; i++)
             {
-                if (!ok[x] || !ok[x - 1]) continue;
-                float fx = GX + x;
-                c.Line(fx - 1, bottom - Math.Clamp(v[x - 1], 0, 1) * span, fx, bottom - Math.Clamp(v[x], 0, 1) * span, col, width);
+                float value = pass == 0 ? snap[i].Throttle : snap[i].Brake;
+                _tracePoints[i] = new(GX + GW - (float)((now - snap[i].T) / win * GW),
+                    bottom - Math.Clamp(value, 0, 1) * span);
             }
+            double tail = Math.Min(now, snap[n - 1].T + HoldSeconds);
+            _tracePoints[n] = new(GX + GW - (float)((now - tail) / win * GW), _tracePoints[n - 1].Y);
+            c.Polyline(_tracePoints.AsSpan(0, n + 1), pass == 0 ? thrColor : brkColor, width);
         }
     }
-
     static void DrawBar(ThemeCanvas c, Theme.Theme t, float x, double value, Color4 color, string label)
     {
         c.FillRect(x, BarY, BarW, BarH, new Color4(0, 0, 0, 0.45f));
@@ -184,7 +169,7 @@ public sealed class InputsWidget : IWidget
         c.FillRoundRect(GearCx - 30, 45, 60, 57, t.BoxRadius, t.AccentFill);
         // A fonte de numeros do f1-1998 (F1 Broadcast 98 Values) so tem digitos: "N" e "R" caiam numa fonte do sistema fina e
         // destoante. Letras usam a fonte do titulo (mesma familia/peso do "GEAR" e do "KPH").
-        var gf = g.Length == 1 && !char.IsDigit(g[0]) && t.Numbers.Family.StartsWith("F1 Broadcast", StringComparison.Ordinal) ? t.Title with { Size = 36 } : t.Numbers;
+        var gf = g.Length == 1 && !char.IsDigit(g[0]) && t.Numbers.Family.StartsWith("F1 Broadcast", StringComparison.Ordinal) ? t.Title with { Element = "value", Size = 36 } : t.Numbers;
         if (t.Style == ThemeStyle.Modern2018) gf = t.Numbers with { Weight = Math.Max(t.Numbers.Weight, 700), Size = 30 };   // caixa branca com número preto em negrito
         c.Text(g, gf, GearCx - 30, 43, 60, 57, t.AccentInk, HAlign.Center);
         c.Text(Math.Round(speed).ToString("0", CultureInfo.InvariantCulture), t.Numbers, GearCx - 60, 108, 120, 40, t.ValueColor, HAlign.Center, t.ValueShadow);
@@ -242,39 +227,38 @@ public sealed class InputsWidget : IWidget
     float StackH => (_cfg.ColumnVisible("gear") ? 2 * CellPitch : 0) + (_cfg.ColumnVisible("bars") ? 2 * CellPitch : 0);
     /// <summary>Largura da placa do grÃ¡fico: 342 x largura configurada da coluna "graph".</summary>
     float PlateW => MathF.Round(_cfg.Width("graph", GraphW));
-    float GraphTop => Speedo ? ClusterH + 8 : StackH > 0 ? StackH + 4 : 0;
 
     void DrawAnalog(ThemeCanvas c, Theme.Theme t, OverlayModel m)
     {
         var p = m.Session?.Player;
         bool live = m.Connected && p is not null;
-        double kph = live ? p!.SpeedMps * 3.6 : 0;
-        double rpm = live ? p!.Rpm : 0;
+        var telemetry = live ? RenderPlayerTelemetry.Read(m.Inputs, p!) : default;
+        double kph = telemetry.SpeedMps * 3.6;
+        double rpm = telemetry.Rpm;
         var white = new Color4(1, 1, 1, 1);
         var shadow = new ShadowToken(1.5f, 1.5f, new Color4(0, 0, 0, 0.7f));
         var cf = t.Label with { Size = 26 };
-        string speedTxt = Math.Round(DisplayFormat.Speed(live ? p!.SpeedMps : 0, Unit)).ToString("0", CultureInfo.InvariantCulture) + " " + DisplayFormat.SpeedLabelShort(Unit);
+        string speedTxt = Math.Round(DisplayFormat.Speed(telemetry.SpeedMps, Unit)).ToString("0", CultureInfo.InvariantCulture) + " " + DisplayFormat.SpeedLabelShort(Unit);
 
-        if (Speedo) DrawCluster(c, t, live, kph, rpm, live ? p!.MaxRpm : 0, speedTxt, white, shadow);
+        if (Speedo) DrawCluster(c, t, live, kph, rpm, telemetry.MaxRpm, speedTxt, white, shadow);
 
         // ---- Marcha e pedais: Ã  direita do tacÃ´metro; sem o velocÃ­metro, empilhados no canto (marcha, velocidade, pedais) ----
         float cx = Speedo ? CellX : 0, y = Speedo ? CellY0 : 0;
         if (_cfg.ColumnVisible("gear"))
         {
-            string g = !live ? "-" : p!.Gear switch { < 0 => "R", 0 => "N", _ => p.Gear.ToString(CultureInfo.InvariantCulture) };
+            string g = !live ? "-" : telemetry.Gear switch { < 0 => "R", 0 => "N", _ => telemetry.Gear.ToString(CultureInfo.InvariantCulture) };
             Chrome.WhiteCell(c, cx, y, CellW, CellH, "", cf);
             c.Text("Gear", cf, cx, y - 1, CellW * 0.62f, CellH, t.NameCellInk, HAlign.Center);
-            c.Text(g, cf, cx + CellW * 0.62f, y - 1, CellW * 0.38f - 12, CellH, t.NameCellInk, HAlign.Right);
+            c.Text(g, cf with { Element = "value" }, cx + CellW * 0.62f, y - 1, CellW * 0.38f - 12, CellH, t.NameCellInk, HAlign.Right);
             y += CellPitch;
-            if (!Speedo) { Chrome.BlackCell(c, cx, y, CellW, CellH, speedTxt, cf with { Size = 24 }, HAlign.Center); y += CellPitch; }
+            if (!Speedo) { Chrome.BlackCell(c, cx, y, CellW, CellH, speedTxt, cf with { Size = 24, Element = "value" }, HAlign.Center); y += CellPitch; }
         }
         if (_cfg.ColumnVisible("bars"))
         {
-            PedalCell(c, cx, y, "Throttle", live ? p!.Inputs.Throttle : 0, [new(0f, Rgb(96, 230, 96)), new(0.35f, Rgb(26, 185, 23)), new(1f, Rgb(12, 112, 20))], cf, shadow);
-            PedalCell(c, cx, y + CellPitch, "Brake", live ? p!.Inputs.Brake : 0, [new(0f, Rgb(244, 84, 64)), new(0.35f, Rgb(210, 28, 20)), new(1f, Rgb(120, 8, 8))], cf, shadow);
+            PedalCell(c, cx, y, "Throttle", telemetry.Throttle, [new(0f, Rgb(96, 230, 96)), new(0.35f, Rgb(26, 185, 23)), new(1f, Rgb(12, 112, 20))], cf, shadow);
+            PedalCell(c, cx, y + CellPitch, "Brake", telemetry.Brake, [new(0f, Rgb(244, 84, 64)), new(0.35f, Rgb(210, 28, 20)), new(1f, Rgb(120, 8, 8))], cf, shadow);
         }
 
-        if (_cfg.ColumnVisible("graph")) DrawGraph2004(c, t, m, live, GraphTop, shadow);
     }
 
     void DrawCluster(ThemeCanvas c, Theme.Theme t, bool live, double kph, double rpm, double maxRpm, string speedTxt, Color4 white, ShadowToken shadow)
@@ -327,9 +311,9 @@ public sealed class InputsWidget : IWidget
             // A escala da barra Ã© em km/h; em mph sÃ³ os rÃ³tulos mudam (149 / 174 / 199 / 211).
             string txt = Math.Round(DisplayFormat.SpeedFromKph(kmh, Unit)).ToString("0", CultureInfo.InvariantCulture);
             var (lx, ly) = Pol(ACx, ACy, 140, a);
-            c.Text(txt, lf, lx - 30, ly - 13, 60, 26, white, HAlign.Center, shadow);
+            c.Text(txt, lf with { Element = "value" }, lx - 30, ly - 13, 60, 26, white, HAlign.Center, shadow);
         }
-        c.Text(speedTxt, lf, BarX0, 455, 130, 26, white, HAlign.Left, shadow);
+        c.Text(speedTxt, lf with { Element = "value" }, BarX0, 455, 130, 26, white, HAlign.Left, shadow);
     }
 
     // GrÃ¡fico 2004â€“2008: placa escura arredondada como a da barra de velocidade, legendas em cÃ©lulas da transmissÃ£o (verde "Throttle",
@@ -358,9 +342,7 @@ public sealed class InputsWidget : IWidget
 
     (float Width, float Height) AnalogSize()
     {
-        bool graph = _cfg.ColumnVisible("graph");
         float w = Speedo ? ClusterW : StackH > 0 ? CellW : 0, h = Speedo ? ClusterH : StackH > 0 ? StackH - (CellPitch - CellH) : 0;
-        if (graph) { w = Math.Max(w, PlateW); h = GraphTop + PlotTop + GraphH + PlateBottom; }
         return w <= 0 ? (CellW, CellH) : (w, h);
     }
 

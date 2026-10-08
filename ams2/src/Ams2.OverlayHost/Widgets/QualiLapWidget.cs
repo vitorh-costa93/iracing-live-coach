@@ -16,9 +16,10 @@ namespace Ams2.OverlayHost.Widgets;
 /// <see cref="SplitHold"/> s com a diferença colorida no lugar do tempo do comparativo; ao cruzar a linha, por showFor s, "1:18.917 +0.685 [7]".
 /// Painel de setor à direita ("SECTOR 2 / SOBRENOME / 35.643", faixa roxa/verde) por <see cref="SectorPanelHold"/> s ao fechar S1/S2.</para>
 /// <para>2004 (ref. quali-2004-lap-bar.jpg): pilha alinhada à direita — nome "F Alonso" em célula branca, tempo em célula preta, faixa fina
-/// dos setores e, com comparação (parcial ou resultado), caixa vermelha com a posição + célula laranja com "+0.471".</para>
+/// dos setores opcional e, com comparação, caixa vermelha da referência + delta verde quando mais rápido, laranja nos demais casos.
+/// Posição final em caixa separada à direita; a atualização do tempo não reinicia a entrada da placa.</para>
 /// <para>1998 (ref. quali-1998-sheet.jpg / quali-1998-finish-comparison.jpg): só texto com sombra — NOME em caixa alta e o tempo corrente
-/// amarelo; no resultado, à esquerda tempo da volta (+ velocidade, opcional) e à direita o comparativo com a diferença e "FINISH LINE".</para>
+    /// amarelo à direita, referência à esquerda ao aproximar a marca; parcial/resultado congelado por 3 s, diferença e rótulo central.</para>
 /// Visibilidade: sem "always" aparece só em volta lançada (tempo corrente conhecido, fora do box e da volta de saída) e no resultado.
 /// Janela de tamanho fixo (só o painel de setor do 2018 muda a largura).
 /// </summary>
@@ -28,13 +29,13 @@ public sealed class QualiLapWidget : IWidget
     WidgetSettings _cfg = new() { Id = "qualilap" };
     ThemeStyle _style = ThemeStyle.Broadcast98;
 
-    public void UseTheme(Theme.Theme theme) { _style = theme.Style; }
+    public void UseTheme(Theme.Theme theme) { if (_style != theme.Style) { _lapMotion18.Reset(); _sectorMotion18.Reset(); } _style = theme.Style; }
     public void Configure(WidgetSettings s) { _cfg = s; }
 
     public (float Width, float Height) DesignSize => _style switch
     {
         ThemeStyle.Modern2018 => (ShowSectorPanel ? PlateW + PanelGap + PanelW : PlateW, PlateH),
-        ThemeStyle.Broadcast2000s => (W04 + 2 * X04, H04),
+        ThemeStyle.Broadcast2000s => (W04 + 2 * X04 + ResultPos04, H04),
         _ => (W98, H98),
     };
 
@@ -44,7 +45,7 @@ public sealed class QualiLapWidget : IWidget
     // ---- Opções (WidgetCatalog.OptionsFor(tema, "qualilap")); padrão não gravado ----
     bool Flag(string id, bool def) => _cfg.Option(id) is { } v ? !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase) : def;
     bool ComparePersonal => string.Equals(_cfg.OptionOr("compareTo", "leader"), "personal", StringComparison.OrdinalIgnoreCase);
-    bool ShowSectors => _style != ThemeStyle.Broadcast98 && Flag("showSectors", true);
+    bool ShowSectors => _style != ThemeStyle.Broadcast98 && Flag("showSectors", _style != ThemeStyle.Broadcast2000s);
     bool ShowSectorPanel => _style == ThemeStyle.Modern2018 && Flag("showSectorPanel", true);
     bool ShowSpeed => _style == ThemeStyle.Broadcast98 && Flag("showSpeed", true);
     bool Always => Flag("always", false);
@@ -70,7 +71,7 @@ public sealed class QualiLapWidget : IWidget
         return always ? Phase.Idle : Phase.Hidden;
     }
 
-    static bool IsRunning(QualiLapState q) => q.Elapsed is not null && !q.InPit && !q.OutLap;
+    static bool IsRunning(QualiLapState q) => q.Elapsed is { } elapsed && double.IsFinite(elapsed) && elapsed >= 0 && !q.InPit && !q.OutLap;
 
     /// <summary>Diferença na parcial: a do tracker (parciais da melhor volta observada) ou, sem ela, a soma dos melhores setores
     /// (pessoais, ou os melhores gerais quando compara com o líder).</summary>
@@ -114,7 +115,7 @@ public sealed class QualiLapWidget : IWidget
         bool personal = ComparePersonal;
         int pos = m.Quali?.Player?.Rank ?? car.Position;
         string refName; double? refTime;
-        if (personal) { refName = "PERSONAL BEST"; refTime = q.PersonalBestLap; }
+        if (personal) { refName = _style == ThemeStyle.Broadcast98 ? _cfg.Name(car, BroadcastUi.ShortName(car, s.Cars)).ToUpperInvariant() : "PERSONAL BEST"; refTime = q.PersonalBestLap; }
         else
         {
             var lead = s.Cars.FirstOrDefault(c => c.Index == q.LeaderIndex);
@@ -128,16 +129,11 @@ public sealed class QualiLapWidget : IWidget
         float alpha = 1f;
         // Sem volta seguinte (entrou no box) e sem "always": o resultado entra e sai com fade.
         if (result is not null && !Always && !IsRunning(q)) alpha = BroadcastUi.Fade(m.Now - result.At, ShowFor);
+        if (_style == ThemeStyle.Broadcast2000s && !Always)
+            alpha = result is not null ? BroadcastUi.Fade04(m.Now - result.At + .16, ShowFor + .16)
+                : phase == Phase.Running && q.Elapsed is { } age ? BroadcastUi.Fade04(age, double.PositiveInfinity) : 1f;
         return new View(phase, car, s.Cars, q, pos, refName, refTime, split, split is null ? null : SplitDelta(q, split, personal), result, resDelta,
             result?.Sectors ?? q.Sectors, alpha);
-    }
-
-    /// <summary>Posição provisória na parcial (2004): onde ficaria uma volta = tempo do comparativo + diferença.</summary>
-    static int ProjectedPosition(OverlayModel m, View v)
-    {
-        if (v.RefTime is not { } rt || v.SplitDelta is not { } d || m.Quali is null) return v.Position;
-        double est = rt + d;
-        return 1 + m.Quali.Rows.Count(r => !r.IsPlayer && r.BestLap is { } b && b < est);
     }
 
     // ---- Desenho ----
@@ -145,7 +141,15 @@ public sealed class QualiLapWidget : IWidget
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var v = Resolve(m);
-        if (v is null) return;
+        if (v is null) { _lapMotion18.Reset(); _sectorMotion18.Reset(); return; }
+        if (_style == ThemeStyle.Modern2018)
+        {
+            double start = v.Result?.At ?? (v.Q.Elapsed is { } elapsed ? m.Now - elapsed : m.Now);
+            double stop = v.Result is not null && !IsRunning(v.Q) ? v.Result.At + ShowFor : double.PositiveInfinity;
+            float reveal = Always ? 1 : _lapMotion18.Evaluate(m.Now, start, stop, BroadcastUi.State(m).SessionSeenT);
+            BroadcastUi.WithReveal18(c, reveal, DesignSize.Width, DesignSize.Height, () => Draw18(c, m, v));
+            return;
+        }
         BroadcastUi.WithAlpha(c, v.Alpha, () =>
         {
             switch (_style)
@@ -156,6 +160,8 @@ public sealed class QualiLapWidget : IWidget
             }
         });
     }
+
+    readonly Broadcast18Motion _lapMotion18 = new(), _sectorMotion18 = new();
 
     static Color4 MarkColor(QualiSector? s) => s?.Mark switch
     {
@@ -179,7 +185,7 @@ public sealed class QualiLapWidget : IWidget
         var car = v.Car;
         // Linha preta: posição, tique da classe, SOBRENOME, número em itálico e composto do jogador.
         c.FillRect(0, 0, PlateW, RowH, t.PanelFill);
-        Chrome.PosBox(c, 8, 7, 36, 36, v.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 22 });
+        Chrome.PosBox(c, 8, 7, 36, 36, v.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 22, Element = "position" });
         var tick = CaptionPlate.ClassColor(car, v.Field);
         Chrome.Tick(c, 54, 10, 30, tick, 5);
         string last = _cfg.Name(car, BroadcastUi.ShortName(car, v.Field)).ToUpperInvariant();
@@ -201,7 +207,7 @@ public sealed class QualiLapWidget : IWidget
         float by = RowH, lw = MathF.Round(PlateW * 0.52f), rx = lw + 6, rw = PlateW - rx - 10;
         c.FillRect(0, by, PlateW, BodyH, Body18);
         c.FillRect(lw - 0.75f, by + 14, 1.5f, BodyH - 28, Rgb(255, 255, 255, 0.35f));
-        var big = t.Numbers with { Size = 46 };
+        var big = t.Numbers with { Size = 46, Element = "time" };
         string main; Color4 mainInk = t.ValueColor;
         if (v.Result is { } r)
         {
@@ -214,7 +220,7 @@ public sealed class QualiLapWidget : IWidget
         c.Text(main, BroadcastUi.Fit(c, main, mf, lw - 24), 6, by, lw - 12, BodyH, mainInk, HAlign.Center);
 
         var lf = t.Label with { Size = 18, Tracking = 0.5f };
-        var vf = t.Numbers with { Size = 30 };
+        var vf = t.Numbers with { Size = 30, Element = v.Result is not null || v.Split is not null ? "gap" : "time" };
         if (v.Result is { } res)
         {
             // "1:18.917 +0.685 [7]": diferença (ou INVALID) e a posição obtida em caixa branca.
@@ -223,14 +229,14 @@ public sealed class QualiLapWidget : IWidget
             string lab = res.Invalid ? "INVALID" : v.RefName;
             c.Text(lab, BroadcastUi.Fit(c, lab, lf, gw), rx, by + 8, gw, 26, t.LabelColor, HAlign.Center);
             string g = res.Invalid ? "-" : v.ResultDelta is { } d ? Delta(d) : "-";
-            c.Text(g, BroadcastUi.Fit(c, g, vf, gw), rx, by + 34, gw, 40, DeltaInk(v.ResultDelta, t), HAlign.Center);
-            Chrome.PosBox(c, bx, by + (BodyH - box) / 2, box, box, res.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 26 });
+            c.Text(g, BroadcastUi.Fit(c, g, vf, gw), rx, by + 34, gw, 40, res.Invalid ? t.LabelColor : DeltaInk(v.ResultDelta, t), HAlign.Center);
+            Chrome.PosBox(c, bx, by + (BodyH - box) / 2, box, box, res.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 26, Element = "position" });
         }
         else
         {
-            c.Text(v.RefName, BroadcastUi.Fit(c, v.RefName, lf, rw), rx, by + 8, rw, 26, t.LabelColor, HAlign.Center);
+            c.Text(v.RefName, BroadcastUi.Fit(c, v.RefName, lf with { Element = "name" }, rw), rx, by + 8, rw, 26, t.LabelColor, HAlign.Center);
             string val; Color4 ink = t.ValueColor;
-            if (v.Split is not null && v.SplitDelta is { } d) { val = Delta(d); ink = DeltaInk(d, t); }
+            if (v.Split is not null && v.SplitDelta is { } d) { val = car.LapInvalid ? "INVALID" : Delta(d); ink = car.LapInvalid ? t.LabelColor : DeltaInk(d, t); }
             else val = v.RefTime is { } rt ? Exact(rt) : "NO TIME";
             c.Text(val, BroadcastUi.Fit(c, val, vf, rw), rx, by + 34, rw, 40, ink, HAlign.Center);
         }
@@ -253,8 +259,9 @@ public sealed class QualiLapWidget : IWidget
         // Painel de setor à direita ao fechar S1/S2.
         if (ShowSectorPanel && v.Phase == Phase.Running && v.Q.LastSplit is { } ls && v.Q.Sectors.Count >= ls.Sector && v.Q.Sectors[ls.Sector - 1] is { } st)
         {
-            float a = BroadcastUi.Fade(m.Now - ls.At, SectorPanelHold);
-            BroadcastUi.WithAlpha(c, a, () => SectorPanel18(c, t, ls.Sector, last, st));
+            float a = _sectorMotion18.Evaluate(m.Now, ls.At, ls.At + SectorPanelHold, BroadcastUi.State(m).SessionSeenT);
+            BroadcastUi.WithReveal18(c, a, PanelW, PanelH, () => SectorPanel18(c, t, ls.Sector, last, st),
+                x: PlateW + PanelGap, y: PlateH - PanelH);
         }
     }
 
@@ -270,7 +277,7 @@ public sealed class QualiLapWidget : IWidget
         var fill = st.Mark switch { SectorMark.OverallBest => Purple, SectorMark.PersonalBest => Rgb(30, 150, 48), _ => t.SubPanelFill };
         c.FillRect(x, y, PanelW, PanelTimeH, fill);
         string tm = Exact(st.Time);
-        c.Text(tm, t.Numbers with { Size = 30, Weight = 700 }, x, y, PanelW, PanelTimeH, White, HAlign.Center);
+        c.Text(tm, t.Numbers with { Size = 30, Weight = 700, Element = "time" }, x, y, PanelW, PanelTimeH, White, HAlign.Center);
     }
 
     static Color4 DeltaInk(double? d, Theme.Theme t) => d is not { } v ? t.ValueColor : v < 0 ? Green : Yellow;
@@ -286,7 +293,7 @@ public sealed class QualiLapWidget : IWidget
     };
 
     // ---- 2004 ----
-    const float X04 = 4, W04 = 270, Cell04 = 36, Strip04 = 6, Pos04 = 40, H04 = 4 + 3 * Cell04 + 10 + 4;
+    const float X04 = 4, W04 = 270, Cell04 = 36, Strip04 = 6, Pos04 = 40, ResultPos04 = 72, H04 = 4 + 3 * Cell04 + 10 + 4;
 
     void Draw04(ThemeCanvas c, OverlayModel m, View v)
     {
@@ -297,7 +304,7 @@ public sealed class QualiLapWidget : IWidget
         y += Cell04;
         string val = v.Result is { } r ? Exact(r.LapTime) : v.Split is { } sp ? Exact(sp.Elapsed)
             : (v.Phase == Phase.Idle ? IdleText(v.Q) : null) ?? Running(v.Q.Elapsed);
-        Chrome.BlackCell(c, X04, y, W04, Cell04, val, BroadcastUi.Fit(c, val, t.Numbers, W04 - 12), HAlign.Right);
+        Chrome.BlackCell(c, X04, y, W04, Cell04, val, BroadcastUi.Fit(c, val, t.Numbers with { Element = "time" }, W04 - 12), HAlign.Right);
         y += Cell04;
         if (ShowSectors)
         {
@@ -305,53 +312,81 @@ public sealed class QualiLapWidget : IWidget
             for (int k = 0; k < 3; k++)
                 c.FillRect(X04 + k * (sw + gap), y + 2, sw, Strip04, MarkColor(k < v.Sectors.Count ? v.Sectors[k] : null));
         }
-        y += 10;
-        // Comparação (parcial ou resultado): [posição vermelha][+0.471 em laranja].
-        int? pos = null; string? diff = null;
-        if (v.Result is { } res) { pos = res.Position; diff = res.Invalid ? "INVALID" : v.ResultDelta is { } d ? Delta(d) : null; }
-        else if (v.Split is not null && v.SplitDelta is { } sd) { pos = ProjectedPosition(m, v); diff = Delta(sd); }
-        if (pos is not { } p || diff is null) return;
-        Chrome.Box(c, X04, y, Pos04, Cell04, p.ToString(CultureInfo.InvariantCulture), t.Numbers, Chrome.CellKind.Red, HAlign.Center, 0);
-        Chrome.BlackCell(c, X04 + Pos04, y, W04 - Pos04, Cell04, diff, BroadcastUi.Fit(c, diff, t.Numbers, W04 - Pos04 - 12), HAlign.Right, kind: Chrome.CellKind.Orange);
+        y += ShowSectors ? 10 : 4;
+        // Result delta compares against the previous fastest other driver, even after a new pole reorders the table.
+        int referencePosition = ComparePersonal ? v.Position : 1;
+        var comparison = Broadcast04LapComparison.Resolve(v.Q, v.Split, v.Result, ComparePersonal, referencePosition);
+        if (comparison?.ResultPosition is { } position)
+        {
+            BroadcastUi.WithAlpha(c, Always ? 1 : BroadcastUi.Fade04(m.Now - v.Result!.At, double.PositiveInfinity), () =>
+            {
+                c.FillRect(X04 + W04, 4, ResultPos04, 2 * Cell04, new Color4(.21f, .22f, .32f, 1));
+                c.Text(position > 0 ? position.ToString(CultureInfo.InvariantCulture) : "-", t.Numbers with { Size = 40, Element = "position" }, X04 + W04, 4, ResultPos04, 2 * Cell04, new Color4(1, 1, 1, 1), HAlign.Center);
+            });
+        }
+        if (comparison is null) return;
+        string? diff = comparison.Invalid ? "INVALID" : comparison.ReferenceTime is { } reference ? Exact(reference)
+            : comparison.Delta is { } delta ? Delta(delta) : null;
+        if (diff is null) return;
+        Chrome.Box(c, X04, y, Pos04, Cell04, comparison.ReferencePosition > 0 ? comparison.ReferencePosition.ToString(CultureInfo.InvariantCulture) : "-", t.Numbers with { Element = "position" }, Chrome.CellKind.Red, HAlign.Center, 0);
+        Chrome.BlackCell(c, X04 + Pos04, y, W04 - Pos04, Cell04, diff, BroadcastUi.Fit(c, diff, t.Numbers with { Element = comparison.ReferenceTime is not null ? "time" : "gap" }, W04 - Pos04 - 12), HAlign.Right,
+            kind: comparison.ReferenceTime is not null ? Chrome.CellKind.Black : comparison.IsFaster ? Chrome.CellKind.Green : Chrome.CellKind.Orange);
     }
 
     // ---- 1998 ----
-    const float W98 = 640, H98 = 124, Col98 = 300, Gap98 = 16, L98 = 12, NameH98 = 34, TimeH98 = 48, LowH98 = 30;
+    const float W98 = 1920, H98 = 300;
 
     void Draw98(ThemeCanvas c, OverlayModel m, View v)
     {
         var t = c.Theme;
-        float lx = L98, rx = L98 + Col98 + Gap98, y1 = 4, y2 = y1 + NameH98, y3 = y2 + TimeH98;
+        c.FillRect(0, 0, W98, H98, t.PanelFill);
+        const float left = 165, right = 1110, col = 630, nameY = 35, timeY = 100;
         string name = _cfg.Name(v.Car, BroadcastUi.ShortName(v.Car, v.Field)).ToUpperInvariant();
-        c.Text(name, BroadcastUi.Fit(c, name, t.Text, Col98), lx, y1, Col98 + 8, NameH98, t.TextColor, shadow: t.TextShadow);
-        var big = t.Numbers with { Size = 42 };
-        string main = v.Result is { } r ? Exact(r.LapTime) : v.Split is { } sp ? Exact(sp.Elapsed) : Running(v.Q.Elapsed);
-        string? idle = v.Phase == Phase.Idle ? IdleText(v.Q) : null;
-        if (idle is not null) c.Text(idle, t.Text, lx, y2, Col98, TimeH98, t.ValueColor, shadow: t.TextShadow);
-        else c.Text(main, BroadcastUi.Fit(c, main, big, Col98), lx, y2, Col98 + 8, TimeH98, t.ValueColor, shadow: t.ValueShadow);
+        var nameFont = t.Text with { Size = 32, Weight = 400, Element = "name" };
+        var valueFont = t.Numbers with { Size = 42, Weight = 400, Element = "time" };
+        c.Text(name, BroadcastUi.Fit(c, name, nameFont, col), right, nameY, col, 60, t.TextColor, HAlign.Right, t.TextShadow);
+        string main = v.Result is { } result ? Exact(result.LapTime) : v.Split is { } split ? Exact(split.Elapsed)
+            : (v.Phase == Phase.Idle ? IdleText(v.Q) : null) ?? (v.Q.Elapsed is { } live && _cfg.Fmt.LapTime is not null ? _cfg.Fmt.FormatLapTime(live) : Running(v.Q.Elapsed));
+        c.Text(main, BroadcastUi.Fit(c, main, main.Any(char.IsLetter) ? nameFont : valueFont, col),
+            right, timeY, col, 72, t.ValueColor, HAlign.Right, t.ValueShadow);
 
-        if (v.Result is { } res)
+        int mark = v.Result is not null ? 3 : v.Split?.Sector ?? Math.Clamp(v.Q.Sector + 1, 1, 3);
+        double? reference = QualiBoardTiming.ReferenceTime(v.Q, mark, ComparePersonal, v.Split);
+        bool crossing = v.Result is not null || v.Split is not null;
+        // Without trustworthy partial data, the next mark stays absent until the crossing itself.
+        bool approaching = QualiBoardTiming.ReferenceVisible(reference, v.Q.Elapsed, mark);
+        if (!crossing && !approaching) return;
+        string label = mark == 3 ? "FINISH LINE" : "INTERMEDIATE " + mark.ToString(CultureInfo.InvariantCulture);
+        double? delta = v.Result is { } res ? (ComparePersonal ? res.DeltaPersonal : res.GapToFirst)
+            : v.Split is { } sp ? (ComparePersonal ? sp.DeltaPersonal : sp.DeltaLeader) : null;
+        // A completed lap's comparison uses the previous reference implied by its actual delta.
+        if (v.Result is { } finish && delta is { } finishDelta) reference = finish.LapTime - finishDelta;
+        if (v.Result is { Position: > 0 } completed)
         {
+            c.FillRect(left + 150, nameY + 5, 130, 125, t.AccentFill);
+            c.Text(completed.Position.ToString(CultureInfo.InvariantCulture),
+                t.Numbers with { Size = 88, Weight = 400, Element = "position" }, left + 150, nameY + 5, 130, 125,
+                t.AccentInk, HAlign.Center);
+        }
+        else
+        {
+            c.Text(v.RefName, BroadcastUi.Fit(c, v.RefName, nameFont, col), left, nameY, col, 60, t.TextColor, shadow: t.TextShadow);
+            c.Text(reference is { } value ? Exact(value) : "--", valueFont, left, timeY, col, 72, t.ValueColor, shadow: t.ValueShadow);
+        }
+        c.Text(label, t.Label with { Size = 28, Weight = 400, Element = "label" }, 650, 236, 620, 48, t.ValueColor, HAlign.Center, t.TextShadow);
+        if (crossing)
+        {
+            string diff = v.Result?.Invalid == true ? "INVALID" : delta is { } d ? Delta(d) : "--";
+            var deltaFont = t.Numbers with { Size = 36, Weight = 400, Element = "gap" };
+            c.Text(diff, BroadcastUi.Fit(c, diff, deltaFont, 520), 700, timeY, 520, 72,
+                new Color4(.16f, .70f, .77f, 1), HAlign.Center, t.ValueShadow);
             if (ShowSpeed && m.Session?.PlayerCar is { } pc)
             {
-                var su = _cfg.Fmt.SpeedOrDefault;
-                double spd = DisplayFormat.SpeedFromKph(pc.SpeedMps * DisplayFormat.MpsToKph, su);
-                Chrome.ValueUnit(c, spd.ToString("0.0", CultureInfo.InvariantCulture), su == SpeedUnit.Mph ? "mph" : "Km/h", lx, y3, LowH98, t.ValueColor, false);
+                var unit = _cfg.Fmt.SpeedOrDefault;
+                double speed = DisplayFormat.SpeedFromKph(pc.SpeedMps * DisplayFormat.MpsToKph, unit);
+                c.Text(speed.ToString("0", CultureInfo.InvariantCulture) + (unit == SpeedUnit.Mph ? " mph" : " Km/h"),
+                    t.Numbers with { Size = 25, Weight = 400, Element = "value" }, right, 236, col, 48, t.ValueColor, HAlign.Right, t.ValueShadow);
             }
-            Right98(c, t, rx, v.RefName, res.Invalid ? "INVALID" : v.ResultDelta is { } d ? Delta(d) : "-", "FINISH LINE");
         }
-        else if (v.Split is { } s2 && v.SplitDelta is { } sd)
-            Right98(c, t, rx, v.RefName, Delta(sd), "SECTOR " + s2.Sector.ToString(CultureInfo.InvariantCulture));
-    }
-
-    /// <summary>Coluna da direita do 1998: nome do comparativo, diferença amarela grande e o rótulo ("FINISH LINE"), alinhados à direita.</summary>
-    static void Right98(ThemeCanvas c, Theme.Theme t, float x, string refName, string value, string label)
-    {
-        float y1 = 4, y2 = y1 + NameH98, y3 = y2 + TimeH98;
-        c.Text(refName, BroadcastUi.Fit(c, refName, t.Text, Col98), x, y1, Col98, NameH98, t.TextColor, HAlign.Right, t.TextShadow);
-        bool letters = value.Any(char.IsLetter);
-        var vf = letters ? t.Text : t.Numbers with { Size = 42 };
-        c.Text(value, BroadcastUi.Fit(c, value, vf, Col98), x, y2, Col98, TimeH98, t.ValueColor, HAlign.Right, letters ? t.TextShadow : t.ValueShadow);
-        c.Text(label, t.Text with { Size = 26 }, x, y3, Col98, LowH98, t.ValueColor, HAlign.Right, t.TextShadow);
     }
 }

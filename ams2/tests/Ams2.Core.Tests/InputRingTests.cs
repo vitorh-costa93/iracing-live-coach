@@ -148,9 +148,10 @@ public class InputSamplerTests
     {
         var mem = new FakeMemory();
         mem.Raw.Throttle = 0.4f; mem.Raw.Brake = 0.2f; mem.Raw.Steering = -0.5f; mem.Raw.SequenceNumber = 8;
+        mem.Raw.Speed = 45; mem.Raw.Rpm = 8000; mem.Raw.MaxRpm = 10000; mem.Raw.Gear = 4;
         IRawMemorySource src = mem;
         Assert.True(src.TryReadInputs(out var r));
-        Assert.Equal(new RawInputs(8, 0.4f, 0.2f, -0.5f), r);
+        Assert.Equal(new RawInputs(8, 0.4f, 0.2f, -0.5f, 45, 8000, 10000, 4), r);
         mem.Raw.SequenceNumber = 9;
         Assert.False(src.TryReadInputs(out _));
     }

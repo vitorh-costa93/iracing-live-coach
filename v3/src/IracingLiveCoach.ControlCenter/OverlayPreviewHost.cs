@@ -32,17 +32,12 @@ namespace IracingLiveCoach.ControlCenter;
 ///
 /// Data shown is ALWAYS the spec §12-mandated simulated preset ("preview com dados fictícios
 /// claramente identificado como simulação, disponível sem iRacing aberto") -- each widget's own
-/// <c>SetSimulatedRows</c> always wins over live telemetry in their own Draw() methods. Honest gap:
-/// each widget's constructor still starts its own <see cref="TelemetryReader"/> internally, so this
-/// process does open real SDK connection attempts in the background even though their data is never
-/// drawn here -- harmless when iRacing isn't running, wasteful redundancy with OverlayHost.exe's own
-/// connection when it is.
+/// simulated-data setters always win over live telemetry in their own Draw() methods. All six
+/// widgets are constructed with telemetry disabled, so the preview does not start SDK readers
+/// even when iRacing is running or its device chain is recreated after a resize.
 ///
 /// Also honest: layout/position/scale come from whatever <see cref="PlacementPersistence"/> last
 /// saved to disk (read once at construction), not a live cross-process read of the running overlay.
-/// Only Standings and Relative are wired in -- Weather/Fuel/Radar/StartHelper don't have a
-/// SetSimulatedRows-equivalent yet, so adding them here would just show their real
-/// "Aguardando iRacing..." placeholder inside a panel that's supposed to work with no iRacing open.
 /// </summary>
 public sealed unsafe class OverlayPreviewHost : IDisposable
 {
@@ -101,12 +96,12 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     {
         _device = DeviceResources.Create(_hwnd, _width, _height);
         _flags = new FlagBitmapCache(_device.Context);
-        _standings = new StandingsWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
-        _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection);
-        _weather = new WeatherWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
-        _fuel = new FuelWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
-        _radar = new RadarWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
-        _start = new StartHelperWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _standings = new StandingsWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection, startTelemetry: false);
+        _relative = new RelativeWidget(_device.Context, _device.DWriteFactory, _flags, _device.FontCollection, startTelemetry: false);
+        _weather = new WeatherWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
+        _fuel = new FuelWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
+        _radar = new RadarWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
+        _start = new StartHelperWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
         var black = new Color4(0, 0, 0, 1);
         ComPtr<ID2D1SolidColorBrush> backdrop = default;
         if (_device.Context->CreateSolidColorBrush(&black, null, backdrop.GetAddressOf()).Success) _backdropBrush = backdrop;

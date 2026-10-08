@@ -100,8 +100,8 @@ public sealed class RadarWidget : IWidget
             return (0, 0);
         }
         double now = Clock(m), sl = _seenL, sr = _seenR;
-        if (f.AlongLeft) { sl = now; if (commit) { _seenL = now; _gapL = f.LeftGap; } }
-        if (f.AlongRight) { sr = now; if (commit) { _seenR = now; _gapR = f.RightGap; } }
+        if (f.AlongLeft) { sl = now; if (commit) { _seenL = now; _gapL = f.RenderGap(left: true, now); } }
+        if (f.AlongRight) { sr = now; if (commit) { _seenR = now; _gapR = f.RenderGap(left: false, now); } }
         return (SideAlpha(now, sl), SideAlpha(now, sr));
     }
 

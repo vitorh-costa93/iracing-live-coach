@@ -162,6 +162,10 @@
                         <StackPanel x:Name="Detail" Margin="0,0,10,0">
                             <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,16"/>
 
+                            <DockPanel><TextBlock Text="Largura da janela" Style="{StaticResource Muted}"/><TextBlock Text="{Binding WidthScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="25" Maximum="300" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding WidthScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
+                            <DockPanel><TextBlock Text="Altura da janela" Style="{StaticResource Muted}"/><TextBlock Text="{Binding HeightScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="25" Maximum="300" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding HeightScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
                             <DockPanel><TextBlock Text="Escala" Style="{StaticResource Muted}"/><TextBlock Text="{Binding Scale, StringFormat={}{0:0.00}x}" HorizontalAlignment="Right"/></DockPanel>
                             <Slider Minimum="0.5" Maximum="3" TickFrequency="0.05" IsSnapToTickEnabled="True" SmallChange="0.05" LargeChange="0.25" Value="{Binding Scale, Mode=TwoWay}" Margin="0,4,0,14"/>
 
@@ -267,10 +271,23 @@
                             </StackPanel>
 
                             <TextBlock Text="TEXTO" Style="{StaticResource SectionTitle}" Margin="0,4,0,8"/>
-                            <DockPanel ToolTip="Fonte maior aumenta o widget inteiro na mesma proporção (linhas, colunas e janela)."><TextBlock Text="Tamanho do texto" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TextScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
-                            <Slider Minimum="60" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Value="{Binding TextScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
+                            <DockPanel ToolTip="Altera somente as fontes; largura e altura são ajustadas separadamente."><TextBlock Text="Tamanho do texto" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TextScalePct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                            <Slider Minimum="40" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10" Value="{Binding TextScalePct, Mode=TwoWay}" Margin="0,4,0,12"/>
                             <TextBlock Text="Peso da fonte" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                             <ComboBox Height="32" ItemsSource="{x:Static local:Choices.Weights}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding FontWeightChoice, Mode=TwoWay}" Margin="0,0,0,12"/>
+                            <Expander Header="Fontes por elemento" Margin="0,0,0,14" ToolTip="100% herda o tamanho geral; o peso padrão herda o peso geral. Ajustes se aplicam aos elementos presentes neste widget.">
+                                <ItemsControl ItemsSource="{Binding ElementFonts}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <DockPanel><TextBlock Text="{Binding Label}"/><TextBlock Text="{Binding Pct, StringFormat={}{0}%}" HorizontalAlignment="Right"/></DockPanel>
+                                                <Slider Minimum="40" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding Pct, Mode=TwoWay}" Margin="0,4,0,4"/>
+                                                <ComboBox Height="30" ItemsSource="{x:Static local:Choices.Weights}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Weight, Mode=TwoWay}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
                             <TextBlock Text="Cores (#RRGGBB; vazio = cor do tema)" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                             <Grid Margin="0,0,0,14">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>

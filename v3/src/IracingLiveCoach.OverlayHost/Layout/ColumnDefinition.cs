@@ -45,7 +45,10 @@ public sealed record ColumnDefinition(
     int? DecimalPlaces = null,
     string? FontFamily = null,
     int? FontWeight = null,
-    int? LapWindow = null)
+    int? LapWindow = null,
+    bool ShowInPractice = true,
+    bool ShowInQualify = true,
+    bool ShowInRace = true)
 {
     /// <summary>Total footprint of this column including its own padding — what actually gets summed
     /// for the table's auto-width (spec §12: "largura automática de tabela = soma das colunas visíveis + paddings...").</summary>

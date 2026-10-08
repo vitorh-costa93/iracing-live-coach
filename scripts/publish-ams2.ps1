@@ -20,7 +20,7 @@ $desktopInstallDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "AMS2 L
 foreach ($p in @($overlayProject, $controlCenterProject)) {
     Write-Host "Publicando $(Split-Path -Leaf $p) em $publishDir ..."
     dotnet publish $p -c Release -r win-x64 --self-contained true `
-        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -m:1 -nr:false -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish falhou para $p" }
 }
 

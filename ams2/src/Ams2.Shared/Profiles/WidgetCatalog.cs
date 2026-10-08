@@ -19,7 +19,8 @@ public sealed record WidgetDef(
     public IReadOnlyList<ColumnDef> Widths => WidthColumns ?? [];
     /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
     public bool InTheme(string themeId)
-        => Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase));
+        => (Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase)))
+            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id));
 }
 
 public enum OptionKind { Choice, Toggle, Number }
@@ -58,9 +59,13 @@ public sealed record OptionDef(string Id, string Label, OptionKind Kind, IReadOn
 public static class WidgetCatalog
 {
     public const float MinScale = 0.5f, MaxScale = 3f;
+    public const float MinAxisScale = 0.25f, MaxAxisScale = 3f;
+    public static IReadOnlyList<ColumnDef> FontElements { get; } =
+        [new("name", "Nome do piloto"), new("time", "Tempos"), new("gap", "Gap / intervalo"),
+         new("position", "Posição"), new("label", "Rótulos"), new("title", "Títulos"), new("value", "Valores")];
     public const float MinOpacity = 0.2f, MaxOpacity = 1f;
-    /// <summary>Tamanho do texto (redimensiona o widget junto) e largura de coluna em %.</summary>
-    public const float MinTextScale = 0.6f, MaxTextScale = 2f;
+    /// <summary>Tamanho das fontes independente da geometria; largura de coluna em %.</summary>
+    public const float MinTextScale = 0.4f, MaxTextScale = 2f;
     public const int MinWidthPct = 50, MaxWidthPct = 250;
     /// <summary>Standings (como no iRacing): quantos pilotos do TOPO e quantos AO REDOR do jogador (a janela inclui o jogador).</summary>
     public const int DefaultTopCount = 5, MaxTopCount = 20, DefaultNearCount = 3, MaxNearCount = 10;
@@ -87,6 +92,8 @@ public static class WidgetCatalog
         new("weather", "Weather", null, null, null, "", [C("air", "Ar"), C("track", "Pista"), C("rain", "Chuva")], 1139, 812, DefaultScale: 0.86f, Caps: DisplayCaps.Temp),
         new("inputs", "Inputs", null, null, null, "", [C("graph", "Gráfico (acelerador e freio)"), C("bars", "Barras / pedais"), C("gear", "Marcha e velocidade"), C("speedo", "Velocímetro analógico (2004-2008)")], 745, 905, DefaultScale: 0.55f,
             WidthColumns: [C("graph", "Gráfico")], Caps: DisplayCaps.Speed),
+        new("inputgraph", "Inputs Graph", null, null, null, "", [], 1700, 988, DefaultScale: 0.6f,
+            WidthColumns: [C("graph", "Gráfico")], Themes: ["f1-2004"]),
         new("radar", "Radar", null, null, null, "", [C("native", "Indicador nativo do AMS2 (senão: painel estilo V3)"), C("always", "Sempre visível (senão só com carro próximo)")], 900, 585, DefaultScale: 1f, HasRadarOptions: true),
         new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f, DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         new("drivercaption", "Driver Caption", null, null, null, "", [C("always", "Sempre visível (senão só em eventos)"), C("team", "Equipe"), C("tyre", "Fornecedor de pneus")], 60, 930, DefaultVisible: false, DefaultScale: 0.75f,
@@ -109,6 +116,7 @@ public static class WidgetCatalog
         // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
+        new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1993", "f1-1998"], DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
     ];
 
@@ -123,10 +131,22 @@ public static class WidgetCatalog
         ["winner"] = ["team", "stats"],
     };
 
-    public static WidgetDef? Find(string id) => All.FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+    public static WidgetDef? Find(string id, string? themeId = null)
+        => (themeId is null ? All : ForTheme(themeId)).FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Widgets do tema, na ordem do catalogo (os exclusivos de outros temas ficam de fora).</summary>
-    public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId));
+    static readonly HashSet<string> Widgets93 = new(StringComparer.OrdinalIgnoreCase)
+        { "board", "qualiboard", "drivercaption", "fuel", "tyres", "weather", "inputs", "radar" };
+    internal static bool Supports93(string id) => Widgets93.Contains(id);
+    public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId)).Select(d =>
+        ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
+            ? d with { DisplayName = "Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
+        : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualiboard"
+            ? d with { DisplayName = "Quali Board (volta, parcial e resultado)" }
+        :
+        d.Id == "inputs" && string.Equals(ThemeCatalog.Canonical(themeId), "f1-2004", StringComparison.OrdinalIgnoreCase)
+            ? d with { DisplayName = "Velocímetro", Columns = d.Columns.Where(c => c.Id != "graph").ToArray(), WidthColumns = [] }
+            : d);
 
     static OptionChoice O(string value, string label) => new(value, label);
 
@@ -142,9 +162,14 @@ public static class WidgetCatalog
                     [O("gap", "Gap para o líder"), O("interval", "Intervalo (carro à frente)"), O("gainedlost", "Posições ganhas/perdidas"),
                      O("pitstops", "Paradas nos boxes"), O("bestlap", "Melhor volta"), O("auto", "Automático (alterna como na TV)")], "gap"),
                 new("modeSeconds", "Automático: segundos por modo", OptionKind.Number, null, "10", Min: 5, Max: 30),
+                new("intervalSeconds", "Atualização visual de gap/intervalo (s)", OptionKind.Number, null, "1", Min: 0.25, Max: 3),
                 new("battle", "Bloco \"BATTLE FOR\" (jogador a menos de 1 s de alguém)", OptionKind.Toggle, null, "true"),
                 new("fullNames", "Nomes completos sob bandeira amarela / Safety Car", OptionKind.Toggle, null, "true"),
                 new("outBlock", "Pilotos fora da corrida no bloco cinza \"OUT\" (senão ocultos)", OptionKind.Toggle, null, "true"),
+            ],
+            ["board"] =
+            [
+                new("intervalSeconds", "Atualização visual do intervalo ao vivo (s)", OptionKind.Number, null, "1", Min: 0.25, Max: 3),
             ],
             // Legenda do 2018: placa do piloto, variante STARTED / NOW (grid de largada x posicao atual), resultado no fim ou automatico.
             ["drivercaption"] =
@@ -239,7 +264,7 @@ public static class WidgetCatalog
             ["qualilap"] =
             [
                 new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
-                new("showSectors", "Faixa de setores S1 S2 S3", OptionKind.Toggle, null, "true"),
+                new("showSectors", "Faixa de setores S1 S2 S3", OptionKind.Toggle, null, "false"),
                 new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
                 new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
             ],
@@ -252,15 +277,35 @@ public static class WidgetCatalog
                 new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
             ],
         },
+        ["f1-1993"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["board"] = [
+                new("gapPointPercent", "Ponto de medição do gap (% da volta; 0 = chegada)", OptionKind.Number, null, "0", Min: 0, Max: 99.9),
+                new("gapArrow", "Seta na placa de gap", OptionKind.Toggle, null, "true"),
+                new("gapHoldSeconds", "Duração do resultado do gap (s)", OptionKind.Number, null, "7", Min: 3, Max: 15),
+                new("showFastest", "Mostrar nova volta mais rápida da corrida", OptionKind.Toggle, null, "true"),
+                new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full"),
+            ],
+            ["qualiboard"] = [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showFor", "Duração do resultado da volta (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+            ],
+            ["drivercaption"] = [new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full")],
+        },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
+            ["qualiboard"] =
+            [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showSpeed", "Velocidade na linha de chegada", OptionKind.Toggle, null, "true"),
+            ],
             // Lista de classificacao do 1998 (Monaco 2003): colunas de caixas amarelas + NOME, 1o com o tempo, demais a diferenca sem "+".
             ["qualitower"] =
             [
-                new("rows", "Pilotos na lista (o jogador sempre aparece)", OptionKind.Number, null, "6", Min: 2, Max: 10),
+                new("rows", "Pilotos na lista (o jogador sempre aparece)", OptionKind.Number, null, "8", Min: 2, Max: 10),
                 new("columns", "Colunas", OptionKind.Choice, [O("2", "Duas colunas (como na TV)"), O("1", "Uma coluna")], "2"),
                 new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
-                new("showClock", "Cabeçalho com o relógio da sessão", OptionKind.Toggle, null, "true"),
+                new("showClock", "Cabeçalho com o relógio da sessão", OptionKind.Toggle, null, "false"),
             ],
             // Tempo corrente do 1998: NOME + tempo com sombra; no resultado tempo da volta, diferenca e "FINISH LINE".
             ["qualilap"] =
@@ -295,6 +340,7 @@ public static class ThemeCatalog
     /// <summary>Temas conhecidos. Os ainda nao implementados aparecem desabilitados no Control Center.</summary>
     public static readonly IReadOnlyList<ThemeDef> All =
     [
+        new("f1-1993", "F1 1993", true),
         new("f1-1998", "F1 1998-2001", true),
         new("f1-2004", "F1 2004-2008", true),
         new("f1-2018", "F1 2018", true),

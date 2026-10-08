@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Numerics;
+using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
@@ -17,9 +18,12 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class LiveSpeedWidget : IWidget
 {
     public string Id => "livespeed";
+    public bool HighFrequency => true;
     public const float W = 300, H = 196, NameH = 30;
     public (float Width, float Height) DesignSize => (W, ShowName ? H : H - NameH);
     WidgetSettings _cfg = new() { Id = "livespeed" };
+    readonly Broadcast18Motion _motion18 = new();
+    bool _seenConnection18;
     public void Configure(WidgetSettings s) => _cfg = s;
 
     string Units => _cfg.OptionOr("units", "both").ToLowerInvariant();
@@ -34,6 +38,20 @@ public sealed class LiveSpeedWidget : IWidget
     {
         var t = c.Theme;
         var (w, h) = DesignSize;
+        if (!m.Connected) { _motion18.Reset(); _seenConnection18 = false; }
+        if (m.Connected && !_seenConnection18)
+        {
+            // Editing/always stays settled; a newly connected live plate reveals once.
+            if (!IgnoresDrivingGate)
+            {
+                double connectedAt = BroadcastUi.State(m).SessionSeenT;
+                _motion18.Presence(connectedAt, false);
+                _motion18.Presence(connectedAt, true, session: connectedAt);
+            }
+            _seenConnection18 = true;
+        }
+        float reveal = m.Connected ? _motion18.Presence(m.Now, true, session: BroadcastUi.State(m).SessionSeenT) : 1;
+        using var clip = c.Theme.Style == ThemeStyle.Modern2018 ? c.Clip(0, 0, w * reveal, h) : null;
         var player = m.Connected ? m.Session?.Player : null;
         var car = m.Connected ? m.Session?.PlayerCar : null;
 
@@ -61,8 +79,9 @@ public sealed class LiveSpeedWidget : IWidget
             y += NameH;
         }
 
-        string kph = player is null ? "---" : Speed(player.SpeedMps, SpeedUnit.Kph);
-        string mph = player is null ? "---" : Speed(player.SpeedMps, SpeedUnit.Mph);
+        double speed = player is null ? 0 : RenderPlayerTelemetry.Read(m.Inputs, player).SpeedMps;
+        string kph = player is null ? "---" : Speed(speed, SpeedUnit.Kph);
+        string mph = player is null ? "---" : Speed(speed, SpeedUnit.Mph);
         var big = t.Numbers with { Weight = 400, Size = 55, Tracking = 0f };
         var unit = t.Label with { Weight = 400, Size = 24, Tracking = 0.5f };
         switch (Units)

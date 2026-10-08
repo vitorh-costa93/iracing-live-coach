@@ -45,6 +45,7 @@ internal sealed class HostController : IDisposable
         _profile = store.Load(_theme.Id, name, sw, sh) ?? ProfileFactory.CreateDefault(name, _theme.Id, sw, sh).Normalized(sw, sh);
         BuildWindows();
         ApplyRadarOptions();
+        ApplyGap93Options();
     }
 
     /// <summary>Alcance e sensibilidade do radar (perfil) vao para o tracker do provider; vale no proximo passo de 60 Hz.</summary>
@@ -53,8 +54,18 @@ internal sealed class HostController : IDisposable
         if (_profile.Get("radar") is { } s) _provider.Radar.Options = RadarWidget.OptionsFor(s);
     }
 
+    void ApplyGap93Options()
+    {
+        var cfg = _profile.Get("board");
+        static double Value(WidgetSettings? settings, string key, string fallback)
+            => double.TryParse(settings?.OptionOr(key, fallback) ?? fallback, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : double.Parse(fallback, System.Globalization.CultureInfo.InvariantCulture);
+        _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), Value(cfg, "gapHoldSeconds", "7"), _theme.Id == "f1-1993");
+    }
+
     public Profile Profile => _profile;
     internal IEnumerable<(string Id, Ams2.Core.Calc.RateStats Stats)> RenderStats => _windows.Select(kv => (kv.Key, kv.Value.RenderStats));
+    internal IEnumerable<(string Id, string Timing)> RenderTimings => _windows.Select(kv => (kv.Key, kv.Value.RenderTiming));
 
     void BuildWindows()
     {
@@ -189,9 +200,27 @@ internal sealed class HostController : IDisposable
         _profile = p;
         _theme = Themes.Get(p.ThemeId);
         foreach (var s in p.Ordered)
-            if (_windows.TryGetValue(s.Id, out var w)) w.Apply(s, _theme);
+        {
+            if (_only is not null && !_only.Contains(s.Id)) continue;
+            if (!_windows.TryGetValue(s.Id, out var w))
+            {
+                w = new WidgetWindow(s.Id, s, _theme) { Snap = SnapToOthers };
+                w.UserChanged += OnUserChanged;
+                w.SetGate(_gate);
+                w.SetSession(_session);
+                w.SetEditMode(_edit);
+                _windows[s.Id] = w;
+            }
+            else w.Apply(s, _theme);
+        }
+        foreach (var id in _windows.Keys.Where(id => p.Get(id) is null).ToArray())
+        {
+            _windows[id].Dispose();
+            _windows.Remove(id);
+        }
         RestackByOrder();
         ApplyRadarOptions();
+        ApplyGap93Options();
         if (_persist)
         {
             _store.SetActiveTheme(p.ThemeId);
@@ -212,6 +241,7 @@ internal sealed class HostController : IDisposable
             if ((o.Id == next.Id || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(o, _theme);
         if (orderChanged) RestackByOrder();
         if (next.Id == "radar") ApplyRadarOptions();
+        if (next.Id == "board") ApplyGap93Options();
         ScheduleSave();
     }
 
@@ -279,8 +309,8 @@ internal sealed class HostController : IDisposable
     /// <summary>
     /// Roda até Ctrl+Alt+Q, fechamento ou <paramref name="seconds"/> (0 = sem limite). Thread principal.
     /// Dois ritmos num só laço (mesma thread: nenhuma janela é tocada fora da sua thread):
-    ///  - widgets de alta frequência (Inputs) são desenhados a cada vblank; o laço dorme em DwmFlush (bloqueia até a próxima
-    ///    composição do DWM, sem gastar CPU) e o Present usa intervalo 0, então 1 quadro por atualização do monitor;
+    ///  - widgets de alta frequência seguem os prazos do monitor, sem esperar a composicao de todas as janelas;
+    ///    Present(0, DoNotWait) evita que uma fila cheia bloqueie os demais instrumentos;
     ///  - os demais seguem a 60 Hz por relógio (acumulador, sem deriva), como antes;
     ///  - sem nenhum widget de alta frequência visível o laço volta a dormir só até o próximo passo de 60 Hz.
     /// </summary>
@@ -299,7 +329,7 @@ internal sealed class HostController : IDisposable
         var run = System.Diagnostics.Stopwatch.StartNew();
         double nextLow = 0;
         double refreshPeriod = 1.0 / Win32.PrimaryRefreshHz();
-        int dwmFast = 0; // DwmFlush que voltou sem bloquear (composição desligada / sem vblank): cai para relógio
+        double nextHigh = 0;
         while (OverlayWindow.Pump(() => ToggleEditFromHotkey()))
         {
             double now = run.Elapsed.TotalSeconds;
@@ -330,13 +360,14 @@ internal sealed class HostController : IDisposable
 
             if (high)
             {
-                double t0 = run.Elapsed.TotalSeconds;
-                int hr = Win32.DwmFlush();
-                double waited = run.Elapsed.TotalSeconds - t0;
-                if (hr != 0 || waited < 0.0005) dwmFast++; else dwmFast = 0;
-                if (dwmFast >= 3) SleepUntil(run, t0 + refreshPeriod); // DwmFlush nao esta sincronizando: ritmo por relogio
+                // DwmFlush espera toda a composicao; em desktop remoto pode limitar todas as janelas a 60 Hz.
+                // O swapchain faz a entrega ao compositor. Cadencia por prazo absoluto, sem somar espera ao desenho.
+                nextHigh += refreshPeriod;
+                double completed = run.Elapsed.TotalSeconds;
+                if (nextHigh <= completed) nextHigh = completed;
+                else SleepUntil(run, nextHigh);
             }
-            else SleepUntil(run, nextLow);
+            else { nextHigh = run.Elapsed.TotalSeconds; SleepUntil(run, nextLow); }
         }
     }
 

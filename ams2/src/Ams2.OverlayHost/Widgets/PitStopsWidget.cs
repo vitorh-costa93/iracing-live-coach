@@ -25,14 +25,18 @@ public sealed class PitStopsWidget : IWidget
     float NameW => MathF.Round(_cfg.Width("name", 190));
     float StopsW => MathF.Round(_cfg.Width("stops", _b18 ? 56 : 110));   // 2018: so o numero de paradas
     bool _b18;
+    readonly Broadcast18Motion _motion18 = new();
     public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     float ColW => PosW + NameW + StopsW;
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected || m.Session is not { } s) return;
+        if (!m.Connected || m.Session is not { } s) { _motion18.Reset(); return; }
         var b = BroadcastUi.State(m);
-        float alpha = _cfg.ColumnVisible("always") ? 1f : BroadcastUi.Fade(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold);
+        float alpha = _cfg.ColumnVisible("always") ? 1f : c.Theme.Style == ThemeStyle.Broadcast2000s
+            ? BroadcastUi.Fade04(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold) : BroadcastUi.Fade(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold);
+        if (_b18 && !_cfg.ColumnVisible("always"))
+            alpha = _motion18.Evaluate(m.Now, b.LastPitEntryT, b.LastPitEntryT + BroadcastUi.PitListHold, b.SessionSeenT);
         if (alpha <= 0.01f) return;
         var cars = s.Cars.Where(x => x.Position > 0).OrderBy(x => x.Position).ToList();
         if (cars.Count == 0) return;
@@ -40,7 +44,8 @@ public sealed class PitStopsWidget : IWidget
         int li = b.LastPitCarIndex >= 0 ? cars.FindIndex(x => x.Index == b.LastPitCarIndex) : -1;
         if (li >= 0) start = li / block * block;
         var page = cars.Skip(start).Take(block).ToList();
-        BroadcastUi.WithAlpha(c, alpha, () => DrawGrid(c, page, cars, b));
+        if (_b18) BroadcastUi.WithReveal18(c, alpha, DesignSize.Width, DesignSize.Height, () => DrawGrid(c, page, cars, b));
+        else BroadcastUi.WithAlpha(c, alpha, () => DrawGrid(c, page, cars, b));
     }
 
     void DrawGrid(ThemeCanvas c, List<CarSnapshot> page, List<CarSnapshot> field, BroadcastState b)
@@ -76,7 +81,7 @@ public sealed class PitStopsWidget : IWidget
             {
                 float sx = x + PosW + NameW;
                 c.FillRect(sx, y - 1, StopsW, Pitch, t.GapCellFill);
-                if (PosW > 0) Chrome.PosBox(c, x + 4, y, PosW - 6, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 19 });
+                if (PosW > 0) Chrome.PosBox(c, x + 4, y, PosW - 6, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 19 });
                 string up = name.ToUpperInvariant();
                 c.Text(up, BroadcastUi.Fit(c, up, t.Text with { Size = 20 }, NameW - 18), x + PosW + 8, y, NameW - 10, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor);
                 c.Text(b.StopsOf(car.Index).ToString(CultureInfo.InvariantCulture), t.Numbers, sx, y, StopsW - 12, RowH, t.ValueColor, HAlign.Right);
@@ -84,15 +89,15 @@ public sealed class PitStopsWidget : IWidget
             }
             if (b04)
             {
-                if (PosW > 0) Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text);
+                if (PosW > 0) Chrome.PositionBox(c, x, y, PosW, RowH, car.Position, t.Text with { Element = "position" });
                 Chrome.WhiteCell(c, x + PosW, y, NameW, RowH, name, BroadcastUi.Fit(c, name, t.Text, NameW - 14), ink: car.IsPlayer ? Chrome.PlayerInk : null);
-                Chrome.BlackCell(c, x + PosW + NameW, y, StopsW, RowH, stops, t.Text, HAlign.Right);
+                Chrome.BlackCell(c, x + PosW + NameW, y, StopsW, RowH, stops, t.Text with { Element = "value" }, HAlign.Right);
             }
             else
             {
-                if (PosW > 0) Chrome.AccentBox(c, x + 12, y + 1, PosW, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Text);
+                if (PosW > 0) Chrome.AccentBox(c, x + 12, y + 1, PosW, RowH, car.Position.ToString(CultureInfo.InvariantCulture), t.Text with { Element = "position" });
                 c.Text(name, BroadcastUi.Fit(c, name, t.Text, NameW - 42), x + PosW + 22, y, NameW - 8, RowH, car.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
-                c.Text(stops, t.Label, x + PosW + NameW - 4, y, StopsW, RowH, t.ValueColor, HAlign.Right, t.TextShadow);
+                c.Text(stops, t.Label with { Element = "value" }, x + PosW + NameW - 4, y, StopsW, RowH, t.ValueColor, HAlign.Right, t.TextShadow);
             }
         }
     }

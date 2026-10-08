@@ -18,11 +18,8 @@ Overlay + Control Center para iRacing (WPF/.NET). `src/` + `tests/` = V2 (congel
 - Não commitar `preview-*.png`, `.claude/scheduled_tasks.lock` nem `.superpowers/`.
 - Capturas de tela para validação: recortes pequenos, não releia as já analisadas.
 
-## Subagentes (`.claude/agents`)
-- `kapps-backend-logic` (Opus): leitura/cálculo de telemetria e sessão. Escopo de um widget por chamada,
-  passando só caminhos de arquivo.
-- `overlay-ui` (Sonnet): layout, formatação, cores, dimensões. Sem lógica de cálculo.
-- Leitura de logs/prints/comparações → `monitor-reader` (Haiku).
+## Subagentes
+- Use os agentes globais (`~/.claude/agents`). Telemetria/cálculo de widget → `code-implementer` (ou `hard-logic` se for lógica difícil), um widget por chamada, passando só caminhos de arquivo. Layout/cores/dimensões → `code-implementer`. Logs/prints/comparações → `monitor-reader`.
 
 ## Validação
 1. `dotnet build` + `dotnet test` sem falhas.

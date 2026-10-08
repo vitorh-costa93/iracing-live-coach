@@ -41,6 +41,19 @@ public sealed class WidthVm : Notify
     public void Load(int pct) { _pct = pct; Raise(nameof(Pct)); }
 }
 
+/// <summary>Fonte de um elemento semantico; 100% e peso 0 herdam a fonte geral.</summary>
+public sealed class ElementFontVm : Notify
+{
+    int _pct = 100, _weight;
+    public ElementFontVm(ColumnDef def) { Def = def; }
+    public ColumnDef Def { get; }
+    public string Label => Def.Label;
+    public int Pct { get => _pct; set { if (Set(ref _pct, (int)Math.Round(Math.Clamp(value, 40, 200) / 5.0) * 5)) Edited?.Invoke(); } }
+    public int Weight { get => _weight; set { if (Set(ref _weight, value)) Edited?.Invoke(); } }
+    public event Action? Edited;
+    public void Load(ElementFontSettings? s) { _pct = (int)Math.Round((s?.Scale ?? 1f) * 100); _weight = s?.Weight ?? 0; Raise(nameof(Pct)); Raise(nameof(Weight)); }
+}
+
 /// <summary>Opcao propria do tema (<see cref="OptionDef"/>): ComboBox (Choice), CheckBox (Toggle) ou caixa numerica (Number). Valor sempre canonico.</summary>
 public sealed class OptionVm : Notify
 {
@@ -81,7 +94,7 @@ public static class Choices
     public static IReadOnlyList<Choice> Temps { get; } = [new("°C", 0), new("°F", 1)];
     public static IReadOnlyList<Choice> Fuels { get; } = [new("Litros", 0), new("Galões (US)", 1)];
     public static IReadOnlyList<Choice> Weights { get; } =
-        [new("Padrão do tema", 0), new("Normal (400)", 400), new("Médio (500)", 500), new("Semi-negrito (600)", 600), new("Negrito (700)", 700), new("Extra (800)", 800), new("Black (900)", 900)];
+        [new("Padrão do tema", 0), new("Fino (100)", 100), new("Extra leve (200)", 200), new("Leve (300)", 300), new("Normal (400)", 400), new("Médio (500)", 500), new("Semi-negrito (600)", 600), new("Negrito (700)", 700), new("Extra (800)", 800), new("Black (900)", 900)];
 }
 
 /// <summary>Um widget na lista: espelha <see cref="WidgetSettings"/>; toda mudanca feita pelo usuario dispara <see cref="Edited"/> com o nome da propriedade.</summary>
@@ -105,14 +118,26 @@ public sealed class WidgetVm : Notify
         foreach (var c in Columns) c.Edited += () => { if (!_loading) { Raise(nameof(Summary)); Edited?.Invoke(this, nameof(Columns)); } };
         Widths = new ObservableCollection<WidthVm>(def.Widths.Select(c => new WidthVm(c)));
         foreach (var w in Widths) w.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(Widths)); };
+        ElementFonts = new(WidgetCatalog.FontElements.Select(d => new ElementFontVm(d)));
+        foreach (var f in ElementFonts) f.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(ElementFonts)); };
         _rows = def.DefaultRows ?? 0;
     }
 
     // ---- Texto e formato (personalizacao) ----
+    int _widthPct = 100, _heightPct = 100;
     int _textPct = 100, _weight, _name = -1, _gapDec = -1, _gapSign = -1, _lapStyle = -1, _lapDec = -1, _speed, _temp, _fuel;
     bool _carNumber, _gapSuffix;
     string _textColor = "", _labelColor = "", _valueColor = "";
 
+    public ObservableCollection<ElementFontVm> ElementFonts { get; }
+    public int WidthScalePct { get => _widthPct; set => Edit(ref _widthPct, (int)Math.Round(Math.Clamp(value, 25, 300) / 5.0) * 5, nameof(WidthScalePct)); }
+    public int HeightScalePct { get => _heightPct; set => Edit(ref _heightPct, (int)Math.Round(Math.Clamp(value, 25, 300) / 5.0) * 5, nameof(HeightScalePct)); }
+    Dictionary<string, ElementFontSettings>? BuildElementFonts()
+    {
+        var d = ElementFonts.Where(f => f.Pct != 100 || f.Weight > 0).ToDictionary(f => f.Def.Id,
+            f => new ElementFontSettings { Scale = f.Pct == 100 ? null : f.Pct / 100f, Weight = f.Weight > 0 ? f.Weight : null }, StringComparer.OrdinalIgnoreCase);
+        return d.Count == 0 ? null : d;
+    }
     public ObservableCollection<WidthVm> Widths { get; }
     public bool HasWidths => Widths.Count > 0;
     /// <summary>Opcoes proprias do tema ativo (bloco "Opções do tema"; vazio = bloco oculto).</summary>
@@ -133,7 +158,7 @@ public sealed class WidgetVm : Notify
     public bool HasFuel => Def.Caps.HasFlag(DisplayCaps.Fuel);
     public bool HasFormat => Def.Caps != DisplayCaps.None;
 
-    /// <summary>Tamanho do texto em % (o widget inteiro cresce junto).</summary>
+    /// <summary>Tamanho das fontes em %, independente das dimensoes da janela.</summary>
     public int TextScalePct { get => _textPct; set => Edit(ref _textPct, (int)Math.Round(Math.Clamp(value, WidgetCatalog.MinTextScale * 100, WidgetCatalog.MaxTextScale * 100) / 5.0) * 5, nameof(TextScalePct)); }
     public int FontWeightChoice { get => _weight; set => Edit(ref _weight, value, nameof(FontWeightChoice)); }
     public string TextColor { get => _textColor; set => Edit(ref _textColor, ColorHex.Normalize(value) ?? "", nameof(TextColor)); }
@@ -213,6 +238,8 @@ public sealed class WidgetVm : Notify
     /// <summary>Volta texto, formato e larguras ao padrao (Restaurar padroes do widget).</summary>
     public void ResetCustomization()
     {
+        WidthScalePct = 100; HeightScalePct = 100;
+        foreach (var f in ElementFonts) { f.Pct = 100; f.Weight = 0; }
         TextScalePct = 100; FontWeightChoice = 0; TextColor = ""; LabelColor = ""; ValueColor = "";
         NameChoice = -1; CarNumber = false; GapDecimals = -1; GapSign = -1; GapSuffix = false; LapStyle = -1; LapDecimals = -1;
         SpeedChoice = 0; TempChoice = 0; FuelChoice = 0;
@@ -277,6 +304,9 @@ public sealed class WidgetVm : Notify
             foreach (var w in Widths) w.Load((int)Math.Round(s.WidthFactor(w.Def.Id) * 100));
             foreach (var o in ThemeOptions) o.Load(s.Option(o.Def.Id));
             LoadSessions(s.EffectiveSessions);
+            WidthScalePct = (int)Math.Round((s.WidthScale ?? 1f) * 100);
+            HeightScalePct = (int)Math.Round((s.HeightScale ?? 1f) * 100);
+            foreach (var element in ElementFonts) element.Load(s.ElementFonts is not null && s.ElementFonts.TryGetValue(element.Def.Id, out var setting) ? setting : null);
             TextScalePct = (int)Math.Round((s.TextScale ?? 1f) * 100);
             FontWeightChoice = s.FontWeight ?? 0;
             TextColor = s.TextColor ?? ""; LabelColor = s.LabelColor ?? ""; ValueColor = s.ValueColor ?? "";
@@ -306,6 +336,7 @@ public sealed class WidgetVm : Notify
         Columns = Columns.All(c => c.IsVisible) ? null : Columns.Where(c => c.IsVisible).Select(c => c.Def.Id).ToArray(),
         ColumnWidths = BuildWidths(),
         TextScale = TextScalePct / 100f,
+        WidthScale = WidthScalePct / 100f, HeightScale = HeightScalePct / 100f, ElementFonts = BuildElementFonts(),
         FontWeight = FontWeightChoice > 0 ? FontWeightChoice : null,
         TextColor = TextColor, LabelColor = LabelColor, ValueColor = ValueColor,
         Display = BuildDisplay(),
@@ -328,6 +359,9 @@ public sealed class WidgetVm : Notify
         nameof(Widths) => new WidgetPatch { ColumnWidths = BuildWidths() ?? [] },
         nameof(ThemeOptions) => new WidgetPatch { Options = BuildOptions() ?? [] },
         nameof(Sessions) => new WidgetPatch { Sessions = BuildSessions() ?? [] },   // vazio = padrao do widget
+        nameof(WidthScalePct) => new WidgetPatch { WidthScale = WidthScalePct / 100f },
+        nameof(HeightScalePct) => new WidgetPatch { HeightScale = HeightScalePct / 100f },
+        nameof(ElementFonts) => new WidgetPatch { ElementFonts = BuildElementFonts() ?? [] },
         nameof(TextScalePct) => new WidgetPatch { TextScale = TextScalePct / 100f },
         nameof(FontWeightChoice) => new WidgetPatch { FontWeight = FontWeightChoice },
         nameof(TextColor) => new WidgetPatch { TextColor = TextColor },

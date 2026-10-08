@@ -17,7 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ams2.Shared\Ams2.Shared.csproj" />
-    <!-- So garante a ordem de build: o teste executa o .exe do host. -->
-    <ProjectReference Include="..\..\src\Ams2.OverlayHost\Ams2.OverlayHost.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Ams2.OverlayHost\Ams2.OverlayHost.csproj" />
   </ItemGroup>
 </Project>

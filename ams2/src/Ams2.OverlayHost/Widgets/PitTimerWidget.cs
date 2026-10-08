@@ -1,3 +1,4 @@
+using Ams2.Core.Calc;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Theme;
 using Ams2.Shared.Profiles;
@@ -8,8 +9,10 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class PitTimerWidget : IWidget
 {
     public string Id => "pittimer";
-    public (float Width, float Height) DesignSize => _b18 ? (NameW + 110, Head18 + Gap18 + Strip18 + Body18) : (X0 * 2 + (_b98 ? NameW98 : NameW) + TimeW, Y0 * 2 + RowH + 2);
+    public (float Width, float Height) DesignSize => _b98 ? (1920, 300) : _b18 ? (NameW + 110, Head18 + Gap18 + Strip18 + Body18) : (X0 * 2 + NameW + TimeW, Y0 * 2 + RowH + 2);
     bool _b98, _b18;
+    readonly Broadcast18Motion _motion18 = new();
+    readonly Broadcast18Motion _stopMotion18 = new();
     public void UseTheme(Theme.Theme theme) { _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = theme.Style == ThemeStyle.Modern2018; }
     const float Head18 = 38, Gap18 = 4, Strip18 = 44, Body18 = 96;
     WidgetSettings _cfg = new() { Id = "pittimer" };
@@ -21,17 +24,39 @@ public sealed class PitTimerWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected || m.Session is not { PlayerCar: { } car } s) return;
+        if (!m.Connected || m.Session is not { PlayerCar: { } car } s) { _motion18.Reset(); _stopMotion18.Reset(); return; }
         var b = BroadcastUi.State(m);
+        if (_b18)
+        {
+            var (pw, ph) = DesignSize;
+            bool always = _cfg.ColumnVisible("always");
+            float reveal = always ? 1 : ShowPitTime18
+                ? _motion18.Presence(m.Now, b.PlayerInPitLane || b.PlayerStopped, BroadcastUi.PitTimerHold, b.SessionSeenT)
+                : _stopMotion18.Evaluate(m.Now, b.PlayerStopStartT,
+                    b.PlayerStopped ? double.PositiveInfinity : b.PlayerStopEndT + BroadcastUi.PitTimerHold, b.SessionSeenT);
+            string pname = _cfg.Name(car, BroadcastUi.ShortName(car, s.Cars));
+            string? lane = ShowPitTime18 && b.PlayerInPitLane ? BroadcastUi.StopTime(b.PlayerPitLaneNow(m.Now)) : null;
+            BroadcastUi.WithReveal18(c, reveal, pw, ph,
+                () => Draw18(c, c.Theme, car, s.Cars, pname, BroadcastUi.StopTime(b.PlayerStopNow(m.Now)), lane, pw));
+            return;
+        }
         float alpha = _cfg.ColumnVisible("always") || b.PlayerStopped ? 1f : BroadcastUi.Fade(m.Now - b.PlayerStopEndT, BroadcastUi.PitTimerHold);
+        if (c.Theme.Style == ThemeStyle.Broadcast2000s && !_cfg.ColumnVisible("always"))
+        {
+            // A stopped-to-released timer remains visible: only the first stop starts the entry transition.
+            double age = m.Now - b.PlayerStopStartT;
+            alpha = b.PlayerStopped ? BroadcastUi.Fade04(age, double.PositiveInfinity)
+                : Math.Min(BroadcastUi.Fade04(age, double.PositiveInfinity), BroadcastUi.Fade04(m.Now - b.PlayerStopEndT + .16, BroadcastUi.PitTimerHold + .16));
+        }
         string name = _cfg.Name(car, BroadcastUi.ShortName(car, s.Cars)), time = BroadcastUi.StopTime(b.PlayerStopNow(m.Now));
         var t = c.Theme;
         BroadcastUi.WithAlpha(c, alpha, () =>
         {
+            if (_b98) { Broadcast98RaceBoard.Pit(c, m, _cfg); return; }
             if (t.Style == ThemeStyle.Broadcast2000s)
             {
                 Chrome.WhiteCell(c, X0, Y0, NameW, RowH, name, BroadcastUi.Fit(c, name, t.Text, NameW - 16));
-                Chrome.BlackCell(c, X0 + NameW, Y0, TimeW, RowH, time, t.Numbers, HAlign.Right);
+                Chrome.BlackCell(c, X0 + NameW, Y0, TimeW, RowH, time, t.Numbers with { Element = "time" }, HAlign.Right);
                 return;
             }
             var (w, h) = DesignSize;
@@ -48,11 +73,11 @@ public sealed class PitTimerWidget : IWidget
                 Chrome.Bubble(c, 14, Y0 + 3, 50, RowH - 6, CaptionPlate.CarNumber(car), t.Numbers with { Size = 24, Tracking = 1f });
                 string nm = name.ToUpperInvariant();
                 c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameW98 - 84), 76, Y0 - 1, NameW98 - 80, RowH, t.TextColor, shadow: t.TextShadow);
-                c.Text(time, t.Numbers, X0 + NameW98, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
+                c.Text(time, t.Numbers with { Element = "time" }, X0 + NameW98, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
                 return;
             }
             c.Text(name, BroadcastUi.Fit(c, name, t.Text, NameW - 12), 16, Y0, NameW - 12, RowH, t.TextColor, shadow: t.TextShadow);
-            c.Text(time, t.Numbers, X0 + NameW, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
+            c.Text(time, t.Numbers with { Element = "time" }, X0 + NameW, Y0, TimeW - 12, RowH, t.ValueColor, HAlign.Right, t.ValueShadow);
         });
     }
 
@@ -79,7 +104,7 @@ public sealed class PitTimerWidget : IWidget
         if (ShowPosition18)
         {
             Chrome.PosBox(c, x, sy + 5, 36, Strip18 - 10, car.Position.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                t.Numbers with { Size = 22 });
+                t.Numbers with { Element = "position", Size = 22 });
             x += 36 + 10;
         }
         if (ShowTick18)
@@ -110,7 +135,7 @@ public sealed class PitTimerWidget : IWidget
         {
             var white = new Vortice.Win32.Numerics.Color4(1f, 1f, 1f, 1f);
             c.Text("PIT", t.Label with { Weight = 400, Size = 21 }, 4, by + 10, lw, 26, white, HAlign.Center);
-            c.Text(pitLane, BroadcastUi.Fit(c, pitLane, t.Numbers with { Weight = 400, Size = 34 }, lw - 12), 4, by + 34, lw, 46, white, HAlign.Center);
+            c.Text(pitLane, BroadcastUi.Fit(c, pitLane, t.Numbers with { Element = "time", Weight = 400, Size = 34 }, lw - 12), 4, by + 34, lw, 46, white, HAlign.Center);
         }
         else
         {
@@ -120,6 +145,6 @@ public sealed class PitTimerWidget : IWidget
         }
         float bx = lw + 8, bw = w - bx - 16, bt = by + 12, bh = Body18 - 24;
         Chrome.CornerBrackets(c, bx, bt, bw, bh, t.PitTimeColor, 11, 3);
-        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Weight = 400, Size = 46 }, bw - 16), bx, bt, bw, bh, t.PitTimeColor, HAlign.Center);
+        c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Element = "time", Weight = 400, Size = 46 }, bw - 16), bx, bt, bw, bh, t.PitTimeColor, HAlign.Center);
     }
 }

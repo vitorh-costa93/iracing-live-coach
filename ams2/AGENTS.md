@@ -1,0 +1,12 @@
+# AMS2 — regras específicas
+- Aplicativo separado do iRacing. Código em `src/Ams2.*`, testes em `tests/`, referências em `reference/`.
+- Consulte somente as partes pertinentes de `PLANO.md`, `PLANO-2018.md`, `PLANO-QUALI.md` e `reference/`; planos históricos não provam estado atual.
+- Mudanças ficam em `ams2/` e `../scripts/publish-ams2.ps1`. Preserve V2/V3.
+- Preserve os contratos PlayerDriving, pausa/menu/replay, nomes por carro e configurações próprias dos temas; confirme código/testes antes de assumir dados do SDK.
+- Não abrir overlay real sobre o jogo nem controlar o jogo sem autorização específica; use prévia/fake quando possível.
+- Um widget por etapa. Imagens/telemetria coletadas por script com condição de parada; confira recorte e composição quando necessário.
+- Para código: `dotnet build` dos csproj afetados e `dotnet test` dos csproj em `ams2/tests/`; revisão integrada antes da entrega.
+- Entrega executável: na raiz, publicar via `scripts/publish-ams2.ps1`; conferir espelho Desktop e reportar se exe aberto impedir atualização.
+- Prévias e testes verdes não substituem teste no jogo: indique expressamente o que foi validado ao vivo e o que permanece pendente.
+- Não commitar `.env`, bin/obj ou `preview-*.png`.
+- Continuidade em `../docs/CODEX_CONTINUIDADE.md`, com seção AMS2 separada do iRacing.

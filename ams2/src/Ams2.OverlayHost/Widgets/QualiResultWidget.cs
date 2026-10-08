@@ -23,8 +23,10 @@ public sealed class QualiResultWidget : IWidget
     public string Id => "qualiresult";
     WidgetSettings _cfg = new() { Id = "qualiresult" };
     ThemeStyle _style = ThemeStyle.Broadcast98;
+    readonly Broadcast04Pulse _motion04 = new();
+    readonly Broadcast18Motion _motion18 = new();
 
-    public void UseTheme(Theme.Theme theme) { _style = theme.Style; }
+    public void UseTheme(Theme.Theme theme) { if (_style != theme.Style) { _motion04.Reset(); _motion18.Reset(); } _style = theme.Style; }
     public void Configure(WidgetSettings s) { _cfg = s; }
 
     public (float Width, float Height) DesignSize => _style switch
@@ -80,9 +82,25 @@ public sealed class QualiResultWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected || m.Quali is not { Rows.Count: > 0 } q) return;
+        if (!m.Connected || m.Quali is not { Rows.Count: > 0 } q) { _motion04.Reset(); _motion18.Reset(); return; }
         _codes.Update(q.Rows.Select(r => r.Car));
+        if (_style == ThemeStyle.Modern2018)
+        {
+            float reveal = Always ? 1 : 0;
+            if (!Always && m.QualiEnd is { } final)
+            {
+                var (start, stop) = final.Window(ShowFor);
+                reveal = _motion18.Evaluate(m.Now, start, stop, BroadcastUi.State(m).SessionSeenT);
+            }
+            BroadcastUi.WithReveal18(c, reveal, DesignSize.Width, DesignSize.Height, () => Draw18(c, q, m.QualiEnd is not null));
+            return;
+        }
         float a = Alpha(m.QualiEnd, m.Now, ShowFor, Always);
+        if (_style == ThemeStyle.Broadcast2000s && !Always && m.QualiEnd is { } end)
+        {
+            var (start, stop) = end.Window(ShowFor);
+            a = _motion04.Evaluate(m.Now, start, stop);
+        }
         BroadcastUi.WithAlpha(c, a, () =>
         {
             bool ended = m.QualiEnd is not null;
@@ -130,14 +148,14 @@ public sealed class QualiResultWidget : IWidget
         {
             if (r.IsPlayer) c.FillRect(0, ry, W18, CPitch, Rgb(255, 255, 255, 0.12f));
             float by = ry + (CPitch - box) / 2;
-            Chrome.PosBox(c, 14, by, 34, box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 19 }, r.InEliminationZone(cut) ? ZoneFill : null);
+            Chrome.PosBox(c, 14, by, 34, box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 19 }, r.InEliminationZone(cut) ? ZoneFill : null);
             c.FillRect(56, by + 3, 3, box - 6, CaptionPlate.ClassColor(r.Car, field));
             string full = _cfg.Fmt.Name is null && _cfg.Fmt.CarNumber != true ? r.Car.Name : _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field));
             Chrome.TwoWeightName(c, full, t.Text with { Size = 19 }, 68, by, box, 290, r.IsPlayer ? t.PlayerColor : White);
             if (Value(r, true) is { } v)
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Size = 21 }, 120), W18 - 136, by, 122, box, t.ValueColor, HAlign.Right);
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = r.Rank == 1 || r.GapToFirst is null ? "time" : "gap", Size = 21 }, 120), W18 - 136, by, 122, box, t.ValueColor, HAlign.Right);
             else
-                c.Text("NO TIME", t.Label with { Size = 16 }, W18 - 136, by, 122, box, t.LabelColor, HAlign.Right);
+                c.Text("NO TIME", t.Label with { Element = "time", Size = 16 }, W18 - 136, by, 122, box, t.LabelColor, HAlign.Right);
             ry += CPitch;
         }
     }
@@ -159,7 +177,7 @@ public sealed class QualiResultWidget : IWidget
             c.FillRect(0, y, W18, EPitch, t.PanelFill);
             c.FillRect(0, y + EPitch - 1, W18, 1, Rgb(255, 255, 255, 0.12f));
             float by = y + (EPitch - 34) / 2;
-            Chrome.PosBox(c, 14, by, 38, 34, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 }, ZoneFill);
+            Chrome.PosBox(c, 14, by, 38, 34, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 21 }, ZoneFill);
             c.FillRect(60, by + 4, 4, 26, CaptionPlate.ClassColor(r.Car, field));
             string nm = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
             c.Text(nm, BroadcastUi.Fit(c, nm, t.Text with { Size = 24, Weight = 800 }, 220), 74, by, 230, 34, r.IsPlayer ? t.PlayerColor : White);
@@ -167,9 +185,9 @@ public sealed class QualiResultWidget : IWidget
                 ? (reference is { } refT ? _cfg.Fmt.FormatGap(Math.Max(0, b - refT)) : r.GapToFirst is { } g ? _cfg.Fmt.FormatGap(Math.Max(0, g)) : _cfg.Fmt.FormatLapTime(b))
                 : null;
             if (v is not null)
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Size = 34, Weight = 800 }, 170), W18 - 196, y, 180, EPitch, White, HAlign.Right, t.ValueShadow);
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = reference is not null || r.GapToFirst is not null ? "gap" : "time", Size = 34, Weight = 800 }, 170), W18 - 196, y, 180, EPitch, White, HAlign.Right, t.ValueShadow);
             else
-                c.Text("NO TIME", t.Label with { Size = 18 }, W18 - 196, y, 180, EPitch, t.LabelColor, HAlign.Right);
+                c.Text("NO TIME", t.Label with { Element = "time", Size = 18 }, W18 - 196, y, 180, EPitch, t.LabelColor, HAlign.Right);
             y += EPitch;
         }
     }
@@ -200,15 +218,15 @@ public sealed class QualiResultWidget : IWidget
                 c.FillRect(x, y + H04, Pos04, 1.5f, new Color4(0.04f, 0.04f, 0.08f, 0.6f));
                 c.VGradientRect(x, y, Pos04, H04, ZoneStops04);
                 c.StrokeRect(x + 1, y + 1, Pos04 - 2, H04 - 2, Red04, 2f);
-                c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y - 1, Pos04, H04, Red04, HAlign.Center);
+                c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" }, x, y - 1, Pos04, H04, Red04, HAlign.Center);
             }
-            else Chrome.PositionBox(c, x, y, Pos04, H04, r.Rank, t.Numbers);
+            else Chrome.PositionBox(c, x, y, Pos04, H04, r.Rank, t.Numbers with { Element = "position" });
             x += Pos04;
             string nm = _cfg.Name(r.Car, _codes);
             Chrome.WhiteCell(c, x, y, Name04, H04, nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), ink: r.IsPlayer ? Chrome.PlayerInk : null);
             x += Name04;
-            if (Value(r, true) is { } v) Chrome.BlackCell(c, x, y, Time04, H04, v, BroadcastUi.Fit(c, v, t.Numbers, Time04 - 12));
-            else Chrome.BlackCell(c, x, y, Time04, H04, "NO TIME", t.Label with { Size = 16 }, HAlign.Center);
+            if (Value(r, true) is { } v) Chrome.BlackCell(c, x, y, Time04, H04, v, BroadcastUi.Fit(c, v, t.Numbers with { Element = r.Rank == 1 || r.GapToFirst is null ? "time" : "gap" }, Time04 - 12));
+            else Chrome.BlackCell(c, x, y, Time04, H04, "NO TIME", t.Label with { Element = "time", Size = 16 }, HAlign.Center);
             y += Pitch04;
         }
     }
@@ -238,16 +256,16 @@ public sealed class QualiResultWidget : IWidget
             if (r.InEliminationZone(cut))
             {
                 c.FillRect(x, y, Box98W, Box98H, t.BrakeColor);
-                c.Text(rank, t.Numbers, x, y - 1, Box98W, Box98H, White, HAlign.Center);
+                c.Text(rank, t.Numbers with { Element = "position" }, x, y - 1, Box98W, Box98H, White, HAlign.Center);
             }
-            else Chrome.AccentBox(c, x, y, Box98W, Box98H, rank, t.Numbers);
+            else Chrome.AccentBox(c, x, y, Box98W, Box98H, rank, t.Numbers with { Element = "position" });
             string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
             c.Text(name, BroadcastUi.Fit(c, name, t.Text, Name98), x + Box98W + 12, y - 1, Name98, Box98H, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
             float vx = x + ColW98 - Val98;
             if (Value(r, false) is { } v)
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, Val98 - 6), vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.ValueShadow);
+                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = r.Rank == 1 || r.GapToFirst is null ? "time" : "gap" }, Val98 - 6), vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.ValueShadow);
             else
-                c.Text("NO TIME", t.Label, vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.TextShadow);
+                c.Text("NO TIME", t.Label with { Element = "time" }, vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.TextShadow);
         }
     }
 }

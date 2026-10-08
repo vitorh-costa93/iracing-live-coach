@@ -14,7 +14,10 @@ public sealed record QualiSplit(int Sector, double Elapsed, double? DeltaPersona
 /// diferenca para o melhor pessoal anterior, setores e instante (relogio do provider) em que cruzou a linha.
 /// </summary>
 public sealed record QualiLapResult(int Lap, double LapTime, int Position, double? GapToFirst, double? DeltaPersonal, bool Improved, bool Invalid,
-    IReadOnlyList<QualiSector?> Sectors, double At, bool FromMemory);
+    IReadOnlyList<QualiSector?> Sectors, double At, bool FromMemory)
+{
+    public CarSnapshot? ReferenceCar { get; init; }
+}
 
 /// <summary>Volta em andamento do jogador (placa de volta da classificacao).</summary>
 public sealed record QualiLapState(
@@ -33,6 +36,9 @@ public sealed record QualiLapState(
     int LeaderIndex,                           // -1 = ninguem com tempo
     QualiLapResult? LastResult)
 {
+    /// <summary>Tracker session/reset generation, so presentation can reset even when car and track stay the same.</summary>
+    public int SessionGeneration { get; init; }
+    public int PitExitGeneration { get; init; }
     public static readonly QualiLapState Empty = new(-1, 0, 0, false, false, null, [null, null, null], [null, null, null], [null, null, null], null, null, null, -1, null);
 }
 
@@ -56,6 +62,7 @@ public sealed class QualiLapTracker
     const double MaxStepMeters = 400;
 
     readonly bool[] _seen = new bool[MaxCars];
+    readonly bool[] _previousPit = new bool[MaxCars];
     readonly int[] _laps = new int[MaxCars], _sector = new int[MaxCars];
     readonly double[] _dist = new double[MaxCars], _t = new double[MaxCars];
     readonly double[] _lapStart = new double[MaxCars], _secStart = new double[MaxCars];
@@ -71,12 +78,18 @@ public sealed class QualiLapTracker
     double _len;
     SessionKind _kind;
     string _track = "";
+    string _variation = "", _carName = "";
     int _player = -1;
     QualiSplit? _split;
     QualiLapResult? _result;
     double _resultPendUntil = double.NegativeInfinity, _resultPrevLast, _prevPlayerLast;
     double _prevPlayerBest;
     QualiLapState _state = QualiLapState.Empty;
+    int _sessionGeneration;
+    int _pitExitGeneration;
+    bool _restartPending;
+    double _lastNow = double.NaN;
+    double? _remaining;
 
     public QualiLapTracker() => Reset();
 
@@ -84,6 +97,8 @@ public sealed class QualiLapTracker
 
     public void Reset()
     {
+        _sessionGeneration++;
+        _lastNow = double.NaN; _remaining = null; _restartPending = false;
         Array.Clear(_seen); Array.Fill(_pendSec, -1);
         for (int i = 0; i < MaxCars; i++) ResetCar(i);
         _bLo[1] = _bLo[2] = double.NegativeInfinity; _bHi[1] = _bHi[2] = double.PositiveInfinity;
@@ -93,14 +108,28 @@ public sealed class QualiLapTracker
 
     void ResetCar(int i)
     {
-        _seen[i] = false; _lapStart[i] = _secStart[i] = double.NaN; _lapBad[i] = _secBad[i] = _lapPit[i] = false;
+        _seen[i] = _previousPit[i] = false; _lapStart[i] = _secStart[i] = double.NaN; _lapBad[i] = _secBad[i] = _lapPit[i] = false;
         for (int k = 0; k < 3; k++) { _secTime[i, k] = double.NaN; _prevMem[i, k] = 0; _best[i, k] = double.NaN; _secMem[i, k] = false; }
         _bestSplits[i] = null!; _bestLapObs[i] = double.NaN; _pendSec[i] = -1;
     }
 
     public QualiLapState Update(double now, SessionSnapshot s)
     {
-        if (s.Kind != _kind || !string.Equals(s.Track, _track, StringComparison.Ordinal) || Math.Abs(s.TrackLength - _len) > 1) { Reset(); _kind = s.Kind; _track = s.Track; _len = s.TrackLength; }
+        // Pause, menu and replay retain the current stint. Loading marks a new session even on the same track.
+        if (!s.InSession) { if (s.GameState == 3) _restartPending = true; return _state; }
+        var observedPlayer = s.PlayerCar;
+        bool restarted = _restartPending || now < _lastNow
+            || (s.TimeRemainingSeconds is { } remaining && _remaining is { } previous && remaining > previous + 5)
+            || (observedPlayer is { Index: >= 0 and < MaxCars } player && _seen[player.Index] && player.LapsCompleted < _laps[player.Index]);
+        if (restarted || s.Kind != _kind || !string.Equals(s.Track, _track, StringComparison.Ordinal)
+            || !string.Equals(s.TrackVariation, _variation, StringComparison.Ordinal)
+            || !string.Equals(observedPlayer?.CarName ?? "", _carName, StringComparison.Ordinal)
+            || Math.Abs(s.TrackLength - _len) > 1)
+        {
+            Reset(); _kind = s.Kind; _track = s.Track; _variation = s.TrackVariation;
+            _carName = observedPlayer?.CarName ?? ""; _len = s.TrackLength;
+        }
+        _lastNow = now; _remaining = s.TimeRemainingSeconds;
         if (_len <= 0 || s.Cars.Count == 0) return _state = QualiLapState.Empty;
         var pc = s.PlayerCar;
         if (pc?.Index != _player) { _player = pc?.Index ?? -1; _split = null; _result = null; _prevPlayerBest = pc?.BestLapTime ?? 0; }
@@ -111,6 +140,9 @@ public sealed class QualiLapTracker
             if (i is < 0 or >= MaxCars) continue;
             if (_seen[i] && c.LapsCompleted < _laps[i]) ResetCar(i);   // sessao reiniciada para este carro
             bool pit = c.InPitLane || c.InGarage;
+            if (i == _player && _seen[i] && !pit && _previousPit[i]) _pitExitGeneration++;
+            // A single garage/pit sample is sufficient to identify the subsequent out lap.
+            if (!_seen[i]) _lapBad[i] = _secBad[i] = _lapPit[i] = pit || (c.LapsCompleted == 0 && c.BestLapTime <= 0);
             double d = Math.Clamp(c.LapDistance, 0, _len);
             if (_seen[i])
             {
@@ -133,6 +165,7 @@ public sealed class QualiLapTracker
             }
             ApplyPending(i, c, now);
             _seen[i] = true; _laps[i] = c.LapsCompleted; _sector[i] = c.Sector; _dist[i] = d; _t[i] = now;
+            _previousPit[i] = pit;
             for (int k = 0; k < 3; k++) _prevMem[i, k] = c.CurSector(k);
         }
 
@@ -213,7 +246,7 @@ public sealed class QualiLapTracker
         double? gap = others.Count > 0 ? lap - others.Min() : null;
         double? dPers = double.IsNaN(before) ? null : lap - before;
         bool improved = !invalid && (double.IsNaN(before) || lap < before);
-        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory);
+        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory) { ReferenceCar = s.Cars.Where(o => o.Index != c.Index && double.IsFinite(o.BestLapTime) && o.BestLapTime > 0).MinBy(o => o.BestLapTime) };
     }
 
     /// <summary>LastLapTime do jogo que muda logo depois da linha e bate com o derivado: vira o tempo oficial do resultado.</summary>
@@ -248,7 +281,7 @@ public sealed class QualiLapTracker
         bool pit = pc.InPitLane || pc.InGarage;
         return new QualiLapState(i, pc.CurrentLap, Math.Clamp(pc.Sector, 0, 2), pit, !pit && _lapPit[i], elapsed,
             SectorsOf(i, s), personal, overall, _split, Positive(pc.BestLapTime) ?? Nan(_bestLapObs[i]),
-            leader >= 0 ? s.Cars.First(c => c.Index == leader).BestLapTime : null, leader, _result);
+            leader >= 0 ? s.Cars.First(c => c.Index == leader).BestLapTime : null, leader, _result) { SessionGeneration = _sessionGeneration, PitExitGeneration = _pitExitGeneration };
     }
 
     /// <summary>Setores concluidos da volta atual do carro, com a cor (comparados aos melhores atuais).</summary>

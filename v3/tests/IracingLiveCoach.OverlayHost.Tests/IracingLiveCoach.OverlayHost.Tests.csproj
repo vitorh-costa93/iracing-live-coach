@@ -26,6 +26,8 @@
          require unsafe blocks and native COM interop) into a test project isn't needed to test
          this pure geometry math, so they are excluded rather than dragging the whole project in. -->
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\ColumnDefinition.cs" Link="Layout\ColumnDefinition.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\ColumnSessionVisibility.cs" Link="Layout\ColumnSessionVisibility.cs" />
+    <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\RenderLoopBudget.cs" Link="Layout\RenderLoopBudget.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetAppearance.cs" Link="Layout\WidgetAppearance.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetLayoutEngine.cs" Link="Layout\WidgetLayoutEngine.cs" />
     <Compile Include="..\..\src\IracingLiveCoach.OverlayHost\Layout\WidgetPlacement.cs" Link="Layout\WidgetPlacement.cs" />

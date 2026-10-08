@@ -3,7 +3,7 @@ using Ams2.Core.Calc;
 namespace Ams2.Core.Reading;
 
 /// <summary>
-/// Amostrador dedicado das entradas (acelerador/freio/volante). Roda em thread própria, lê só os 3 floats + o contador de
+/// Amostrador dedicado das entradas e instrumentos. Roda em thread própria, lê pedais/volante/velocidade/RPM/marcha + contador de
 /// sequência do mapa (leitura mínima, sem montar o snapshot de 64 carros) e grava uma amostra por escrita do jogo, no instante
 /// em que a detecta. Limita a taxa a <c>maxHz</c> para não encher o histórico com fonte que muda a cada leitura (escritor falso).
 /// </summary>
@@ -34,7 +34,7 @@ public sealed class InputSampler : IDisposable
         if (!_source.TryReadInputs(out var r)) { _lastSeq = uint.MaxValue; return false; }
         if (r.Seq == _lastSeq) return false;
         _lastSeq = r.Seq; _lastT = t;
-        _ring.Add(new InputSample(t, r.Throttle, r.Brake, r.Steering));
+        _ring.Add(new InputSample(t, r.Throttle, r.Brake, r.Steering, r.SpeedMps, r.Rpm, r.MaxRpm, r.Gear));
         _stats?.Mark();
         return true;
     }

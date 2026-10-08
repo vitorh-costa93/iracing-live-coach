@@ -58,7 +58,7 @@ public readonly record struct ClassLapInfo(int Lap, double? Projected, int? Fina
 
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
     IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null,
-    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null)
+    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null, double? SessionDurationSeconds = null)
 {
     /// <summary>Kapps' per-class count ("14", "2/14") for a class; the whole-field count only when the
     /// session's driver list was not available.</summary>
@@ -649,39 +649,54 @@ public class TelemetryReader : IDisposable
             // a second time just to build Standings.
             LivePositions? positionsThisTick = null;
 
+            // These passes also feed internal state: standings refreshes the race-length
+            // estimates used by fuel, fuel tracks the leader lap used by session headers,
+            // and full relative learns the player's lap trace used by standings intervals.
+            // Keep that dependency group together; only independent channels can be skipped.
+            bool needsFullField = StandingsUpdated is not null || SessionStatusUpdated is not null || FuelUpdated is not null;
+            bool needsFullRelative = FullRelativeUpdated is not null || needsFullField;
+            bool needsPositions = RelativeUpdated is not null || needsFullRelative || SecondaryRelativeUpdated is not null;
+
             _proximityTickCounter++;
             if (_proximityTickCounter >= ProximityTickInterval)
             {
                 _proximityTickCounter = 0;
-                var positions = ComputePositions();
-                positionsThisTick = positions;
-                UpdateRelative(positions);
-                UpdateFullRelative(positions);
-                UpdateSecondaryRelative(positions);
+                if (needsPositions)
+                {
+                    var positions = ComputePositions();
+                    positionsThisTick = positions;
+                    if (RelativeUpdated is not null) UpdateRelative(positions);
+                    if (needsFullRelative) UpdateFullRelative(positions);
+                    if (SecondaryRelativeUpdated is not null) UpdateSecondaryRelative(positions);
+                }
+                // This also maintains the session rubber latch and best-lap state.
                 UpdatePlayerCarStatus();
-                UpdateRaceStart();
+                if (RaceStartUpdated is not null) UpdateRaceStart();
             }
 
             _fullFieldTickCounter++;
             if (_fullFieldTickCounter >= FullFieldTickInterval)
             {
                 _fullFieldTickCounter = 0;
-                UpdateStandings(positionsThisTick ?? ComputePositions());
-                UpdateFuel();
+                if (needsFullField)
+                {
+                    UpdateStandings(positionsThisTick ?? ComputePositions());
+                    UpdateFuel();
+                }
             }
 
             _weatherTickCounter++;
             if (_weatherTickCounter >= WeatherTickInterval)
             {
                 _weatherTickCounter = 0;
-                UpdateWeather();
+                if (WeatherUpdated is not null) UpdateWeather();
             }
 
             _radarTickCounter++;
             if (_radarTickCounter >= RadarTickInterval)
             {
                 _radarTickCounter = 0;
-                UpdateRadar();
+                if (RadarUpdated is not null) UpdateRadar();
             }
         }
 
@@ -863,7 +878,7 @@ public class TelemetryReader : IDisposable
         _raceLength.Reset();
         _fuelLaps.Reset();
         _fuelPanel.Reset();
-        _frozenSof = null;
+        _raceRatingField.Reset();
         _fuelLastPlayerLap = _fuelLastLeaderLap = int.MinValue;
     }
 
@@ -1187,7 +1202,7 @@ public class TelemetryReader : IDisposable
     private const double SofBr1 = 1600.0 / 0.69314718055994530942;
 
     private const int SessionStateRacingState = 4;
-    private (double? Overall, Dictionary<int, double?> ByClass)? _frozenSof;
+    private readonly RaceRatingField _raceRatingField = new();
 
     private void UpdateStandings(LivePositions positions)
     {
@@ -1279,14 +1294,16 @@ public class TelemetryReader : IDisposable
 
             var classified = ordered.Where(r => r.IRating > 1).ToList();
             double? sof = classified.Count > 0 ? Sof.Compute(classified.Select(r => r.IRating)) : null;
-            // Race: the SOF is fixed at the green flag (a driver leaving must not move it); before it, and in
-            // practice/qualifying, it follows the field.
+            // Race ratings belong to all session entrants, never just the cars with live positions.
+            // Retain the initial ratings even when a driver leaves the world or the YAML driver list.
             Dictionary<int, double?>? classSof = null;
-            if (_isRaceSession && sessionState >= SessionStateRacingState)
+            if (_isRaceSession)
             {
-                if (_frozenSof is null && classified.Count > 0)
-                    _frozenSof = (sof, ordered.Where(r => r.IRating > 1).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => Sof.Compute(g.Select(r => r.IRating))));
-                if (_frozenSof is { } frozen) { sof = frozen.Overall; classSof = frozen.ByClass; }
+                _raceRatingField.Observe((_sdk.Data.SessionInfo?.DriverInfo?.Drivers ?? [])
+                    .Where(d => d.CarIdx >= 0 && d.CarIdx < IRacingSdkConst.MaxNumCars)
+                    .Select(d => new RatingDriver(d.CarIdx, d.CarClassID, d.IRating, d.CarIsPaceCar != 0, d.IsSpectator != 0)));
+                sof = _raceRatingField.Sof;
+                classSof = _raceRatingField.ClassSof;
             }
 
             // ΔiR: projected iRating change in the current order, per class (IRatingProjection -- the
@@ -1294,7 +1311,20 @@ public class TelemetryReader : IDisposable
             // once the player has a valid lap (and only for cars with one), in a race always.
             bool playerHasValidLap = ordered.Any(r => r.IsPlayer && r.HasValidLap);
             var deltaByIdx = new Dictionary<int, double>();
-            if (_sessionKind is SessionKind.Race or SessionKind.Qualify)
+            if (_sessionKind == SessionKind.Race)
+            {
+                var ratingPositions = new List<RatingPosition>();
+                foreach (var carIdx in _raceRatingField.CarIndices)
+                {
+                    var officialPosition = _finalResults.TryGetValue(carIdx, out var finalRating)
+                        ? finalRating.Position : preGreenGrid && _grid.TryGetValue(carIdx, out var gridRating)
+                            ? gridRating : _sdk.Data.GetInt("CarIdxPosition", carIdx);
+                    ratingPositions.Add(new RatingPosition(carIdx, _sdk.Data.GetInt("CarIdxLapCompleted", carIdx),
+                        _sdk.Data.GetFloat("CarIdxLapDistPct", carIdx), officialPosition));
+                }
+                deltaByIdx = _raceRatingField.Project(ratingPositions, _finalResults.Count > 0 || preGreenGrid);
+            }
+            else if (_sessionKind == SessionKind.Qualify)
                 foreach (var cls in ordered.GroupBy(r => r.ClassId))
                     foreach (var kv in IRatingProjection.Compute(cls.Select(r => new IRatingEntry(r.Idx, r.IRating, r.ClassPosition > 0 ? r.ClassPosition : r.Position))))
                         deltaByIdx[kv.Key] = kv.Value;
@@ -1412,6 +1442,7 @@ public class TelemetryReader : IDisposable
         int? totalLaps = null;
         bool totalEstimated = false;
         double? totalProjected = null;
+        double? sessionDuration = null;
         try
         {
             var sessionInfo = _sdk.Data.SessionInfo;
@@ -1422,6 +1453,8 @@ public class TelemetryReader : IDisposable
             var currentSessionNum = LiveSessionNum(sessionInfo?.SessionInfo?.CurrentSessionNum ?? -1);
             var session = sessionInfo?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == currentSessionNum);
             sessionTypeText = session?.SessionType?.ToUpperInvariant() ?? "";
+            var duration = LeadingNumber(session?.SessionTime);
+            if (duration is > 0 and < 86400) sessionDuration = duration;
 
             // In a race the header shows the RACE lap (the leader's), like Kapps' "R 14/30".
             var lap = _isRaceSession && _leaderLap > 0 ? _leaderLap : _sdk.Data.GetInt("Lap");
@@ -1437,7 +1470,7 @@ public class TelemetryReader : IDisposable
         // SessionTimeRemain is a huge sentinel (or negative) in lap-limited / unlimited sessions: no minutes then.
         double? timeRemain = null;
         try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t is >= 0 and < 86400) timeRemain = t; } catch { }
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain);
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain, SessionDurationSeconds: sessionDuration);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),
@@ -1668,6 +1701,8 @@ public class TelemetryReader : IDisposable
             var lap = _fuelLaps.Update(new FuelLapTick(_isRaceSession, isTest, state, flags, fuelLevel, pct, isOnTrack, onPitRoad, surface, wear, playerLap));
             if (lap is { } done)
             {
+                if (!done.Valid)
+                    LogFuel($"lap-rejected number={done.LapNumber} reasons={done.InvalidReason}");
                 bool inQualy = _sessionKind == SessionKind.Qualify;
                 if (_consumption.Add(done, inQualy) && _carId > 0 && _consumption.Average is double avg)
                     FuelHistory.Value.Put(_carId, _trackId, FuelConsumption.Store(avg), null);
@@ -1729,7 +1764,9 @@ public class TelemetryReader : IDisposable
             if (recompute)
             {
                 _fuelPanel.Recompute(fuelLevel, _consumption.Average, _consumption.Qualify, _consumption.Last);
-                if (!refuelling || playerCrossed || leaderCrossed || lap is not null)
+                // An unavailable race estimate retries every tick; logging every retry can grow
+                // hundreds of MB while several readers are connected. Log lap events only.
+                if (playerCrossed || leaderCrossed || lap is not null)
                     LogFuel(FormattableString.Invariant($"recompute lap={(lap is { } l ? $"{l.Usage:0.0000}/{(l.Valid ? "ok" : "bad")}#{l.LapNumber}" : "-")} player={playerCrossed} leader={leaderCrossed} refuel={refuelling} fuel={fuelLevel:0.000} avg={_consumption.Average:0.0000} q={_consumption.Qualify:0.0000} last={_consumption.Last:0.0000} list=[{string.Join(" ", _consumption.Laps.Select(v => v.ToString("0.0000", CultureInfo.InvariantCulture)))}] left={_fuelPanel.LapsLeft} lir={_classEstimates.GetValueOrDefault(playerClass).Laps:0.000} yamlLaps={playerResultLaps} leaderLap={classLeaderLap} surf={surface} pit={onPitRoad}"));
             }
 

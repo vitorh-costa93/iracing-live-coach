@@ -65,8 +65,8 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float GapColumnWidthDip = 66f;
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
-    private const float LapDeltaColumnWidthDip = 68f;
-    private const float AvgGapColumnWidthDip = 76f;
+    private const float LapDeltaColumnWidthDip = 84f;
+    private const float AvgGapColumnWidthDip = 84f;
     public const int DefaultAvgGapWindow = 5;
     private const float OvertakeColumnWidthDip = 64f;
     private const float PitColumnWidthDip = 68f;
@@ -121,10 +121,12 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// <summary>The user's columns with the appearance's horizontal padding applied to every padded
     /// column ("Padding (H)"); what layout and width actually use.</summary>
     private List<ColumnDefinition> _effectiveColumns = BuildDefaultColumns();
+    private string? _columnSessionType;
 
     private void RebuildEffectiveColumns()
     {
         var cols = _columns.Select(c => _appearance.PaddingHDip >= 0 && c.PaddingRightPx > 0 ? c with { PaddingRightPx = _appearance.PaddingHDip } : c).ToList();
+        cols = ColumnSessionVisibility.Apply(cols, _columnSessionType);
         // Contextual columns hide WITHOUT shrinking the widget (the name takes the space): Overtake only where the
         // session has push-to-pass, Pit only once a car has made a stop.
         if (!_hasP2P) cols = WidgetLayoutEngine.HideKeepingWidth(cols, "overtake");
@@ -175,7 +177,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// column configuration actually is (spec §12's auto-width formula).</summary>
     private float TableWidth => ColumnsLeftMarginDip + WidgetLayoutEngine.SumVisibleColumnFootprints(_effectiveColumns);
 
-    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null)
+    public StandingsWidget(ID2D1DeviceContext* dc, IDWriteFactory* dwriteFactory, FlagBitmapCache flags, IDWriteFontCollection1* fontCollection = null, bool startTelemetry = true)
     {
         _flags = flags;
         _dwriteFactory = dwriteFactory;
@@ -193,7 +195,7 @@ public sealed unsafe class StandingsWidget : IDisposable
         _telemetry.StandingsUpdated += OnStandingsUpdated;
         _telemetry.SessionStatusUpdated += OnSessionStatusUpdated;
         _telemetry.PlayerCarStatusUpdated += OnPlayerCarStatusUpdated;
-        _telemetry.Start();
+        if (startTelemetry) _telemetry.Start();
     }
 
     /// <summary>(Re)builds every owned text format at its tuned base size times the current
@@ -295,6 +297,11 @@ public sealed unsafe class StandingsWidget : IDisposable
     /// its own header -- class label, lap, that class's own SOF, clock -- then its rows.</summary>
     private void DrawPanels(ID2D1DeviceContext* dc, float x, float y, IReadOnlyList<StandingsRow> rows, SessionStatus? session, PlayerCarStatus? player)
     {
+        if (_columnSessionType != session?.SessionTypeText)
+        {
+            _columnSessionType = session?.SessionTypeText;
+            RebuildEffectiveColumns();
+        }
         SyncP2PColumn(rows);
         _playerCleanLaps = rows.FirstOrDefault(r => r.IsPlayer)?.CleanLapTimes;
         var groups = StandingsSelection.GroupAndSelect(rows, _presentationOptions);
@@ -308,7 +315,7 @@ public sealed unsafe class StandingsWidget : IDisposable
             // SOF is that class's own, computed from EVERY driver in the class (not just the rows
             // this widget selected for display).
             double? classSof = session?.ClassSof is { } frozenSof && frozenSof.TryGetValue(group.ClassId, out var fixedSof)
-                ? fixedSof // race: fixed at the green flag
+                ? fixedSof // race: all retained session entrants, including disconnected drivers
                 : Sof.Compute(rows.Where(r => r.CarClassId == group.ClassId).Select(r => r.IRating));
 
             PanelChrome.FillPanel(dc, _brush.Get(), panel, PaletteTokens.ResolveBackground(_appearance, PaletteTokens.PanelBackground));
@@ -532,6 +539,11 @@ public sealed unsafe class StandingsWidget : IDisposable
                 }
                 case "lapDelta":
                 {
+                    if (row.IsPlayer)
+                    {
+                        DrawTextCell(dc, cellX, y, cellWidth, row.LastLapTime is > 0 ? LapTimeFormatting.FormatTruncated(row.LastLapTime.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
                     // No +/- sign -- the magnitude is shown, colour carries the direction FROM THE PLAYER'S
                     // point of view (Kapps): green = the player was faster (that driver's lap was slower,
                     // delta = theirs - mine > 0), red = the player was slower (delta < 0); zero, unknown or
@@ -550,6 +562,12 @@ public sealed unsafe class StandingsWidget : IDisposable
                     // Average of the N fastest clean laps, theirs minus mine. Same colour rule as lapDelta:
                     // green = the player is faster on average, red = slower, neutral on the own row.
                     int window = placement.Column.LapWindow is > 0 ? placement.Column.LapWindow.Value : DefaultAvgGapWindow;
+                    if (row.IsPlayer)
+                    {
+                        var reference = LapHistory.AverageBest(_playerCleanLaps, window);
+                        DrawTextCell(dc, cellX, y, cellWidth, reference is > 0 ? LapTimeFormatting.FormatTruncated(reference.Value, placement.Column.DecimalPlaces ?? 3) : "—", PaletteTokens.NeutralDeltaOrGap, placement.Column.Alignment);
+                        break;
+                    }
                     double? avg = row.IsPlayer ? 0.0 : LapHistory.AverageGap(row.CleanLapTimes, _playerCleanLaps, window);
                     var avgColor = !row.IsPlayer && avg is double a && a != 0.0
                         ? (a > 0 ? PaletteTokens.LapDeltaFaster : PaletteTokens.LapDeltaSlower)

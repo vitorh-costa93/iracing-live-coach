@@ -81,6 +81,18 @@ public sealed class HostIpcTests : IDisposable
 
         // Modo de edicao liga e desliga.
         Assert.True((await client.SendAsync(IpcCommands.SetEditMode, m => m with { Edit = true }))!.EditMode);
+        st = (await client.SendAsync(IpcCommands.SetWidget, m => m with
+        {
+            Widget = "fuel", Patch = new WidgetPatch { Visible = true, Font = "Arial", TextScale = 1.5f,
+                WidthScale = 1.2f, HeightScale = 0.8f,
+                ElementFonts = new() { ["value"] = new() { Scale = 0.7f, Weight = 300 } } },
+        }))!;
+        Assert.True(st.EditMode);
+        Assert.Equal("Arial", st.Widgets.Single(w => w.Id == "fuel").Font);
+        Assert.Equal(1.5f, st.Widgets.Single(w => w.Id == "fuel").TextScale);
+        Assert.Equal(1.2f, st.Widgets.Single(w => w.Id == "fuel").WidthScale);
+        Assert.Equal(0.8f, st.Widgets.Single(w => w.Id == "fuel").HeightScale);
+        Assert.Equal(300, st.Widgets.Single(w => w.Id == "fuel").ElementFonts!["value"].Weight);
         Assert.False((await client.SendAsync(IpcCommands.SetEditMode, m => m with { Edit = false }))!.EditMode);
 
         // Erros viram resposta, nao derrubam o host.
@@ -95,12 +107,17 @@ public sealed class HostIpcTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "nope", Patch = new WidgetPatch() }));
         st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-1998" }))!;
         Assert.Equal("f1-1998", st.Theme);
+        Assert.Contains("qualiboard", st.HiddenBySession);
 
         // Perfil e alteracoes foram gravados em disco (salvamento com atraso curto).
         var store = new ProfileStore(_dir);
         await WaitFor(() => store.Load("f1-1998", "Corrida")?.Get("fuel")?.X == 100, 4000, "alteracao nao foi salva no perfil");
         var saved = store.Load("f1-1998", "Corrida")!;
         Assert.Equal(1.5f, saved.Get("fuel")!.Scale);
+        Assert.Equal(1.2f, saved.Get("fuel")!.WidthScale);
+        Assert.Equal(0.8f, saved.Get("fuel")!.HeightScale);
+        Assert.Equal(0.7f, saved.Get("fuel")!.ElementFonts!["value"].Scale);
+        Assert.Equal(300, saved.Get("fuel")!.ElementFonts!["value"].Weight);
         Assert.Equal((7, 4), (saved.Get("standings")!.TopCount, saved.Get("standings")!.NearCount));
         Assert.Equal("Corrida", store.GetActiveProfile("f1-1998"));
 

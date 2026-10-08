@@ -21,7 +21,7 @@ namespace Ams2.OverlayHost.Widgets;
 /// abaixo só [posição][sigla] (topo + ao redor do jogador), número vermelho em caixa clara na zona de eliminação, estado em texto pequeno
 /// ao lado da sigla, e a caixa do relógio "Q | m:ss" (rótulo escuro + relógio em caixa branca) à direita da 1ª linha.
 /// 1998 (ref. quali-1998-classification-list.jpg): lista em colunas [caixa amarela][NOME] com o tempo do 1º ("1:15.259") e a diferença
-/// sem "+" ("0.036") nos demais, fonte de números do tema com sombra; cabeçalho "QUALIFYING" + relógio.
+    /// sem "+" ("0.036") nos demais; rodapé 1920x300 em duas colunas de quatro linhas, título inicial "CLASSIFICATION".
 /// </summary>
 public sealed class QualiTowerWidget : IWidget
 {
@@ -30,7 +30,11 @@ public sealed class QualiTowerWidget : IWidget
     ThemeStyle _style = ThemeStyle.Broadcast98;
     bool _b18 => _style == ThemeStyle.Modern2018;
 
-    public void UseTheme(Theme.Theme theme) { _style = theme.Style; }
+    public void UseTheme(Theme.Theme theme)
+    {
+        if (_style != theme.Style) { _topMotion18.Reset(); _zoneMotion18.Reset(); _riskMotion18.Reset(); _riskId18 = -1; }
+        _style = theme.Style;
+    }
 
     public void Configure(WidgetSettings s) { _cfg = s; }
 
@@ -146,12 +150,24 @@ public sealed class QualiTowerWidget : IWidget
     // ---- Desenho ----
 
     readonly FieldCodes _codes = new();
+    readonly Broadcast18RowMotion _topMotion18 = new(), _zoneMotion18 = new();
+    readonly Broadcast18Motion _riskMotion18 = new();
+    int _riskId18 = -1;
+    double _riskAt18 = double.NaN;
+    readonly QualiOutLapPresentation _presentation = new();
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
+        if (!m.Connected) { _presentation.Reset(); return; }
+        if (m.Session is { InSession: false }) return;
+        bool preview = Flag("layoutPreview", false);
+        var stage = preview ? QualiBoardStage.Tower : _presentation.Update(m.QualiLap, m.Now, m.Quali?.Rows.Count ?? 0,
+            _style == ThemeStyle.Broadcast98 ? Num("rows", 8, 2, 10) : int.MaxValue, m.Session?.Track);
+        if (stage == QualiBoardStage.Caption) { QualiCaption.Draw(c, m, _cfg, DesignSize.Width); return; }
+        if (stage != QualiBoardStage.Tower) return;
         if (m.Quali is { } qc) _codes.Update(qc.Rows.Select(r => r.Car));
         if (_style == ThemeStyle.Broadcast2000s) { Draw04(c, m); return; }
-        if (_style == ThemeStyle.Broadcast98) { Draw98(c, m); return; }
+        if (_style == ThemeStyle.Broadcast98) { DrawBoard98(c, m, preview ? 5 : _presentation.Age); return; }
         var t = c.Theme;
         var L = Cols();
         float tw = L.Width, x0 = M;
@@ -169,6 +185,7 @@ public sealed class QualiTowerWidget : IWidget
         }
         if (!m.Connected || q is null || q.Rows.Count == 0)
         {
+            _topMotion18.Reset(); _zoneMotion18.Reset(); _riskMotion18.Reset(); _riskId18 = -1;
             c.FillRect(x0, by, tw, Pitch + 2 * Pad, t.PanelFill);
             c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", BroadcastUi.Fit(c, m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, tw - 20), x0 + 10, by + Pad, tw - 20, Pitch, t.LabelColor);
             return;
@@ -193,10 +210,21 @@ public sealed class QualiTowerWidget : IWidget
             c.FillRect(x0, by, tw, bodyH, t.PanelFill);
             c.FillRect(L.Time, by, x0 + tw - L.Time, bodyH, t.GapCellFill);
             float y = by + Pad + (Pitch - Box) / 2;
+            var targets = new Dictionary<int, float>();
+            float targetY = y;
+            foreach (var p in picks)
+            {
+                if (p.GapBefore) targetY += SepH;
+                targets[safe[p.Index].Car.Index] = targetY;
+                targetY += Pitch;
+            }
+            var context = (s?.Kind, s?.Track, s?.TrackVariation, BroadcastUi.State(m).SessionSeenT, cut,
+                string.Join("|", targets.Keys.Order()));
+            var positions = _topMotion18.Evaluate(m.Now, context, targets);
             foreach (var p in picks)
             {
                 if (p.GapBefore) { Dots(c, t, L, y); y += SepH; }
-                DrawRow(c, t, L, safe[p.Index], y, chequered, false, null, tyrePlayer);
+                DrawRow(c, t, L, safe[p.Index], positions[safe[p.Index].Car.Index], chequered, false, null, tyrePlayer);
                 y += Pitch;
             }
             by += bodyH;
@@ -210,7 +238,17 @@ public sealed class QualiTowerWidget : IWidget
         double? reference = null;
         if (risk is not null)
         {
-            by = DrawCard(c, t, L, x0, tw, by, risk, field);
+            if (_riskId18 != risk.Car.Index)
+            {
+                _riskAt18 = _riskId18 < 0 ? m.Now - Broadcast18Motion.EntrySeconds : m.Now;
+                _riskId18 = risk.Car.Index;
+                _riskMotion18.Reset();
+            }
+            float cardH = CardTitleH + CardNameH + CardTimeH;
+            float reveal = _riskMotion18.Evaluate(m.Now, _riskAt18, double.PositiveInfinity, BroadcastUi.State(m).SessionSeenT);
+            float cardY = by;
+            BroadcastUi.WithReveal18(c, reveal, tw, cardH, () => DrawCard(c, t, L, x0, tw, cardY, risk, field), x: x0, y: cardY);
+            by += cardH;
             reference = risk.BestLap;
         }
         else
@@ -225,10 +263,21 @@ public sealed class QualiTowerWidget : IWidget
         c.FillRect(x0, by, tw, zh, t.PanelFill);
         c.FillRect(L.Time, by, x0 + tw - L.Time, zh, t.GapCellFill);
         float zy = by + Pad + (Pitch - Box) / 2;
+        var zoneTargets = new Dictionary<int, float>();
+        float zoneY = zy;
+        foreach (var p in zp)
+        {
+            if (p.GapBefore) zoneY += SepH;
+            zoneTargets[zone[p.Index].Car.Index] = zoneY;
+            zoneY += Pitch;
+        }
+        var zoneContext = (s?.Kind, s?.Track, s?.TrackVariation, BroadcastUi.State(m).SessionSeenT, cut,
+            string.Join("|", zoneTargets.Keys.Order()));
+        var zonePositions = _zoneMotion18.Evaluate(m.Now, zoneContext, zoneTargets);
         foreach (var p in zp)
         {
             if (p.GapBefore) { Dots(c, t, L, zy); zy += SepH; }
-            DrawRow(c, t, L, zone[p.Index], zy, chequered, true, reference, tyrePlayer);
+            DrawRow(c, t, L, zone[p.Index], zonePositions[zone[p.Index].Car.Index], chequered, true, reference, tyrePlayer);
             zy += Pitch;
         }
     }
@@ -260,7 +309,7 @@ public sealed class QualiTowerWidget : IWidget
         c.Text("Q", t.Title with { Size = 28, Tracking = 4 }, x0 + 2, 2, hw, 36, t.TitleColor, HAlign.Center);
         c.FillRect(x0 + 34, 40, hw - 68, 1.2f, new Color4(1f, 1f, 1f, 0.45f));
         bool red = chequered || remaining is { } r && r < 60;
-        c.Text(Clock(remaining), t.Numbers with { Size = 26 }, x0, 42, hw, 32, red ? t.AccentBar : t.ValueColor, HAlign.Center);
+        c.Text(Clock(remaining), t.Numbers with { Element = "time", Size = 26 }, x0, 42, hw, 32, red ? t.AccentBar : t.ValueColor, HAlign.Center);
     }
 
     /// <summary>Uma linha; <paramref name="y"/> = topo da caixa. <paramref name="reference"/> = tempo base dos gaps (null = o do 1º).</summary>
@@ -272,7 +321,7 @@ public sealed class QualiTowerWidget : IWidget
         if (chequered && r.Car.RaceState == RaceState.Finished) Chrome.Checkered(c, 6, y + 8, 22, 16);
         else if (r.Rank == 1 && r.HasTime) Chrome.FastestMarker(c, 0, y, Box);
         Color4? fill = improved ? (r.Rank == 1 ? t.FastestFill : Green) : inZone ? ZoneFill : null;
-        Chrome.PosBox(c, L.Box, y, BoxW, Box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 }, fill);
+        Chrome.PosBox(c, L.Box, y, BoxW, Box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 21 }, fill);
         string nm = _cfg.Name(r.Car, _codes);
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameW + 4), L.Name, y, NameW + 8, Box, r.IsPlayer ? t.PlayerColor : t.TextColor);
         if (TyreMode)
@@ -285,7 +334,7 @@ public sealed class QualiTowerWidget : IWidget
             c.Text(letter, t.Label with { Size = 16, Weight = 700 }, cx - rad, cy - rad - 1, 2 * rad, 2 * rad, letter == "-" ? col : White, HAlign.Center);
         }
         var (text, ink) = Value(t, r, improved, reference);
-        c.Text(text, BroadcastUi.Fit(c, text, t.Numbers, TimeW - 14), L.Time, y, TimeW - 10, Box, ink, HAlign.Right);
+        c.Text(text, BroadcastUi.Fit(c, text, t.Numbers with { Element = !r.HasTime ? "label" : improved || (reference is null && (r.Rank == 1 || r.GapToFirst is null)) ? "time" : "gap" }, TimeW - 14), L.Time, y, TimeW - 10, Box, ink, HAlign.Right);
     }
 
     (string, Color4) Value(Theme.Theme t, QualiRow r, bool improved, double? reference)
@@ -305,14 +354,14 @@ public sealed class QualiTowerWidget : IWidget
         c.Text("DRIVER AT RISK", BroadcastUi.Fit(c, "DRIVER AT RISK", t.Title with { Size = 17, Tracking = 0.5f }, tw - 12), x0, y, tw, CardTitleH, t.TitleColor, HAlign.Center);
         y += CardTitleH;
         float by = y + (CardNameH - Box) / 2;
-        Chrome.PosBox(c, L.Box, by, BoxW, Box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 21 }, ZoneFill);
+        Chrome.PosBox(c, L.Box, by, BoxW, Box, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 21 }, ZoneFill);
         string nm = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
         float nw = x0 + tw - 10 - L.Name;
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, nw), L.Name, by, nw + 8, Box, r.IsPlayer ? t.PlayerColor : t.TextColor);
         y += CardNameH;
         c.FillRect(x0, y, tw, CardTimeH, t.SubPanelFill);
         string v = r.BestLap is { } b ? LapText(b) : StateText(r) ?? "NO TIME";
-        var vf = t.Numbers with { Size = 28 };
+        var vf = t.Numbers with { Element = "time", Size = 28 };
         c.Text(v, BroadcastUi.Fit(c, v, vf, tw - 24), x0, y, tw - 12, CardTimeH, !r.HasTime && r.Status == QualiStatus.InPit ? t.PitTimeColor : t.ValueColor, HAlign.Right);
         return y + CardTimeH;
     }
@@ -354,7 +403,7 @@ public sealed class QualiTowerWidget : IWidget
         // 1ª linha: [1 vermelho][SIGLA em célula branca][tempo do líder em caixa preta] (sem tempo: o estado em texto pequeno).
         var lead = rows[0];
         float x = X04, y = Top04;
-        Chrome.PositionBox(c, x, y, Pos04, H04, lead.Rank, t.Numbers);
+        Chrome.PositionBox(c, x, y, Pos04, H04, lead.Rank, t.Numbers with { Element = "position" });
         x += Pos04;
         string ln = _cfg.Name(lead.Car, _codes);
         Chrome.WhiteCell(c, x, y, Name04, H04, ln, BroadcastUi.Fit(c, ln, t.Text, Name04 - 16), ink: lead.IsPlayer ? Chrome.PlayerInk : null);
@@ -362,9 +411,9 @@ public sealed class QualiTowerWidget : IWidget
         if (lead.BestLap is { } best)
         {
             string lt = _cfg.Fmt.FormatLapTime(best);
-            Chrome.BlackCell(c, x, y, Time04, H04, lt, BroadcastUi.Fit(c, lt, t.Numbers, Time04 - 12));
+            Chrome.BlackCell(c, x, y, Time04, H04, lt, BroadcastUi.Fit(c, lt, t.Numbers with { Element = "time" }, Time04 - 12));
         }
-        else Chrome.BlackCell(c, x, y, Time04, H04, StateText(lead) ?? "NO TIME", t.Label with { Size = 16 }, HAlign.Center);
+        else Chrome.BlackCell(c, x, y, Time04, H04, StateText(lead) ?? "NO TIME", t.Label with { Element = "time", Size = 16 }, HAlign.Center);
 
         // Abaixo: só posição + sigla do topo e da janela ao redor do jogador; o salto líder -> resto fica só no espaçamento (como na TV),
         // os outros saltos ganham os três pontos.
@@ -392,7 +441,7 @@ public sealed class QualiTowerWidget : IWidget
         c.FillRect(x, y + H04, Pos04 + Name04, 1.5f, RowShade04);
         c.VGradientRect(x, y, Pos04, H04, zone ? ZoneStops04 : PosStops04);
         if (zone) c.StrokeRect(x + 1, y + 1, Pos04 - 2, H04 - 2, Red04, 2f);
-        c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
+        c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" }, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
         x += Pos04;
         c.VGradientRect(x, y, Name04, H04, NameStops04);
         string nm = _cfg.Name(r.Car, _codes);
@@ -409,67 +458,58 @@ public sealed class QualiTowerWidget : IWidget
     {
         float x = ClockX04, y = Top04;
         if (chequered) Chrome.Checkered(c, x, y, ClockLab04, H04);
-        else Chrome.Box(c, x, y, ClockLab04, H04, "Q", t.Text, Chrome.CellKind.Black, HAlign.Center, 0);
+        else Chrome.Box(c, x, y, ClockLab04, H04, "Q", t.Text with { Element = "label" }, Chrome.CellKind.Black, HAlign.Center, 0);
         bool red = chequered || remaining is { } r && r < 60;
-        Chrome.WhiteCell(c, x + ClockLab04, y, Clock04, H04, Clock(remaining), t.Numbers, HAlign.Center, red ? Red04 : null);
+        Chrome.WhiteCell(c, x + ClockLab04, y, Clock04, H04, Clock(remaining), t.Numbers with { Element = "time" }, HAlign.Center, red ? Red04 : null);
     }
 
     // ---- 1998–2001 (ref. quali-1998-classification-list.jpg; vocabulário da tabela inferior, StandingsWidget.DrawTable) ----
-    const float X98 = 22, Top98 = 12, Head98 = 42, Pitch98 = 40, Box98H = 34, Box98W = 36, Name98 = 196, Val98 = 136, ColGap98 = 30, Bottom98 = 8;
-    const float ColW98 = Box98W + 12 + Name98 + Val98;
-    int PerCol98 => (TopRows + Columns98 - 1) / Columns98;
-    (float, float) Size98 => (2 * X98 + Columns98 * ColW98 + (Columns98 - 1) * ColGap98, Top98 + (ShowClock ? Head98 : 0) + PerCol98 * Pitch98 + Bottom98);
+    const float W98 = 1920, H98 = 300;
+    (float, float) Size98 => (W98, H98);
 
-    void Draw98(ThemeCanvas c, OverlayModel m)
+    void Draw98(ThemeCanvas c, OverlayModel m) => DrawBoard98(c, m, Math.Max(0, m.Now));
+
+    internal void DrawBoard98(ThemeCanvas c, OverlayModel m, double age)
     {
         var t = c.Theme;
-        var (w, h) = Size98;
-        var q = m.Quali;
-        c.Panel(0, 0, w, h);
-        float y0 = Top98;
-        if (ShowClock)
+        c.FillRect(0, 0, W98, H98, t.PanelFill);
+        if (age < QualiBoardTiming.TitleSeconds)
         {
-            // Cabeçalho simples: "QUALIFYING" + barra do tema e o relógio amarelo à direita (vermelho nos últimos 60 s / bandeirada).
-            double? remaining = q?.TimeRemaining ?? m.Session?.TimeRemainingSeconds;
-            string clk = Clock(remaining);
-            float cw = c.Measure(clk, t.Numbers) + t.Numbers.Tracking * clk.Length, right = w - X98;
-            Chrome.Header(c, "QUALIFYING", X98, Top98, 2000, true, right - cw - 18);
-            bool red = Chequered(m) || remaining is { } r && r < 60;
-            c.Text(clk, t.Numbers, right - cw - 6, Top98 - 1, cw + 10, 32, red ? t.BrakeColor : t.ValueColor, HAlign.Right, t.ValueShadow);
-            y0 += Head98;
-        }
-        if (!m.Connected || q is null || q.Rows.Count == 0)
-        {
-            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Label, X98, y0, w - 2 * X98, Box98H, t.LabelColor, shadow: t.TextShadow);
+            BroadcastUi.WithAlpha(c, BroadcastUi.Fade(age, QualiBoardTiming.TitleSeconds, .12, .15), () =>
+                c.Text("CLASSIFICATION", t.Text with { Element = "title", Size = 46 }, 120, 80, W98 - 240, 80,
+                    t.ValueColor, HAlign.Center, t.TextShadow));
             return;
         }
-        var rows = q.Rows;
-        int cut = Cutoff, per = PerCol98;
-        var field = rows.Select(r => r.Car).ToList();
-        // Topo da lista e o jogador sempre visível (entra no lugar do último se estiver fora).
-        var picks = StandingsSelector.Select(rows.Count, PlayerIndex(rows), TopRows - 1, 1);
-        for (int i = 0; i < picks.Count && i < per * Columns98; i++)
+        var rows = m.Quali?.Rows;
+        if (!m.Connected || rows is null || rows.Count == 0)
         {
-            var r = rows[picks[i].Index];
-            float x = X98 + (i / per) * (ColW98 + ColGap98), y = y0 + (i % per) * Pitch98;
-            string rank = r.Rank.ToString(CultureInfo.InvariantCulture);
-            if (r.InEliminationZone(cut))
+            c.Text(m.Connected ? "NO DATA" : "WAITING FOR AMS2", t.Text with { Element = "label" }, 120, 110, W98 - 240, 70, t.TextColor, shadow: t.TextShadow);
+            return;
+        }
+        int perPage = _cfg.Id == "qualiboard" ? 8 : Math.Clamp(Num("rows", 8, 2, 10), 2, 10);
+        int columns = _cfg.Id == "qualiboard" ? 2 : Columns98;
+        int perColumn = (perPage + columns - 1) / columns;
+        int pages = (rows.Count + perPage - 1) / perPage;
+        int page = (int)(Math.Max(0, age) / QualiBoardTiming.PageSeconds) % pages;
+        double pageAge = pages > 1 ? age % QualiBoardTiming.PageSeconds : age;
+        var field = rows.Select(r => r.Car).ToList();
+        if (_cfg.Id != "qualiboard" && Flag("showClock", false))
+            c.Text(Clock(m.Quali?.TimeRemaining), t.Label with { Element = "time", Size = 24 }, 800, 0, 320, 30, t.LabelColor, HAlign.Center);
+        for (int i = 0; i < perPage && page * perPage + i < rows.Count; i++)
+        {
+            var r = rows[page * perPage + i];
+            float x = (columns == 1 ? 565 : 140) + (i / perColumn) * 850, y = 34 + (i % perColumn) * (236f / perColumn);
+            BroadcastUi.WithAlpha(c, QualiBoardTiming.RowAlpha(pageAge, i), () =>
             {
-                c.FillRect(x, y, Box98W, Box98H, t.BrakeColor);
-                c.Text(rank, t.Numbers, x, y - 1, Box98W, Box98H, Rgb(255, 255, 255), HAlign.Center);
-            }
-            else Chrome.AccentBox(c, x, y, Box98W, Box98H, rank, t.Numbers);
-            string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
-            c.Text(name, BroadcastUi.Fit(c, name, t.Text, Name98), x + Box98W + 12, y - 1, Name98, Box98H, r.IsPlayer ? t.PlayerColor : t.TextColor, shadow: t.TextShadow);
-            float vx = x + ColW98 - Val98;
-            if (StateText(r) is { } st)
-                c.Text(st, t.Label, vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.TextShadow);
-            else
-            {
-                // 1º com o tempo; demais a diferença sem "+" (como "0.036" na TV), salvo se o perfil pedir o sinal.
-                string v = r.Rank == 1 || r.GapToFirst is not { } g ? _cfg.Fmt.FormatLapTime(r.BestLap!.Value) : _cfg.Fmt.FormatGap(Math.Max(0, g), defaultSign: false);
-                c.Text(v, BroadcastUi.Fit(c, v, t.Numbers, Val98 - 6), vx, y, Val98, Box98H, t.ValueColor, HAlign.Right, t.ValueShadow);
-            }
+                Chrome.AccentBox(c, x, y + 6, 48, 42, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 35 });
+                string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();
+                c.Text(name, BroadcastUi.Fit(c, name, t.Text with { Size = 38 }, 500), x + 68, y, 500, 56, t.TextColor, shadow: t.TextShadow);
+                string value = r.BestLap is not { } best ? StateText(r) ?? "--"
+                    : r.Rank == 1 || r.GapToFirst is not { } gap ? _cfg.Fmt.FormatLapTime(best)
+                    : _cfg.Fmt.FormatGap(Math.Max(0, gap), defaultSign: false);
+                c.Text(value, BroadcastUi.Fit(c, value, t.Numbers with { Element = !r.HasTime ? "label" : r.Rank == 1 || r.GapToFirst is null ? "time" : "gap", Size = 38 }, 235), x + 575, y, 235, 56,
+                    Cutoff > 0 && r.Rank >= Cutoff ? Red04 : t.ValueColor, HAlign.Right, t.ValueShadow);
+            });
         }
     }
 }

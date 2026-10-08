@@ -7,6 +7,22 @@ namespace Ams2.Core.Tests;
 
 public class RadarTests
 {
+    [Fact]
+    public void Native_render_gap_moves_between_ticks_and_stops_predicting_after_50ms()
+    {
+        var sim = Scene(0, (0, -3.5));
+        sim.Speeds[1] = 70;
+        var pose = sim.Poses[1];
+        sim.Poses[1] = (pose.X, pose.Y, pose.Z, 0.1);
+        var f = Run(sim);
+        var car = f.Cars[0];
+        Assert.Equal(f.LeftGap, f.RenderGap(true, -1));
+        Assert.Equal(Math.Max(0, Math.Abs(car.Right + car.VRight * 0.01) - f.CarWidthMeters), f.RenderGap(true, 0.01), 6);
+        Assert.NotEqual(f.LeftGap, f.RenderGap(true, 0.01));
+        Assert.Equal(f.RenderGap(true, 0.05), f.RenderGap(true, 10));
+        Assert.True(double.IsNaN(f.RenderGap(false, 0.01)));
+        Assert.True(double.IsNaN(Run(Scene(0, (5, -3.5))).RenderGap(true, 0.01)));
+    }
     const double Len = 5000;
 
     /// <summary>Cena: o jogador (indice 0) em (px, pz) com o yaw do jogo; cada carro de <paramref name="others"/> a (frente, direita) metros dele.
@@ -247,6 +263,63 @@ public class RadarTests
         var garage = new Sim(Len, (1000, 60), (1000, 0)) { PlayerIndex = 0 };
         garage.Poses[0] = (1, 2, 3, 0.5); garage.Poses[1] = (3, 2, 3, 0.5); garage.Pit[1] = PitState.InGarage;
         Assert.False(Run(garage).Valid);             // os outros estao na garagem
+    }
+
+    [Fact]
+    public void Qualifying_roster_without_opponent_poses_does_not_enable_radar()
+    {
+        var sim = Scene(0.4, (4, 3));
+        sim.Kind = SessionKind.Qualify;
+        var tracker = new RadarTracker();
+        Assert.True(tracker.Update(sim.Snapshot(), 0).Valid);
+
+        sim.Poses.Remove(1); // Participante ativo na tabela, sem carro fisico informado.
+        var solo = tracker.Update(sim.Snapshot(), 1);
+        Assert.False(solo.Valid);
+        Assert.Equal(0, solo.Count);
+        Assert.False(solo.AlertLeft || solo.AlertRight || solo.AlongLeft || solo.AlongRight);
+        Assert.Same(solo, tracker.Current);
+
+        sim.Poses[1] = (122, 5, -340, 0.4);
+        Assert.True(tracker.Update(sim.Snapshot(), 2).Valid);
+    }
+
+    [Fact]
+    public void Qualifying_with_one_participant_is_hidden_but_opponents_remain_visible()
+    {
+        var solo = Scene(0.4);
+        solo.Kind = SessionKind.Qualify;
+        Assert.False(Run(solo).Valid);
+
+        var multiplayer = Scene(0.4, (2, 3));
+        multiplayer.Kind = SessionKind.Qualify;
+        var frame = Run(multiplayer);
+        Assert.True(frame.Valid);
+        Assert.Equal(1, frame.Count);
+        Assert.True(frame.AlertRight);
+
+        var distant = Scene(0.4, (100, 3));
+        distant.Kind = SessionKind.Qualify;
+        Assert.True(Run(distant).Valid); // Mantem a opcao painel sempre visivel com oponente na pista.
+        Assert.Equal(0, Run(distant).Count);
+    }
+
+    [Fact]
+    public void Qualifying_raw_active_participants_without_pose_do_not_count_as_traffic()
+    {
+        var memory = new FakeMemory { Raw = { SessionState = 3, ViewedParticipantIndex = 0 } };
+        memory.SetCar(0, "Player", "Car", "Class", 1, 1000);
+        memory.SetCar(1, "Opponent", "Car", "Class", 2, 1000);
+        memory.Raw.Participants[0].WorldPosition[0] = 10;
+        var snapshot = SnapshotMapper.Map(in memory.Raw);
+        Assert.Equal(SessionKind.Qualify, snapshot.Kind);
+        Assert.Equal(2, snapshot.Cars.Count);
+        Assert.False(new RadarTracker().Update(snapshot, 0).Valid);
+
+        memory.Raw.Participants[1].WorldPosition[0] = 13;
+        var multiplayer = new RadarTracker().Update(SnapshotMapper.Map(in memory.Raw), 1);
+        Assert.True(multiplayer.Valid);
+        Assert.Equal(1, multiplayer.Count);
     }
 
     [Fact]

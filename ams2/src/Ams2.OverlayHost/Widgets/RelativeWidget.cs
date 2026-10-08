@@ -117,7 +117,7 @@ public sealed class RelativeWidget : IWidget
         if (neighbor.LapDelta != 0) gap = Math.Abs(neighbor.LapDelta).ToString(CultureInfo.InvariantCulture) + " LAP";
         var field = m.Relative.Select(r => r.Car).ToList();
         float by = bt + 10, nameW = w / 2 - SplitEdge - SplitBox - 14 - 120;
-        var big = t.Numbers with { Size = 46 };
+        var big = t.Numbers with { Element = "position", Size = 46 };
         // esquerda
         Chrome.AccentBox(c, SplitEdge, by, SplitBox, 58, left.Car.Position.ToString(CultureInfo.InvariantCulture), big);
         float lx = SplitEdge + SplitBox + 14;
@@ -131,8 +131,8 @@ public sealed class RelativeWidget : IWidget
         string rn = _cfg.Name(right.Car, BroadcastUi.ShortName(right.Car, field)).ToUpperInvariant();
         c.Text(rn, BroadcastUi.Fit(c, rn, t.Text, nameW), rx - nameW - 10, by + 18, nameW + 10, 38, right.IsPlayer ? t.PlayerColor : t.TextColor, HAlign.Right, t.TextShadow);
         // gap ao centro
-        var gf = t.Numbers with { Size = 44 };
-        if (neighbor.LapDelta != 0) c.Text(gap, t.Label with { Size = 34 }, w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.TextShadow);
+        var gf = t.Numbers with { Element = "gap", Size = 44 };
+        if (neighbor.LapDelta != 0) c.Text(gap, t.Label with { Element = "gap", Size = 34 }, w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.TextShadow);
         else c.Text(gap, gf, w / 2 - 110, by + 6, 220, 46, t.ValueColor, HAlign.Center, t.ValueShadow);
     }
 
@@ -167,16 +167,16 @@ public sealed class RelativeWidget : IWidget
         var neighbor = neighborIsLeft ? left : right;
         bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
         var nf = t.Text with { Size = 22 };
-        if (p) { Chrome.PositionBox(c, x, y, BarPos, BarH, left.Car.Position, t.Numbers); x += BarPos; }
+        if (p) { Chrome.PositionBox(c, x, y, BarPos, BarH, left.Car.Position, t.Numbers with { Element = "position" }); x += BarPos; }
         if (n) { string ln = _cfg.Name(left.Car, ShortName(left.Car.Name)); Chrome.WhiteCell(c, x, y, BarName, BarH, ln, BroadcastUi.Fit(c, ln, nf, BarName - 16), HAlign.Right, left.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
         if (g)
         {
-            Chrome.BlackCell(c, x, y, BarGap, BarH, Gap(neighbor), t.Numbers with { Size = 22 }, HAlign.Center,
+            Chrome.BlackCell(c, x, y, BarGap, BarH, Gap(neighbor), t.Numbers with { Element = "gap", Size = 22 }, HAlign.Center,
                 kind: neighbor.GapSeconds is null && neighbor.LapDelta == 0 ? Chrome.CellKind.Black : neighborIsLeft ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
             x += BarGap;
         }
         if (n) { string rn = _cfg.Name(right.Car, ShortName(right.Car.Name)); Chrome.WhiteCell(c, x, y, BarName, BarH, rn, BroadcastUi.Fit(c, rn, nf, BarName - 16), HAlign.Left, right.IsPlayer ? Chrome.PlayerInk : null); x += BarName; }
-        if (p) Chrome.PositionBox(c, x, y, BarPos, BarH, right.Car.Position, t.Numbers);
+        if (p) Chrome.PositionBox(c, x, y, BarPos, BarH, right.Car.Position, t.Numbers with { Element = "position" });
     }
 
     /// <summary>"M Schumacher": inicial do primeiro nome + sobrenome (como na barra da transmissão).</summary>
@@ -225,8 +225,8 @@ public sealed class RelativeWidget : IWidget
             if (t.Style == ThemeStyle.Broadcast2000s) { DrawRow2000s(c, t, row, pos, x, y, side, ahead); continue; }
             if (_cfg.ColumnVisible("pos"))
             {
-                if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers, x, y, Math.Max(36, PosW(50) - 14), 30, t.NumberColor, shadow: t.ValueShadow);
-                else Chrome.AccentBox(c, x, y + 2, PosW(34), 26, pos, t.Numbers);
+                if (t.Style == ThemeStyle.Broadcast98) c.Text(pos, t.Numbers with { Element = "position" }, x, y, Math.Max(36, PosW(50) - 14), 30, t.NumberColor, shadow: t.ValueShadow);
+                else Chrome.AccentBox(c, x, y + 2, PosW(34), 26, pos, t.Numbers with { Element = "position" });
             }
             if (_cfg.ColumnVisible("name"))
             {
@@ -235,7 +235,7 @@ public sealed class RelativeWidget : IWidget
                 string nm = _cfg.Name(row.Car, Code(row.Car.Name));
                 c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW + 10), x + side.NameDx, y, NameCellW + 18, 30, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
-            if (_cfg.ColumnVisible("gap")) { float gw = Math.Max(140, GapW(117)); c.Text(Gap(row), t.Numbers, x + side.ValueRight - gw, y, gw, 30, t.ValueColor, HAlign.Right, t.ValueShadow); }
+            if (_cfg.ColumnVisible("gap")) { float gw = Math.Max(140, GapW(117)); c.Text(Gap(row), t.Numbers with { Element = "gap" }, x + side.ValueRight - gw, y, gw, 30, t.ValueColor, HAlign.Right, t.ValueShadow); }
         }
     }
 
@@ -245,14 +245,14 @@ public sealed class RelativeWidget : IWidget
         const float h = 29;
         bool p = _cfg.ColumnVisible("pos"), n = _cfg.ColumnVisible("name"), g = _cfg.ColumnVisible("gap");
         float cx = x;
-        if (p) { Chrome.PositionBox(c, cx, y + 1, PosW(34), h, row.Car.Position, t.Numbers); cx += PosW(34); }
+        if (p) { Chrome.PositionBox(c, cx, y + 1, PosW(34), h, row.Car.Position, t.Numbers with { Element = "position" }); cx += PosW(34); }
         if (n)
         {
             string nm = _cfg.Name(row.Car, Code(row.Car.Name));
             Chrome.WhiteCell(c, cx, y + 1, NameCellW, h, nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW - 16), ink: row.IsPlayer ? Chrome.PlayerInk : null);
             cx += NameCellW;
         }
-        if (g) Chrome.BlackCell(c, cx, y + 1, GapW(112), h, Gap(row), t.Numbers,
+        if (g) Chrome.BlackCell(c, cx, y + 1, GapW(112), h, Gap(row), t.Numbers with { Element = "gap" },
             kind: row.GapSeconds is null && row.LapDelta == 0 ? Chrome.CellKind.Black : ahead ? Chrome.CellKind.Orange : Chrome.CellKind.Green);
     }
 

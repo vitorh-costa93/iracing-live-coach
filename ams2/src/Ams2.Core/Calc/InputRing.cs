@@ -1,7 +1,8 @@
 namespace Ams2.Core.Calc;
 
 /// <summary>Amostra dos pedais para o gráfico (T = relógio do provider, em segundos).</summary>
-public readonly record struct InputSample(double T, float Throttle, float Brake, float Steering);
+public readonly record struct InputSample(double T, float Throttle, float Brake, float Steering,
+    float SpeedMps = float.NaN, float Rpm = float.NaN, float MaxRpm = float.NaN, int Gear = int.MinValue);
 
 /// <summary>
 /// Histórico das entradas: buffer circular de capacidade fixa (potência de 2), um escritor (thread do amostrador) e leitores
@@ -32,6 +33,21 @@ public sealed class InputRing
     public long Count => Volatile.Read(ref _head);
     /// <summary>Instante atual na mesma base de tempo das amostras (o render usa este, não o do último passo do provider).</summary>
     public double Now => _clock();
+
+    /// <summary>Ultima amostra publicada, sem alocar nem copiar todo o historico.</summary>
+    public bool TryLatest(out InputSample sample)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            long h = Volatile.Read(ref _head), floor = Volatile.Read(ref _floor);
+            if (h <= floor) break;
+            var candidate = _slots[(int)((h - 1) & _mask)];
+            long after = Volatile.Read(ref _head);
+            if (h - 1 >= Math.Max(Volatile.Read(ref _floor), after - Usable))
+            { sample = candidate; return true; }
+        }
+        sample = default; return false;
+    }
 
     /// <summary>Só o escritor. Amostras devem chegar com T crescente.</summary>
     public void Add(in InputSample s)

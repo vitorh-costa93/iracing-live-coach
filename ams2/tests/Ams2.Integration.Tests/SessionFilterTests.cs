@@ -56,7 +56,7 @@ public sealed class SessionFilterTests : IDisposable
         await WaitFor(async () => (await client.SendAsync(IpcCommands.GetState))!.Session == SessionIds.Race, 8000, "host nao viu a sessao de corrida");
 
         var st = (await client.SendAsync(IpcCommands.GetState))!;
-        Assert.Equal(["qualilap", "qualiresult", "qualitower"], st.HiddenBySession.Order());   // existentes: todas as sessoes por padrao
+        Assert.Equal(["qualiboard", "qualilap", "qualiresult", "qualitower"], st.HiddenBySession.Order());
 
         st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "fuel", Patch = new WidgetPatch { Sessions = ["qualify"] } }))!;
         Assert.Equal(["qualify"], st.Widgets.Single(w => w.Id == "fuel").Sessions);

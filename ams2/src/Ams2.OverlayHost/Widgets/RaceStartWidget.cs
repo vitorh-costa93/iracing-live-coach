@@ -22,6 +22,7 @@ public sealed class RaceStartWidget : IWidget
     public const float W = 300, HeadH = 88, NameH = 40, TimeH = 62, RowH = NameH + TimeH;
     public (float Width, float Height) DesignSize => (W, HeadH + RowH * (ShowBest ? 2 : 1));
     WidgetSettings _cfg = new() { Id = "racestart" };
+    readonly Broadcast18Motion _motion18 = new();
     public void Configure(WidgetSettings s) => _cfg = s;
 
     int Target => _cfg.OptionOr("target", "200") == "100" ? 100 : 200;
@@ -47,7 +48,7 @@ public sealed class RaceStartWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected) return;
+        if (!m.Connected) { _motion18.Reset(); return; }
         var launch = m.Launch ?? LaunchState.Empty;
         var last = launch.Last;
         int target = Target;
@@ -58,7 +59,9 @@ public sealed class RaceStartWidget : IWidget
         int ci = car is null ? 0 : Math.Max(0, m.Session!.Cars.Select(f => f.ClassName).Distinct().ToList().IndexOf(car.ClassName));
         var tick = Chrome.ClassTick(ci);
 
-        BroadcastUi.WithAlpha(c, Alpha(m), () =>
+        double at = last?.At(target) ?? double.NaN;
+        float reveal = Always ? 1 : mine is null ? 0 : _motion18.Evaluate(m.Now, at, at + ShowFor, BroadcastUi.State(m).SessionSeenT);
+        BroadcastUi.WithReveal18(c, reveal, DesignSize.Width, DesignSize.Height, () =>
         {
             var t = c.Theme;
             var (w, h) = DesignSize;
@@ -99,7 +102,7 @@ public sealed class RaceStartWidget : IWidget
         else c.FillRect(0, ty, w, TimeH, TimeStrip);
 
         string value = Format(seconds);
-        var big = t.Numbers with { Weight = 400, Size = 46, Tracking = 0.5f };
+        var big = t.Numbers with { Element = "time", Weight = 400, Size = 46, Tracking = 0.5f };
         var small = t.Label with { Weight = 400, Size = 21, Tracking = 0f };
         float bw = c.Measure(value, big), sw = seconds is null ? 0 : c.Measure("s", small) + 4;
         float x0 = MathF.Round((w - bw - sw) / 2);

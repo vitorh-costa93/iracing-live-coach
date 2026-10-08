@@ -129,6 +129,12 @@ internal static class Program
         string[]? cols = o.Cols is null || o.Cols == "all" ? (o.Widget == "radar" ? [] : null) : o.Cols == "none" ? [] : o.Cols.Split(',', StringSplitOptions.RemoveEmptyEntries);
         // --settings: o WidgetSettings do perfil em JSON (larguras, formato, texto...); as outras opcoes do widget na linha de comando nao se aplicam.
         WidgetSettings? fromFile = o.SettingsFile is { } sf ? System.Text.Json.JsonSerializer.Deserialize<WidgetSettings>(File.ReadAllText(sf), ProfileStore.Json) : null;
+        if (Themes.Get(o.ThemeId).Id == "f1-1993")
+        {
+            static double GapOption(WidgetSettings? cfg, string key, double fallback)
+                => double.TryParse(cfg?.Option(key), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : fallback;
+            provider.SetGap93Options(GapOption(fromFile, "gapPointPercent", 0), GapOption(fromFile, "gapHoldSeconds", 7));
+        }
         provider.Radar.Options = RadarWidget.OptionsFor(fromFile is not null && o.Widget == "radar" ? (fromFile with { Id = "radar" }).Normalized()
             : new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
@@ -145,15 +151,18 @@ internal static class Program
             Id = widget.Id, Scale = scale, Rows = o.Rows, TopCount = o.Top, NearCount = o.Near, Font = o.Font, Opacity = o.Opacity ?? 1f,
             RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens,
             Columns = cols,
-        }).Normalized();
-        if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized();
+        }).Normalized(theme.Id);
+        if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized(theme.Id);
         widget.Configure(settings);
-        // Mesmo tamanho da janela real: escala de render = escala x tamanho do texto.
+        // Same independent geometry axes as the live window; font size is configured separately.
         float rs = settings.RenderScale;
-        int w = (int)Math.Ceiling(widget.DesignSize.Width * rs), h = (int)Math.Ceiling(widget.DesignSize.Height * rs);
+        int w = (int)Math.Ceiling(widget.DesignSize.Width * settings.ScaleX), h = (int)Math.Ceiling(widget.DesignSize.Height * settings.ScaleY);
         using var gfx = DeviceResources.CreateOffscreen(w, h);
         Console.WriteLine($"[Fonts] dir={gfx.Fonts.Directory} families=[{string.Join(", ", gfx.Fonts.Families)}]");
         using var canvas = new ThemeCanvas(gfx, ThemeOverrides.Apply(theme, settings), rs) { Opacity = settings.Opacity, FontOverride = settings.Font };
+        canvas.WidthScale = settings.WidthScale ?? 1;
+        canvas.HeightScale = settings.HeightScale ?? 1;
+        canvas.ConfigureTypography(settings);
         gfx.BeginFrame();
         canvas.Begin();
         widget.Draw(canvas, provider.Current);
@@ -199,11 +208,12 @@ internal static class Program
         }
     }
 
-    /// <summary>Relatório do --measure (descarta 1 s de aquecimento). Só faz sentido com o escritor falso.</summary>
+    /// <summary>Relatório do --measure (descarta 1 s de aquecimento), com fonte falsa ou sessão real limitada.</summary>
     static void PrintMeasure(Options o, HostController host, OverlayDataProvider provider, double fromT)
     {
         Console.WriteLine($"[FPS] fake={o.Fake} seconds={o.Seconds}");
         foreach (var (id, st) in host.RenderStats) Console.WriteLine($"[FPS] render {id,-14} {st.Report(fromT)}");
+        foreach (var (id, timing) in host.RenderTimings) if (timing.Length > 0) Console.WriteLine($"[FPS] timing {id,-14} {timing}");
         Console.WriteLine($"[FPS] provider.tick          {provider.TickStats.Report(fromT)}");
         Console.WriteLine($"[FPS] inputs.amostragem      {provider.InputStats.Report(fromT)}");
         var cpu = System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime.TotalSeconds;
@@ -212,11 +222,12 @@ internal static class Program
 
     static int RunOverlay(Options o)
     {
-        if (o.Measure && !o.Fake) { Console.Error.WriteLine("--measure exige --fake (nao mede o jogo real)."); return 2; }
+        if (o.Measure && !o.Fake && (!double.IsFinite(o.Seconds) || o.Seconds <= 1))
+        { Console.Error.WriteLine("--measure no jogo real exige --seconds finito e maior que 1."); return 2; }
         Win32.SetProcessDpiAwarenessContext(-4); // per-monitor v2
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Func<double> clock = () => sw.Elapsed.TotalSeconds;
-        // Amostrador de entradas dedicado (fonte propria): grava na taxa do jogo, independente do passo de 60 Hz do provider.
+        // Amostrador dedicado de entradas e instrumentos: grava na taxa do jogo, independente dos trackers de 60 Hz.
         // Nomes por modelo: arquivo em --profiles-dir (ou %AppData%). O --fake sem --profiles-dir e o --player-name ficam so em memoria.
         var names = o.PlayerName is not null || (o.Fake && o.ProfilesDir is null) ? PlayerNameStore.InMemory() : new PlayerNameStore(o.ProfilesDir);
         // Melhores de largada (RACE START 2018): launch.json em --profiles-dir (ou %AppData%); --fake sem --profiles-dir fica so em memoria.
@@ -227,7 +238,7 @@ internal static class Program
 
         var store = new ProfileStore(o.ProfilesDir);
         bool single = o.Widget is not null;
-        using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single);
+        using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single && !o.Measure);
         if (single && (o.X is not null || o.Y is not null || o.Scale is not null))
             host.ApplyPatch(o.Widget!, new WidgetPatch { X = o.X, Y = o.Y, Scale = o.Scale });
         OverlayWindow.RegisterHotkeys();

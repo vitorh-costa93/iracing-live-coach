@@ -25,6 +25,8 @@ public sealed class RaceControlWidget : IWidget
     public const float W = 300, TopH = 52, FlagH = 88, BoxH = TopH + FlagH, Gap = 10, BarH = 36, H = BoxH + Gap + BarH;
     public (float Width, float Height) DesignSize => (W, H);
     WidgetSettings _cfg = new() { Id = "racecontrol" };
+    readonly Broadcast18Motion _flagMotion18 = new(), _slowMotion18 = new();
+    Kind _lastFlag;
     public void Configure(WidgetSettings s) => _cfg = s;
 
     bool ShowFlags => !string.Equals(_cfg.OptionOr("showFlags", "true"), "false", StringComparison.OrdinalIgnoreCase);
@@ -70,13 +72,18 @@ public sealed class RaceControlWidget : IWidget
     {
         var t = c.Theme;
         var flag = CurrentFlag(m);
-        if (flag != Kind.None) DrawFlagBox(c, t, flag);
+        if (!m.Connected) { _flagMotion18.Reset(); _slowMotion18.Reset(); _lastFlag = Kind.None; return; }
+        if (flag != Kind.None) _lastFlag = flag;
+        float flagReveal = _flagMotion18.Presence(m.Now, flag != Kind.None, session: BroadcastUi.State(m).SessionSeenT);
+        if (_lastFlag != Kind.None) BroadcastUi.WithReveal18(c, flagReveal, W, BoxH, () => DrawFlagBox(c, t, _lastFlag));
 
         var (stop, alpha) = SlowNow(m);
         if (stop is not null && m.Session?.PlayerCar is { } car)
         {
             string name = _cfg.Name(car, BroadcastUi.ShortName(car, m.Session.Cars)).ToUpperInvariant();
-            BroadcastUi.WithAlpha(c, alpha, () => DrawSlowStop(c, t, name, stop));
+            var b = BroadcastUi.State(m);
+            float reveal = _slowMotion18.Evaluate(m.Now, b.PlayerStopEndT, b.PlayerStopEndT + ShowFor, b.SessionSeenT);
+            BroadcastUi.WithReveal18(c, reveal, W, BarH, () => DrawSlowStop(c, t, name, stop), y: BoxH + Gap);
         }
     }
 
@@ -141,9 +148,19 @@ public sealed class RaceControlWidget : IWidget
     {
         float y = BoxH + Gap;
         c.FillRect(0, y, W, BarH, Black);
-        string text = $"{name} SLOW STOP {SlowStopDetector.Format(stop.Lost)}";
-        // Na TV o texto da barra é branco, peso regular, numa linha só.
-        var f = t.Text with { Size = 20, Weight = 500, Tracking = 0.5f };
-        c.Text(text, BroadcastUi.Fit(c, text, f, W - 20), 0, y, W, BarH, t.TextColor, HAlign.Center);
+        var font = t.Text with { Size = 20, Weight = 500, Tracking = 0.5f };
+        (string Text, FontToken Font)[] parts = [(name, font with { Element = "name" }),
+            (" SLOW STOP ", font with { Element = "label" }),
+            (SlowStopDetector.Format(stop.Lost), font with { Element = "gap" })];
+        float total = parts.Sum(part => c.Measure(part.Text, part.Font));
+        float fit = Math.Min(1, (W - 20) / Math.Max(1, total));
+        float x = (W - total * fit) / 2;
+        foreach (var part in parts)
+        {
+            var f = part.Font with { Size = part.Font.Size * fit, Tracking = part.Font.Tracking * fit };
+            float width = c.Measure(part.Text, f);
+            c.Text(part.Text, f, x, y, width + 1, BarH, t.TextColor);
+            x += width;
+        }
     }
 }

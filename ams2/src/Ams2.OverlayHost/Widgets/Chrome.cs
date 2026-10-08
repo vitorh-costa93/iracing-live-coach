@@ -26,7 +26,7 @@ public static class Chrome
                 if (underline) c.FillRect(x, y + 31, barWidth + c.Measure(title, t.Title) + t.Title.Tracking * title.Length, t.TitleBarHeight, t.AccentBar);
                 break;
             case ThemeStyle.Broadcast2000s:
-                Caption(c, x, y + 2, title, kind: CellKind.Navy);
+                Caption(c, x, y + 2, title, font: t.Label with { Element = "title" }, kind: CellKind.Navy);
                 break;
             default:
             {

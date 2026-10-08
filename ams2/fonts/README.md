@@ -38,3 +38,10 @@ Os contornos desenhados à mão (`glyphs_*.py`) são refinados por síntese: `op
   "Formula1 Disp W", peso 400, sem nameID 16/17) para o DirectWrite tratar cada um como família própria. Os tokens do tema usam a família
   virtual "Formula1 Display": `ThemeCanvas.Format` escolhe Bold (peso >= 600) ou Regular. A Wide só aparece se escolhida em "Fonte do texto".
 - Antes (sem a fonte): Verdana do sistema, a mais próxima entre as livres/instaladas.
+
+## Personalização de peso (2026-10-06)
+- Reddit Sans: instâncias estáticas Light300, Regular400, Medium500, SemiBold600, Bold700 e Black900 acrescentadas à ExtraBold800 existente.
+- Open Sans: Light300, Regular400, Medium500, SemiBold600 e ExtraBold800 acrescentadas à Bold700 existente.
+- Origem: fontes variáveis oficiais em https://github.com/google/fonts/tree/main/ofl/redditsans e https://github.com/google/fonts/tree/main/ofl/opensans. Geradas com fontTools.varLib.instancer, updateFontNames=True; Open Sans wdth100. As licenças OFL existentes se aplicam.
+- Barlow Semi Condensed: pesos Thin100, ExtraLight200, Light300, Medium500, Bold700, ExtraBold800 e Black900, além de Regular400 e SemiBold600 existentes. Arquivos estáticos oficiais de https://github.com/google/fonts/tree/main/ofl/barlowsemicondensed, licença OFL-Barlow.txt.
+- Os números F1 Broadcast98 desenhados possuem um único contorno. Mantidos por padrão; um peso explicitamente escolhido usa Barlow Semi Condensed para permitir variações reais. Reset do peso restaura os números originais. Pesos sem face própria usam a face disponível mais próxima no DirectWrite.

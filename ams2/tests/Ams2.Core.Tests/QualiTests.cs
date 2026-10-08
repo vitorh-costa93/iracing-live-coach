@@ -110,6 +110,114 @@ public class QualiLapTrackerTests
 {
     const double Len = 3000, Dt = 0.05;
 
+    [Fact]
+    public void First_flying_lap_starts_without_reference_and_leader_updates_during_it()
+    {
+        var sim = new Sim(Len, (2900, 50), (0, 55)) { PlayerIndex = 0, Kind = SessionKind.Qualify };
+        var tracker = new QualiLapTracker();
+        Assert.True(tracker.Update(0, sim.Snapshot()).OutLap);
+        for (int i = 0; i < 50; i++) { sim.Step(Dt); tracker.Update(sim.Now, sim.Snapshot()); }
+        var first = tracker.State;
+        Assert.False(first.OutLap);
+        Assert.InRange(first.Elapsed!.Value, .49, .51);
+        Assert.Null(first.LeaderBestLap);
+        Assert.Null(first.PersonalBestLap);
+        var late = sim.Snapshot() with { Cars = sim.Snapshot().Cars.Select(c => c.Index == 1 ? c with { BestLapTime = 54.5 } : c).ToArray() };
+        var updated = tracker.Update(sim.Now, late);
+        Assert.Equal(54.5, updated.LeaderBestLap);
+        Assert.Equal(1, updated.LeaderIndex);
+        Assert.Equal(first.Elapsed, updated.Elapsed);
+    }
+
+    [Fact]
+    public void Single_initial_pit_sample_marks_out_lap_even_with_previous_time()
+    {
+        var sim = new Sim(Len, (100, 50)) { PlayerIndex = 0, Kind = SessionKind.Qualify };
+        var tracker = new QualiLapTracker();
+        var initial = sim.Snapshot();
+        initial = initial with { Cars = initial.Cars.Select(c => c with { BestLapTime = 60, PitState = PitState.InGarage }).ToArray() };
+        tracker.Update(0, initial);
+        sim.Step(Dt);
+        Assert.True(tracker.Update(sim.Now, sim.Snapshot()).OutLap);
+    }
+
+    [Fact]
+    public void Connecting_mid_flying_lap_does_not_fabricate_start_or_show_classification()
+    {
+        var sim = new Sim(Len, (3500, 50)) { PlayerIndex = 0, Kind = SessionKind.Qualify };
+        var state = new QualiLapTracker().Update(10, sim.Snapshot());
+        Assert.False(state.OutLap);
+        Assert.Null(state.Elapsed);
+        Assert.Equal(QualiBoardStage.Hidden, new QualiOutLapPresentation().Update(state, 10, 20));
+    }
+
+    [Fact]
+    public void Clock_rollback_discards_old_lap_clock_and_observes_a_new_start()
+    {
+        var rig = new Rig(memoryLapTimes: false);
+        var before = rig.RunTo(25);
+        var reset = rig.T.Update(1, rig.Sim.Snapshot());
+        Assert.True(reset.SessionGeneration > before.SessionGeneration);
+        Assert.Null(reset.Elapsed); Assert.Null(reset.LastSplit); Assert.Null(reset.LastResult);
+        var atLine = rig.Sim.Snapshot();
+        atLine = atLine with { Cars = atLine.Cars.Select(c => c.Index == 0 ? c with
+            { LapsCompleted = c.LapsCompleted + 1, CurrentLap = c.CurrentLap + 1, LapDistance = 10, Sector = 0 } : c).ToArray() };
+        Assert.InRange(rig.T.Update(2, atLine).Elapsed!.Value, 0, 1);
+    }
+
+    [Fact]
+    public void Loading_restarts_same_out_lap_but_pause_menu_and_replay_preserve_it()
+    {
+        var sim = new Sim(Len, (100, 50)) { Kind = SessionKind.Qualify };
+        var tracker = new QualiLapTracker();
+        var snapshot = sim.Snapshot();
+        var state = tracker.Update(10, snapshot);
+        var flow = new QualiOutLapPresentation();
+        Assert.Equal(QualiBoardStage.Tower, flow.Update(state, 10, 8));
+        Assert.Equal(QualiBoardStage.Caption, flow.Update(state, 20, 8));
+        foreach (uint gameState in new uint[] { 1, 4, 5, 6 })
+        {
+            var retained = tracker.State;
+            Assert.Same(retained, tracker.Update(21, snapshot with { InSession = false, GameState = gameState }));
+            var resumed = tracker.Update(22, snapshot);
+            Assert.Equal(state.SessionGeneration, resumed.SessionGeneration);
+            Assert.Equal(QualiBoardStage.Caption, flow.Update(resumed, 22, 8));
+        }
+        tracker.Update(30, snapshot with { InSession = false, GameState = 3 });
+        var restarted = tracker.Update(31, snapshot);
+        Assert.True(restarted.SessionGeneration > state.SessionGeneration);
+        Assert.Equal(QualiBoardStage.Tower, flow.Update(restarted, 31, 8));
+    }
+
+    [Fact]
+    public void Same_track_restart_by_lap_regression_clears_stale_split_and_result()
+    {
+        var rig = new Rig(memoryLapTimes: false);
+        var before = rig.RunTo(85);
+        Assert.NotNull(before.LastResult); Assert.NotNull(before.LastSplit);
+        var fresh = new Sim(Len, (100, 50), (0, 55)) { Kind = SessionKind.Qualify }.Snapshot();
+        var restarted = rig.T.Update(100, fresh);
+        Assert.True(restarted.SessionGeneration > before.SessionGeneration);
+        Assert.Null(restarted.LastResult); Assert.Null(restarted.LastSplit); Assert.Null(restarted.Elapsed);
+        Assert.Null(restarted.PersonalBestLap);
+    }
+
+    [Fact]
+    public void Pit_exit_rearms_table_even_when_overlay_did_not_draw_in_pit()
+    {
+        var sim = new Sim(Len, (100, 50)) { Kind = SessionKind.Qualify };
+        var tracker = new QualiLapTracker();
+        var flow = new QualiOutLapPresentation();
+        var snapshot = sim.Snapshot();
+        var first = tracker.Update(10, snapshot);
+        flow.Update(first, 10, 8);
+        Assert.Equal(QualiBoardStage.Caption, flow.Update(first, 20, 8));
+        tracker.Update(21, snapshot with { Cars = snapshot.Cars.Select(c => c with { PitState = PitState.InGarage }).ToArray() });
+        var exited = tracker.Update(22, snapshot);
+        Assert.True(exited.PitExitGeneration > first.PitExitGeneration);
+        Assert.Equal(QualiBoardStage.Tower, flow.Update(exited, 22, 8));
+    }
+
     /// <summary>Jogador (#0) a 50 m/s (setores de 20 s) cruzando a linha em t=2; #1 a 55 m/s com melhor volta 54,5 s.</summary>
     sealed class Rig
     {

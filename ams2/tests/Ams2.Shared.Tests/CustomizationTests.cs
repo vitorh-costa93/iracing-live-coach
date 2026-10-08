@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Ams2.Shared.Profiles;
 
 namespace Ams2.Shared.Tests;
@@ -148,10 +148,11 @@ public class CustomizationProfileTests
     }
 
     [Fact]
-    public void Text_scale_multiplies_the_render_scale_so_the_window_grows_with_the_font()
+    public void Text_scale_only_changes_fonts_and_preserves_window_scale()
     {
         var s = new WidgetSettings { Id = "relative", Scale = 0.8f, TextScale = 1.5f }.Normalized();
-        Assert.Equal(1.2f, s.RenderScale, 4);
+        Assert.Equal(0.8f, s.RenderScale, 4);
+        Assert.Equal((.8f, .8f), (s.ScaleX, s.ScaleY));
         Assert.Equal(0.8f, (s with { TextScale = null }).RenderScale);
         Assert.Null(new WidgetSettings { Id = "relative", TextScale = 1f }.Normalized().TextScale);
     }
@@ -219,21 +220,24 @@ public class CustomizationProfileTests
         File.WriteAllText(Path.Combine(dir, "Velho.json"), json);
         var p = t.Store.Load("f1-2004", "Velho")!;
         Assert.Equal(Profile.CurrentSchemaVersion, p.SchemaVersion);
-        Assert.Equal(["bars", "gear", "speedo", "graph"], p.Get("inputs")!.Columns);
+        Assert.Equal(["bars", "gear", "speedo"], p.Get("inputs")!.Columns);
+        Assert.True(p.Get("inputgraph")!.Visible);
+        Assert.Equal(1069, p.Get("inputgraph")!.Y);
         Assert.Equal(["team", "tyre"], p.Get("drivercaption")!.Columns);   // continua so em eventos, campos visiveis
         Assert.Null(p.Get("weather")!.Columns);
         Assert.Equal(["pos", "name"], p.Get("standings")!.Columns);
         Assert.All(p.Widgets, w => { Assert.Null(w.Display); Assert.Null(w.ColumnWidths); Assert.Null(w.TextScale); Assert.Equal(w.Scale, w.RenderScale); });
         // Salvo de novo ja como v3: carregar outra vez nao duplica nada.
         t.Store.Save(p);
-        Assert.Equal(["bars", "gear", "speedo", "graph"], t.Store.Load("f1-2004", "Velho")!.Get("inputs")!.Columns);
+        Assert.Equal(["bars", "gear", "speedo"], t.Store.Load("f1-2004", "Velho")!.Get("inputs")!.Columns);
     }
 
     [Fact]
     public void New_defaults_show_the_2004_input_graph_and_keep_event_widgets_on_events()
     {
         var p = ProfileFactory.CreateDefault("A", "f1-2004");
-        Assert.True(p.Get("inputs")!.ColumnVisible("graph"));
+        Assert.True(p.Get("inputgraph")!.Visible);
+        Assert.DoesNotContain(WidgetCatalog.Find("inputs", "f1-2004")!.Columns, c => c.Id == "graph");
         Assert.True(p.Get("inputs")!.ColumnVisible("speedo"));
         foreach (var id in new[] { "drivercaption", "pitstops", "pittimer", "winner", "radar" })
         {

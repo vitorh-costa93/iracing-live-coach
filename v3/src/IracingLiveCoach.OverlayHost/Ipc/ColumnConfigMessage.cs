@@ -8,7 +8,7 @@ public sealed record ColumnConfigEntry(
     string Key, bool Visible, int Order, float WidthPx, float MinWidthPx,
     string WidthMode, string Alignment, int? DecimalPlaces,
     float PaddingLeftPx, float PaddingRightPx,
-    string? FontFamily = null, int? FontWeight = null, int? LapWindow = null);
+    string? FontFamily = null, int? FontWeight = null, int? LapWindow = null, bool ShowInPractice = true, bool ShowInQualify = true, bool ShowInRace = true);
 
 /// <summary>Third typed/versioned IPC message (alongside Placement and EditMode), scoped to one
 /// widget's full column set at a time -- sent whenever the Control Center's Colunas tab applies a

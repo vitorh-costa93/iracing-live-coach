@@ -511,37 +511,60 @@ public static unsafe class Program
             AutoFit(RadarKey, radar.LastDrawnSize);
             AutoFit(FuelKey, fuel.LastDrawnSize);
 
-            standingsResources.BeginFrame();
-            standings.Draw(standingsResources.Context, 0, 0);
-            if (_editMode)
-                DrawEditModeOutlines(standingsResources.Context, (0, 0, standingsPlacement.WidthDip, standingsPlacement.HeightDip));
-            if (!standingsResources.EndFrame())
-                Console.WriteLine("Device lost detected -- recovered without restart.");
+            if (ShouldRender(StandingsKey))
+            {
+                standingsResources.BeginFrame();
+                standings.Draw(standingsResources.Context, 0, 0);
+                if (_editMode)
+                    DrawEditModeOutlines(standingsResources.Context, (0, 0, standingsPlacement.WidthDip, standingsPlacement.HeightDip));
+                if (!standingsResources.EndFrame())
+                    Console.WriteLine("Device lost detected -- recovered without restart.");
+            }
 
-            relativeResources.BeginFrame();
-            relative.Draw(relativeResources.Context, 0, 0);
-            if (_editMode)
-                DrawEditModeOutlines(relativeResources.Context, (0, 0, relativePlacement.WidthDip, relativePlacement.HeightDip));
-            if (!relativeResources.EndFrame())
-                Console.WriteLine("Device lost detected -- recovered without restart.");
+            if (ShouldRender(RelativeKey))
+            {
+                relativeResources.BeginFrame();
+                relative.Draw(relativeResources.Context, 0, 0);
+                if (_editMode)
+                    DrawEditModeOutlines(relativeResources.Context, (0, 0, relativePlacement.WidthDip, relativePlacement.HeightDip));
+                if (!relativeResources.EndFrame())
+                    Console.WriteLine("Device lost detected -- recovered without restart.");
+            }
 
-            weatherResources.BeginFrame();
-            weather.Draw(weatherResources.Context, 0, 0, weatherPlacement.WidthDip);
-            if (_editMode)
-                DrawEditModeOutlines(weatherResources.Context, (0, 0, weatherPlacement.WidthDip, weatherPlacement.HeightDip));
-            if (!weatherResources.EndFrame())
-                Console.WriteLine("Device lost detected -- recovered without restart.");
+            if (ShouldRender(WeatherKey))
+            {
+                weatherResources.BeginFrame();
+                weather.Draw(weatherResources.Context, 0, 0, weatherPlacement.WidthDip);
+                if (_editMode)
+                    DrawEditModeOutlines(weatherResources.Context, (0, 0, weatherPlacement.WidthDip, weatherPlacement.HeightDip));
+                if (!weatherResources.EndFrame())
+                    Console.WriteLine("Device lost detected -- recovered without restart.");
+            }
 
-            fuelResources.BeginFrame();
-            fuel.Draw(fuelResources.Context, 0, 0, fuelPlacement.WidthDip);
-            if (_editMode) DrawEditModeOutlines(fuelResources.Context, (0, 0, fuelPlacement.WidthDip, fuelPlacement.HeightDip));
-            if (!fuelResources.EndFrame()) Console.WriteLine("Device lost detected -- recovered without restart.");
-            radarResources.BeginFrame(); radar.Draw(radarResources.Context, 0, 0, radarPlacement.WidthDip);
-            if (_editMode) DrawEditModeOutlines(radarResources.Context, (0, 0, radarPlacement.WidthDip, radarPlacement.HeightDip));
-            radarResources.EndFrame();
-            startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip);
-            if (_editMode) DrawEditModeOutlines(startResources.Context, (0, 0, startPlacement.WidthDip, startPlacement.HeightDip));
-            startResources.EndFrame();
+            if (ShouldRender(FuelKey))
+            {
+                fuelResources.BeginFrame();
+                fuel.Draw(fuelResources.Context, 0, 0, fuelPlacement.WidthDip);
+                if (_editMode) DrawEditModeOutlines(fuelResources.Context, (0, 0, fuelPlacement.WidthDip, fuelPlacement.HeightDip));
+                if (!fuelResources.EndFrame()) Console.WriteLine("Device lost detected -- recovered without restart.");
+            }
+
+            if (ShouldRender(RadarKey))
+            {
+                radarResources.BeginFrame(); radar.Draw(radarResources.Context, 0, 0, radarPlacement.WidthDip);
+                if (_editMode) DrawEditModeOutlines(radarResources.Context, (0, 0, radarPlacement.WidthDip, radarPlacement.HeightDip));
+                radarResources.EndFrame();
+            }
+
+            if (ShouldRender(StartHelperKey))
+            {
+                startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip);
+                if (_editMode) DrawEditModeOutlines(startResources.Context, (0, 0, startPlacement.WidthDip, startPlacement.HeightDip));
+                startResources.EndFrame();
+            }
+
+            int frameDelay = RenderLoopBudget.DelayMilliseconds(sw.Elapsed.TotalMilliseconds - now, _lastAppliedVisibility.Values.Any(v => v));
+            if (frameDelay > 0) Thread.Sleep(frameDelay);
 
             if (frameTimes.Count >= 600) // ~10s @ 60Hz worth of samples per flush
             {
@@ -699,7 +722,7 @@ public static unsafe class Program
             c.DecimalPlaces,
             c.FontFamily,
             c.FontWeight,
-            c.LapWindow)).ToList();
+            c.LapWindow, c.ShowInPractice, c.ShowInQualify, c.ShowInRace)).ToList();
 
         switch (message.Widget)
         {
@@ -800,6 +823,8 @@ public static unsafe class Program
         color = new Vortice.Win32.Numerics.Color4(r / 255f, g / 255f, b / 255f, 1f);
         return true;
     }
+
+    private static bool ShouldRender(string key) => _lastAppliedVisibility.TryGetValue(key, out var visible) && visible;
 
     private static void UpdateOverlayVisibility()
     {

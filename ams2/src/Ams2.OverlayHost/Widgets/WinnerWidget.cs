@@ -17,11 +17,12 @@ public sealed class WinnerWidget : IWidget
     public string Id => "winner";
     public (float Width, float Height) DesignSize => _style switch
     {
-        ThemeStyle.Broadcast98 => (CaptionPlate.Winner98Width, CaptionPlate.Height),
+        ThemeStyle.Broadcast98 => (1920, 300),
         ThemeStyle.Broadcast2000s => (CaptionPlate.WinnerWidth, CaptionPlate.Height),
         _ => Winner18.Size(Style18),
     };
     ThemeStyle _style;
+    readonly Broadcast18Motion _banner18 = new(), _podium18 = new();
     public void UseTheme(Theme.Theme theme) => _style = theme.Style;
     WidgetSettings _cfg = new() { Id = "winner" };
     public void Configure(WidgetSettings s) => _cfg = s;
@@ -34,12 +35,13 @@ public sealed class WinnerWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected || m.Session is not { } s) return;
+        if (!m.Connected || m.Session is not { } s) { _banner18.Reset(); _podium18.Reset(); _podiumT = double.NaN; return; }
         var b = BroadcastUi.State(m);
-        if (b.Winner is not { } w) { _podiumT = double.NaN; return; }
+        if (b.Winner is not { } w) { _podiumT = double.NaN; _banner18.Reset(); _podium18.Reset(); return; }
         if (_style == ThemeStyle.Modern2018) { Draw18(c, m, s, w); return; }
-        float alpha = _cfg.ColumnVisible("always") ? 1f : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawWinner(c, w, s.Cars, _cfg));
+        float alpha = _cfg.ColumnVisible("always") ? 1f : _style == ThemeStyle.Broadcast2000s
+            ? BroadcastUi.Fade04(m.Now - w.FinishedT, BroadcastUi.WinnerHold) : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
+        BroadcastUi.WithAlpha(c, alpha, () => { if (_style == ThemeStyle.Broadcast98) Broadcast98RaceBoard.Winner(c, w, s.Cars, _cfg); else CaptionPlate.DrawWinner(c, w, s.Cars, _cfg); });
     }
 
     /// <summary>2018: o banner entra na bandeirada do vencedor; o pódio quando 2º e 3º também terminaram (ou saíram da corrida). Cada um fica showFor s.</summary>
@@ -51,13 +53,14 @@ public sealed class WinnerWidget : IWidget
         else if (double.IsNaN(_podiumT)) _podiumT = Math.Max(m.Now, w.FinishedT);
         bool always = _cfg.ColumnVisible("always");
         double hold = ShowFor18;
-        float bannerA = always ? 1f : BroadcastUi.Fade(m.Now - w.FinishedT, hold);
-        float podiumA = always ? 1f : BroadcastUi.Fade(m.Now - _podiumT, hold);
-        if (style != "podium") BroadcastUi.WithAlpha(c, bannerA, () => Winner18.DrawBanner(c, 0, 0, w, s.Cars, _cfg));
+        double session = BroadcastUi.State(m).SessionSeenT;
+        float bannerA = always ? 1f : _banner18.Evaluate(m.Now, w.FinishedT, w.FinishedT + hold, session);
+        float podiumA = always ? 1f : _podium18.Evaluate(m.Now, _podiumT, _podiumT + hold, session);
+        if (style != "podium") BroadcastUi.WithReveal18(c, bannerA, Winner18.Width, Winner18.BannerH, () => Winner18.DrawBanner(c, 0, 0, w, s.Cars, _cfg));
         if (style != "banner")
         {
             float top = style == "both" ? Winner18.BannerH + Winner18.Gap : 0;
-            BroadcastUi.WithAlpha(c, podiumA, () => Winner18.DrawPodium(c, 0, top, podium, s.Cars, _cfg));
+            BroadcastUi.WithReveal18(c, podiumA, Winner18.Width, Winner18.PodiumH, () => Winner18.DrawPodium(c, 0, top, podium, s.Cars, _cfg), y: top);
         }
     }
 }
@@ -150,7 +153,7 @@ public static class Winner18
             string time = BroadcastUi.RaceTime(win.TotalSeconds);
             string st = time + "  ·  " + DisplayFormat.SpeedFromKph(win.AvgKmh, su).ToString("0.0", CultureInfo.InvariantCulture) + (su == SpeedUnit.Mph ? " mph" : " km/h");
             // Sem espaço para equipe + tempo + média na 2ª linha: só o tempo total.
-            float teamMin = showTeam ? Math.Min(c.Measure(team, t.Label with { Size = 16, Weight = 600 }), 200) : 0;
+            float teamMin = showTeam ? Math.Min(c.Measure(team, t.Label with { Element = "name", Size = 16, Weight = 600 }), 200) : 0;
             if (c.Measure(st, sf) + teamMin + 20 > right - nx) st = time;
             float sw = c.Measure(st, sf);
             c.Text(st, sf, right - sw - 4, y + 50, sw + 6, 30, t.ValueColor);
@@ -158,7 +161,7 @@ public static class Winner18
         }
         if (showTeam)
         {
-            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 21, Weight = 600 }, teamRight - nx), nx, y + 50, teamRight - nx + 6, 30, t.LabelColor);
+            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Element = "name", Size = 21, Weight = 600 }, teamRight - nx), nx, y + 50, teamRight - nx + 6, 30, t.LabelColor);
         }
     }
 
@@ -192,8 +195,8 @@ public static class Winner18
         else
         {
             var (n, sfx) = CaptionPlate.Ordinal(place);
-            var nf = t.Title with { Size = 36, Weight = 800 };
-            var sf = t.Title with { Size = 18, Weight = 800 };
+            var nf = t.Title with { Element = "position", Size = 36, Weight = 800 };
+            var sf = t.Title with { Element = "position", Size = 18, Weight = 800 };
             float nw = c.Measure(n, nf);
             c.Text(n, nf, x + 14, y + 2, nw + 6, head, White);
             c.Text(sfx.ToUpperInvariant(), sf, x + 14 + nw + 2, y + 8, 40, 24, White);
@@ -215,12 +218,12 @@ public static class Winner18
         string first = parts.Length > 1 ? string.Join(' ', parts[..^1]) : "";
         string last = (parts.Length > 0 ? parts[^1] : full).ToUpperInvariant();
         float fy = y + head + body + 6, tx = x + 14, tw = w - 24;
-        if (first.Length > 0) c.Text(first, BroadcastUi.Fit(c, first, t.Label with { Size = 18, Weight = 400 }, tw), tx, fy, tw + 6, 24, White);
+        if (first.Length > 0) c.Text(first, BroadcastUi.Fit(c, first, t.Label with { Element = "name", Size = 18, Weight = 400 }, tw), tx, fy, tw + 6, 24, White);
         c.Text(last, BroadcastUi.Fit(c, last, t.Text with { Size = win ? 30 : 26, Weight = 800 }, tw), tx, fy + 20, tw + 6, 38, White);
         if (cfg.ColumnVisible("team"))
         {
             string team = BroadcastUi.Team(car);
-            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 16 }, tw), tx, fy + (win ? 58 : 54), tw + 6, 24, t.LabelColor);
+            c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Element = "name", Size = 16 }, tw), tx, fy + (win ? 58 : 54), tw + 6, 24, t.LabelColor);
         }
     }
 }

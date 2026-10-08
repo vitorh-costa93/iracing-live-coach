@@ -20,6 +20,18 @@ public static class BroadcastUi
         return 1f;
     }
 
+    /// <summary>Short transition for 2004 plates. Durations are calibrated approximations, not measured broadcast frame counts.</summary>
+    public static float Fade04(double age, double hold) => Fade(age, hold, .16, .16);
+
+    /// <summary>2018 horizontal reveal retains full plate ink and clips its content. Other themes draw unchanged.</summary>
+    public static void WithReveal18(ThemeCanvas c, float progress, float width, float height, Action draw, float x = 0, float y = 0)
+    {
+        if (c.Theme.Style != ThemeStyle.Modern2018) { draw(); return; }
+        if (progress <= 0) return;
+        using var clip = c.Clip(x, y, width * Math.Clamp(progress, 0, 1), height);
+        draw();
+    }
+
     /// <summary>Executa o desenho com a opacidade do canvas multiplicada por <paramref name="alpha"/>; alfa ~0 nao desenha.</summary>
     public static void WithAlpha(ThemeCanvas c, float alpha, Action draw)
     {

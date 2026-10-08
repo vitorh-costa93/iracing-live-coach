@@ -189,10 +189,13 @@ public sealed unsafe class DeviceResources : IDisposable
         ThrowIfFailed(end);
         if (_offscreenMode) return true;
 
-        var present = _swapChain.Get()->Present((uint)PresentInterval, PresentFlags.None);
+        var present = _swapChain.Get()->Present((uint)PresentInterval,
+            PresentInterval == 0 ? PresentFlags.DoNotWait : PresentFlags.None);
+        // Uma janela com fila cheia nao pode bloquear todas as outras (incluindo radar e pedais).
+        if (present.Value == unchecked((int)0x887A000A)) return false; // DXGI_ERROR_WAS_STILL_DRAWING
         if (IsLost(present)) { Recover(); return false; }
         ThrowIfFailed(present);
-        _dcompDevice.Get()->Commit();
+        // A arvore visual nao mudou: Present publica o buffer sem novo Commit por quadro.
         return true;
     }
 

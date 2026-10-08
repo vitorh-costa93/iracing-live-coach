@@ -102,6 +102,19 @@ public sealed class RadarFrame
     public double RightGap { get; private set; } = double.NaN;
     public bool AlongLeft => !double.IsNaN(LeftGap);
     public bool AlongRight => !double.IsNaN(RightGap);
+    /// <summary>Distância lateral no instante de desenho; mantém o gatilho real de sobreposição e limita a previsão a 50 ms.</summary>
+    public double RenderGap(bool left, double renderTime)
+    {
+        double gap = double.NaN;
+        double dt = double.IsFinite(renderTime) ? Math.Clamp(renderTime - Time, 0, 0.05) : 0;
+        foreach (ref readonly var car in Cars)
+        {
+            if ((car.Right < 0) != left || Math.Abs(car.Forward) > _alongLong || Math.Abs(car.Right) > RadarOptions.AlongsideLateralMeters) continue;
+            double candidate = Math.Max(0, Math.Abs(car.Right + car.VRight * dt) - CarWidthMeters);
+            if (double.IsNaN(gap) || candidate < gap) gap = candidate;
+        }
+        return gap;
+    }
     double _alongLong = RadarOptions.AlongsideLongMeters;
     /// <summary>Velocidade do jogador (m/s).</summary>
     public double PlayerSpeed { get; private set; }
@@ -180,7 +193,9 @@ public sealed class RadarTracker
             {
                 var c = cars[i];
                 if (c.Index == pl.Index) player = c;
-                else if (!c.InGarage) others = true;
+                // A tabela da classificacao pode incluir participantes sem carro posicionado.
+                // Qualify nao distingue solo de multiplayer: so uma pose permite habilitar o radar.
+                else if (!c.InGarage && c.HasPose) others = true;
             }
 
         if (player is null || !player.HasPose || !others)

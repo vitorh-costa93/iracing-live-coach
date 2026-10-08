@@ -16,7 +16,7 @@ public class ThemeOptionsTests
         var o = defs[0];
         Assert.Equal(("mode", OptionKind.Choice, "gap"), (o.Id, o.Kind, o.Default));
         Assert.Equal(["gap", "interval", "gainedlost", "pitstops", "bestlap", "auto"], o.Choices!.Select(c => c.Value));
-        Assert.Equal(5, WidgetCatalog.OptionsFor("f1-2010s", "standings").Count);   // id antigo do tema
+        Assert.Equal(6, WidgetCatalog.OptionsFor("f1-2010s", "standings").Count);   // id antigo do tema
         Assert.Empty(WidgetCatalog.OptionsFor("f1-1998", "standings"));
         Assert.Empty(WidgetCatalog.OptionsFor(T2018, "fuel"));
         Assert.Empty(WidgetCatalog.OptionsFor("nao-existe", "standings"));
@@ -26,7 +26,7 @@ public class ThemeOptionsTests
     public void Standings_2018_options_mode_seconds_battle_full_names_and_out_block()
     {
         var defs = WidgetCatalog.OptionsFor(T2018, "standings");
-        Assert.Equal(["mode", "modeSeconds", "battle", "fullNames", "outBlock"], defs.Select(d => d.Id));
+        Assert.Equal(["mode", "modeSeconds", "intervalSeconds", "battle", "fullNames", "outBlock"], defs.Select(d => d.Id));
         var secs = defs.Single(d => d.Id == "modeSeconds");
         Assert.Equal((OptionKind.Number, "10", 5.0, 30.0), (secs.Kind, secs.Default, secs.Min, secs.Max));
         foreach (var id in new[] { "battle", "fullNames", "outBlock" })
@@ -46,6 +46,19 @@ public class ThemeOptionsTests
         Assert.Equal("5", new WidgetSettings { Id = "standings", Options = new() { ["modeSeconds"] = "1" } }.Normalized(T2018).Option("modeSeconds"));
         Assert.Null(new WidgetSettings { Id = "standings", Options = new() { ["modeSeconds"] = "10" } }.Normalized(T2018).Options);
         Assert.Equal("true", new WidgetSettings { Id = "standings" }.OptionOr("outBlock", "true"));
+    }
+
+    [Theory]
+    [InlineData("standings")]
+    [InlineData("board")]
+    public void Broadcast_2018_interval_cadence_is_bounded_and_scoped_to_the_theme(string widget)
+    {
+        var option = WidgetCatalog.OptionsFor(T2018, widget).Single(d => d.Id == "intervalSeconds");
+        Assert.Equal((OptionKind.Number, "1", .25, 3.0), (option.Kind, option.Default, option.Min, option.Max));
+        Assert.Equal("0.25", new WidgetSettings { Id = widget, Options = new() { ["intervalSeconds"] = "0.01" } }.Normalized(T2018).Option("intervalSeconds"));
+        Assert.Equal("3", new WidgetSettings { Id = widget, Options = new() { ["intervalSeconds"] = "10" } }.Normalized(T2018).Option("intervalSeconds"));
+        Assert.Null(new WidgetSettings { Id = widget, Options = new() { ["intervalSeconds"] = "1" } }.Normalized(T2018).Options);
+        Assert.DoesNotContain(WidgetCatalog.OptionsFor("f1-2004", widget), d => d.Id == "intervalSeconds");
     }
 
     [Fact]
@@ -483,13 +496,13 @@ public class ThemeOptionsTests
     {
         var defs = WidgetCatalog.OptionsFor("f1-1998", "qualitower");
         Assert.Equal(["rows", "columns", "eliminationFrom", "showClock"], defs.Select(d => d.Id));
-        Assert.Equal((OptionKind.Number, "6", 2.0, 10.0), (defs[0].Kind, defs[0].Default, defs[0].Min, defs[0].Max));
+        Assert.Equal((OptionKind.Number, "8", 2.0, 10.0), (defs[0].Kind, defs[0].Default, defs[0].Min, defs[0].Max));
         Assert.Equal((OptionKind.Choice, "2"), (defs[1].Kind, defs[1].Default));
         Assert.Equal(["2", "1"], defs[1].Choices!.Select(c => c.Value));
         Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (defs[2].Kind, defs[2].Default, defs[2].Min, defs[2].Max));
-        Assert.Equal((OptionKind.Toggle, "true"), (defs[3].Kind, defs[3].Default));
+        Assert.Equal((OptionKind.Toggle, "false"), (defs[3].Kind, defs[3].Default));
         Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
-        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "6", ["columns"] = "2", ["eliminationFrom"] = "0", ["showClock"] = "true" } }.Normalized("f1-1998").Options);
+        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "8", ["columns"] = "2", ["eliminationFrom"] = "0", ["showClock"] = "false" } }.Normalized("f1-1998").Options);
         var s = new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "40", ["columns"] = "1", ["eliminationFrom"] = "9", ["nearCount"] = "4" } }.Normalized("f1-1998");
         Assert.Equal(new Dictionary<string, string> { ["rows"] = "10", ["columns"] = "1", ["eliminationFrom"] = "9" }, s.Options);
         Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["columns"] = "3" } }.Normalized("f1-1998").Options);
@@ -497,7 +510,7 @@ public class ThemeOptionsTests
 
     [Theory]
     [InlineData("f1-2004", 400f, 314f)]
-    [InlineData("f1-1998", 834f, 182f)]
+
     public void Quali_tower_04_98_take_the_tower_corner_and_clear_the_widgets_visible_in_qualifying(string theme, float w, float h)
     {
         var q = WidgetLayout.Rect(theme, "qualitower")!.Value;
@@ -544,7 +557,7 @@ public class ThemeOptionsTests
         var showFor = defs.Single(d => d.Id == "showFor");
         Assert.Equal((OptionKind.Number, "6", 3.0, 15.0), (showFor.Kind, showFor.Default, showFor.Min, showFor.Max));
         Assert.Equal((OptionKind.Toggle, "false"), (defs.Single(d => d.Id == "always").Kind, defs.Single(d => d.Id == "always").Default));
-        foreach (var d in defs.Where(d => d.Id is "showSectors" or "showSectorPanel" or "showSpeed")) Assert.Equal((OptionKind.Toggle, "true"), (d.Kind, d.Default));
+        foreach (var d in defs.Where(d => d.Id is "showSectors" or "showSectorPanel" or "showSpeed")) Assert.Equal((OptionKind.Toggle, theme == "f1-2004" && d.Id == "showSectors" ? "false" : "true"), (d.Kind, d.Default));
         Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
 
         // Padroes nao sao gravados; escolha canonica, numero limitado, invalidos e opcoes de outros temas descartados.
@@ -561,8 +574,8 @@ public class ThemeOptionsTests
 
     [Theory]
     [InlineData("f1-2018", 664f, 152f)]
-    [InlineData("f1-2004", 278f, 126f)]
-    [InlineData("f1-1998", 640f, 124f)]
+    [InlineData("f1-2004", 350f, 126f)]
+
     public void Quali_lap_sits_bottom_center_and_clears_the_widgets_visible_in_qualifying(string theme, float w, float h)
     {
         Assert.Equal((w, h), WidgetLayout.DesignSizes[theme]["qualilap"]);

@@ -163,7 +163,7 @@ public partial class MainWindow : Window
         _widgets.Clear();
         foreach (var s in _profile.Ordered)
         {
-            var def = WidgetCatalog.Find(s.Id);
+            var def = WidgetCatalog.Find(s.Id, _themeId);
             if (def is null || !def.InTheme(_themeId)) continue;   // so os widgets do tema ativo
             var vm = new WidgetVm(def, _themeId);
             vm.Load(s);
@@ -447,6 +447,7 @@ public partial class MainWindow : Window
         // Radar: carros orbitando o jogador (instante 3 s = um de cada lado); o alcance e a sensibilidade do widget valem na previa.
         if (vm.IsRadar) psi.Environment["AMS2_FAKE_RADAR"] = "1";
         if (vm.Id == "winner") psi.Environment["AMS2_FAKE_FINISH"] = "1";
+        if (vm.Id.StartsWith("quali", StringComparison.Ordinal)) psi.Environment["AMS2_FAKE_QUALI"] = "1";
         if (vm.Id is "pitstops" or "pittimer") psi.Environment["AMS2_FAKE_PITS"] = "1";
         // Race Control 2018: bandeira amarela + parada lenta do jogador (11,1 s parado, termina em t=28,1 s; a previa e tirada em t=30).
         if (vm.Id == "racecontrol") { psi.Environment["AMS2_FAKE_FLAG"] = "6"; psi.Environment["AMS2_FAKE_PITS"] = "1"; psi.Environment["AMS2_FAKE_PITSTOP"] = "11.1"; }

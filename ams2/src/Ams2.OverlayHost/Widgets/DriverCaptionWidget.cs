@@ -16,9 +16,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
-    bool _b18;
-    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
+    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
+    bool _b18, _b98, _b93;
+    readonly Broadcast04Pulse _motion04 = new();
+    readonly Broadcast18Motion _motion18 = new();
+    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; }
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -40,17 +42,38 @@ public sealed class DriverCaptionWidget : IWidget
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
-        if (!m.Connected || m.Session is not { } s || s.PlayerCar is not { } car) return;
+        if (!m.Connected || m.Session is not { } s || s.PlayerCar is not { } car) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; return; }
+        if (_b93)
+        {
+            if (!m.PlayerDriving || !s.InSession || s.GameState != 2) return;
+            bool qualifying = s.Kind == SessionKind.Qualify;
+            if (qualifying && m.QualiLap is not { OutLap: true, InPit: false }) return;
+            var state93 = BroadcastUi.State(m);
+            double at93 = Math.Max(state93.SessionSeenT, Math.Max(state93.PlayerPositionChangedT, state93.PlayerLapChangedT));
+            if (!_cfg.ColumnVisible("always") && !(m.Now - at93 is >= 0 and < BroadcastUi.CaptionHold)) return;
+            if (!qualifying && string.Equals(_cfg.OptionOr("captionMode", "full"), "onboard", StringComparison.OrdinalIgnoreCase))
+                Broadcast93RaceBoard.Onboard(c, car, s.Cars, _cfg);
+            else Broadcast93RaceBoard.Caption(c, m, _cfg, qualifying);
+            return;
+        }
         var b = BroadcastUi.State(m);
+        if (s.Kind == SessionKind.Qualify)
+        {
+            if (m.QualiLap is not { OutLap: true, InPit: false }) return;
+            double lastQuali = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
+            float qualiAlpha = _cfg.ColumnVisible("always") ? 1 : BroadcastUi.Fade(m.Now - lastQuali, _b18 ? ShowFor18 : BroadcastUi.CaptionHold);
+            BroadcastUi.WithAlpha(c, qualiAlpha, () => QualiCaption.Draw(c, m, _cfg, DesignSize.Width));
+            return;
+        }
         if (_b18) { Draw18(c, m, s, car, b); return; }
         float alpha = 1f;
         if (!_cfg.ColumnVisible("always"))
         {
             double last = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
-            alpha = BroadcastUi.Fade(m.Now - last, BroadcastUi.CaptionHold);
+            alpha = _b98 ? BroadcastUi.Fade(m.Now - last, BroadcastUi.CaptionHold) : _motion04.Evaluate(m.Now, last, last + BroadcastUi.CaptionHold);
             if (b.Winner is { } w && m.Now - w.FinishedT < BroadcastUi.WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
         }
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.DrawDriver(c, car, s.Cars, _cfg));
+        BroadcastUi.WithAlpha(c, alpha, () => { if (_b98) Broadcast98RaceBoard.Caption(c, car, s.Cars, _cfg); else CaptionPlate.DrawDriver(c, car, s.Cars, _cfg); });
     }
 
     /// <summary>2018: escolhe a variante, a janela de exibição (showFor) e desenha.</summary>
@@ -71,9 +94,10 @@ public sealed class DriverCaptionWidget : IWidget
             double hold = ShowFor18, t0 = last;
             // Resultado: entra na bandeirada do jogador. Sem espera pelo vencedor: no 2018 o banner WINNER fica no alto da tela.
             if (v == "result" && finished) t0 = _finishT;
-            alpha = BroadcastUi.Fade(m.Now - t0, hold);
+            alpha = _motion18.Evaluate(m.Now, t0, t0 + hold, b.SessionSeenT);
         }
-        BroadcastUi.WithAlpha(c, alpha, () => CaptionPlate.Draw18(c, v, car, s.Cars, started, _cfg));
+        BroadcastUi.WithReveal18(c, alpha, CaptionPlate.Caption18Width, CaptionPlate.Caption18Height,
+            () => CaptionPlate.Draw18(c, v, car, s.Cars, started, _cfg));
     }
 }
 
@@ -132,9 +156,9 @@ public static class CaptionPlate
         var t = c.Theme;
         float w = Driver18Width, top = Started18Top, bh = Caption18Height - top;
         c.FillRect(0, 0, w, top, t.PanelFill);
-        Chrome.PosBox(c, 10, 8, 40, 40, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 24 });
+        Chrome.PosBox(c, 10, 8, 40, 40, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 24 });
         Chrome.Tick(c, 60, 12, 32, tick);
-        var teamFont = t.Label with { Size = 18 };
+        var teamFont = t.Label with { Element = "name", Size = 18 };
         float teamW = team.Length > 0 ? Math.Min(c.Measure(team, teamFont), 130) : 0;
         string num = CarNumber(car);
         float nx = 74, maxName = w - nx - 64 - (teamW > 0 ? teamW + 20 : 0);
@@ -156,8 +180,8 @@ public static class CaptionPlate
         var t = c.Theme;
         var lf = t.Label with { Size = 20 };
         const float N = 50;
-        var nf = t.Numbers with { Size = N };
-        var sf = t.Label with { Size = 22 };
+        var nf = t.Numbers with { Element = "position", Size = N };
+        var sf = t.Label with { Element = "position", Size = 22 };
         float lw = c.Measure(label, lf), nw = c.Measure(number, nf), sw = suffix.Length > 0 ? c.Measure(suffix, sf) : 0;
         float total = lw + 16 + nw + (sw > 0 ? 3 + sw : 0), x0 = x + (w - total) / 2;
         float cy = y + h / 2 + 1, baseline = cy + N * 0.36f;
@@ -186,14 +210,14 @@ public static class CaptionPlate
         }
         else c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
         float box = bigBox ? h - 16 : 42, bx = x + 10, byy = bigBox ? y + 8 : y + 10;
-        Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = bigBox ? 40 : 24 });
+        Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = bigBox ? 40 : 24 });
         float tx = bx + box + 12;
         Chrome.Tick(c, tx, y + 14, bigBox ? 34 : 32, tick ?? t.AccentBar);
         float nx = tx + 14, maxName = w - (nx - x) - 56 - rightReserve;
         float nw = Chrome.TwoWeightName(c, fullName, t.Text with { Size = 26 }, nx, y + 8, 40, maxName, t.TextColor);
         if (number.Length > 0)
             c.Text(number, t.Numbers with { Size = tick is null ? 26 : 28, Italic = true, Weight = tick is null ? t.Numbers.Weight : 700 }, nx + nw + 14, y + 8, 70, 40, tick ?? t.LabelColor);
-        if (team.Length > 0) c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Size = 20 }, w - (nx - x) - 20 - rightReserve), nx, y + 50, w - (nx - x) - 16 - rightReserve, 32, t.LabelColor);
+        if (team.Length > 0) c.Text(team, BroadcastUi.Fit(c, team, t.Label with { Element = "name", Size = 20 }, w - (nx - x) - 20 - rightReserve), nx, y + 50, w - (nx - x) - 16 - rightReserve, 32, t.LabelColor);
         return nx + nw;
     }
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
@@ -213,7 +237,7 @@ public static class CaptionPlate
             var posKind = car.Position == 1 ? Chrome.CellKind.Red : Chrome.CellKind.Navy;
             if (!Chrome.TyreBox(c, x, Y0 + HeadH, 40, RowH * 2, car.TyreSupplier, t.Text with { Size = 22 }))
                 Chrome.Box(c, x, Y0 + HeadH, 40, RowH * 2, "", t.Text, Chrome.CellKind.Navy);
-            Chrome.Box(c, x + 40, Y0 + HeadH, 56, RowH * 2, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Size = 38 }, posKind, HAlign.Center, 0);
+            Chrome.Box(c, x + 40, Y0 + HeadH, 56, RowH * 2, car.Position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 38 }, posKind, HAlign.Center, 0);
             return;
         }
         if (t.Style == ThemeStyle.Broadcast98) { DriverBand(c, car, field, name, team); return; }
@@ -246,7 +270,7 @@ public static class CaptionPlate
         c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, maxW), x + 62, y1 - 1, maxW + 8, 30, t.TextColor, shadow: t.TextShadow);
         float tx = x + 62;
         if (Chrome.TyreEmblem(c, x + 25, y2 + 14, 12, car.TyreSupplier, t.Text with { Size = 17 })) { }
-        c.Text(tm, BroadcastUi.Fit(c, tm, t.Label, maxW), tx, y2, maxW + 8, 28, t.LabelColor, shadow: t.TextShadow);
+        c.Text(tm, BroadcastUi.Fit(c, tm, t.Label with { Element = "name" }, maxW), tx, y2, maxW + 8, 28, t.LabelColor, shadow: t.TextShadow);
     }
 
     static void DriverBand(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, string name, string team)
@@ -270,16 +294,16 @@ public static class CaptionPlate
         string avg = stats ? DisplayFormat.SpeedFromKph(win.AvgKmh, su).ToString("0.000", CultureInfo.InvariantCulture) + " " + (su == SpeedUnit.Mph ? "mph" : "Km/h") : "";
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
-            Chrome.Box(c, X0, Y0, WinLeftW, HeadH, "Winner", t.Text, Chrome.CellKind.Red);
+            Chrome.Box(c, X0, Y0, WinLeftW, HeadH, "Winner", t.Text with { Element = "title" }, Chrome.CellKind.Red);
             Chrome.Checkered(c, X0 + WinLeftW - 130, Y0, 130, HeadH);
             Chrome.WhiteCell(c, X0, Y0 + HeadH, WinLeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, WinLeftW - 16));
             Chrome.Box(c, X0, Y0 + HeadH + RowH, WinLeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, WinLeftW - 66), Chrome.CellKind.Navy);
             Chrome.TyreBox(c, X0 + WinLeftW - 46, Y0 + HeadH + RowH + 3, 38, RowH - 6, car.TyreSupplier, t.Text with { Size = 22 });
             float bx = X0 + WinLeftW + 6, bw = 160;
             float ch = (HeadH + 2 * RowH) / 3f;
-            var vf = t.Text with { Size = 21 };
+            var vf = t.Text with { Element = "value", Size = 21 };
             if (!stats) return;
-            Chrome.BlackCell(c, bx, Y0, bw, ch - 1, time, vf, HAlign.Right);
+            Chrome.BlackCell(c, bx, Y0, bw, ch - 1, time, vf with { Element = "time" }, HAlign.Right);
             Chrome.BlackCell(c, bx, Y0 + ch, bw, ch - 1, dist, vf, HAlign.Right);
             Chrome.BlackCell(c, bx, Y0 + 2 * ch, bw, ch - 1, avg, vf, HAlign.Right);
             return;
@@ -291,9 +315,9 @@ public static class CaptionPlate
             CyanTag(c, bw - 4, "WINNER");
             NameLines(c, car, name, team, 16, 190);
             float vr = bw - 16;
-            c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Size = 26 }, 150), vr - 160, BandTop + 2, 160, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
-            c.Text(dist, t.Label with { Size = 19 }, vr - 160, BandTop + 28, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
-            c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
+            c.Text(time, BroadcastUi.Fit(c, time, t.Numbers with { Element = "time", Size = 26 }, 150), vr - 160, BandTop + 2, 160, 28, t.ValueColor, HAlign.Right, t.ValueShadow);
+            c.Text(dist, t.Label with { Element = "value", Size = 19 }, vr - 160, BandTop + 28, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
+            c.Text(avg, BroadcastUi.Fit(c, avg, t.Label with { Element = "value", Size = 19 }, 160), vr - 160, BandTop + 47, 160, 20, t.ValueColor, HAlign.Right, t.TextShadow);
             return;
         }
         // 2018: banner / pódio próprios (Winner18, em WinnerWidget.cs).

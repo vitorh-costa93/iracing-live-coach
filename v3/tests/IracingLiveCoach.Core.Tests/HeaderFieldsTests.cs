@@ -7,6 +7,21 @@ namespace IracingLiveCoach.Core.Tests;
 
 public class HeaderFieldsTests
 {
+    [Theory]
+    [InlineData(2432.9, 2700, "40:32/45")]
+    [InlineData(59.9, 2700, "0:59/45")]
+    [InlineData(0, 2700, "0:00/45")]
+    [InlineData(3601, 5400, "60:01/90")]
+    public void Remaining_time_shows_seconds_and_scheduled_minutes(double remaining, double duration, string expected)
+        => Assert.Equal(expected, HeaderFields.Text("remain", Session with { TimeRemainSeconds = remaining, SessionDurationSeconds = duration }, null, Now));
+
+    [Fact]
+    public void Remaining_time_does_not_invent_unknown_duration_or_display_sentinels()
+    {
+        Assert.Equal("40:32", HeaderFields.Text("remain", Session with { TimeRemainSeconds = 2432 }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", Session with { TimeRemainSeconds = double.NaN }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", Session with { TimeRemainSeconds = 604800 }, null, Now));
+    }
     private static readonly SessionStatus Session = new("GT3", "RACE", 3, 24, "", "", 2150.0, 12);
     private static readonly PlayerCarStatus Player = new(54.5, "extensive usage", 92.345, 93.0, 22.2);
     private static readonly DateTime Now = new(2026, 9, 18, 13, 4, 0);
