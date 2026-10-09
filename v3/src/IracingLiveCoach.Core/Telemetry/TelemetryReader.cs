@@ -1082,13 +1082,20 @@ public class TelemetryReader : IDisposable
             catch { }
             double GapTo(int idx, double delta)
             {
-                // Kapps: the player's own best-lap time between the rear car's spot and the front car's spot.
-                float theirPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-                if ((delta > 0 ? _ownTrace.Seconds(myPct, theirPct) : _ownTrace.Seconds(theirPct, myPct)) is double own) return own;
-                // Kapps: the OTHER car's class curve between my spot and theirs (RelativeGapKapps); until that curve
-                // is known, the distance on the player's reference lap.
+                // The in-sim black box Relative: EstTime difference (smooth while the gap is steady). The player's
+                // own-lap trace (OwnLapTrace) swung 2-4.5 s around a steady 3.3 s gap, as it follows the player's
+                // speed profile instead of the real interval (live check 09/10/2026).
                 int cls = _sdk.Data.GetInt("CarIdxClass", idx);
                 double theirLap = _classLapTimeById.TryGetValue(cls, out var l) ? l : lapTime;
+                if (cls == _sdk.Data.GetInt("CarIdxClass", _playerCarIdx) && theirLap > 0)
+                {
+                    double mine = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx), theirs = _sdk.Data.GetFloat("CarIdxEstTime", idx);
+                    if (mine > 0 && theirs > 0)
+                    {
+                        double d = Math.Abs(theirs - mine) % theirLap;
+                        return Math.Min(d, theirLap - d);
+                    }
+                }
                 return RelativeGapKapps.Seconds(_sdk.Data.GetFloat("CarIdxEstTime", idx), _estCurves.At(cls, myPct), theirLap)
                     ?? Math.Abs(delta) * lapTime;
             }
