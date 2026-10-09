@@ -12,6 +12,7 @@ using System.Windows.Threading;
 using Ams2.Shared.Ipc;
 using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
+using Ams2.Shared.Victory;
 
 namespace Ams2.ControlCenter;
 
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
     readonly ObservableCollection<WidgetVm> _widgets = [];
     readonly ObservableCollection<ProfileItem> _profiles = [];
     readonly PlayerNameStore _names;
+    readonly VictoryStore _victory;
+    string? _victoryPlayerName; // nome de exibicao do carro atual (do estado de nomes), para mostrar o tema que tocaria
     readonly ObservableCollection<PlayerNameVm> _nameRows = [];
     readonly Dictionary<string, WidgetPatch> _pending = [];
     readonly DispatcherTimer _flushTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
@@ -58,6 +61,7 @@ public partial class MainWindow : Window
         string? Val(string n) { int i = Array.IndexOf(args, n); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
         _store = new ProfileStore(Val("--profiles-dir"));
         _names = new PlayerNameStore(Val("--profiles-dir")); // so usado com o host fechado; com ele aberto os nomes vao por IPC
+        _victory = new VictoryStore(Val("--profiles-dir")); // config global; com o host aberto ele grava (setVictory), fechado o CC grava direto
         _client = new IpcClient(Val("--pipe") ?? IpcProtocol.DefaultPipeName);
 
         FontCombo.ItemsSource = new[] { WidgetVm.FontDefault }.Concat(Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)).ToList();
@@ -553,7 +557,10 @@ public partial class MainWindow : Window
     // ---------------------------------------------------------------- nome do piloto (um nome de exibicao por modelo de carro)
 
     void NamesToggle_Click(object sender, RoutedEventArgs e)
-        => NamesPanel.Visibility = NamesToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+    {
+        NamesPanel.Visibility = NamesToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (NamesToggle.IsChecked == true) { VictoryToggle.IsChecked = false; VictoryPanel.Visibility = Visibility.Collapsed; }
+    }
 
     /// <summary>Host fechado: a lista vem do arquivo (e edicoes manuais dele aparecem).</summary>
     void RefreshNamesOffline()
@@ -578,6 +585,8 @@ public partial class MainWindow : Window
         NamesCurrent.Text = cur is null
             ? "Carro atual: nenhum detectado (entre numa sessão no AMS2)"
             : $"Carro atual: {cur.Model}   ·   no jogo: {(cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}   ·   nos widgets: {(cur.Name.Length > 0 ? cur.Name : cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}";
+        _victoryPlayerName = cur is null ? null : cur.Name.Length > 0 ? cur.Name : cur.OriginalName;
+        RefreshVictoryUi();
     }
 
     async Task SetNameAsync(string model, string name)

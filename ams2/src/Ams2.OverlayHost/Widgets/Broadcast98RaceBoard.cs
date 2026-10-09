@@ -104,7 +104,8 @@ public sealed class Broadcast98RaceBoard
         double age = now - tower.PageStartT;
         if (age < 0.6)
         {
-            Name(c, "CLASSIFICATION", 160, 22, 800, size: 46, element: "title");
+            c.Text("CLASSIFICATION", c.Theme.Text with { Element = "title", Size = 28 }, 40, 10, 800, 40,
+                new Color4(1f, 0.86f, 0.1f, 1f), HAlign.Left, c.Theme.TextShadow);
             return;
         }
         foreach (var row in tower.Entries)
@@ -178,8 +179,7 @@ public sealed class Broadcast98RaceBoard
         if (cfg.Id == "board" || cfg.ColumnVisible("team"))
             c.Text(BroadcastUi.Team(car).ToUpperInvariant(), BroadcastUi.Fit(c, BroadcastUi.Team(car), c.Theme.Label with { Element = "name", Size = 46 }, 900), 285, 190, 900, 60, c.Theme.LabelColor, shadow: c.Theme.TextShadow);
         Chrome.AccentBox(c, 1410, 110, 140, 135, N(car.Position), c.Theme.Numbers with { Element = "position", Size = 105 });
-        c.FillRect(1265, 15, 520, 65, new Color4(0.03f, 0.59f, 0.68f, 0.97f));
-        Name(c, "DRIVER", 1265, 15, 520, HAlign.Center, 43, element: "label");
+        // Legenda ciano (patrocinador na transmissão real) omitida: o SDK do AMS2 não fornece o dado.
     }
 
     public static void Pit(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
@@ -207,6 +207,16 @@ public sealed class Broadcast98RaceBoard
         Name(c, fullName, 285, 110, 820, size: 48);
         Chrome.TyreEmblem(c, 210, 219, 27, car.TyreSupplier, c.Theme.Text with { Size = 37 });
         if (cfg.Id == "board" || cfg.ColumnVisible("team")) c.Text(BroadcastUi.Team(car).ToUpperInvariant(), c.Theme.Label with { Element = "name", Size = 46 }, 285, 190, 800, 60, c.Theme.LabelColor, shadow: c.Theme.TextShadow);
+        if (cfg.Id == "board" || cfg.ColumnVisible("stats"))
+        {
+            // Estatística amarela: tempo total, média e distância (todos fornecidos pelo WinnerInfo).
+            var su = cfg.Fmt.SpeedOrDefault;
+            string stats = BroadcastUi.RaceTime(winner.TotalSeconds)
+                + "   " + DisplayFormat.SpeedFromKph(winner.AvgKmh, su).ToString("0.000", CultureInfo.InvariantCulture) + (su == SpeedUnit.Mph ? " Mph" : " Km/h")
+                + "   " + DisplayFormat.Distance(winner.DistanceKm, su).ToString("0.000", CultureInfo.InvariantCulture) + " " + DisplayFormat.DistanceLabel(su);
+            c.Text(stats, BroadcastUi.Fit(c, stats, c.Theme.Label with { Element = "value", Size = 36 }, 820), 285, 245, 820, 48,
+                new Color4(1f, 0.86f, 0.1f, 1f), shadow: c.Theme.TextShadow);
+        }
         Chrome.Checkered(c, 1135, 103, 130, 135);
         Name(c, "WINNER", 1300, 105, 520, size: 104, element: "title");
     }

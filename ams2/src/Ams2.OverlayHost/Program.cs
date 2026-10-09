@@ -153,6 +153,9 @@ internal static class Program
             Columns = cols,
         }).Normalized(theme.Id);
         if (o.TextScale is { } tsc) settings = (settings with { TextScale = tsc }).Normalized(theme.Id);
+        // "layoutPreview" e flag de execucao (LayoutPreview.Settings), fora do catalogo: Normalized(theme) a descarta, entao reaplica a do arquivo.
+        if (fromFile?.Option("layoutPreview") is { } lp)
+            settings = settings with { Options = new Dictionary<string, string>(settings.Options ?? [], StringComparer.OrdinalIgnoreCase) { ["layoutPreview"] = lp } };
         widget.Configure(settings);
         // Same independent geometry axes as the live window; font size is configured separately.
         float rs = settings.RenderScale;
@@ -238,7 +241,10 @@ internal static class Program
 
         var store = new ProfileStore(o.ProfilesDir);
         bool single = o.Widget is not null;
-        using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single && !o.Measure);
+        // Tema da vitoria: victory.json + victory\ na mesma raiz do perfil. --fake nunca toca sozinho (so pelo comando de teste).
+        using var victory = new Ams2.OverlayHost.Audio.VictoryService(
+            o.Fake && o.ProfilesDir is null ? Ams2.Shared.Victory.VictoryStore.InMemory() : new Ams2.Shared.Victory.VictoryStore(o.ProfilesDir), autoPlay: !o.Fake);
+        using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single && !o.Measure, victory: victory);
         if (single && (o.X is not null || o.Y is not null || o.Scale is not null))
             host.ApplyPatch(o.Widget!, new WidgetPatch { X = o.X, Y = o.Y, Scale = o.Scale });
         OverlayWindow.RegisterHotkeys();

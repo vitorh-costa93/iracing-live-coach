@@ -339,7 +339,7 @@ public sealed class QualiLapWidget : IWidget
     void Draw98(ThemeCanvas c, OverlayModel m, View v)
     {
         var t = c.Theme;
-        c.FillRect(0, 0, W98, H98, t.PanelFill);
+        // Sem painel de fundo: a referência é só texto sobre o vídeo (sombra do tema mantém a leitura).
         const float left = 165, right = 1110, col = 630, nameY = 35, timeY = 100;
         string name = _cfg.Name(v.Car, BroadcastUi.ShortName(v.Car, v.Field)).ToUpperInvariant();
         var nameFont = t.Text with { Size = 32, Weight = 400, Element = "name" };

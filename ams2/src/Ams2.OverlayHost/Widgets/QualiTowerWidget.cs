@@ -476,8 +476,8 @@ public sealed class QualiTowerWidget : IWidget
         if (age < QualiBoardTiming.TitleSeconds)
         {
             BroadcastUi.WithAlpha(c, BroadcastUi.Fade(age, QualiBoardTiming.TitleSeconds, .12, .15), () =>
-                c.Text("CLASSIFICATION", t.Text with { Element = "title", Size = 46 }, 120, 80, W98 - 240, 80,
-                    t.ValueColor, HAlign.Center, t.TextShadow));
+                c.Text("CLASSIFICATION", t.Text with { Element = "title", Size = 28 }, 40, 10, W98 - 240, 40,
+                    new Color4(1f, 0.86f, 0.1f, 1f), HAlign.Left, t.TextShadow));
             return;
         }
         var rows = m.Quali?.Rows;

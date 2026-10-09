@@ -55,7 +55,14 @@ public static class Chrome
         _ => [new(0f, C(232, 146, 22)), new(0.2f, C(217, 130, 11)), new(1f, C(184, 104, 6))],
     };
 
-    static Color4 DefaultInk(ThemeCanvas c, CellKind k) => k == CellKind.White ? c.Theme.NameCellInk : c.Theme.ValueColor;
+    // Transmissão: fundo laranja/amarelo (jogador atrás) com letra preta; verde com letra branca.
+    static Color4 DefaultInk(ThemeCanvas c, CellKind k) => k switch
+    {
+        CellKind.White => c.Theme.NameCellInk,
+        CellKind.Orange => new Color4(0f, 0f, 0f, 1f),
+        CellKind.Green => new Color4(1f, 1f, 1f, 1f),
+        _ => c.Theme.ValueColor,
+    };
 
     /// <summary>Célula com gradiente vertical sutil, canto reto e filete escuro embaixo (separa as linhas empilhadas).</summary>
     public static void Box(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, CellKind kind, HAlign align = HAlign.Left, float padX = 8, Color4? ink = null)

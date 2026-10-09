@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Ams2.OverlayHost.Audio;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Native;
 using Ams2.OverlayHost.Widgets;
@@ -26,6 +27,7 @@ internal sealed class HostController : IDisposable
     readonly Dictionary<string, WidgetWindow> _windows = [];
     readonly ConcurrentQueue<Action> _queue = new();
     readonly HashSet<string>? _only;
+    readonly VictoryService? _victory;
     IpcServer? _ipc;
     Profile _profile;
     HostTheme _theme;
@@ -34,8 +36,9 @@ internal sealed class HostController : IDisposable
     string? _session;  // grupo da sessao atual (filtro WidgetSettings.Sessions); null = nao filtra
     DateTime? _saveAt;
 
-    public HostController(OverlayDataProvider provider, ProfileStore store, bool fake, string? themeId, string? profileName, string[]? onlyWidgets, bool persist)
+    public HostController(OverlayDataProvider provider, ProfileStore store, bool fake, string? themeId, string? profileName, string[]? onlyWidgets, bool persist, VictoryService? victory = null)
     {
+        _victory = victory;
         _provider = provider; _store = store; _fake = fake; _persist = persist;
         _only = onlyWidgets is { Length: > 0 } ? new HashSet<string>(onlyWidgets, StringComparer.OrdinalIgnoreCase) : null;
         int sw = Win32.GetSystemMetrics(0), sh = Win32.GetSystemMetrics(1);
@@ -166,6 +169,23 @@ internal sealed class HostController : IDisposable
             }
             case IpcCommands.ApplySuggestedNames:
                 _provider.Names?.ApplySuggestedToUnnamed();
+                break;
+            case IpcCommands.SetVictory:
+            {
+                if (_victory is null) return Fail("Tema da vitoria indisponivel.");
+                if (req.Victory is null) return Fail("setVictory exige Victory.");
+                _victory.SetConfig(req.Victory);
+                break;
+            }
+            case IpcCommands.TestVictory:
+            {
+                if (_victory is null) return Fail("Tema da vitoria indisponivel.");
+                var err = _victory.Test(req.VictoryTheme, _provider.Current.Session?.PlayerCar?.Name);
+                if (err is not null) return Fail(err);
+                break;
+            }
+            case IpcCommands.StopVictory:
+                _victory?.Stop();
                 break;
             default:
                 return Fail($"Comando desconhecido: {req.Cmd}.");
@@ -338,6 +358,7 @@ internal sealed class HostController : IDisposable
             if (_saveAt is { } at && DateTime.UtcNow >= at) SaveNow();
 
             var model = _provider.Current;
+            _victory?.OnModel(model);
             // Regra unica: widgets so aparecem com o jogador no carro (ou editando o layout). Oculto = janelas escondidas, sem Render e sem vblank.
             bool gate = _edit || model.PlayerDriving;
             if (gate != _gate) { _gate = gate; foreach (var w in _windows.Values) w.SetGate(gate); }

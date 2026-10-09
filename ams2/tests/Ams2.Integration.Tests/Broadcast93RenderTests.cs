@@ -119,7 +119,7 @@ public class Broadcast93RenderTests
         var updated = m with { Now = 101, Session = m.Session with { Cars = m.Session.Cars.Select(car => car.IsPlayer ? car with { BestLapTime = 80.123 } : car).ToArray() } };
         var actual = Render(c => board.Draw(c, updated, cfg));
         Assert.Contains(actual, b => b != 0);
-        Assert.Equal(Render(c => Broadcast93RaceBoard.Fastest(c, updated.Session!.PlayerCar!, updated.Session.Cars, cfg)), actual);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Fastest(c, updated.Session!.PlayerCar!, updated.Session.Cars, cfg, updated.Session.TrackLength)), actual);
         // Attaching after that time already exists seeds the baseline without a stale event.
         var attached = new Broadcast93RaceBoard();
         Assert.DoesNotContain(Render(c => attached.Draw(c, updated, cfg)), b => b != 0);

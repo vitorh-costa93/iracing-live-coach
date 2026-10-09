@@ -23,6 +23,12 @@ public static class IpcCommands
     public const string ClearPlayerName = "clearPlayerName";
     /// <summary>Aplica o nome sugerido a todo modelo visto que ainda nao tem nome.</summary>
     public const string ApplySuggestedNames = "applySuggestedNames";
+    /// <summary>Grava a config do tema da vitoria (Victory) no host (victory.json).</summary>
+    public const string SetVictory = "setVictory";
+    /// <summary>Toca o tema da vitoria: VictoryTheme (Default/Senna/Barrichello/Massa) ou, vazio, o do nome atual do piloto.</summary>
+    public const string TestVictory = "testVictory";
+    /// <summary>Para o audio do tema da vitoria.</summary>
+    public const string StopVictory = "stopVictory";
 }
 
 public static class IpcEvents
@@ -73,6 +79,10 @@ public sealed record IpcMessage
     /// <summary>Nome de exibicao de setPlayerName.</summary>
     public string? Name { get; init; }
     public Profile? Data { get; init; }
+    /// <summary>Config do tema da vitoria de setVictory.</summary>
+    public Ams2.Shared.Victory.VictoryConfig? Victory { get; init; }
+    /// <summary>Tema de testVictory (opcional).</summary>
+    public string? VictoryTheme { get; init; }
     public HostState? State { get; init; }
 }
 

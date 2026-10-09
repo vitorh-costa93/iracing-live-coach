@@ -623,11 +623,12 @@ public sealed class StandingsWidget : IWidget
         c.Text(b, bf, sx + aw, y + 3, bw + 6, BattleTitleH - 3, t.TitleColor);
         y += BattleTitleH;
         bool gapCol = _cfg.ColumnVisible("gap");
+        bool centerGap = mode is "gap" or "interval" && back.Car.PitState == PitState.None;
         float nx = _cfg.ColumnVisible("name") ? L.Name : L.Box + Box18W + 10;
         float NameW(StandingRow r) => (gapCol ? x0 + tw - 10 - ValueW18(c, t, m,
             r.Car.Index == back.Car.Index && (mode is "gap" or "interval") ? "interval" : mode, active, r) - 14 : x0 + tw - 8) - nx;
         var nf = MinFont(BroadcastUi.Fit(c, FullName18(front, field), t.Text, NameW(front)), BroadcastUi.Fit(c, FullName18(back, field), t.Text, NameW(back)));
-        foreach (var (r, isBack) in new[] { (front, false), (back, true) })
+        foreach (var r in new[] { front, back })
         {
             c.FillRect(x0, y, tw, BattlePitch - 2, dark);
             float by = y + (BattlePitch - 2 - Box18) / 2;
@@ -636,16 +637,22 @@ public sealed class StandingsWidget : IWidget
             string nm = FullName18(r, field);
             float nw = NameW(r);
             c.Text(nm, BroadcastUi.Fit(c, nm, nf, nw), nx, by, nw + 8, Box18, r.IsPlayer ? t.PlayerColor : t.TextColor);
-            if (gapCol)
-            {
-                if (isBack && mode is "gap" or "interval" && r.Car.PitState == PitState.None)
-                {
-                    string v = HeldText18(active, r, "interval");
-                    c.Text(v, BroadcastUi.Fit(c, v, t.Numbers with { Element = "gap" }, Gap18W - 14), L.Gap, by, Gap18W - 10, Box18, t.ValueColor, HAlign.Right);
-                }
-                else DrawValue18(c, t, m, mode, active, r, L.Gap, by, Gap18W, Box18, fastest);
-            }
+            // Com gap/interval o valor vai ao centro, entre as faixas; senão cada faixa mostra o seu.
+            if (gapCol && !centerGap) DrawValue18(c, t, m, mode, active, r, L.Gap, by, Gap18W, Box18, fastest);
             y += BattlePitch;
+        }
+        if (gapCol && centerGap)
+        {
+            // Pílula central a cavalo sobre a divisa das faixas: seta para cima, intervalo, seta para baixo.
+            string v = HeldText18(active, back, "interval");
+            var vf = BroadcastUi.Fit(c, v, t.Numbers with { Element = "gap", Size = 20 }, 130);
+            float pw = 190, ph = 30, px = x0 + (tw - pw) / 2, py = y - BattlePitch - 1 - ph / 2;
+            c.FillRect(px, py, pw, ph, new Vortice.Win32.Numerics.Color4(0f, 0f, 0f, 0.85f));
+            c.FillRect(px, py, pw, 2, t.AccentBar);
+            c.Text(v, vf, px + 30, py, pw - 60, ph, t.ValueColor, HAlign.Center);
+            float cy = py + ph / 2;
+            c.FillPolygon([new(px + 8, cy + 6), new(px + 16, cy - 6), new(px + 24, cy + 6)], t.ValueColor);
+            c.FillPolygon([new(px + pw - 24, cy - 6), new(px + pw - 16, cy + 6), new(px + pw - 8, cy - 6)], t.ValueColor);
         }
         return y + 4 + (Pitch18 - Box18) / 2;
     }

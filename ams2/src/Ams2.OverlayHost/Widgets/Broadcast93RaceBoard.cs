@@ -46,7 +46,7 @@ public sealed class Broadcast93RaceBoard
         _observed = true;
         var mode = Select(m);
         if (mode == Mode.Gap) Gap(c, m.Board!.Gap93!, cfg);
-        else if (_fastest is not null && m.Now - _fastestAt is >= 0 and < 7 && !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase)) Fastest(c, _fastest, session.Cars, cfg);
+        else if (_fastest is not null && m.Now - _fastestAt is >= 0 and < 7 && !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase)) Fastest(c, _fastest, session.Cars, cfg, session.TrackLength);
         else
         {
             var state = BroadcastUi.State(m);
@@ -87,14 +87,33 @@ public sealed class Broadcast93RaceBoard
     public static void Onboard(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
         => Text(c, cfg.Name(car, car.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "").ToUpperInvariant(), 165, 180, 1250, "name", 38, c.Theme.TextColor);
 
-    public static void Fastest(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
+    /// <summary>Placa compacta: título ciano + tempo à direita, nome (SOBRENOME em caixa alta), equipe em amarelo e,
+    /// se a extensão da pista for conhecida, a velocidade média da volta ("138.00 Kmh / 85.75 Mph"). Sem retrato/número.</summary>
+    public static void Fastest(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg, double trackLengthM = 0)
     {
         if (!double.IsFinite(car.BestLapTime) || car.BestLapTime <= 0) return;
-        c.FillRect(165, 0, 1590, 280, c.Theme.PanelFill);
-        Text(c, "FASTEST LAP", 210, 5, 1030, "title", 40, c.Theme.ReadoutColor);
-        Text(c, cfg.Fmt.LapTime is null ? Broadcast93QualiBoard.Time(car.BestLapTime) : cfg.Fmt.FormatLapTime(car.BestLapTime), 1260, 5, 440, "time", 50, c.Theme.TextColor, HAlign.Right);
-        Text(c, cfg.Name(car, BroadcastUi.ShortName(car, field)).ToUpperInvariant(), 210, 100, 1420, "name", 38, c.Theme.TextColor);
-        if (cfg.Id == "board" || cfg.ColumnVisible("team")) Text(c, BroadcastUi.Team(car).ToUpperInvariant(), 210, 190, 1420, "label", 38, c.Theme.ValueColor);
+        bool avg = double.IsFinite(trackLengthM) && trackLengthM > 0;
+        bool team = cfg.Id == "board" || cfg.ColumnVisible("team");
+        float rows = 2 + (team ? 1 : 0) + (avg ? 1 : 0);
+        c.FillRect(165, 30, 900, 20 + rows * 56, c.Theme.PanelFill);
+        Text(c, "FASTEST LAP", 200, 34, 400, "title", 36, Cyan);
+        Text(c, cfg.Fmt.LapTime is null ? Broadcast93QualiBoard.Time(car.BestLapTime) : cfg.Fmt.FormatLapTime(car.BestLapTime), 620, 34, 400, "time", 40, c.Theme.TextColor);
+        string name = cfg.Name(car, BroadcastUi.ShortName(car, field));
+        if (cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true)
+        {
+            string full = car.Name.Trim();
+            int space = full.LastIndexOf(' ');
+            name = space < 0 ? full.ToUpperInvariant() : full[..(space + 1)] + full[(space + 1)..].ToUpperInvariant();
+        }
+        float y = 34 + 56;
+        Text(c, name, 200, y, 840, "name", 36, c.Theme.TextColor);
+        y += 56;
+        if (team) { Text(c, BroadcastUi.Team(car).ToUpperInvariant(), 200, y, 840, "label", 34, Yellow); y += 56; }
+        if (avg)
+        {
+            double kmh = trackLengthM / 1000 / (car.BestLapTime / 3600);
+            Text(c, kmh.ToString("0.00", CultureInfo.InvariantCulture) + " Kmh / " + (kmh * 0.621371).ToString("0.00", CultureInfo.InvariantCulture) + " Mph", 200, y, 840, "value", 32, c.Theme.TextColor);
+        }
     }
 
     public static void Gap(ThemeCanvas c, BoardGap93 gap, WidgetSettings cfg)

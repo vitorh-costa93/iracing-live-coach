@@ -36,6 +36,8 @@
                     </Border>
                     <ToggleButton x:Name="NamesToggle" Style="{StaticResource ToggleButtonStyle}" Content="Nome do piloto" Margin="0,0,8,0" Click="NamesToggle_Click"
                                   ToolTip="Nome de exibição do seu carro nos widgets, um por modelo de carro (o jogo usa o nome do perfil)."/>
+                    <ToggleButton x:Name="VictoryToggle" Style="{StaticResource ToggleButtonStyle}" Content="Tema da vitória" Margin="0,0,8,0" Click="VictoryToggle_Click"
+                                  ToolTip="Toca um áudio seu quando você vence uma corrida. O tema é escolhido pelo nome do piloto (Senna, Barrichello, Massa; outro nome = Padrão)."/>
                     <ToggleButton x:Name="EditToggle" Style="{StaticResource ToggleButtonStyle}" Content="Editar layout" Click="EditToggle_Click"
                                   ToolTip="Torna as janelas arrastáveis: arraste para mover (grade/encaixe, Alt desliga), roda do mouse ou canto inferior direito para a escala. Atalho no jogo: Ctrl+Alt+E."/>
                 </StackPanel>
@@ -406,6 +408,65 @@
                     </ItemsControl>
                 </ScrollViewer>
             </DockPanel>
+        </Border>
+
+        <!-- ===== Tema da vitoria (audio do usuario, escolhido pelo nome do piloto) ===== -->
+        <Border x:Name="VictoryPanel" Grid.Row="3" Visibility="Collapsed" Padding="24,12,24,14" Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0">
+            <StackPanel>
+                <DockPanel Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="Parar" Padding="12,3" Click="VictoryStop_Click" ToolTip="Interrompe o áudio que estiver tocando."/>
+                    <TextBlock Text="TEMA DA VITÓRIA" Style="{StaticResource SectionTitle}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <CheckBox x:Name="VictoryEnabled" Content="Ativar" VerticalAlignment="Center" Margin="0,0,16,0" Click="VictoryEnabled_Click"
+                              ToolTip="Toca o áudio quando você vence uma corrida (nunca em treino, classificação ou replay)."/>
+                    <TextBlock Text="Volume" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Slider x:Name="VictoryVolume" Width="160" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="VictoryVolume_Changed"/>
+                    <TextBlock x:Name="VictoryVolumeText" Width="40" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VictoryCurrent" Margin="16,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <Grid Margin="0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Padrão" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VictoryFileDefault" Grid.Column="1" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                    <Button Grid.Column="2" Content="Escolher arquivo…" Tag="Default" Padding="10,3" Margin="0,0,6,0" Click="VictoryPick_Click"/>
+                    <Button Grid.Column="3" Content="Testar" Tag="Default" Padding="10,3" Margin="0,0,6,0" Click="VictoryTest_Click"/>
+                    <Button Grid.Column="4" Content="Limpar" Tag="Default" Padding="10,3" Click="VictoryClear_Click"/>
+                </Grid>
+                <Grid Margin="0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Senna" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VictoryFileSenna" Grid.Column="1" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                    <Button Grid.Column="2" Content="Escolher arquivo…" Tag="Senna" Padding="10,3" Margin="0,0,6,0" Click="VictoryPick_Click"/>
+                    <Button Grid.Column="3" Content="Testar" Tag="Senna" Padding="10,3" Margin="0,0,6,0" Click="VictoryTest_Click"/>
+                    <Button Grid.Column="4" Content="Limpar" Tag="Senna" Padding="10,3" Click="VictoryClear_Click"/>
+                </Grid>
+                <Grid Margin="0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Barrichello" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VictoryFileBarrichello" Grid.Column="1" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                    <Button Grid.Column="2" Content="Escolher arquivo…" Tag="Barrichello" Padding="10,3" Margin="0,0,6,0" Click="VictoryPick_Click"/>
+                    <Button Grid.Column="3" Content="Testar" Tag="Barrichello" Padding="10,3" Margin="0,0,6,0" Click="VictoryTest_Click"/>
+                    <Button Grid.Column="4" Content="Limpar" Tag="Barrichello" Padding="10,3" Click="VictoryClear_Click"/>
+                </Grid>
+                <Grid Margin="0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Massa" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VictoryFileMassa" Grid.Column="1" Style="{StaticResource Muted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"/>
+                    <Button Grid.Column="2" Content="Escolher arquivo…" Tag="Massa" Padding="10,3" Margin="0,0,6,0" Click="VictoryPick_Click"/>
+                    <Button Grid.Column="3" Content="Testar" Tag="Massa" Padding="10,3" Margin="0,0,6,0" Click="VictoryTest_Click"/>
+                    <Button Grid.Column="4" Content="Limpar" Tag="Massa" Padding="10,3" Click="VictoryClear_Click"/>
+                </Grid>
+                <TextBlock Style="{StaticResource Muted}" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="Escolha mp3, wav, wma ou m4a: o arquivo é copiado para a pasta do app. O tema vem do nome do piloto (sobrenome Senna, Barrichello ou Massa); outro nome, ou tema sem arquivo, usa o Padrão."/>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>
