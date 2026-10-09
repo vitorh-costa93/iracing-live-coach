@@ -209,7 +209,7 @@ public sealed class QualiResultWidget : IWidget
         float hw = Pos04 + Name04 + Time04 - Lab04;
         Chrome.WhiteCell(c, x + Lab04, y, hw, H04, "CLASSIFICATION", BroadcastUi.Fit(c, "CLASSIFICATION", t.Text, hw - 16), HAlign.Center);
         y += H04 + Lead04;
-        int cut = Cutoff;
+        int cut = 0; // 2004–2005: sem posições eliminadas coloridas (classificação "Q" única)
         foreach (var r in Pick(q.Rows, Rows))
         {
             x = X04;

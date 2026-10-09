@@ -477,18 +477,17 @@ public class ThemeOptionsTests
     }
 
     [Fact]
-    public void Quali_tower_2004_options_rows_near_elimination_and_clock()
+    public void Quali_tower_2004_options_rows_near_and_clock()
     {
         var defs = WidgetCatalog.OptionsFor("f1-2004", "qualitower");
-        Assert.Equal(["rows", "nearCount", "eliminationFrom", "showClock"], defs.Select(d => d.Id));
+        Assert.Equal(["rows", "nearCount", "showClock"], defs.Select(d => d.Id));
         Assert.Equal((OptionKind.Number, "5", 1.0, 20.0), (defs[0].Kind, defs[0].Default, defs[0].Min, defs[0].Max));
         Assert.Equal((OptionKind.Number, "3", 0.0, 10.0), (defs[1].Kind, defs[1].Default, defs[1].Min, defs[1].Max));
-        Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (defs[2].Kind, defs[2].Default, defs[2].Min, defs[2].Max));
-        Assert.Equal((OptionKind.Toggle, "true"), (defs[3].Kind, defs[3].Default));
+        Assert.Equal((OptionKind.Toggle, "true"), (defs[2].Kind, defs[2].Default));
         Assert.All(defs, d => Assert.False(string.IsNullOrWhiteSpace(d.Label)));
-        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "5", ["nearCount"] = "3", ["eliminationFrom"] = "0", ["showClock"] = "true" } }.Normalized("f1-2004").Options);
+        Assert.Null(new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "5", ["nearCount"] = "3", ["showClock"] = "true" } }.Normalized("f1-2004").Options);
         var s = new WidgetSettings { Id = "qualitower", Options = new() { ["rows"] = "0", ["nearCount"] = "50", ["eliminationFrom"] = "16", ["showClock"] = "False" } }.Normalized("f1-2004");
-        Assert.Equal(new Dictionary<string, string> { ["rows"] = "1", ["nearCount"] = "10", ["eliminationFrom"] = "16", ["showClock"] = "false" }, s.Options);
+        Assert.Equal(new Dictionary<string, string> { ["rows"] = "1", ["nearCount"] = "10", ["showClock"] = "false" }, s.Options);
     }
 
     [Fact]
@@ -596,7 +595,7 @@ public class ThemeOptionsTests
 
     [Theory]
     [InlineData("f1-2018", new[] { "rows", "eliminationFrom", "maxEliminated", "showFor", "always" })]
-    [InlineData("f1-2004", new[] { "rows", "eliminationFrom", "showFor", "always" })]
+    [InlineData("f1-2004", new[] { "rows", "showFor", "always" })]
     [InlineData("f1-1998", new[] { "rows", "eliminationFrom", "showFor", "always" })]
     public void Quali_result_options_per_theme(string theme, string[] ids)
     {
@@ -604,7 +603,7 @@ public class ThemeOptionsTests
         Assert.Equal(ids, defs.Select(d => d.Id));
         OptionDef D(string id) => defs.Single(d => d.Id == id);
         Assert.Equal((OptionKind.Number, "10", 3.0, 30.0), (D("rows").Kind, D("rows").Default, D("rows").Min, D("rows").Max));
-        Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (D("eliminationFrom").Kind, D("eliminationFrom").Default, D("eliminationFrom").Min, D("eliminationFrom").Max));
+        if (theme != "f1-2004") Assert.Equal((OptionKind.Number, "0", 0.0, 30.0), (D("eliminationFrom").Kind, D("eliminationFrom").Default, D("eliminationFrom").Min, D("eliminationFrom").Max));
         Assert.Equal((OptionKind.Number, "15", 5.0, 60.0), (D("showFor").Kind, D("showFor").Default, D("showFor").Min, D("showFor").Max));
         Assert.Equal((OptionKind.Toggle, "false"), (D("always").Kind, D("always").Default));
         if (theme == T2018) Assert.Equal((OptionKind.Number, "5", 3.0, 5.0), (D("maxEliminated").Kind, D("maxEliminated").Default, D("maxEliminated").Min, D("maxEliminated").Max));
@@ -613,7 +612,8 @@ public class ThemeOptionsTests
         // Padroes nao sao gravados; numeros limitados; toggle canonico; invalidos e opcoes de outros temas descartados.
         Assert.Null(new WidgetSettings { Id = "qualiresult", Options = defs.ToDictionary(d => d.Id, d => d.Default) }.Normalized(theme).Options);
         var s = new WidgetSettings { Id = "qualiresult", Options = new() { ["rows"] = "1", ["eliminationFrom"] = "99", ["showFor"] = "100", ["always"] = "True", ["bogus"] = "1", ["mode"] = "fastesttyre" } }.Normalized(theme);
-        Assert.Equal(new Dictionary<string, string> { ["rows"] = "3", ["eliminationFrom"] = "30", ["showFor"] = "60", ["always"] = "true" }, s.Options);
+        if (theme == "f1-2004") Assert.Equal(new Dictionary<string, string> { ["rows"] = "3", ["showFor"] = "60", ["always"] = "true" }, s.Options);
+        else Assert.Equal(new Dictionary<string, string> { ["rows"] = "3", ["eliminationFrom"] = "30", ["showFor"] = "60", ["always"] = "true" }, s.Options);
         Assert.Equal("5", new WidgetSettings { Id = "qualiresult", Options = new() { ["showFor"] = "1" } }.Normalized(theme).Option("showFor"));
         if (theme == T2018) Assert.Equal("3", new WidgetSettings { Id = "qualiresult", Options = new() { ["maxEliminated"] = "1" } }.Normalized(theme).Option("maxEliminated"));
         else Assert.Null(new WidgetSettings { Id = "qualiresult", Options = new() { ["maxEliminated"] = "4" } }.Normalized(theme).Options);

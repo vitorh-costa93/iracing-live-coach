@@ -651,10 +651,9 @@ public sealed class CustomizationPngTests
         var d = QualiTower(null, theme: T);
         Assert.Equal((400, 314), (d.W, d.H));
         Assert.True(d.Png.Length > 2000);
-        // Zona de eliminacao: so a cor dos numeros muda (jogador P8 no corte), a janela nao.
+        // 2004: classificacao "Q" unica, sem zona de eliminacao colorida (a opcao legada e ignorada).
         var zone = QualiTower(new() { ["eliminationFrom"] = "8" }, theme: T);
-        Assert.Equal((d.W, d.H), (zone.W, zone.H));
-        Assert.NotEqual(d.Png, zone.Png);
+        Assert.Equal(d.Png, zone.Png);
         // Linhas do topo / janela ao redor do jogador mudam a altura reservada.
         Assert.True(QualiTower(new() { ["rows"] = "2" }, theme: T).H < d.H);
         Assert.True(QualiTower(new() { ["nearCount"] = "6" }, theme: T).H > d.H);
@@ -814,7 +813,7 @@ public sealed class CustomizationPngTests
         // Linhas e eliminados: menos linhas = janela menor (1998: duas colunas); eliminados mudam o desenho.
         Assert.True(QualiResult(theme, 50, new() { ["rows"] = "4" }).H < h);
         var zone = QualiResult(theme, 50, new() { ["eliminationFrom"] = "4" });
-        Assert.NotEqual(shown.Png, zone.Png);
+        if (theme == "f1-2004") Assert.Equal(shown.Png, zone.Png); else Assert.NotEqual(shown.Png, zone.Png);
     }
 
     [Fact]

@@ -257,7 +257,6 @@ public static class WidgetCatalog
             [
                 new("rows", "Linhas do topo (inclui o líder)", OptionKind.Number, null, "5", Min: 1, Max: 20),
                 new("nearCount", "Pilotos ao redor do jogador", OptionKind.Number, null, "3", Min: 0, Max: 10),
-                new("eliminationFrom", "Zona de eliminação: posição do primeiro eliminado (0 = desligada)", OptionKind.Number, null, "0", Min: 0, Max: 30),
                 new("showClock", "Caixa do relógio da sessão (Q | m:ss)", OptionKind.Toggle, null, "true"),
             ],
             // Barra de volta do 2004: nome em celula branca, tempo em celula preta, faixa de setores e [posicao][+0.471] em laranja.
@@ -272,7 +271,6 @@ public static class WidgetCatalog
             ["qualiresult"] =
             [
                 new("rows", "Linhas da lista (o jogador sempre aparece)", OptionKind.Number, null, "10", Min: 3, Max: 30),
-                new("eliminationFrom", "Eliminados: posição do primeiro eliminado (0 = desligado)", OptionKind.Number, null, "0", Min: 0, Max: 30),
                 new("showFor", "Tempo na tela após o fim da sessão (s)", OptionKind.Number, null, "15", Min: 5, Max: 60),
                 new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
             ],

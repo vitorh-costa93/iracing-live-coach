@@ -398,7 +398,7 @@ public sealed class QualiTowerWidget : IWidget
             return;
         }
         var rows = q.Rows;
-        int cut = Cutoff;
+        int cut = 0; // 2004–2005: classificação "Q" única, sem zona de eliminação colorida
 
         // 1ª linha: [1 vermelho][SIGLA em célula branca][tempo do líder em caixa preta] (sem tempo: o estado em texto pequeno).
         var lead = rows[0];
