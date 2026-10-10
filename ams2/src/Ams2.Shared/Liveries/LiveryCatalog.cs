@@ -9,6 +9,8 @@ public sealed record LiveryEntry(string Livery, string Driver, string Country, s
 {
     /// <summary>Texto usado na busca do seletor.</summary>
     public string SearchText => $"{Livery} {Driver} {Country} {Team} {Model}";
+    /// <summary>Classe do jogo (ex.: "F-V8_Gen1"), do arquivo de pilotos de IA que cita a pintura; "" se nenhum cita.</summary>
+    public string Class { get; init; } = "";
 }
 
 /// <summary>
@@ -101,13 +103,13 @@ public static class LiveryCatalog
                         string team = TeamOf(lo);
                         drivers.TryGetValue(live, out var ai);
                         string driver = ai.Name ?? NumberSuffix.Replace(live, "").Trim();
-                        result.TryAdd((model, live), new LiveryEntry(live, driver, ai.Country ?? "", team, model));
+                        result.TryAdd((model, live), new LiveryEntry(live, driver, ai.Country ?? "", team, model) { Class = ai.Class ?? "" });
                     }
                 }
             }
         foreach (var (live, ai) in drivers)
             if (!result.Keys.Any(k => string.Equals(k.Item2, live, StringComparison.OrdinalIgnoreCase)))
-                result[(ai.Class, live)] = new LiveryEntry(live, ai.Name, ai.Country, "", ai.Class);
+                result[(ai.Class, live)] = new LiveryEntry(live, ai.Name, ai.Country, "", ai.Class) { Class = ai.Class };
 
         return result.Values.OrderBy(e => e.Driver, StringComparer.CurrentCultureIgnoreCase).ThenBy(e => e.Model, StringComparer.OrdinalIgnoreCase).ToList();
     }

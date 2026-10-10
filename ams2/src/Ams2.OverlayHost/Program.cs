@@ -3,6 +3,7 @@ using Ams2.Core.Calc;
 using Ams2.Core.Reading;
 using Ams2.OverlayHost.Data;
 using Ams2.OverlayHost.Host;
+using Ams2.Shared.Liveries;
 using Ams2.Shared.Ipc;
 using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
@@ -201,6 +202,12 @@ internal static class Program
     }
 
     /// <summary>--player-name: espera o primeiro quadro com o jogador (ate ~3 s) e define o nome para o modelo dele.</summary>
+    static string? ReadSavedGamePath(PlayerNameStore names)
+    {
+        try { string f = Path.Combine(Path.GetDirectoryName(names.FilePath) ?? "", "game-path.txt"); return File.Exists(f) ? File.ReadAllText(f).Trim() : null; }
+        catch (IOException) { return null; }
+    }
+
     static void ForceName(OverlayDataProvider provider, PlayerNameStore names, string name)
     {
         var until = DateTime.UtcNow.AddSeconds(3);
@@ -235,7 +242,10 @@ internal static class Program
         var names = o.PlayerName is not null || (o.Fake && o.ProfilesDir is null) ? PlayerNameStore.InMemory() : new PlayerNameStore(o.ProfilesDir);
         // Melhores de largada (RACE START 2018): launch.json em --profiles-dir (ou %AppData%); --fake sem --profiles-dir fica so em memoria.
         var launch = o.Fake && o.ProfilesDir is null ? FakeRawSource.FakeLaunchStore() : new LaunchStore(LaunchStore.DefaultPath(o.ProfilesDir));
-        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock), names: names, launch: launch);
+        // Pintura escolhida no jogo, lida da memoria do AMS2 (so no jogo real, com a pasta do jogo conhecida).
+        using var liveries = o.Fake || o.PlayerName is not null ? null
+            : LiveryDetector.TryCreate(LiveryCatalog.FindGameRoot(ReadSavedGamePath(names)));
+        using var provider = new OverlayDataProvider(FakeOrReal(o.Fake, clock), clock, inputSource: () => FakeOrReal(o.Fake, clock), names: names, launch: launch, liveries: liveries);
         provider.Start(60);
         if (o.PlayerName is not null) ForceName(provider, names, o.PlayerName);
 

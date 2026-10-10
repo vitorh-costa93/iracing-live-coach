@@ -1,6 +1,7 @@
 using Ams2.Core;
 using Ams2.Core.Calc;
 using Ams2.Core.Reading;
+using Ams2.Shared.Liveries;
 using Ams2.Shared.PlayerNames;
 
 namespace Ams2.OverlayHost.Data;
@@ -96,12 +97,15 @@ public sealed class OverlayDataProvider : IDisposable
     uint _lastRadarSequence = uint.MaxValue;
     bool _wasRadarConnected;
     readonly PlayerNameStore? _names;
+    readonly LiveryDetector? _liveries;
+    string _liveryModel = "";
     double _namesRefreshAt;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
-        Func<IRawMemorySource>? inputSource = null, PlayerNameStore? names = null, LaunchStore? launch = null)
+        Func<IRawMemorySource>? inputSource = null, PlayerNameStore? names = null, LaunchStore? launch = null, LiveryDetector? liveries = null)
     {
         _names = names;
+        _liveries = liveries;
         _launch = new LaunchTracker(launch);
         Inputs = new InputRing(clock);
         if (inputSource is not null) _sampler = new InputSampler(inputSource(), Inputs, clock, InputStats);
@@ -201,6 +205,13 @@ public sealed class OverlayDataProvider : IDisposable
         if (now >= _namesRefreshAt || now < _namesRefreshAt - 5) { _namesRefreshAt = now + 1; _names.Refresh(); }
         var pc = s.PlayerCar;
         _names.Observe(pc?.CarName ?? "", pc?.OriginalName.Length > 0 ? pc.OriginalName : pc?.Name ?? "");
+        if (_liveries is not null)
+        {
+            // Pintura lida do jogo (varredura em thread propria, so ao entrar numa sessao ou trocar de carro); a escolha manual e o plano B.
+            string model = pc is null ? "" : PlayerNameStore.ModelKey(pc.CarName);
+            if (model != _liveryModel) { _liveryModel = model; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
+            return PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
+        }
         return PlayerIdentity.Apply(s, _names.Get);
     }
 
