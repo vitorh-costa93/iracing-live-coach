@@ -4,7 +4,7 @@ using Ams2.Shared.PlayerNames;
 
 namespace Ams2.Integration.Tests;
 
-/// <summary>Nome de exibicao do jogador: comandos IPC (get/set/clear/aplicar sugeridos), persistencia e --png --player-name. Tudo com o escritor falso.</summary>
+/// <summary>Nome de exibicao do jogador: comandos IPC (get/set/clear da pintura: piloto, pais, equipe), persistencia e --png --player-name. Tudo com o escritor falso.</summary>
 [Collection("host")]
 public sealed class PlayerNamesIpcTests : IDisposable
 {
@@ -32,7 +32,7 @@ public sealed class PlayerNamesIpcTests : IDisposable
     }
 
     [Fact]
-    public async Task Ipc_get_set_clear_and_apply_suggested_names_live_and_persisted()
+    public async Task Ipc_get_set_clear_player_identity_live_and_persisted()
     {
         if (IracingRunning) return;
         var exe = FindHostExe();
@@ -44,7 +44,7 @@ public sealed class PlayerNamesIpcTests : IDisposable
         client.Start();
         await WaitFor(() => client.Connected, 10000, "cliente nao conectou ao host");
 
-        // O host detecta o carro do jogador do escritor falso: modelo sem sufixo, nome do jogo e sugestao (primeiro outro carro do modelo).
+        // O host detecta o carro do jogador do escritor falso: modelo sem sufixo e nome do jogo.
         PlayerNameEntry? entry = null;
         await WaitFor(() =>
         {
@@ -54,27 +54,23 @@ public sealed class PlayerNamesIpcTests : IDisposable
         }, 8000, "o host nao detectou o carro do jogador");
         Assert.Equal("Formula Classic Gen2", entry!.Model);
         Assert.Equal("Player", entry.OriginalName);
-        Assert.Equal("Michael Schumacher", entry.Suggested);
         Assert.Equal("", entry.Name);
 
         // set: aplica ao vivo (resposta ja traz o estado) e persiste em disco na hora.
-        var st = (await client.SendAsync(IpcCommands.SetPlayerName, m => m with { Model = "formula classic gen2 (M)", Name = "Miko Hanninen" }))!;
-        Assert.Equal("Miko Hanninen", st.PlayerNames.Entries.Single(e => e.Model == "Formula Classic Gen2").Name);
+        var st = (await client.SendAsync(IpcCommands.SetPlayerName, m => m with { Model = "formula classic gen2 (M)", Livery = "1986 McLaren #1 - A. Prost", Name = "Miko Hanninen", Country = "FIN", Team = "McLaren" }))!;
+        var set = st.PlayerNames.Entries.Single(e => e.Model == "Formula Classic Gen2");
+        Assert.Equal(("1986 McLaren #1 - A. Prost", "Miko Hanninen", "FIN", "McLaren"), (set.Livery, set.Name, set.Country, set.Team));
         var file = Path.Combine(_dir, PlayerNameStore.FileName);
-        Assert.Equal("Miko Hanninen", new PlayerNameStore(_dir).Get("Formula Classic Gen2"));
+        Assert.Equal("McLaren", new PlayerNameStore(_dir).Get("Formula Classic Gen2")!.Team);
 
         // clear
         st = (await client.SendAsync(IpcCommands.ClearPlayerName, m => m with { Model = "Formula Classic Gen2" }))!;
         Assert.Equal("", st.PlayerNames.Entries.Single().Name);
         Assert.Null(new PlayerNameStore(_dir).Get("Formula Classic Gen2"));
 
-        // aplicar sugeridos aos que nao tem nome
-        st = (await client.SendAsync(IpcCommands.ApplySuggestedNames))!;
-        Assert.Equal("Michael Schumacher", st.PlayerNames.Entries.Single().Name);
-
         // edicao externa do arquivo chega ao Control Center por evento (o host releia a cada ~1 s)
         lock (events) events.Clear();
-        File.WriteAllText(file, "{\"version\":1,\"entries\":[{\"model\":\"Formula Classic Gen2\",\"originalName\":\"Player\",\"suggested\":\"Michael Schumacher\",\"name\":\"Editado\"}]}");
+        File.WriteAllText(file, "{\"version\":1,\"entries\":[{\"model\":\"Formula Classic Gen2\",\"originalName\":\"Player\",\"name\":\"Editado\"}]}");
         await WaitFor(() => { lock (events) return events.Any(e => e.Event == IpcEvents.StateChanged && e.State?.PlayerNames.Entries.Any(x => x.Name == "Editado") == true); }, 6000, "evento de estado nao chegou");
 
         // erros viram resposta

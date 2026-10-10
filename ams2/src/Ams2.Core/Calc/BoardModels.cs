@@ -183,9 +183,10 @@ public static class BoardText
         return (last.Length >= 3 ? last[..3] : last).ToUpperInvariant();
     }
 
-    /// <summary>Equipe deduzida do nome do carro: sem o sufixo de fornecedor "(M)"/"(B)" e sem o nome da classe.</summary>
+    /// <summary>Equipe da pintura escolhida (jogador) ou deduzida do nome do carro: sem o sufixo de fornecedor "(M)"/"(B)" e sem o nome da classe.</summary>
     public static string Team(CarSnapshot car)
     {
+        if (car.TeamName.Length > 0) return car.TeamName;
         string t = car.CarName.Trim();
         int p = t.LastIndexOf('(');
         if (p > 0 && t.EndsWith(')')) t = t[..p].Trim();

@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Ams2.Shared.Ipc;
+using Ams2.Shared.Liveries;
 using Ams2.Shared.PlayerNames;
 using Ams2.Shared.Profiles;
 using Ams2.Shared.Victory;
@@ -33,6 +34,8 @@ public partial class MainWindow : Window
     readonly VictoryStore _victory;
     string? _victoryPlayerName; // nome de exibicao do carro atual (do estado de nomes), para mostrar o tema que tocaria
     readonly ObservableCollection<PlayerNameVm> _nameRows = [];
+    List<LiveryEntry>? _liveryCatalog;
+    string? _liveryRoot;
     readonly Dictionary<string, WidgetPatch> _pending = [];
     readonly DispatcherTimer _flushTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
@@ -579,60 +582,80 @@ public partial class MainWindow : Window
             vm.Load(e, st.CurrentModel.Length > 0 && Same(e.Model, st.CurrentModel));
         }
         for (int i = _nameRows.Count - 1; i >= 0; i--)
-            if (!_nameRows[i].Editing && !st.Entries.Any(e => Same(e.Model, _nameRows[i].Model))) _nameRows.RemoveAt(i);
+            if (!st.Entries.Any(e => Same(e.Model, _nameRows[i].Model))) _nameRows.RemoveAt(i);
         NamesEmpty.Visibility = _nameRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         var cur = st.Entries.FirstOrDefault(e => st.CurrentModel.Length > 0 && Same(e.Model, st.CurrentModel));
         NamesCurrent.Text = cur is null
             ? "Carro atual: nenhum detectado (entre numa sessão no AMS2)"
-            : $"Carro atual: {cur.Model}   ·   no jogo: {(cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}   ·   nos widgets: {(cur.Name.Length > 0 ? cur.Name : cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}";
+            : $"Carro atual: {cur.Model}   ·   no jogo: {(cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}   ·   nos widgets: {(cur.Name.Length > 0 ? cur.Name : cur.OriginalName.Length > 0 ? cur.OriginalName : "—")}{(cur.Team.Length > 0 ? "   ·   " + cur.Team : "")}";
         _victoryPlayerName = cur is null ? null : cur.Name.Length > 0 ? cur.Name : cur.OriginalName;
         RefreshVictoryUi();
     }
 
-    async Task SetNameAsync(string model, string name)
+    async Task SetIdentityAsync(string model, LiveryChoice c)
     {
-        if (_client.Connected && await TrySend(IpcCommands.SetPlayerName, m => m with { Model = model, Name = name })) return;
+        if (_client.Connected && await TrySend(IpcCommands.SetPlayerName, m => m with { Model = model, Livery = c.Livery, Name = c.Driver, Country = c.Country, Team = c.Team })) return;
         _names.Refresh();
-        _names.Set(model, name);
+        _names.SetIdentity(model, c.Livery, c.Driver, c.Country, c.Team);
         ApplyNames(_names.State());
     }
 
-    void NameBox_GotFocus(object sender, KeyboardFocusChangedEventArgs e)
+    async void PickLivery_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox { DataContext: PlayerNameVm vm }) vm.Editing = true;
+        if (sender is not FrameworkElement { DataContext: PlayerNameVm vm }) return;
+        var catalog = await LoadLiveryCatalogAsync();
+        if (catalog is null) return;
+        var picked = LiveryPickerDialog.Ask(this, vm.Model, catalog, new LiveryChoice(vm.Livery, vm.Name, vm.Country, vm.Team));
+        if (picked is null) return;
+        vm.Load(new PlayerNameEntry { Model = vm.Model, OriginalName = vm.OriginalName, Livery = picked.Livery, Name = picked.Driver, Country = picked.Country, Team = picked.Team }, vm.IsCurrent); // otimista; o host confirma
+        await SetIdentityAsync(vm.Model, picked);
     }
 
-    async void NameBox_LostFocus(object sender, KeyboardFocusChangedEventArgs e)
+    async void ClearLivery_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not TextBox { DataContext: PlayerNameVm vm } tb) return;
-        vm.Editing = false;
-        string text = tb.Text.Trim();
-        if (text == vm.Name) { tb.Text = vm.Name; return; }
-        vm.Name = text;                       // otimista; o estado do host confirma em seguida
-        await SetNameAsync(vm.Model, text);
+        if (sender is not FrameworkElement { DataContext: PlayerNameVm vm }) return;
+        vm.Load(new PlayerNameEntry { Model = vm.Model, OriginalName = vm.OriginalName }, vm.IsCurrent);
+        await SetIdentityAsync(vm.Model, new LiveryChoice("", "", "", ""));
     }
 
-    void NameBox_KeyDown(object sender, KeyEventArgs e)
+    string GamePathFile => Path.Combine(Path.GetDirectoryName(_names.FilePath) ?? Environment.CurrentDirectory, "game-path.txt");
+
+    string? SavedGamePath()
     {
-        if (sender is not TextBox { DataContext: PlayerNameVm vm } tb) return;
-        if (e.Key == Key.Enter) { Keyboard.ClearFocus(); e.Handled = true; }          // perder o foco aplica
-        else if (e.Key == Key.Escape) { tb.Text = vm.Name; Keyboard.ClearFocus(); e.Handled = true; }
+        try { return File.Exists(GamePathFile) ? File.ReadAllText(GamePathFile).Trim() : null; }
+        catch (IOException) { return null; }
     }
 
-    async void UseSuggested_Click(object sender, RoutedEventArgs e)
+    /// <summary>Catalogo de pinturas (lido uma vez por pasta do jogo). Sem pasta valida pede ao usuario; null se cancelar.</summary>
+    async Task<List<LiveryEntry>?> LoadLiveryCatalogAsync()
     {
-        if (sender is not FrameworkElement { DataContext: PlayerNameVm { HasSuggestion: true } vm }) return;
-        vm.Name = vm.Suggested;
-        await SetNameAsync(vm.Model, vm.Suggested);
+        string? root = LiveryCatalog.FindGameRoot(SavedGamePath());
+        if (root is null && !AskGameFolder(out root)) return null;
+        if (_liveryCatalog is not null && string.Equals(_liveryRoot, root, StringComparison.OrdinalIgnoreCase)) return _liveryCatalog;
+        string r = root!;
+        _liveryCatalog = await Task.Run(() => LiveryCatalog.Load(r));
+        _liveryRoot = r;
+        return _liveryCatalog;
     }
 
-    async void ApplySuggested_Click(object sender, RoutedEventArgs e)
+    bool AskGameFolder(out string? root)
     {
-        if (_client.Connected && await TrySend(IpcCommands.ApplySuggestedNames)) return;
-        _names.Refresh();
-        _names.ApplySuggestedToUnnamed();
-        ApplyNames(_names.State());
+        root = null;
+        var dlg = new Microsoft.Win32.OpenFolderDialog { Title = "Pasta do Automobilista 2 (a que contém UserData e Vehicles)" };
+        if (dlg.ShowDialog(this) != true) return false;
+        if (!LiveryCatalog.IsGameRoot(dlg.FolderName))
+        {
+            MessageBox.Show(this, "Essa pasta não parece ser a do Automobilista 2 (não achei UserData\\CustomAIDrivers nem Vehicles\\Textures\\CustomLiveries).", "Pasta do jogo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(GamePathFile)!); File.WriteAllText(GamePathFile, dlg.FolderName); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        root = dlg.FolderName;
+        _liveryCatalog = null;
+        return true;
     }
+
+    void GameFolder_Click(object sender, RoutedEventArgs e) => AskGameFolder(out _);
 
     // ---------------------------------------------------------------- host
 

@@ -193,14 +193,14 @@ public sealed class OverlayDataProvider : IDisposable
         return model;
     }
 
-    /// <summary>Registra o carro do jogador no store (modelo, nome do jogo, sugestao) e troca o nome dele pelo de exibicao.
-    /// So o Name muda: indices e distancias intactos, o GapTracker nao e afetado.</summary>
+    /// <summary>Registra o carro do jogador no store (modelo, nome do jogo) e aplica a identidade da pintura escolhida (piloto, equipe, pais).
+    /// So o Name/TeamName/Country mudam: indices e distancias intactos, o GapTracker nao e afetado.</summary>
     SessionSnapshot ApplyPlayerName(double now, SessionSnapshot s)
     {
         if (_names is null) return s;
         if (now >= _namesRefreshAt || now < _namesRefreshAt - 5) { _namesRefreshAt = now + 1; _names.Refresh(); }
         var pc = s.PlayerCar;
-        _names.Observe(pc?.CarName ?? "", pc?.Name ?? "", PlayerIdentity.Suggest(s));
+        _names.Observe(pc?.CarName ?? "", pc?.OriginalName.Length > 0 ? pc.OriginalName : pc?.Name ?? "");
         return PlayerIdentity.Apply(s, _names.Get);
     }
 

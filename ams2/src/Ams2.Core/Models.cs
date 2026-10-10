@@ -26,7 +26,9 @@ public sealed record CarSnapshot(
     // mCurrentSector{1,2,3}Times / mFastestSector{1,2,3}Times por carro (s; <= 0 = sem dado). Nao conferidos em sessao real: o QualiLapTracker
     // so os usa quando sao plausiveis e cai para o tempo derivado da troca de Sector quando faltam.
     double CurSector1 = 0, double CurSector2 = 0, double CurSector3 = 0,
-    double BestSector1 = 0, double BestSector2 = 0, double BestSector3 = 0)
+    double BestSector1 = 0, double BestSector2 = 0, double BestSector3 = 0,
+    string TeamName = "",   // so no carro do jogador: equipe da pintura escolhida no Control Center ("" = deduzir do nome do carro)
+    string Country = "")    // so no carro do jogador: pais do piloto da pintura escolhida (sigla do jogo, ex. "FIN"; "" = desconhecido)
 {
     /// <summary>Tempo do setor <paramref name="k"/> (0..2) da volta corrente, como a memoria informa (<= 0 = sem dado).</summary>
     public double CurSector(int k) => k switch { 0 => CurSector1, 1 => CurSector2, 2 => CurSector3, _ => 0 };

@@ -10,10 +10,16 @@ public sealed record PlayerNameEntry
     public string Model { get; init; } = "";
     /// <summary>Nome que o jogo da ao carro do jogador (perfil do jogo), ex.: "Vitor COSTA".</summary>
     public string OriginalName { get; init; } = "";
-    /// <summary>Nome de outro participante com o mesmo modelo (primeiro por indice); "" = sem sugestao.</summary>
-    public string Suggested { get; init; } = "";
-    /// <summary>Nome de exibicao configurado; "" = usar o do jogo.</summary>
+    /// <summary>Pintura escolhida no catalogo (livery_name do jogo); "" = escolha manual / nenhuma.</summary>
+    public string Livery { get; init; } = "";
+    /// <summary>Nome de exibicao (piloto da pintura); "" = usar o do jogo.</summary>
     public string Name { get; init; } = "";
+    /// <summary>Pais do piloto (sigla de 3 letras do jogo, ex.: "FIN"); "" = desconhecido.</summary>
+    public string Country { get; init; } = "";
+    /// <summary>Equipe da pintura; "" = deduzir do nome do carro.</summary>
+    public string Team { get; init; } = "";
+    /// <summary>true se alguma coisa substitui o que o jogo informa.</summary>
+    [JsonIgnore] public bool HasOverride => Name.Length > 0 || Country.Length > 0 || Team.Length > 0;
 }
 
 /// <summary>Estado publicado ao Control Center: carro atual detectado e a lista de modelos.</summary>
@@ -25,7 +31,7 @@ public sealed record PlayerNamesState
 }
 
 /// <summary>
-/// Mapa global modelo-de-carro -> nome de exibicao do jogador, em <c>{raiz}\player-names.json</c> (raiz padrao
+/// Mapa global modelo-de-carro -> identidade de exibicao do jogador (piloto, pais, equipe da pintura escolhida), em <c>{raiz}\player-names.json</c> (raiz padrao
 /// %AppData%\ams2-live-coach), mais a lista de modelos ja vistos com o jogador ao volante. Chave = CarName sem o sufixo
 /// "(M)"/"(B)", comparada sem diferenciar caixa. Escrita atomica; relê o arquivo quando ele muda por fora (<see cref="Refresh"/>).
 /// Sem arquivo (<see cref="InMemory"/>) nada e gravado (--png, testes).
@@ -52,7 +58,7 @@ public sealed class PlayerNameStore
     readonly Dictionary<string, PlayerNameEntry> _entries = new(StringComparer.OrdinalIgnoreCase); // chave normalizada
     DateTime _stamp = DateTime.MinValue;
     long _length = -1;
-    volatile Dictionary<string, string> _names = new(StringComparer.OrdinalIgnoreCase); // so entradas com Name, leitura sem lock
+    volatile Dictionary<string, PlayerNameEntry> _names = new(StringComparer.OrdinalIgnoreCase); // so entradas com algum override, leitura sem lock
     string _current = "";
 
     /// <summary>Disparado (em qualquer thread) quando a lista ou um nome muda.</summary>
@@ -79,8 +85,8 @@ public sealed class PlayerNameStore
         return n;
     }
 
-    /// <summary>Nome de exibicao do modelo, ou null. Barato (sem lock): chamado a cada passo do provider.</summary>
-    public string? Get(string carName)
+    /// <summary>Identidade de exibicao do modelo, ou null. Barato (sem lock): chamado a cada passo do provider.</summary>
+    public PlayerNameEntry? Get(string carName)
         => _names.TryGetValue(ModelKey(carName), out var n) ? n : null;
 
     public PlayerNamesState State()
@@ -89,44 +95,37 @@ public sealed class PlayerNameStore
             return new PlayerNamesState { CurrentModel = _current, Entries = _entries.Values.OrderBy(e => e.Model, StringComparer.CurrentCultureIgnoreCase).ToList() };
     }
 
-    /// <summary>Define o nome de exibicao. Nome vazio equivale a <see cref="Clear"/>. Cria a entrada se o modelo ainda nao foi visto.</summary>
+    /// <summary>Define so o nome de exibicao (mantem pais/equipe/pintura). Nome vazio limpa o nome.</summary>
     public void Set(string carName, string? name)
+        => Update(carName, e => e with { Name = Clean(name) });
+
+    /// <summary>Define a identidade inteira do modelo (pintura do catalogo ou digitada). Tudo vazio equivale a <see cref="Clear"/>.</summary>
+    public void SetIdentity(string carName, string? livery, string? name, string? country, string? team)
+        => Update(carName, e => e with { Livery = Clean(livery), Name = Clean(name), Country = Clean(country), Team = Clean(team) });
+
+    public void Clear(string carName) => SetIdentity(carName, "", "", "", "");
+
+    void Update(string carName, Func<PlayerNameEntry, PlayerNameEntry> edit)
     {
         string model = ModelKey(carName);
         if (model.Length == 0) return;
-        name = Clean(name);
         bool changed;
         lock (_gate)
         {
             _entries.TryGetValue(model, out var cur);
-            if (cur is null && name.Length == 0) return;
-            var next = (cur ?? new PlayerNameEntry { Model = model }) with { Name = name };
-            changed = cur is null || cur.Name != name;
+            var next = edit(cur ?? new PlayerNameEntry { Model = model });
+            if (cur is null && !next.HasOverride) return;
+            changed = !next.Equals(cur);
+            if (!changed) return;
             _entries[model] = next;
-            if (changed) { Rebuild(); Save(); }
+            Rebuild(); Save();
         }
-        if (changed) Changed?.Invoke();
+        Changed?.Invoke();
     }
 
-    public void Clear(string carName) => Set(carName, "");
-
-    /// <summary>Aplica o nome sugerido a toda entrada sem nome e com sugestao. Devolve quantas mudaram.</summary>
-    public int ApplySuggestedToUnnamed()
-    {
-        int n = 0;
-        lock (_gate)
-        {
-            foreach (var e in _entries.Values.ToList())
-                if (e.Name.Length == 0 && e.Suggested.Length > 0) { _entries[ModelKey(e.Model)] = e with { Name = e.Suggested }; n++; }
-            if (n > 0) { Rebuild(); Save(); }
-        }
-        if (n > 0) Changed?.Invoke();
-        return n;
-    }
-
-    /// <summary>Registra o carro do jogador agora: modelo, nome original do jogo e sugestao (ignorada se vazia).
+    /// <summary>Registra o carro do jogador agora: modelo e nome original do jogo.
     /// So grava em disco quando algo muda. <paramref name="carName"/> vazio = nenhum carro detectado.</summary>
-    public void Observe(string carName, string originalName, string? suggested)
+    public void Observe(string carName, string originalName)
     {
         string model = ModelKey(carName);
         bool changed = false;
@@ -139,7 +138,6 @@ public sealed class PlayerNameStore
                 var next = (cur ?? new PlayerNameEntry { Model = model }) with
                 {
                     OriginalName = string.IsNullOrWhiteSpace(originalName) ? cur?.OriginalName ?? "" : originalName.Trim(),
-                    Suggested = string.IsNullOrWhiteSpace(suggested) ? cur?.Suggested ?? "" : suggested.Trim(),
                 };
                 if (!next.Equals(cur)) { _entries[model] = next; Save(); changed = true; }
             }
@@ -168,8 +166,8 @@ public sealed class PlayerNameStore
 
     void Rebuild()
     {
-        var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in _entries.Values) if (e.Name.Length > 0) d[ModelKey(e.Model)] = e.Name;
+        var d = new Dictionary<string, PlayerNameEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in _entries.Values) if (e.HasOverride) d[ModelKey(e.Model)] = e;
         _names = d;
     }
 
@@ -193,7 +191,7 @@ public sealed class PlayerNameStore
             {
                 string model = ModelKey(e.Model);
                 if (model.Length == 0) continue;
-                _entries[model] = new PlayerNameEntry { Model = model, OriginalName = Clean(e.OriginalName), Suggested = Clean(e.Suggested), Name = Clean(e.Name) };
+                _entries[model] = new PlayerNameEntry { Model = model, OriginalName = Clean(e.OriginalName), Livery = Clean(e.Livery), Name = Clean(e.Name), Country = Clean(e.Country), Team = Clean(e.Team) };
             }
             Rebuild();
         }

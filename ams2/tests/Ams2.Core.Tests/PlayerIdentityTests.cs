@@ -12,22 +12,11 @@ public class PlayerIdentityTests
         => new(7000, (300, 60), (200, 60), (100, 60)) { PlayerIndex = player, Names = names, CarNames = cars, AutoPositions = true };
 
     [Fact]
-    public void Suggest_is_the_first_other_participant_with_the_same_model_ignoring_suffix_and_case()
-    {
-        var sim = Grid(["A Driver", "Vitor COSTA", "Miko Hanninen"], ["Formula X (M)", "formula x", "FORMULA X (B)"], player: 1);
-        Assert.Equal("A Driver", PlayerIdentity.Suggest(sim.Snapshot()));
-        sim = Grid(["A Driver", "Vitor COSTA", "Miko Hanninen"], ["Other", "McLaren Cosworth MP4/8", "McLaren Cosworth MP4/8 (M)"]);
-        Assert.Equal("Miko Hanninen", PlayerIdentity.Suggest(sim.Snapshot()));
-        sim = Grid(["A", "Vitor COSTA", "C"], ["Other", "Solo", "Another"]);
-        Assert.Null(PlayerIdentity.Suggest(sim.Snapshot()));
-    }
-
-    [Fact]
     public void Apply_renames_only_the_player_keeps_original_and_leaves_indices_and_distances_intact()
     {
         var sim = Grid(["Adam Alpha", "Vitor COSTA", "Carl Gamma"], ["M (M)", "M", "M (B)"]);
         var before = sim.Snapshot();
-        var after = PlayerIdentity.Apply(before, c => c == "M" ? " Miko Hanninen " : null);
+        var after = PlayerIdentity.Apply(before, c => c == "M" ? new PlayerNameEntry { Name = " Miko Hanninen " } : null);
         var me = after.PlayerCar!;
         Assert.Equal("Miko Hanninen", me.Name);
         Assert.Equal("Vitor COSTA", me.OriginalName);
@@ -35,6 +24,20 @@ public class PlayerIdentityTests
         Assert.Equal(before.Cars.Select(c => (c.Index, c.Position, c.LapDistance)), after.Cars.Select(c => (c.Index, c.Position, c.LapDistance)));
         Assert.Equal(["Adam Alpha", "Carl Gamma"], after.Cars.Where(c => !c.IsPlayer).Select(c => c.Name));
         Assert.Equal("Vitor COSTA", before.PlayerCar!.Name); // original intocado
+    }
+
+    [Fact]
+    public void Apply_sets_team_and_country_from_the_chosen_livery_and_clears_them_without_one()
+    {
+        var sim = Grid(["Adam Alpha", "Vitor COSTA", "Carl Gamma"], ["M", "M", "M"]);
+        var s = PlayerIdentity.Apply(sim.Snapshot(), _ => new PlayerNameEntry { Name = "Kimi Raikkonen", Team = "McLaren", Country = "FIN" });
+        Assert.Equal(("Kimi Raikkonen", "McLaren", "FIN"), (s.PlayerCar!.Name, s.PlayerCar.TeamName, s.PlayerCar.Country));
+        Assert.Equal("McLaren", BoardText.Team(s.PlayerCar));
+        Assert.All(s.Cars.Where(c => !c.IsPlayer), c => Assert.Equal(("", ""), (c.TeamName, c.Country)));
+        var onlyTeam = PlayerIdentity.Apply(sim.Snapshot(), _ => new PlayerNameEntry { Team = "Ferrari" });
+        Assert.Equal(("Vitor COSTA", "Ferrari"), (onlyTeam.PlayerCar!.Name, onlyTeam.PlayerCar.TeamName));
+        var cleared = PlayerIdentity.Apply(s, _ => null);
+        Assert.Equal(("Vitor COSTA", "", ""), (cleared.PlayerCar!.Name, cleared.PlayerCar.TeamName, cleared.PlayerCar.Country));
     }
 
     [Fact]
@@ -57,14 +60,14 @@ public class PlayerIdentityTests
         {
             sim.Step(1.0 / 60);
             var s = sim.Snapshot();
-            var r = PlayerIdentity.Apply(s, _ => "Miko Hanninen");
+            var r = PlayerIdentity.Apply(s, _ => new PlayerNameEntry { Name = "Miko Hanninen" });
             gaps.Update(sim.Now, s.TrackLength, s.Cars);
             gapsRenamed.Update(sim.Now, r.TrackLength, r.Cars);
             g1 = gaps.GapSeconds(sim.Now, s.Cars[0], s.PlayerCar!, 1) ?? 0;
             g2 = gapsRenamed.GapSeconds(sim.Now, r.Cars[0], r.PlayerCar!, 1) ?? 0;
         }
         Assert.Equal(g1, g2);
-        var snap = PlayerIdentity.Apply(sim.Snapshot(), _ => "Miko Hanninen");
+        var snap = PlayerIdentity.Apply(sim.Snapshot(), _ => new PlayerNameEntry { Name = "Miko Hanninen" });
         Assert.Equal("Hanninen", BoardText.ShortName(snap.PlayerCar!, snap.Cars));
         Assert.Equal("HAN", BoardText.Code(snap.PlayerCar!.Name));
         var d = BoardText.Driver(snap.PlayerCar!, snap.Cars);
@@ -78,7 +81,7 @@ public class PlayerIdentityTests
         var rig = new BoardRig(sim);
         var gaps = new GapTracker();
         for (int i = 0; i < 300; i++) { sim.Step(1.0 / 60); gaps.Update(sim.Now, 7000, sim.Snapshot().Cars); }
-        var s = PlayerIdentity.Apply(sim.Snapshot(), _ => "Miko Hanninen");
+        var s = PlayerIdentity.Apply(sim.Snapshot(), _ => new PlayerNameEntry { Name = "Miko Hanninen" });
         var rel = RelativeBuilder.Build(s, gaps, sim.Now, 4, 4);
         Assert.Contains(rel, r => r.IsPlayer && r.Car.Name == "Miko Hanninen");
         var board = new BoardTracker(null).Update(sim.Now, s, gaps);
@@ -95,17 +98,13 @@ public class PlayerIdentityTests
     }
 
     [Fact]
-    public void Real_dump_player_gets_the_display_name_and_a_suggestion_from_another_car()
+    public void Real_dump_player_gets_the_display_name()
     {
         var s = Real();
         var me = s.PlayerCar!;
         Assert.Equal("Vitor COSTA", me.Name);
-        string? sug = PlayerIdentity.Suggest(s);
-        var same = s.Cars.Where(c => !c.IsPlayer && PlayerNameStore.ModelKey(c.CarName).Equals(PlayerNameStore.ModelKey(me.CarName), StringComparison.OrdinalIgnoreCase)).OrderBy(c => c.Index).ToList();
-        Assert.True(same.Count > 0, "o dump deveria ter outro carro do mesmo modelo: " + me.CarName);
-        Assert.Equal(same[0].Name, sug);
 
-        var r = PlayerIdentity.Apply(s, _ => "Miko Hanninen");
+        var r = PlayerIdentity.Apply(s, _ => new PlayerNameEntry { Name = "Miko Hanninen" });
         Assert.Equal("Miko Hanninen", r.PlayerCar!.Name);
         Assert.Equal("Vitor COSTA", r.PlayerCar.OriginalName);
         Assert.Equal(s.Cars.Count, r.Cars.Count);

@@ -157,7 +157,7 @@ internal sealed class HostController : IDisposable
             {
                 if (_provider.Names is not { } names) return Fail("Nomes de exibicao indisponiveis.");
                 if (string.IsNullOrWhiteSpace(req.Model)) return Fail("setPlayerName exige Model.");
-                names.Set(req.Model, req.Name);
+                names.SetIdentity(req.Model, req.Livery, req.Name, req.Country, req.Team);
                 break;
             }
             case IpcCommands.ClearPlayerName:
@@ -167,9 +167,6 @@ internal sealed class HostController : IDisposable
                 names.Clear(req.Model);
                 break;
             }
-            case IpcCommands.ApplySuggestedNames:
-                _provider.Names?.ApplySuggestedToUnnamed();
-                break;
             case IpcCommands.SetVictory:
             {
                 if (_victory is null) return Fail("Tema da vitoria indisponivel.");

@@ -17,12 +17,10 @@ public static class IpcCommands
     public const string SetEditMode = "setEditMode";
     /// <summary>Responde com o estado (incl. PlayerNames); o mesmo que GetState, explicito para o Control Center.</summary>
     public const string GetPlayerNames = "getPlayerNames";
-    /// <summary>Define o nome de exibicao do jogador para um modelo de carro (Model + Name); Name vazio limpa.</summary>
+    /// <summary>Define a identidade do jogador para um modelo de carro (Model + Livery/Name/Country/Team da pintura); tudo vazio limpa.</summary>
     public const string SetPlayerName = "setPlayerName";
     /// <summary>Remove o nome de exibicao do modelo (Model).</summary>
     public const string ClearPlayerName = "clearPlayerName";
-    /// <summary>Aplica o nome sugerido a todo modelo visto que ainda nao tem nome.</summary>
-    public const string ApplySuggestedNames = "applySuggestedNames";
     /// <summary>Grava a config do tema da vitoria (Victory) no host (victory.json).</summary>
     public const string SetVictory = "setVictory";
     /// <summary>Toca o tema da vitoria: VictoryTheme (Default/Senna/Barrichello/Massa) ou, vazio, o do nome atual do piloto.</summary>
@@ -76,8 +74,12 @@ public sealed record IpcMessage
     public bool? Edit { get; init; }
     /// <summary>Modelo de carro (CarName sem sufixo) de setPlayerName/clearPlayerName.</summary>
     public string? Model { get; init; }
-    /// <summary>Nome de exibicao de setPlayerName.</summary>
+    /// <summary>Piloto (nome de exibicao) de setPlayerName.</summary>
     public string? Name { get; init; }
+    /// <summary>Pintura escolhida, pais e equipe de setPlayerName.</summary>
+    public string? Livery { get; init; }
+    public string? Country { get; init; }
+    public string? Team { get; init; }
     public Profile? Data { get; init; }
     /// <summary>Config do tema da vitoria de setVictory.</summary>
     public Ams2.Shared.Victory.VictoryConfig? Victory { get; init; }
