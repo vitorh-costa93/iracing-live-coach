@@ -90,6 +90,20 @@ internal static class Win32
     }
     public static void EndHighResTimer() => timeEndPeriod(1);
 
+    [DllImport("gdi32.dll")] static extern int D3DKMTSetProcessSchedulingPriorityClass(nint process, int priorityClass);
+
+    /// <summary>Classe de agendamento de GPU do processo (D3DKMT): HIGH(4) e aceita sem admin em geral; senão ABOVE_NORMAL(3).
+    /// Com o jogo em 90% de GPU, é o que mantém os instrumentos do overlay fluidos. Falhas são ignoradas.</summary>
+    public static void RaiseGpuPriority()
+    {
+        try
+        {
+            var me = GetCurrentProcess();
+            if (D3DKMTSetProcessSchedulingPriorityClass(me, 4) != 0) D3DKMTSetProcessSchedulingPriorityClass(me, 3);
+        }
+        catch { }
+    }
+
     [DllImport("kernel32.dll")] public static extern nint GetModuleHandleW(string? name);
     [DllImport("user32.dll")] public static extern ushort RegisterClassExW(ref WNDCLASSEXW wc);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]

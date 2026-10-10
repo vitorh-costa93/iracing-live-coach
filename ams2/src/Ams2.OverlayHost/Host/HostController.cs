@@ -334,6 +334,7 @@ internal sealed class HostController : IDisposable
     public void Run(double seconds)
     {
         Win32.BeginHighResTimer();
+        Win32.RaiseGpuPriority();
         var prio = Thread.CurrentThread.Priority;
         Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
         try { RunLoop(seconds); }

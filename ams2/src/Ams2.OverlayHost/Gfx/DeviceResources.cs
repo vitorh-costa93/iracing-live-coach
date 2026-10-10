@@ -92,6 +92,8 @@ public sealed unsafe class DeviceResources : IDisposable
         ComPtr<IDXGIDevice> dxgiDevice = default;
         ThrowIfFailed(_d3dDevice.As(ref dxgiDevice));
         _dxgiDevice = dxgiDevice;
+        // Jogo saturando a GPU: sem isto o overlay entra na fila atras do jogo e anima a poucos fps. Prioridade maxima de GPU (-7..7), sem admin.
+        _dxgiDevice.Get()->SetGPUThreadPriority(7);
 
         ComPtr<ID2D1Factory1> d2dFactory = default;
         ThrowIfFailed(D2D1CreateFactory(D2DFactoryType.SingleThreaded, __uuidof<ID2D1Factory1>(), null, (void**)d2dFactory.GetAddressOf()));
