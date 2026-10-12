@@ -39,7 +39,7 @@ public static class Chrome
     }
 
     /// <summary>Tipos de célula do vocabulário 2004–2008 (cores amostradas das capturas de 2005).</summary>
-    public enum CellKind { White, Black, Red, Navy, Green, Orange, Blue }
+    public enum CellKind { White, Black, Red, Navy, Green, Orange, Blue, Gray, Purple, Yellow }
 
     static Color4 C(int r, int g, int b) => new(r / 255f, g / 255f, b / 255f, 1f);
 
@@ -55,11 +55,55 @@ public static class Chrome
         _ => [new(0f, C(232, 146, 22)), new(0.2f, C(217, 130, 11)), new(1f, C(184, 104, 6))],
     };
 
+    /// <summary>Paleta da pele 2012 (cores amostradas do GP da Malásia 2012): células escuras com brilho no topo; nome e valor pretos, equipe azul-ardósia,
+    /// posição cinza (vermelha no líder), verde de ganho e roxo de melhor volta.</summary>
+    static BarStop[] Stops12(CellKind k) => k switch
+    {
+        CellKind.White or CellKind.Black => [new(0f, C(58, 58, 62)), new(0.28f, C(16, 16, 18)), new(1f, C(0, 0, 0))],
+        CellKind.Navy => [new(0f, C(78, 92, 138)), new(0.32f, C(46, 58, 104)), new(1f, C(24, 32, 72))],
+        CellKind.Red => [new(0f, C(232, 48, 54)), new(0.3f, C(190, 16, 28)), new(1f, C(112, 6, 16))],
+        CellKind.Gray => [new(0f, C(158, 158, 164)), new(0.3f, C(106, 106, 112)), new(1f, C(58, 58, 64))],
+        CellKind.Green => [new(0f, C(58, 206, 76)), new(0.3f, C(22, 152, 42)), new(1f, C(6, 100, 22))],
+        CellKind.Purple => [new(0f, C(176, 66, 208)), new(0.4f, C(122, 24, 152)), new(1f, C(78, 10, 102))],
+        CellKind.Yellow => [new(0f, C(255, 220, 70)), new(0.3f, C(244, 196, 20)), new(1f, C(196, 150, 6))],
+        CellKind.Blue => [new(0f, C(60, 122, 214)), new(0.3f, C(26, 90, 180)), new(1f, C(12, 56, 128))],
+        _ => [new(0f, C(240, 160, 30)), new(0.3f, C(222, 134, 12)), new(1f, C(184, 104, 6))],
+    };
+
+    static Color4 Sample(BarStop[] stops, float u)
+    {
+        if (u <= stops[0].Position) return stops[0].Color;
+        for (int i = 1; i < stops.Length; i++)
+        {
+            if (u > stops[i].Position) continue;
+            float k = (u - stops[i - 1].Position) / Math.Max(1e-4f, stops[i].Position - stops[i - 1].Position);
+            var a = stops[i - 1].Color; var b = stops[i].Color;
+            return new Color4(a.R + (b.R - a.R) * k, a.G + (b.G - a.G) * k, a.B + (b.B - a.B) * k, a.A + (b.A - a.A) * k);
+        }
+        return stops[^1].Color;
+    }
+
+    /// <summary>Paralelogramo "/" com gradiente vertical, em faixas horizontais (o D2D só tem gradiente retangular aqui): na base a borda esquerda
+    /// fica em x, no topo desloca <paramref name="slant"/> para a direita. Caixa delimitadora = [x, x+w] x [y, y+h].</summary>
+    public static void SlantGradient(ThemeCanvas c, float x, float y, float w, float h, float slant, BarStop[] stops)
+    {
+        const int n = 8;
+        for (int i = 0; i < n; i++)
+        {
+            float f0 = (float)i / n, f1 = (float)(i + 1) / n;
+            float y0 = y + h * f0, y1 = Math.Min(y + h, y + h * f1 + 0.6f);   // pequena sobreposicao evita frestas entre faixas
+            float l0 = x + slant * (1 - f0), r0 = x + w - slant * f0;
+            float f1c = Math.Min(1f, (y1 - y) / h);
+            float l1 = x + slant * (1 - f1c), r1 = x + w - slant * f1c;
+            c.FillPolygon([new(l0, y0), new(r0, y0), new(r1, y1), new(l1, y1)], Sample(stops, (f0 + f1) / 2));
+        }
+    }
+
     // Transmissão: fundo laranja/amarelo (jogador atrás) com letra preta; verde com letra branca.
     static Color4 DefaultInk(ThemeCanvas c, CellKind k) => k switch
     {
         CellKind.White => c.Theme.NameCellInk,
-        CellKind.Orange => new Color4(0f, 0f, 0f, 1f),
+        CellKind.Orange or CellKind.Yellow => new Color4(0f, 0f, 0f, 1f),
         CellKind.Green => new Color4(1f, 1f, 1f, 1f),
         _ => c.Theme.ValueColor,
     };
@@ -67,6 +111,18 @@ public static class Chrome
     /// <summary>Célula com gradiente vertical sutil, canto reto e filete escuro embaixo (separa as linhas empilhadas).</summary>
     public static void Box(ThemeCanvas c, float x, float y, float w, float h, string text, FontToken font, CellKind kind, HAlign align = HAlign.Left, float padX = 8, Color4? ink = null)
     {
+        float slant = c.Theme.CellSlant;
+        if (slant > 0)
+        {
+            // Pele 2012: paralelogramo com gradiente; o texto sai da borda inclinada (metade da inclinacao).
+            float s2 = Math.Min(slant, w / 3);
+            SlantGradient(c, x, y, w, h, s2, Stops12(kind));
+            float pad = padX + (align == HAlign.Center ? 0 : s2 * 0.5f);
+            // O vermelho-escuro do jogador (legivel so sobre celula branca) vira o amarelo do tema sobre as celulas escuras.
+            var inkColor = ink is { } given ? (given.Equals(PlayerInk) ? c.Theme.PlayerColor : given) : DefaultInk(c, kind);
+            c.Text(text, font, x + pad, y - 1, Math.Max(1, w - pad - padX), h, inkColor, align);
+            return;
+        }
         c.FillRect(x, y + h, w, 1.5f, new Color4(0.04f, 0.04f, 0.08f, 0.6f));
         c.VGradientRect(x, y, w, h, Stops(kind));
         c.Text(text, font, x + padX, y - 1, w - 2 * padX, h, ink ?? DefaultInk(c, kind), align);
@@ -89,7 +145,8 @@ public static class Chrome
 
     /// <summary>Caixa de posição: vermelha só para o líder, azul-ardósia para os demais.</summary>
     public static void PositionBox(ThemeCanvas c, float x, float y, float w, float h, int position, FontToken font)
-        => Box(c, x, y, w, h, position.ToString(System.Globalization.CultureInfo.InvariantCulture), font, position == 1 ? CellKind.Red : CellKind.Navy, HAlign.Center, 0);
+        => Box(c, x, y, w, h, position.ToString(System.Globalization.CultureInfo.InvariantCulture), font,
+            position == 1 ? CellKind.Red : c.Theme.CellSlant > 0 ? CellKind.Gray : CellKind.Navy, HAlign.Center, 0);
 
     /// <summary>Caixinha do fornecedor de pneus como na transmissao: azul "M" (Michelin) ou vermelha "B" (Bridgestone). Desconhecido: nao desenha. Devolve se desenhou.</summary>
     public static bool TyreBox(ThemeCanvas c, float x, float y, float w, float h, string supplier, FontToken font)
@@ -250,7 +307,8 @@ public static class Chrome
     {
         var t = c.Theme;
         if (t.NameCellFill.A <= 0f) return normalInk;
-        c.VGradientRect(x, y, w, h, Stops(CellKind.White));
+        if (t.CellSlant > 0) SlantGradient(c, x, y, w, h, Math.Min(t.CellSlant, w / 3), Stops12(CellKind.Black));
+        else c.VGradientRect(x, y, w, h, Stops(CellKind.White));
         return t.NameCellInk;
     }
 

@@ -16,11 +16,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
-    bool _b18, _b98, _b93;
+    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : _b12 ? (CaptionPlate.DriverWidth, CaptionPlate.Height12) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
+    bool _b18, _b98, _b93, _b12;
     readonly Broadcast04Pulse _motion04 = new();
     readonly Broadcast18Motion _motion18 = new();
-    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; }
+    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; _b12 = theme.Style == ThemeStyle.Broadcast2000s && theme.CellSlant > 0; }
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -104,7 +104,7 @@ public sealed class DriverCaptionWidget : IWidget
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480;
+    public const float Height = 94, Height12 = 70, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480;
     /// <summary>Janela da legenda 2018 (todas as variantes): a de resultado é a mais larga, a STARTED / NOW a mais alta. Desenho alinhado embaixo.</summary>
     public const float Caption18Width = 600, Caption18Height = 132, Started18Top = 56;
 
@@ -247,8 +247,19 @@ public static class CaptionPlate
         if (!cfg.ColumnVisible("tyre")) car = car with { TyreSupplier = "" };
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
-            Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
             float flagRoom = FlagRoom04(car.Country);
+            if (t.CellSlant > 0)
+            {
+                // 2012: duas linhas coladas na mesma largura ("N ROSBERG" em preto com a bandeira no fim, "Mercedes" em azul-ardosia com o pneu no fim); sem cabecalho nem caixa de posicao.
+                float w12 = LeftW + 40, rh = RowH + 2;
+                string nm = name.ToUpperInvariant();
+                Chrome.Box(c, X0, Y0, w12, rh, nm, BroadcastUi.Fit(c, nm, t.Text, w12 - 24 - flagRoom - 12), Chrome.CellKind.Black);
+                Flag04(c, car.Country, X0 + w12, Y0, rh);
+                Chrome.Box(c, X0, Y0 + rh, w12, rh, team, BroadcastUi.Fit(c, team, t.Text with { Weight = 500 }, w12 - 24 - 48), Chrome.CellKind.Navy);
+                if (car.TyreSupplier.Length > 0) Chrome.TyreBox(c, X0 + w12 - 46, Y0 + rh + 3, 38, rh - 6, car.TyreSupplier, t.Text with { Size = 20 });
+                return;
+            }
+            Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
             Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16 - flagRoom));
             Flag04(c, car.Country, X0 + LeftW, Y0 + HeadH, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, LeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, LeftW - 16), Chrome.CellKind.Navy);

@@ -62,7 +62,11 @@ public sealed class BattleWidget : IWidget
 {
     public string Id => "battle";
     public const float W = 760, H = 124, TopH = 48, Half = 358;
-    public (float Width, float Height) DesignSize => (W, H);
+    /// <summary>2012: duas unidades (caixa de velocidade sobre a placa nome/equipe) lado a lado.</summary>
+    public const float W12 = 970, H12 = 130;
+    bool _b12;
+    public void UseTheme(Theme.Theme theme) { bool b12 = Broadcast12.Is(theme); if (b12 != _b12) { _motion18.Reset(); _last = null; } _b12 = b12; }
+    public (float Width, float Height) DesignSize => _b12 ? (W12, H12) : (W, H);
     WidgetSettings _cfg = new() { Id = "battle" };
     readonly Broadcast18Motion _motion18 = new();
     DuelPair? _last;
@@ -85,6 +89,7 @@ public sealed class BattleWidget : IWidget
         if (pair is not null) _last = pair;
         float reveal = _motion18.Presence(m.Now, pair is not null, hold: 0.6, session: BroadcastUi.State(m).SessionSeenT);
         if (reveal <= 0 || _last is not { } p) return;
+        if (_b12) { BroadcastUi.WithAlpha(c, reveal, () => Broadcast12.DrawBattle(c, m, s, p, _cfg, ShowDrs)); return; }
         BroadcastUi.WithReveal18(c, reveal, W, H, () => DrawPlate(c, m, s, p));
     }
 

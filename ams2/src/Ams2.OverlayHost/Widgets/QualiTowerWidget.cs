@@ -438,14 +438,24 @@ public sealed class QualiTowerWidget : IWidget
     {
         float x = X04;
         bool zone = r.InEliminationZone(cut);
-        c.FillRect(x, y + H04, Pos04 + Name04, 1.5f, RowShade04);
-        c.VGradientRect(x, y, Pos04, H04, zone ? ZoneStops04 : PosStops04);
-        if (zone) c.StrokeRect(x + 1, y + 1, Pos04 - 2, H04 - 2, Red04, 2f);
-        c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" }, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
-        x += Pos04;
-        c.VGradientRect(x, y, Name04, H04, NameStops04);
         string nm = _cfg.Name(r.Car, _codes);
-        c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), x + 8, y - 1, Name04 - 16, H04, r.IsPlayer ? Chrome.PlayerInk : Ink04);
+        if (t.CellSlant > 0)
+        {
+            // 2012: caixa de posicao cinza e sigla em celula preta inclinada (a mesma pele do resto do tema).
+            Chrome.PositionBox(c, x, y, Pos04, H04, r.Rank, t.Numbers with { Element = "position" });
+            x += Pos04;
+            Chrome.WhiteCell(c, x, y, Name04, H04, nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), ink: r.IsPlayer ? t.PlayerColor : null);
+        }
+        else
+        {
+            c.FillRect(x, y + H04, Pos04 + Name04, 1.5f, RowShade04);
+            c.VGradientRect(x, y, Pos04, H04, zone ? ZoneStops04 : PosStops04);
+            if (zone) c.StrokeRect(x + 1, y + 1, Pos04 - 2, H04 - 2, Red04, 2f);
+            c.Text(r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position" }, x, y - 1, Pos04, H04, zone ? Red04 : Rgb(240, 240, 244), HAlign.Center);
+            x += Pos04;
+            c.VGradientRect(x, y, Name04, H04, NameStops04);
+            c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, Name04 - 16), x + 8, y - 1, Name04 - 16, H04, r.IsPlayer ? Chrome.PlayerInk : Ink04);
+        }
         x += Name04;
         if (StateText(r) is not { } st) return;
         var f = t.Label with { Size = 15 };

@@ -63,7 +63,8 @@ public sealed record PlayerSnapshot(
     // ordem: FL, FR, RL, RR. Wear: 0 = novo ... 1 = gasto (a confirmar em sessão real).
     IReadOnlyList<WheelSnapshot> Wheels,
     double BrakeBias,
-    bool BoostActive = false);   // mBoostActive do jogo (DRS/push-to-pass do carro; mapeamento para o DRS da TV ainda nao conferido em sessao real)
+    bool BoostActive = false,    // mBoostActive do jogo (DRS/push-to-pass do carro; mapeamento para o DRS da TV ainda nao conferido em sessao real)
+    double BoostAmount = 0);     // mBoostAmount (carga do KERS/boost; escala nao conferida em sessao real: o 2012 trata > 1 como porcentagem)
 
 public sealed record WeatherSnapshot(double AmbientC, double TrackC, double RainDensity, double WindSpeed,
     double WindDirX, double WindDirY, double CloudBrightness, double SnowDensity);

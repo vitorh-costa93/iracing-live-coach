@@ -71,7 +71,9 @@ public sealed record Theme(
     Color4 FlagColor = default,        // amarelo de Safety Car / bandeira
     Color4 OutFill = default,          // bloco cinza dos pilotos fora da corrida
     Color4 OutInk = default,
-    Color4 SubPanelFill = default);    // corpo cinza-azulado do gráfico PIT LANE / faixa clara de sub-painel
+    Color4 SubPanelFill = default,     // corpo cinza-azulado do gráfico PIT LANE / faixa clara de sub-painel
+    // Pele 2012: as células do vocabulário 2004 (Chrome.Box) viram paralelogramos "/" com esta inclinação (px de design; 0 = retangulares) e paleta própria.
+    float CellSlant = 0f);
 
 public static class Themes
 {
@@ -230,7 +232,26 @@ public static class Themes
         TextShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
         ValueShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
     };
-    public static IReadOnlyList<Theme> All { get; } = [F1_1993, F1_1998, F1_2004, F1_2018];
+    /// <summary>
+    /// F1 2012 (gráfico de TV 2011–2013; ref. exemplos do GP da Malásia 2012): mesma lógica do 2004, em células escuras inclinadas "/" com gradiente
+    /// (nome preto, equipe azul-ardósia, caixa de posição cinza e vermelha para o líder), texto branco condensado (Barlow Semi Condensed no lugar
+    /// da DIN da TV), velocidade em amarelo e DRS verde.
+    /// </summary>
+    public static readonly Theme F1_2012 = F1_2004 with
+    {
+        Id = "f1-2012", DisplayName = "F1 2012",
+        Title = new FontToken("Barlow Semi Condensed", 600, 27f),
+        Label = new FontToken("Barlow Semi Condensed", 600, 23f),
+        Text = new FontToken("Barlow Semi Condensed", 600, 27f),
+        Numbers = new FontToken("Barlow Semi Condensed", 600, 27f),
+        NameCellFill = Rgb(8, 8, 10, 0.97f), NameCellInk = Rgb(255, 255, 255),
+        TextShadow = new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)), ValueShadow = new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)),
+        AccentFill = Rgb(200, 18, 32), PlayerColor = Rgb(255, 214, 64),
+        FastestFill = Rgb(120, 22, 150),
+        CellSlant = 10f,
+    };
+
+    public static IReadOnlyList<Theme> All { get; } = [F1_1993, F1_1998, F1_2004, F1_2012, F1_2018];
 
     public static Theme Get(string? id) => id is null ? F1_1998 : All.FirstOrDefault(t => string.Equals(t.Id, Ams2.Shared.Profiles.ThemeCatalog.Canonical(id), StringComparison.OrdinalIgnoreCase)) ?? F1_1998;
 }

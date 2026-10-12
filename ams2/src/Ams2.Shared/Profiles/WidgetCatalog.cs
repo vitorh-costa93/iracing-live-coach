@@ -93,7 +93,7 @@ public static class WidgetCatalog
         new("inputs", "Inputs", null, null, null, "", [C("graph", "Gráfico (acelerador e freio)"), C("bars", "Barras / pedais"), C("gear", "Marcha e velocidade"), C("speedo", "Velocímetro analógico (2004-2008)")], 745, 905, DefaultScale: 0.55f,
             WidthColumns: [C("graph", "Gráfico")], Caps: DisplayCaps.Speed),
         new("inputgraph", "Inputs Graph", null, null, null, "", [], 1700, 988, DefaultScale: 0.6f,
-            WidthColumns: [C("graph", "Gráfico")], Themes: ["f1-2004"]),
+            WidthColumns: [C("graph", "Gráfico")], Themes: ["f1-2004", "f1-2012"]),
         new("radar", "Radar", null, null, null, "", [C("native", "Indicador nativo do AMS2 (senão: painel estilo V3)"), C("always", "Sempre visível (senão só com carro próximo)")], 900, 585, DefaultScale: 1f, HasRadarOptions: true),
         new("lapcounter", "Lap Counter", null, null, null, "", [], 918, 14, DefaultScale: 0.7f, DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         new("drivercaption", "Driver Caption", null, null, null, "", [C("always", "Sempre visível (senão só em eventos)"), C("team", "Equipe"), C("tyre", "Fornecedor de pneus")], 60, 930, DefaultVisible: false, DefaultScale: 0.75f,
@@ -115,8 +115,10 @@ public static class WidgetCatalog
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivos do 2018, no lugar do Board da corrida (a TV 2018 nao o tem): "Battle" (duelo com DRS e velocidades dos dois carros) e a legenda de
         // posicao dupla com bandeira do pais. Na classificacao dao lugar a Quali Lap (WidgetLayout.ExclusiveGroups).
-        new("battle", "Battle (duelo, DRS e velocidades)", null, null, null, "", [], 700, 940, Caps: DisplayCaps.Name, Themes: ["f1-2018"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
+        new("battle", "Battle (duelo, DRS e velocidades)", null, null, null, "", [], 700, 940, Caps: DisplayCaps.Name, Themes: ["f1-2018", "f1-2012"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         new("poscaption", "Legenda de posição (com bandeira)", null, null, null, "", [], 640, 962, DefaultScale: 0.9f, Caps: DisplayCaps.Name, Themes: ["f1-2018"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
+        // Exclusivo do 2012: faixa inferior de classificacao (5 celulas por pagina, [pos][SIGLA][intervalo]), no lugar do Board.
+        new("ticker", "Faixa de classificação (5 por página)", null, null, null, "", [], 60, 1000, Caps: DisplayCaps.Name | DisplayCaps.Gap, Themes: ["f1-2012"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -148,7 +150,7 @@ public static class WidgetCatalog
         : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualiboard"
             ? d with { DisplayName = "Quali Board (volta, parcial e resultado)" }
         :
-        d.Id == "inputs" && string.Equals(ThemeCatalog.Canonical(themeId), "f1-2004", StringComparison.OrdinalIgnoreCase)
+        d.Id == "inputs" && ThemeCatalog.Canonical(themeId) is var themeKey && (string.Equals(themeKey, "f1-2004", StringComparison.OrdinalIgnoreCase) || string.Equals(themeKey, "f1-2012", StringComparison.OrdinalIgnoreCase))
             ? d with { DisplayName = "Velocímetro", Columns = d.Columns.Where(c => c.Id != "graph").ToArray(), WidthColumns = [] }
             : d);
 
@@ -294,6 +296,45 @@ public static class WidgetCatalog
                 new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
             ],
         },
+        ["f1-2012"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Torre minima de siglas do 2004 (Japao 2008): 1a linha "1 HAM 1:18.232" com o tempo do lider em caixa preta, abaixo so
+            // posicao + sigla (topo + ao redor do jogador), numeros vermelhos na zona de eliminacao e caixa do relogio "Q | m:ss".
+            ["qualitower"] =
+            [
+                new("rows", "Linhas do topo (inclui o líder)", OptionKind.Number, null, "5", Min: 1, Max: 20),
+                new("nearCount", "Pilotos ao redor do jogador", OptionKind.Number, null, "3", Min: 0, Max: 10),
+                new("showClock", "Caixa do relógio da sessão (Q | m:ss)", OptionKind.Toggle, null, "true"),
+            ],
+            // Barra de volta do 2004: nome em celula branca, tempo em celula preta, faixa de setores e [posicao][+0.471] em laranja.
+            ["qualilap"] =
+            [
+                new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
+                new("showSectors", "Faixa de setores S1 S2 S3", OptionKind.Toggle, null, "false"),
+                new("showFor", "Tempo na tela do resultado após cruzar a linha (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+                new("always", "Sempre visível (senão só em volta lançada e no resultado)", OptionKind.Toggle, null, "false"),
+            ],
+            // Resultado do 2004: faixa de siglas [posicao][SIGLA][tempo/+gap], eliminados com a caixa de posicao vermelha.
+            ["qualiresult"] =
+            [
+                new("rows", "Linhas da lista (o jogador sempre aparece)", OptionKind.Number, null, "10", Min: 3, Max: 30),
+                new("showFor", "Tempo na tela após o fim da sessão (s)", OptionKind.Number, null, "15", Min: 5, Max: 60),
+                new("always", "Sempre visível (mostra a lista atual)", OptionKind.Toggle, null, "false"),
+            ],
+            ["battle"] =
+            [
+                new("rival", "Rival", OptionKind.Choice, [O("auto", "O mais próximo (frente ou trás)"), O("ahead", "Carro da frente"), O("behind", "Carro de trás")], "auto"),
+                new("gapSeconds", "Aparece com intervalo menor que (s)", OptionKind.Number, null, "1", Min: 0.3, Max: 3),
+                new("showDrs", "Indicador DRS (só o jogador; o AMS2 não informa o do rival)", OptionKind.Toggle, null, "true"),
+                new("always", "Sempre visível (senão só no duelo e com o jogador no carro)", OptionKind.Toggle, null, "false"),
+            ],
+            // Faixa inferior do 2012: modo do valor (intervalo para o carro da frente ou gap para o lider) e tempo de cada pagina de 5 pilotos.
+            ["ticker"] =
+            [
+                new("mode", "Valor", OptionKind.Choice, [O("interval", "Intervalo (carro da frente)"), O("gap", "Gap para o líder")], "interval"),
+                new("pageSeconds", "Segundos por página (5 pilotos)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+            ],
+        },
         ["f1-1993"] = new(StringComparer.OrdinalIgnoreCase)
         {
             ["board"] = [
@@ -360,6 +401,7 @@ public static class ThemeCatalog
         new("f1-1993", "F1 1993", true),
         new("f1-1998", "F1 1998-2001", true),
         new("f1-2004", "F1 2004-2008", true),
+        new("f1-2012", "F1 2012", true),
         new("f1-2018", "F1 2018", true),
     ];
 
