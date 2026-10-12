@@ -229,6 +229,16 @@ public static class CaptionPlate
     }
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
+    /// <summary>Largura reservada no fim da celula branca do nome para a bandeira (0 sem pais conhecido).</summary>
+    static float FlagRoom04(string? country) => Ams2.Shared.Liveries.CountryKey.Of(country) is null ? 0 : 42;
+
+    /// <summary>Bandeira do pais encostada no fim (direita) da celula branca do nome, que termina em <paramref name="cellRight"/> (2004-2008).</summary>
+    static void Flag04(ThemeCanvas c, string? country, float cellRight, float cellTop, float cellH)
+    {
+        const float fw = 34, fh = 22;
+        c.DrawFlag(country, cellRight - fw - 8, cellTop + (cellH - fh) / 2, fw, fh);
+    }
+
     /// <summary>Legenda do piloto; <paramref name="cfg"/> traz o formato do nome e as colunas "team"/"tyre" (equipe e fornecedor de pneus).</summary>
     public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
@@ -238,7 +248,9 @@ public static class CaptionPlate
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
             Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
-            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16));
+            float flagRoom = FlagRoom04(car.Country);
+            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16 - flagRoom));
+            Flag04(c, car.Country, X0 + LeftW, Y0 + HeadH, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, LeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, LeftW - 16), Chrome.CellKind.Navy);
             float x = X0 + LeftW;
             var posKind = car.Position == 1 ? Chrome.CellKind.Red : Chrome.CellKind.Navy;
@@ -303,7 +315,8 @@ public static class CaptionPlate
         {
             Chrome.Box(c, X0, Y0, WinLeftW, HeadH, "Winner", t.Text with { Element = "title" }, Chrome.CellKind.Red);
             Chrome.Checkered(c, X0 + WinLeftW - 130, Y0, 130, HeadH);
-            Chrome.WhiteCell(c, X0, Y0 + HeadH, WinLeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, WinLeftW - 16));
+            Chrome.WhiteCell(c, X0, Y0 + HeadH, WinLeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, WinLeftW - 16 - FlagRoom04(car.Country)));
+            Flag04(c, car.Country, X0 + WinLeftW, Y0 + HeadH, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, WinLeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, WinLeftW - 66), Chrome.CellKind.Navy);
             Chrome.TyreBox(c, X0 + WinLeftW - 46, Y0 + HeadH + RowH + 3, 38, RowH - 6, car.TyreSupplier, t.Text with { Size = 22 });
             float bx = X0 + WinLeftW + 6, bw = 160;
