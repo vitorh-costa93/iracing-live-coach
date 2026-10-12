@@ -500,7 +500,7 @@ public sealed class BoardWidget : IWidget
             {
                 // 2018: mesma placa da legenda de piloto (caixa de posição, tique, "Nome SOBRENOME", número em itálico, equipe).
                 string full = _cfg.Fmt.Name is null && _cfg.Fmt.CarNumber != true ? d.Name : name;
-                CaptionPlate.Plate18(c, ox, oy, CaptionPlate.Driver18Width, h, d.Position, full, CarNumber(d), team, bigBox: false);
+                CaptionPlate.Plate18(c, ox, oy, CaptionPlate.Driver18Width, h, d.Position, full, CarNumber(d), team, bigBox: false, country: d.Country);
                 if (TyreCol && d.TyreSupplier.Length > 0) c.Text(d.TyreSupplier, t.Label with { Weight = 700 }, ox + CaptionPlate.Driver18Width - 50, oy + 50, 36, 32, t.ValueColor, HAlign.Center);
                 break;
             }

@@ -14,6 +14,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $overlayProject = Join-Path $repoRoot "ams2\src\Ams2.OverlayHost\Ams2.OverlayHost.csproj"
 $controlCenterProject = Join-Path $repoRoot "ams2\src\Ams2.ControlCenter\Ams2.ControlCenter.csproj"
 $fontsDir = Join-Path $repoRoot "ams2\fonts"
+$flagsDir = Join-Path $repoRoot "ams2\src\Ams2.OverlayHost\Assets\Flags"
 $publishDir = Join-Path $env:LOCALAPPDATA "Ams2LiveCoach"
 $desktopInstallDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "AMS2 Live Coach"
 
@@ -34,6 +35,10 @@ foreach ($exe in @($overlayExe, $controlCenterExe)) {
 $publishFonts = Join-Path $publishDir "fonts"
 New-Item -ItemType Directory -Force $publishFonts | Out-Null
 Copy-Item (Join-Path $fontsDir "*.ttf") $publishFonts -Force
+# Bandeiras de pais (Assets\Flags ao lado do exe), tambem copiadas explicitamente em single-file.
+$publishFlags = Join-Path $publishDir "Assets\Flags"
+New-Item -ItemType Directory -Force $publishFlags | Out-Null
+Copy-Item (Join-Path $flagsDir "*.png") $publishFlags -Force
 Write-Host "Publicado: $overlayExe e $controlCenterExe"
 
 Write-Host "Espelhando build para $desktopInstallDir ..."

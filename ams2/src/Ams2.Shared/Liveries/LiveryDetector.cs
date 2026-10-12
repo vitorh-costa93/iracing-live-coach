@@ -14,6 +14,7 @@ public sealed class LiveryDetector : IDisposable
 
     readonly List<LiveryEntry> _catalog;
     readonly string[] _folders;
+    readonly Dictionary<string, LiveryEntry> _byDriver;
     readonly CancellationTokenSource _cts = new();
     volatile Dictionary<string, PlayerNameEntry> _byModel = new(StringComparer.OrdinalIgnoreCase);
     int _running; // 0/1
@@ -33,7 +34,15 @@ public sealed class LiveryDetector : IDisposable
     {
         _catalog = catalog;
         _folders = catalog.Select(e => e.Model).Where(m => m.Contains('_') || m.Contains('-')).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        // Piloto (nome do jogo) -> pintura, para dar pais e equipe aos carros da IA: o AMS2 so informa o nome. Entradas com pais e equipe vencem as vazias.
+        _byDriver = new(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in catalog.OrderByDescending(e => (e.Country.Length > 0 ? 2 : 0) + (e.Team.Length > 0 ? 1 : 0)))
+            if (e.Driver.Length > 0) _byDriver.TryAdd(e.Driver.Trim(), e);
     }
+
+    /// <summary>Pais e equipe do piloto de IA pelo nome (catalogo de pinturas do jogo), ou null se o nome nao consta.</summary>
+    public LiveryEntry? FindDriver(string name)
+        => !string.IsNullOrWhiteSpace(name) && _byDriver.TryGetValue(name.Trim(), out var e) ? e : null;
 
     /// <summary>Identidade detectada para o modelo (CarName do jogo), ou null.</summary>
     public PlayerNameEntry? Get(string carName)

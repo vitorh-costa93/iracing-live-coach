@@ -20,6 +20,8 @@ public static class WidgetLayout
         ["drivercaption", "winner"],
         // Classificacao x corrida: a torre de melhores voltas ocupa o lugar da torre e a placa de volta o do Board (PLANO-QUALI.md).
         ["qualitower", "standings"], ["qualilap", "board"], ["qualiboard", "board"],
+        // 2018: Battle e legenda de posicao ocupam o lugar do Board (nunca juntos) e, na classificacao, o da Quali Lap.
+        ["battle", "poscaption"], ["qualilap", "battle"], ["qualilap", "poscaption"],
     ];
 
     /// <summary>Widgets desligados no perfil padrao do tema (alem dos DefaultVisible=false do catalogo). 2018: a torre tem o cabecalho
@@ -87,6 +89,9 @@ public static class WidgetLayout
             ["racestart"] = new(1600, 560, 0.65f),
             // Race Control (so 2018) acima a direita da torre (que termina em x=295): 240x149 em (320, 40), antes do banner WINNER (x>=570).
             ["racecontrol"] = new(320, 40, 0.8f),
+            // Battle (so 2018) no lugar do Board, embaixo ao centro (760x124): x=700..1460, y=940..1064, depois da legenda do piloto (x<=632) e
+            // antes do Inputs (x>=1542). Legenda de posicao (1000x94 x0.9 = 900x85) logo ao lado da legenda do piloto: x=640..1540, y=962..1047.
+            ["battle"] = new(700, 940, 1f), ["poscaption"] = new(640, 962, 0.9f),
             // Classificacao: torre no lugar da Standings; resultado (500x382, so ao fim da sessao) centrado em x=710..1210, y=196..578: abaixo
             // do banner WINNER (y<=114) e do Race Control (y<=189), acima do Radar (y>=585) e a esquerda do Pit Lane (x>=1250). Com o bloco
             // ELIMINATED (eliminationFrom > 0) a janela cresce para baixo sobre o Radar (opcao do usuario; o Radar so aparece com carro ao lado).
@@ -120,7 +125,7 @@ public static class WidgetLayout
             {
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
-                ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186),
+                ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186), ["battle"] = (760, 124), ["poscaption"] = (1000, 94),
                 ["qualitower"] = (284, 626), ["qualilap"] = (664, 152), ["qualiresult"] = (500, 382),
             },
         };

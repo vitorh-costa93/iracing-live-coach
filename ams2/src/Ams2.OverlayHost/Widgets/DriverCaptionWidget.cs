@@ -137,13 +137,13 @@ public static class CaptionPlate
         switch (variant)
         {
             case "result":
-                Plate18(c, 0, H - Height, Caption18Width, Height, car.Position, full, CarNumber(car), team, bigBox: true, tick: tick, slantEnd: true);
+                Plate18(c, 0, H - Height, Caption18Width, Height, car.Position, full, CarNumber(car), team, bigBox: true, tick: tick, slantEnd: true, country: car.Country);
                 return;
             case "startednow":
                 StartedNow18(c, car, full, team, started, tick);
                 return;
             default:
-                Plate18(c, 0, H - Height, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, tick: tick);
+                Plate18(c, 0, H - Height, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, tick: tick, country: car.Country);
                 if (supplier.Length > 0) c.Text(supplier, t.Label with { Weight = 700 }, Driver18Width - 50, H - Height + 50, 36, 32, t.ValueColor, HAlign.Center);
                 return;
         }
@@ -196,7 +196,7 @@ public static class CaptionPlate
     /// O AMS2 não informa cor/logo da equipe: tique no vermelho do tema e número em cinza claro, sem logos. Devolve a borda direita do texto.
     /// </summary>
     public static float Plate18(ThemeCanvas c, float x, float y, float w, float h, int position, string fullName, string number, string team, bool bigBox, float rightReserve = 0,
-        Color4? tick = null, bool slantEnd = false)
+        Color4? tick = null, bool slantEnd = false, string? country = null)
     {
         var t = c.Theme;
         if (slantEnd)
@@ -209,6 +209,13 @@ public static class CaptionPlate
             rightReserve += s + gap + f1 + gap + f2;
         }
         else c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
+        // Bandeira do pais do piloto no canto direito da linha do nome (como na TV); sem pais conhecido, sem bandeira e sem reserva.
+        if (Ams2.Shared.Liveries.CountryKey.Of(country) is not null)
+        {
+            float fw = bigBox ? 60 : 48, fh = bigBox ? 40 : 32;
+            c.DrawFlag(country, x + w - rightReserve - fw - 14, y + 12, fw, fh);
+            rightReserve += fw + 20;
+        }
         float box = bigBox ? h - 16 : 42, bx = x + 10, byy = bigBox ? y + 8 : y + 10;
         Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = bigBox ? 40 : 24 });
         float tx = bx + box + 12;
@@ -244,7 +251,7 @@ public static class CaptionPlate
         // 2018: placa preta com caixa de posição, tique, "Nome SOBRENOME", número em itálico e equipe; fornecedor de pneus no canto.
         // Sem formato de nome escolhido, o nome completo (a TV mostra nome + sobrenome); com formato, o do perfil.
         string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
-        Plate18(c, 0, 0, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false);
+        Plate18(c, 0, 0, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, country: car.Country);
         if (car.TyreSupplier.Length > 0) c.Text(car.TyreSupplier, t.Label with { Weight = 700 }, Driver18Width - 50, 50, 36, 32, t.ValueColor, HAlign.Center);
     }
 

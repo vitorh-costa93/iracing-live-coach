@@ -113,6 +113,10 @@ public static class WidgetCatalog
         new("racestart", "Race Start", null, null, null, "", [], 1600, 560, DefaultScale: 0.65f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
         // Exclusivo do 2018: "Race Control" da TV (caixa de bandeira YELLOW FLAG / INCIDENT e barra "SLOW STOP -x.xs" de parada lenta do jogador).
         new("racecontrol", "Race Control", null, null, null, "", [], 320, 40, DefaultScale: 0.8f, Caps: DisplayCaps.Name, Themes: ["f1-2018"]),
+        // Exclusivos do 2018, no lugar do Board da corrida (a TV 2018 nao o tem): "Battle" (duelo com DRS e velocidades dos dois carros) e a legenda de
+        // posicao dupla com bandeira do pais. Na classificacao dao lugar a Quali Lap (WidgetLayout.ExclusiveGroups).
+        new("battle", "Battle (duelo, DRS e velocidades)", null, null, null, "", [], 700, 940, Caps: DisplayCaps.Name, Themes: ["f1-2018"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
+        new("poscaption", "Legenda de posição (com bandeira)", null, null, null, "", [], 640, 962, DefaultScale: 0.9f, Caps: DisplayCaps.Name, Themes: ["f1-2018"], DefaultSessions: [SessionIds.Practice, SessionIds.Race]),
         // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
@@ -208,6 +212,21 @@ public static class WidgetCatalog
                 new("showBest", "Mostrar o melhor anterior (BEST) da pista e carro", OptionKind.Toggle, null, "true"),
                 new("showFor", "Tempo na tela após alcançar o alvo (s)", OptionKind.Number, null, "10", Min: 5, Max: 30),
                 new("always", "Sempre visível (mostra o último resultado)", OptionKind.Toggle, null, "false"),
+            ],
+            // Battle do 2018: duelo do jogador com o vizinho (da frente, de tras ou o mais proximo) quando o intervalo e menor que gapSeconds.
+            ["battle"] =
+            [
+                new("rival", "Rival", OptionKind.Choice, [O("auto", "O mais próximo (frente ou trás)"), O("ahead", "Carro da frente"), O("behind", "Carro de trás")], "auto"),
+                new("gapSeconds", "Aparece com intervalo menor que (s)", OptionKind.Number, null, "1", Min: 0.3, Max: 3),
+                new("showDrs", "Indicador DRS (só o jogador; o AMS2 não informa o do rival)", OptionKind.Toggle, null, "true"),
+                new("always", "Sempre visível (senão só no duelo e com o jogador no carro)", OptionKind.Toggle, null, "false"),
+            ],
+            // Legenda de posicao do 2018: dois pilotos lado a lado (nome, numero, equipe, bandeira) a cada mudanca de posicao do jogador.
+            ["poscaption"] =
+            [
+                new("cars", "Pilotos", OptionKind.Choice, [O("rival", "Jogador e vizinho de posição"), O("top2", "Líder e 2º colocado")], "rival"),
+                new("showFor", "Tempo na tela por evento (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
+                new("always", "Sempre visível (senão só ao mudar de posição)", OptionKind.Toggle, null, "false"),
             ],
             // Race Control do 2018: caixa da bandeira (amarela/azul/vermelha/xadrez) e barra de parada lenta do jogador (regra em SlowStopDetector).
             ["racecontrol"] =

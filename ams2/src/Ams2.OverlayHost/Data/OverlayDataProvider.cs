@@ -210,7 +210,9 @@ public sealed class OverlayDataProvider : IDisposable
             // Pintura lida do jogo (varredura em thread propria, so ao entrar numa sessao ou trocar de carro); a escolha manual e o plano B.
             string model = pc is null ? "" : PlayerNameStore.ModelKey(pc.CarName);
             if (model != _liveryModel) { _liveryModel = model; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
-            return PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
+            var withPlayer = PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
+            // Pais/equipe da IA pelo nome do piloto (catalogo de pinturas): alimenta bandeiras e equipe nas legendas.
+            return PlayerIdentity.ApplyField(withPlayer, n => _liveries.FindDriver(n) is { } e ? (e.Country, e.Team) : null);
         }
         return PlayerIdentity.Apply(s, _names.Get);
     }

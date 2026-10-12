@@ -7,7 +7,7 @@ namespace Ams2.OverlayHost.Widgets;
 /// <summary>Cria widgets pelo id (usado por --widget). Os widgets não conhecem o tema: só pedem tokens ao canvas.</summary>
 public static class WidgetRegistry
 {
-    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "qualitower", "qualilap", "qualiboard", "qualiresult"];
+    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "battle", "poscaption", "qualitower", "qualilap", "qualiboard", "qualiresult"];
 
     public static IWidget Create(string? id) => (id ?? "relative").ToLowerInvariant() switch
     {
@@ -28,6 +28,8 @@ public static class WidgetRegistry
         "livespeed" => new LiveSpeedWidget(),
         "racestart" => new RaceStartWidget(),
         "racecontrol" => new RaceControlWidget(),
+        "battle" => new BattleWidget(),
+        "poscaption" => new PositionCaptionWidget(),
         "qualitower" => new QualiTowerWidget(),
         "qualilap" => new QualiLapWidget(),
         "qualiboard" => new QualiBoardWidget(),

@@ -35,7 +35,7 @@ public static class LayoutPreview
         double now = 0;
         using var provider = new OverlayDataProvider(new FakeRawSource(() => now, board: !quali, radar: true, quali: quali), () => now);
         for (int i = 0; i < 1200; i++) { now += 1.0 / 60; provider.Tick(); }
-        var model = provider.Current;
+        var model = WithCountries(provider.Current);
         if (quali) return model;
         var leader = model.Standings[0].Car;
         return model with
@@ -48,6 +48,17 @@ public static class LayoutPreview
             },
             Launch = new LaunchState(new LaunchResult("preview", 2.3, 4.6, now, now, 2.4, 4.8), 2.3, 4.6),
         };
+    }
+
+    /// <summary>Paises de exemplo nos carros da previa (bandeiras das legendas); so a previa, nunca dados reais.</summary>
+    static OverlayModel WithCountries(OverlayModel m)
+    {
+        if (m.Session is not { } s) return m;
+        string[] countries = ["GBR", "MEX", "FIN", "ITA", "BRA", "NED", "GER", "ESP"];
+        var cars = s.Cars.Select((c, i) => c.Country.Length > 0 ? c : c with { Country = countries[i % countries.Length] }).ToList();
+        var byIndex = cars.GroupBy(c => c.Index).ToDictionary(g => g.Key, g => g.First());
+        var standings = m.Standings.Select(r => byIndex.TryGetValue(r.Car.Index, out var c) ? r with { Car = c } : r).ToList();
+        return m with { Session = s with { Cars = cars }, Standings = standings };
     }
 
     public static WidgetSettings Settings(WidgetSettings settings)

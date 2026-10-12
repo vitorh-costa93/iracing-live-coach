@@ -110,6 +110,7 @@ public sealed unsafe class ThemeCanvas : IDisposable
             ClearTextResources();
             _brush.Dispose();
             _brush = default;
+            _flags?.Reset();
             _generation = _gfx.Generation;
         }
         if (_brush.Get() == null)
@@ -357,9 +358,29 @@ public sealed unsafe class ThemeCanvas : IDisposable
         }
     }
 
+    FlagBitmaps? _flags;
+
+    /// <summary>
+    /// Bandeira do pais (sigla do jogo ou nome em ingles, ver <see cref="Ams2.Shared.Liveries.CountryKey"/>) encaixada em (x, y, w, h) sem deformar.
+    /// Devolve false (nada desenhado) quando o pais e desconhecido ou nao ha PNG: a celula fica vazia, nunca com sigla.
+    /// </summary>
+    public bool DrawFlag(string? country, float x, float y, float w, float h)
+    {
+        string? key = Ams2.Shared.Liveries.CountryKey.Of(country);
+        if (key is null) return false;
+        EnsureResources();
+        _flags ??= new FlagBitmaps();
+        var bmp = _flags.Find(Dc, key);
+        if (bmp == null) return false;
+        var dest = FlagBitmaps.Contain(bmp, new RectF(x, y, x + w, y + h));
+        Dc->DrawBitmap(bmp, &dest, Math.Clamp(Opacity, 0f, 1f), InterpolationMode.HighQualityCubic, null, null);
+        return true;
+    }
+
     public void Dispose()
     {
         ClearTextResources();
         _brush.Dispose();
+        _flags?.Dispose();
     }
 }

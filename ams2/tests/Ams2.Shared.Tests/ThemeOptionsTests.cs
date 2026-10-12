@@ -281,6 +281,31 @@ public class ThemeOptionsTests
     }
 
     [Fact]
+    public void Battle_and_position_caption_are_2018_only_race_widgets_with_their_options()
+    {
+        Assert.Equal(["rival", "gapSeconds", "showDrs", "always"], WidgetCatalog.OptionsFor(T2018, "battle").Select(d => d.Id));
+        Assert.Equal(["cars", "showFor", "always"], WidgetCatalog.OptionsFor(T2018, "poscaption").Select(d => d.Id));
+        foreach (var id in new[] { "battle", "poscaption" })
+        {
+            Assert.True(WidgetCatalog.Find(id)!.InTheme(T2018));
+            Assert.NotNull(ProfileFactory.CreateDefault("x", T2018).Get(id));
+            foreach (var theme in new[] { "f1-1993", "f1-1998", "f1-2004" })
+            {
+                Assert.DoesNotContain(id, WidgetCatalog.ForTheme(theme).Select(d => d.Id));
+                Assert.Empty(WidgetCatalog.OptionsFor(theme, id));
+            }
+        }
+        var s = new WidgetSettings { Id = "battle", Options = new() { ["rival"] = "AHEAD", ["gapSeconds"] = "2", ["showDrs"] = "false" } }.Normalized(T2018);
+        Assert.Equal(new Dictionary<string, string> { ["rival"] = "ahead", ["gapSeconds"] = "2", ["showDrs"] = "false" }, s.Options);
+        Assert.Null(new WidgetSettings { Id = "battle", Options = new() { ["rival"] = "auto", ["gapSeconds"] = "1", ["showDrs"] = "true" } }.Normalized(T2018).Options);
+        Assert.Null(new WidgetSettings { Id = "poscaption", Options = new() { ["cars"] = "rival", ["showFor"] = "6" } }.Normalized(T2018).Options);
+        Assert.Equal("top2", new WidgetSettings { Id = "poscaption", Options = new() { ["cars"] = "top2" } }.Normalized(T2018).Options!["cars"]);
+        // Substituem o Board da corrida e, na classificacao, a Quali Lap: nunca juntos.
+        Assert.Contains(WidgetLayout.ExclusiveGroups, g => g.Contains("battle") && g.Contains("poscaption"));
+        Assert.Contains(WidgetLayout.ExclusiveGroups, g => g.Contains("qualilap") && g.Contains("battle"));
+    }
+
+    [Fact]
     public void Live_speed_exists_only_in_the_2018_theme()
     {
         var def = WidgetCatalog.Find("livespeed")!;
