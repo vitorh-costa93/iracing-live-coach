@@ -41,7 +41,8 @@ public static class QualiCaption
         {
             float left = width - 104;
             Chrome.HeaderCell(c, 4, 4, left, 26, "QUALIFYING", t.Label);
-            Chrome.WhiteCell(c, 4, 30, left, 30, name, BroadcastUi.Fit(c, name, t.Text, left - 16));
+            Chrome.WhiteCell(c, 4, 30, left, 30, name, BroadcastUi.Fit(c, name, t.Text, left - 16 - Chrome.FlagSpace(c, car.Country)));
+            Chrome.CellFlag(c, car.Country, 4, 30, left, 30);
             Chrome.BlackCell(c, 4, 60, left, 30, gap, t.Numbers with { Element = "gap" }, HAlign.Right);
             if (!Chrome.TyreBox(c, 4 + left, 30, 40, 60, cfg.ColumnVisible("tyre") ? car.TyreSupplier : "", t.Text with { Size = 22 }))
                 Chrome.Box(c, 4 + left, 30, 40, 60, "", t.Text, Chrome.CellKind.Navy);

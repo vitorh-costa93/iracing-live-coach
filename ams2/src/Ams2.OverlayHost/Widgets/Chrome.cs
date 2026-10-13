@@ -123,6 +123,13 @@ public static class Chrome
 
     /// <summary>Tinta do nome do jogador (vermelho escuro sobre a célula branca).</summary>
     public static Color4 PlayerInk => C(176, 12, 24);
+    /// <summary>Bandeira do pais nas celulas de nome 2004-2008: 24 x 16, encostada na borda da celula (direita; esquerda para nomes alinhados a direita).</summary>
+    public const float FlagW = 24, FlagH = 16, FlagPad = 6;
+    /// <summary>Largura a tirar do texto do nome para caber a bandeira (0 se o pais e desconhecido ou nao ha PNG).</summary>
+    public static float FlagSpace(ThemeCanvas c, string? country) => c.HasFlag(country) ? FlagW + FlagPad + 2 : 0;
+    /// <summary>Desenha a bandeira na borda da celula (x, y, w, h); sem pais/PNG nao desenha nada.</summary>
+    public static void CellFlag(ThemeCanvas c, string? country, float x, float y, float w, float h, bool atLeft = false)
+        => c.Flag(country, atLeft ? x + FlagPad : x + w - FlagW - FlagPad, y + (h - FlagH) / 2, FlagW, FlagH);
 
     /// <summary>Legenda pequena em caixa ("30/56", títulos de widget). Branca por padrão, azul-ardósia com texto branco para cabeçalhos. Devolve a largura.</summary>
     public static float Caption(ThemeCanvas c, float x, float y, string text, float h = 26, FontToken? font = null, CellKind kind = CellKind.White, Color4? ink = null)

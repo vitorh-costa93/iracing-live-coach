@@ -29,4 +29,21 @@ public static class PlayerIdentity
         foreach (var c in s.Cars) cars.Add(c.Index == me.Index ? renamed : c);
         return s with { Cars = cars };
     }
+
+    /// <summary>Preenche <see cref="CarSnapshot.Country"/> dos adversarios (sem pais) com <paramref name="resolve"/>(nome do jogo); "" = sem bandeira.
+    /// Devolve o mesmo snapshot se nada mudou.</summary>
+    public static SessionSnapshot ApplyOpponentCountries(SessionSnapshot s, Func<string, string> resolve)
+    {
+        List<CarSnapshot>? cars = null;
+        for (int i = 0; i < s.Cars.Count; i++)
+        {
+            var c = s.Cars[i];
+            if (c.IsPlayer || c.Country.Length > 0) continue;
+            string country = resolve(c.Name);
+            if (country.Length == 0) continue;
+            cars ??= new List<CarSnapshot>(s.Cars);
+            cars[i] = c with { Country = country };
+        }
+        return cars is null ? s : s with { Cars = cars };
+    }
 }

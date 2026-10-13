@@ -114,6 +114,7 @@ public sealed class StandingsWidget : IWidget
             {
                 var ink = Chrome.NameCell(c, L.NameCellX, y, NameCellW, BoxH, r.IsPlayer ? t.PlayerColor : t.TextColor);
                 string nm = _cfg.Name(r.Car, _codes);
+                if (t.Style == ThemeStyle.Broadcast98) nm = nm.ToUpperInvariant();   // como o race board 1998 (Broadcast98RaceBoard.Name: maiusculas, mesmo token t.Text)
                 c.Text(nm, BroadcastUi.Fit(c, nm, t.Text, NameCellW + 18), L.NameCellX + 8, y, NameCellW + 26, BoxH, ink, shadow: t.NameCellFill.A > 0f ? null : t.TextShadow);
             }
             if (_cfg.ColumnVisible("class")) DrawBadge(c, t, L.BadgeCx, y + BoxH / 2, (char)('A' + Math.Min(classes.IndexOf(r.Car.ClassName), 25)));

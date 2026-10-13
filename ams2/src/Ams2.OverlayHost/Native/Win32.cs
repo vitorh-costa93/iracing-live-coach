@@ -61,6 +61,9 @@ internal static class Win32
 
     // Temporização de alta resolução e sincronismo com o vblank do DWM.
     [DllImport("dwmapi.dll")] public static extern int DwmFlush();
+    [DllImport("kernel32.dll")] public static extern uint WaitForMultipleObjectsEx(uint count, nint[] handles, bool waitAll, uint ms, bool alertable);
+    [DllImport("kernel32.dll")] public static extern uint WaitForSingleObjectEx(nint handle, uint ms, bool alertable);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(nint handle);
     [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint ms);
     [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint ms);
     [DllImport("kernel32.dll")] public static extern nint GetCurrentProcess();
@@ -99,9 +102,28 @@ internal static class Win32
         try
         {
             var me = GetCurrentProcess();
-            if (D3DKMTSetProcessSchedulingPriorityClass(me, 4) != 0) D3DKMTSetProcessSchedulingPriorityClass(me, 3);
+            var refused = new List<string>();
+            string accepted = "nenhuma";
+            foreach (var (cls, name) in new[] { (5, "REALTIME"), (4, "HIGH"), (3, "ABOVE_NORMAL") })
+            {
+                int rc = D3DKMTSetProcessSchedulingPriorityClass(me, cls);
+                if (rc == 0) { accepted = name; break; }
+                refused.Add($"{name}=0x{rc:X8}");
+            }
+            Console.WriteLine($"[GPU] prioridade D3DKMT aceita={accepted}" + (refused.Count > 0 ? $" recusadas: {string.Join(", ", refused)}" : ""));
         }
-        catch { }
+        catch (Exception ex) { Console.WriteLine($"[GPU] prioridade D3DKMT falhou: {ex.Message}"); }
+    }
+
+    /// <summary>Processo elevado (administrador)?</summary>
+    public static bool IsElevated()
+    {
+        try
+        {
+            using var id = System.Security.Principal.WindowsIdentity.GetCurrent();
+            return new System.Security.Principal.WindowsPrincipal(id).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch { return false; }
     }
 
     [DllImport("kernel32.dll")] public static extern nint GetModuleHandleW(string? name);

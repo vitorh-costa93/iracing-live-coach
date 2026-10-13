@@ -27,8 +27,7 @@ Conclusao: a "base" do V3 = render dirigido por vblank (nao por timer), um quadr
 * `InputSampler` (Ams2.Core): thread propria (AboveNormal, espera de ~1 ms), le **so 4 campos** do mapa (seq + acelerador/freio/volante, protocolo seqlock: seq par e igual antes/depois) e grava uma amostra por escrita do jogo, com teto de 240 Hz. Nao monta o snapshot de 64 carros.
 * `InputRing` (Ams2.Core): buffer circular fixo de 4096 amostras (>= 10 s a 240 Hz), um escritor, leitores sem lock (contador publicado depois do slot; leitor descarta o prefixo possivelmente sobrescrito). Sem alocacao por amostra nem por quadro. `Clear` quando o relogio volta.
 * Widget Inputs: `HighFrequency = true`; "agora" = relogio do render (`InputRing.Now`), colunas de pixel interpoladas no instante da coluna (scroll continuo por tempo), valor mantido por ate 50 ms alem da ultima amostra; buffers do grafico reutilizados. Vale para os 3 temas (inclui o mostrador analogico do f1-2004 e seu grafico opcional).
-* Host: `IWidget.HighFrequency`. Widgets marcados rodam **a cada vblank**: o laco dorme em `DwmFlush` (bloqueia ate a proxima composicao do DWM, sem CPU) com `Present(0)`; os demais seguem 60 Hz por acumulador (sem deriva). Sem widget de alta frequencia visivel volta a dormir so ate o proximo passo de 60 Hz. Se `DwmFlush` nao sincronizar (3 retornos instantaneos), cai para relogio no refresh do monitor. `timeBeginPeriod(1)` + opt-out de power throttling do processo (Windows 11 ignora o timer fino em processo "em segundo plano"), thread de render AboveNormal.
-* `BufferCount = 3` nos swap chains: com 2 buffers e `Present(0)` o Present bloqueava ~9 ms esperando o DWM liberar o buffer (limitava a ~70 fps a 165 Hz).
+* Host (superado pela secao 5): `IWidget.HighFrequency`; widgets marcados rodavam a cada vblank, com `DwmFlush`/relogio por prazo, `Present(0, DoNotWait)` e `BufferCount = 3`. Esse texto sobre `DwmFlush`/`Sleep` ficou obsoleto.
 * Medicao: `RateStats`, `Ams2.OverlayHost --fake --widget inputs --seconds 6 --measure` (imprime `[FPS] ...`), `ams2\tools\measure-fps.ps1`, `Ams2.Spike rate [s]` (memoria do jogo, so leitura), teste de integracao `FpsMeasureTests`.
 
 ## 4. Numeros antes/depois (`--fake`, widget Inputs, monitor 165 Hz)
@@ -42,3 +41,15 @@ Conclusao: a "base" do V3 = render dirigido por vblank (nao por timer), um quadr
 
 Observacao honesta: com o AMS2 usando 98% da GPU, o `Present` espera a GPU/DWM (8-10 ms em media, picos de ~30 ms) e o fps de render do overlay fica em 60-90 independentemente do desenho (testado: 2-6 buffers, `Present(1)`, prioridade de GPU +7, pular o `DwmFlush`; nada passou disso). Mesmo assim o scroll e continuo porque o grafico e desenhado pelo tempo real do quadro, nao por amostra; e a amostragem nao depende do render.
 Os valores `--fake` usam a fonte falsa em processo (nao leem o jogo); a amostragem do fake e limitada pelo teto de 240 Hz (o valor ~196 vem da espera de 1 ms do laco).
+
+## 5. Modelo V3 replicado no AMS2 (11/10/2026)
+
+Diagnostico: o V3 e fluido porque o `Present(1)` bloqueante e o relogio do laco (BufferCount 2, `Commit` do DComp por quadro, sem Sleep no caminho quente) e todas as janelas visiveis sao renderizadas a cada volta. O AMS2 usava relogio por deadline/`SleepUntil`, `Present(0, DoNotWait)`, `BufferCount = 3`, descartava quadro em `WAS_STILL_DRAWING` e fazia `Commit` so na criacao: quadros entregues fora do vblank e descartes viravam jitter. O teste anterior "Present(1)" (secao 3, ultima observacao) so trocou o `SyncInterval`; o resto do modelo (relogio por timer, DoNotWait/3 buffers, sem Commit por quadro) continuou diferente, por isso nao mostrou ganho.
+
+Mudancas:
+* `HostController.RunLoop`: widgets HighFrequency (nao ociosos) sao desenhados em sequencia a cada volta; nenhum Sleep/SleepUntil quando ha HF ativo. Sem HF ativo: dorme ate o proximo passo de 60 Hz (nao-HF a 60 Hz por acumulador, nao bloqueiam o Present por nao encherem a fila); sem janela visivel: 50 ms.
+* `DeviceResources`: `BufferCount = 2`, `Present(1, None)` bloqueante, sem descarte em `WAS_STILL_DRAWING`, `Commit()` a cada quadro; device lost em Present/Commit recupera como antes.
+* `WidgetWindow`: nao forca mais `PresentInterval = 0`.
+* Inputs: o traco extrapola o ultimo valor ate "agora" com teto de 100 ms (antes 50 ms, que gerava degrau).
+* Mantidos: `InputSampler` 240 Hz, `InputRing`, `SetGPUThreadPriority(7)`/D3DKMT, `timeBeginPeriod(1)` e thread AboveNormal (ainda uteis para o Sleep do caminho nao-HF e sem dano; nao sao usados no caminho quente).
+* Risco/pendencia: validar ao vivo (fps, pacing, CPU) com jogo aberto; com varias janelas HF cada Present(1) bloqueia em sequencia (igual ao V3), o que pode limitar a taxa por janela se houver muitas HF visiveis.

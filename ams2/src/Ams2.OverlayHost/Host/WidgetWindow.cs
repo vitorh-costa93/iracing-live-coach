@@ -37,6 +37,11 @@ internal sealed class WidgetWindow : IDisposable
     public string Id { get; }
     /// <summary>Medição de apresentacoes aceitas (nao conta quadros recusados por fila cheia ou device lost).</summary>
     public Ams2.Core.Calc.RateStats RenderStats { get; } = new();
+    FrameLog? _frameLog;
+    /// <summary>Handle waitable do swap chain atual (0 = indisponivel). Lido a cada volta: muda em Rebuild/device lost.</summary>
+    public nint FrameWaitHandle => _gfx.FrameLatencyWaitable;
+    /// <summary>Ticks que o laco esperou pelo vblank antes deste quadro (telemetria [FPS]); definido pelo host.</summary>
+    public long WaitTicks;
     long _drawCount;
     double _drawSeconds, _presentSeconds;
     public string RenderTiming => _drawCount == 0 ? "" : $"draw={_drawSeconds / _drawCount * 1000:F2}ms present={_presentSeconds / _drawCount * 1000:F2}ms";
@@ -72,7 +77,6 @@ internal sealed class WidgetWindow : IDisposable
         _win.Mouse = OnMouse;
         _win.IsResizeGrip = (cx, cy) => cx >= _w - GripSize && cy >= _h - GripSize;
         _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
-        _gfx.PresentInterval = 0;
         _canvas = new ThemeCanvas(_gfx, theme, settings.RenderScale);
         ApplyCanvas();
         _win.SetVisible(Visible);
@@ -123,7 +127,6 @@ internal sealed class WidgetWindow : IDisposable
         _canvas.Dispose();
         _gfx.Dispose();
         _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
-        _gfx.PresentInterval = 0;
         _canvas = new ThemeCanvas(_gfx, _theme, Settings.RenderScale);
         ApplyCanvas();
     }
@@ -168,7 +171,11 @@ internal sealed class WidgetWindow : IDisposable
         if (_win.EditMode) DrawEditAdornments(preview);
         _canvas.End();
         double drawn = Ams2.Core.Calc.RateStats.Now();
-        if (_gfx.EndFrame()) RenderStats.Mark();
+        if (_gfx.EndFrame())
+        {
+            RenderStats.Mark();
+            if (_widget.HighFrequency) (_frameLog ??= new FrameLog(Id)).Add(_gfx.LastPresentStart, _gfx.LastPresentEnd, WaitTicks);
+        }
         _drawCount++;
         _drawSeconds += drawn - started;
         _presentSeconds += Ams2.Core.Calc.RateStats.Now() - drawn;

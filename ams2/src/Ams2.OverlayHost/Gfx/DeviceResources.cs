@@ -60,8 +60,10 @@ public sealed unsafe class DeviceResources : IDisposable
     public int Height => _height;
     /// <summary>Muda a cada recuperação de device lost.</summary>
     public int Generation { get; private set; }
-    /// <summary>Intervalo de vsync do Present. Com varias janelas o host usa 0 (ritmo por temporizador) para nao somar vsyncs.</summary>
+    /// <summary>Intervalo de vsync do Present (1 = bloqueante no vblank, como o V3).</summary>
     public int PresentInterval { get; set; } = 1;
+    /// <summary>Handle waitable da swap chain (0 em offscreen). Muda em Recover/Rebuild: ler a cada volta, nao guardar.</summary>
+    public nint FrameLatencyWaitable { get; private set; }
 
     DeviceResources() { }
 
@@ -126,15 +128,22 @@ public sealed unsafe class DeviceResources : IDisposable
             Format = DxgiFormat.B8G8R8A8Unorm,
             SampleDesc = new SampleDescription(1, 0),
             BufferUsage = DxgiUsage.RenderTargetOutput,
-            // 3 buffers: com 2 e Present(0) o Present bloqueava ~9 ms esperando o DWM liberar o buffer (limitava o render a ~70 fps a 165 Hz).
-            BufferCount = 3,
+            // 2 buffers + Present(1), como o V3: o bloqueio do Present no vblank e o relogio do laco.
+            BufferCount = SwapBufferCount,
             Scaling = Scaling.Stretch,
             SwapEffect = SwapEffect.FlipSequential,
             AlphaMode = DxgiAlphaMode.Premultiplied,
+            // Pacing por vblank: o handle sinaliza quando ha vaga para um novo quadro (latencia maxima 1).
+            Flags = SwapChainFlags.FrameLatencyWaitableObject,
         };
         ComPtr<IDXGISwapChain1> swap = default;
         ThrowIfFailed(f.Get()->CreateSwapChainForComposition((IUnknown*)_d3dDevice.Get(), &desc, null, swap.GetAddressOf()));
         _swapChain = swap;
+        ComPtr<IDXGISwapChain2> swap2 = default;
+        ThrowIfFailed(_swapChain.As(ref swap2));
+        ThrowIfFailed(swap2.Get()->SetMaximumFrameLatency(1));
+        FrameLatencyWaitable = swap2.Get()->GetFrameLatencyWaitableObject();
+        swap2.Dispose();
 
         ComPtr<IDCompositionDesktopDevice> dcomp = default;
         ThrowIfFailed(DCompositionCreateDevice3((IUnknown*)_dxgiDevice.Get(), __uuidof<IDCompositionDesktopDevice>(), (void**)dcomp.GetAddressOf()));
@@ -183,6 +192,11 @@ public sealed unsafe class DeviceResources : IDisposable
         _dc.Get()->Clear(&clear);
     }
 
+    public const uint SwapBufferCount = 2;
+
+    /// <summary>Timestamps (Stopwatch) de inicio/fim do ultimo Present (telemetria [FPS]).</summary>
+    public long LastPresentStart, LastPresentEnd;
+
     /// <summary>false = device lost detectado e recuperado; tente de novo no próximo quadro.</summary>
     public bool EndFrame()
     {
@@ -191,13 +205,17 @@ public sealed unsafe class DeviceResources : IDisposable
         ThrowIfFailed(end);
         if (_offscreenMode) return true;
 
-        var present = _swapChain.Get()->Present((uint)PresentInterval,
-            PresentInterval == 0 ? PresentFlags.DoNotWait : PresentFlags.None);
-        // Uma janela com fila cheia nao pode bloquear todas as outras (incluindo radar e pedais).
-        if (present.Value == unchecked((int)0x887A000A)) return false; // DXGI_ERROR_WAS_STILL_DRAWING
+        // Modelo do V3: Present bloqueante no vblank e o relogio do laco (sem DoNotWait, sem descarte de quadro).
+        long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var present = _swapChain.Get()->Present((uint)PresentInterval, PresentFlags.None);
+        long p1 = System.Diagnostics.Stopwatch.GetTimestamp();
+        LastPresentStart = p0; LastPresentEnd = p1;
         if (IsLost(present)) { Recover(); return false; }
         ThrowIfFailed(present);
-        // A arvore visual nao mudou: Present publica o buffer sem novo Commit por quadro.
+        // Commit por quadro, como no V3 (DeviceResources.cs do V3).
+        var commit = _dcompDevice.Get()->Commit();
+        if (IsLost(commit)) { Recover(); return false; }
+        ThrowIfFailed(commit);
         return true;
     }
 
@@ -235,6 +253,7 @@ public sealed unsafe class DeviceResources : IDisposable
 
     void Release()
     {
+        if (FrameLatencyWaitable != 0) { Ams2.OverlayHost.Native.Win32.CloseHandle(FrameLatencyWaitable); FrameLatencyWaitable = 0; }
         _offscreen.Dispose();
         _fonts?.Dispose();
         _dwriteFactory.Dispose();

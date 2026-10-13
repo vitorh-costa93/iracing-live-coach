@@ -110,4 +110,17 @@ public class PlayerIdentityTests
         Assert.Equal(s.Cars.Count, r.Cars.Count);
         Assert.Equal(s.PlayerCar!.Position, r.PlayerCar.Position);
     }
+
+    [Fact]
+    public void ApplyOpponentCountries_fills_only_opponents_without_country_and_never_invents()
+    {
+        var sim = Grid(["Adam Alpha", "Vitor COSTA", "Carl Gamma"], ["M", "M", "M"]);
+        var s = PlayerIdentity.Apply(sim.Snapshot(), _ => new PlayerNameEntry { Name = "Kimi Raikkonen", Country = "FIN" });
+        var r = PlayerIdentity.ApplyOpponentCountries(s, n => n == "Adam Alpha" ? "GBR" : "");
+        Assert.Equal("GBR", r.Cars.Single(c => c.Name == "Adam Alpha").Country);
+        Assert.Equal("", r.Cars.Single(c => c.Name == "Carl Gamma").Country);
+        Assert.Equal("FIN", r.PlayerCar!.Country); // o jogador nao e tocado
+        Assert.Same(r, PlayerIdentity.ApplyOpponentCountries(r, _ => "")); // nada a preencher = mesmo snapshot
+        Assert.Equal("GBR", PlayerIdentity.ApplyOpponentCountries(r, _ => "ITA").Cars.Single(c => c.Name == "Adam Alpha").Country); // ja tem pais: mantido
+    }
 }

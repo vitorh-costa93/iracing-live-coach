@@ -126,7 +126,7 @@ public sealed class InputsWidget : IWidget
     // Buffers do grÃ¡fico: criados uma vez (o widget Ã© desenhado a cada vblank; nada Ã© alocado por quadro).
     InputSample[]? _snap;
     System.Numerics.Vector2[] _tracePoints = [];
-    const double HoldSeconds = 0.05;
+    const double HoldSeconds = 0.1; // teto da extrapolacao do ultimo valor ate "agora" (sem degrau antes disso)
 
     /// <summary>Vertices no instante real da amostra: o traco inteiro rola em subpixels, sem saltos entre colunas fixas.</summary>
     void DrawTrace(ThemeCanvas c, Theme.Theme t, InputRing? ring, float GX, float GY, float GW, float GH, Color4 thrColor, Color4 brkColor, float width)

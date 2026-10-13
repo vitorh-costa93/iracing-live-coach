@@ -326,14 +326,15 @@ internal sealed class HostController : IDisposable
     /// <summary>
     /// Roda até Ctrl+Alt+Q, fechamento ou <paramref name="seconds"/> (0 = sem limite). Thread principal.
     /// Dois ritmos num só laço (mesma thread: nenhuma janela é tocada fora da sua thread):
-    ///  - widgets de alta frequência seguem os prazos do monitor, sem esperar a composicao de todas as janelas;
-    ///    Present(0, DoNotWait) evita que uma fila cheia bloqueie os demais instrumentos;
-    ///  - os demais seguem a 60 Hz por relógio (acumulador, sem deriva), como antes;
-    ///  - sem nenhum widget de alta frequência visível o laço volta a dormir só até o próximo passo de 60 Hz.
+    /// Modelo do V3: o Present(1) bloqueante no vblank (BufferCount=2, Commit por quadro) e o relogio.
+    ///  - widgets de alta frequência são desenhados em sequência a cada volta, sem Sleep no caminho quente;
+    ///  - os demais seguem a 60 Hz por relógio (acumulador): como nao chegam a encher a fila de 2 buffers, o Present deles nao bloqueia;
+    ///  - sem widget de alta frequência ativo o laço dorme até o próximo passo de 60 Hz (50 ms sem nenhuma janela visível).
     /// </summary>
     public void Run(double seconds)
     {
         Win32.BeginHighResTimer();
+        Console.WriteLine($"[INIT] monitor={Win32.PrimaryRefreshHz()} Hz BufferCount={Gfx.DeviceResources.SwapBufferCount} admin={(Win32.IsElevated() ? "sim" : "nao")}");
         Win32.RaiseGpuPriority();
         var prio = Thread.CurrentThread.Priority;
         Thread.CurrentThread.Priority = ThreadPriority.AboveNormal;
@@ -346,10 +347,26 @@ internal sealed class HostController : IDisposable
     {
         var run = System.Diagnostics.Stopwatch.StartNew();
         double nextLow = 0;
-        double refreshPeriod = 1.0 / Win32.PrimaryRefreshHz();
-        double nextHigh = 0;
+        // [LOOP] a cada 60 s: volta inteira do laco (inclui Present/Sleep) com widget HF ativo; max = acordar atrasado / travada.
+        long lapPrev = 0, lapWindow = System.Diagnostics.Stopwatch.GetTimestamp(), lapCount = 0, lapOver25 = 0, lapMax = 0;
+        bool lapHigh = false;
+        double tickMs = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         while (OverlayWindow.Pump(() => ToggleEditFromHotkey()))
         {
+            long lapNow = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (lapPrev != 0 && lapHigh)
+            {
+                long lap = lapNow - lapPrev;
+                lapCount++;
+                if (lap > lapMax) lapMax = lap;
+                if (lap * tickMs > 25) lapOver25++;
+            }
+            lapPrev = lapNow;
+            if (lapNow - lapWindow >= 60 * System.Diagnostics.Stopwatch.Frequency)
+            {
+                if (lapCount > 0) Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"[LOOP] voltas_hf={lapCount} max={lapMax * tickMs:F1} ms voltas>25ms={lapOver25}"));
+                lapWindow = lapNow; lapCount = lapOver25 = lapMax = 0;
+            }
             double now = run.Elapsed.TotalSeconds;
             if (seconds > 0 && now >= seconds) break;
             while (_queue.TryDequeue(out var a)) a();
@@ -370,23 +387,66 @@ internal sealed class HostController : IDisposable
             }
             bool lowDue = now + LowSlack >= nextLow;
             if (lowDue) { nextLow += LowPeriod; if (nextLow < now - LowPeriod) nextLow = now + LowPeriod; }
-            bool high = false;
+            bool high = false, anyVisible = false;
+            _hfWindows.Clear();
             foreach (var w in _windows.Values)
             {
-                if (w.HighFrequency && !w.IsIdle(model)) { w.Render(model); high = true; }
+                if (!w.Visible) continue;
+                anyVisible = true;
+                if (w.HighFrequency && !w.IsIdle(model)) _hfWindows.Add(w);
                 else if (lowDue) w.Render(model);
             }
-
-            if (high)
+            if (_hfWindows.Count > 0)
             {
-                // DwmFlush espera toda a composicao; em desktop remoto pode limitar todas as janelas a 60 Hz.
-                // O swapchain faz a entrega ao compositor. Cadencia por prazo absoluto, sem somar espera ao desenho.
-                nextHigh += refreshPeriod;
-                double completed = run.Elapsed.TotalSeconds;
-                if (nextHigh <= completed) nextHigh = completed;
-                else SleepUntil(run, nextHigh);
+                high = true;
+                RenderHighFrequency(model);
             }
-            else { nextHigh = run.Elapsed.TotalSeconds; SleepUntil(run, nextLow); }
+
+            // Sem Sleep no caminho quente: com widget HF ativo, o Present(1) bloqueante de cada janela e o relogio (modelo do V3).
+            // Sem HF ativo: dorme ate o proximo passo de 60 Hz; sem nenhuma janela visivel: 50 ms.
+            lapHigh = high;
+            if (high) continue;
+            if (!anyVisible) Thread.Sleep(50);
+            else SleepUntil(run, nextLow);
+        }
+    }
+
+    readonly List<WidgetWindow> _hfWindows = [];
+    readonly nint[] _waitHandles = new nint[64];
+    readonly int[] _waitOwner = new int[64];
+
+    /// <summary>
+    /// Pacing por vblank: espera ate QUALQUER swap chain HF ter vaga (waitable, latencia 1), desenha essa e as demais ja prontas
+    /// (poll com timeout 0), sem serializar um vblank por janela. Timeout de 100 ms: se nada sinalizar (device lost, janela
+    /// coberta), desenha todas mesmo assim, o que tambem dispara a recuperacao. Janelas sem handle (0) desenham direto.
+    /// </summary>
+    void RenderHighFrequency(OverlayModel model)
+    {
+        int n = 0;
+        foreach (var (w, i) in _hfWindows.Select((w, i) => (w, i)))
+        {
+            w.WaitTicks = 0;
+            var h = w.FrameWaitHandle;
+            if (h != 0 && n < _waitHandles.Length) { _waitHandles[n] = h; _waitOwner[n] = i; n++; }
+        }
+        int first = -1; // indice em _hfWindows cujo sinal ja foi consumido
+        bool timedOut = false;
+        long w0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (n > 0)
+        {
+            uint r = Win32.WaitForMultipleObjectsEx((uint)n, _waitHandles, false, 100, false);
+            if (r < n) first = _waitOwner[r];
+            else timedOut = true;
+        }
+        long waited = System.Diagnostics.Stopwatch.GetTimestamp() - w0;
+        for (int i = 0; i < _hfWindows.Count; i++)
+        {
+            var w = _hfWindows[i];
+            var h = w.FrameWaitHandle;
+            bool ready = timedOut || h == 0 || i == first || Win32.WaitForSingleObjectEx(h, 0, false) == 0;
+            if (!ready) continue;
+            w.WaitTicks = waited;
+            w.Render(model);
         }
     }
 

@@ -28,6 +28,13 @@
     <PackageReference Include="Vortice.Win32.Graphics.Imaging" Version="2.5.0" />
   </ItemGroup>
 
+  <!-- Bandeiras de pais (PNG ISO alpha-2, copiadas do V3): ficam em Assets/Flags ao lado do exe. -->
+  <ItemGroup>
+    <Content Include="Assets\Flags\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Fontes do tema: os mesmos arquivos de ams2\fonts, copiados para fonts\ ao lado do exe. -->
   <ItemGroup>
     <Content Include="..\..\fonts\*.ttf" Link="fonts\%(Filename)%(Extension)">

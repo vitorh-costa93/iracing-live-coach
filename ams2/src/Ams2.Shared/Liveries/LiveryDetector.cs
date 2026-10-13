@@ -18,6 +18,9 @@ public sealed class LiveryDetector : IDisposable
     volatile Dictionary<string, PlayerNameEntry> _byModel = new(StringComparer.OrdinalIgnoreCase);
     int _running; // 0/1
 
+    /// <summary>Catalogo de pinturas lido do jogo (somente leitura).</summary>
+    public IReadOnlyList<LiveryEntry> Catalog => _catalog;
+
     /// <summary>Disparado (em thread de fundo) quando uma pintura nova e detectada.</summary>
     public event Action? Changed;
 
@@ -42,50 +45,99 @@ public sealed class LiveryDetector : IDisposable
     /// <summary>Esquece o que foi detectado (a pintura pode ter mudado fora da sessao).</summary>
     public void Forget() => _byModel = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Pede uma nova deteccao para o carro atual (chamar quando o carro/sessao muda). Ignorado se ja ha uma varredura em curso.</summary>
+    /// <summary>Pede uma nova deteccao para o carro atual (chamar quando o carro/sessao muda). Se ja ha uma varredura em curso, o pedido
+    /// fica pendente e roda ao terminar (senao uma troca de carro/sessao durante a varredura se perderia).</summary>
     public void Request(string carName, string className)
     {
         string model = PlayerNameStore.ModelKey(carName);
-        if (model.Length == 0 || Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
-        _ = Task.Factory.StartNew(() => Run(model, className, carName), _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        if (model.Length == 0) return;
+        _pending = (model, className, carName);
+        Log($"Request car='{carName}' class='{className}' model='{model}' pastas={_folders.Length} emCurso={_running != 0}");
+        Start();
     }
 
-    void Run(string model, string className, string carName)
+    (string Model, string Class, string Car)? _pending;
+
+    void Start()
+    {
+        if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
+        _ = Task.Factory.StartNew(Run, _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+    }
+
+    /// <summary>Diagnostico persistente: Console.Error vai para %LOCALAPPDATA%\Ams2LiveCoach\host-out.log (mesmo mecanismo do host).</summary>
+    static void Log(string msg) { try { Console.Error.WriteLine($"[Livery] {msg}"); } catch { /* log nunca derruba */ } }
+
+    void Run()
     {
         try
         {
             Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-            for (int attempt = 0; attempt < MaxAttempts && !_cts.IsCancellationRequested; attempt++)
+            while (!_cts.IsCancellationRequested && _pending is { } req)
             {
-                var hits = GameLiveryProbe.Scan(_folders, n => _catalog.Any(e => string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)), _cts.Token);
-                if (hits is not null && Resolve(hits, className, carName) is { } entry)
-                {
-                    var next = new Dictionary<string, PlayerNameEntry>(_byModel, StringComparer.OrdinalIgnoreCase)
-                    {
-                        [model] = new PlayerNameEntry { Model = model, Livery = entry.Livery, Name = entry.Driver, Country = entry.Country, Team = entry.Team },
-                    };
-                    _byModel = next;
-                    Changed?.Invoke();
-                    return;
-                }
-                if (_cts.Token.WaitHandle.WaitOne(RetryEvery)) return;
+                _pending = null;
+                if (RunOne(req.Model, req.Class, req.Car)) continue;
+                if (_cts.IsCancellationRequested) return;
             }
         }
-        catch (Exception ex) when (ex is not OutOfMemoryException) { /* a varredura e opcional: qualquer falha = sem deteccao */ }
-        finally { Interlocked.Exchange(ref _running, 0); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { Log($"falha: {ex.GetType().Name}: {ex.Message}"); /* a varredura e opcional: qualquer falha = sem deteccao */ }
+        finally
+        {
+            Interlocked.Exchange(ref _running, 0);
+            if (_pending is not null && !_cts.IsCancellationRequested) Start(); // pedido chegou entre o fim do laco e a liberacao
+        }
+    }
+
+    /// <summary>Ate MaxAttempts varreduras para o carro; encerra cedo se chegar um pedido novo. Devolve true se foi substituido por um pedido novo.</summary>
+    bool RunOne(string model, string className, string carName)
+    {
+        for (int attempt = 0; attempt < MaxAttempts && !_cts.IsCancellationRequested; attempt++)
+        {
+            var hits = GameLiveryProbe.Scan(_folders, n => _catalog.Any(e => string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)), _cts.Token);
+            var entry = hits is null ? null : Resolve(hits, className, carName, attempt + 1, out _);
+            if (hits is null) Log($"tentativa {attempt + 1}/{MaxAttempts} model='{model}': jogo nao aberto/sem acesso (null)");
+            if (entry is not null)
+            {
+                var next = new Dictionary<string, PlayerNameEntry>(_byModel, StringComparer.OrdinalIgnoreCase)
+                {
+                    [model] = new PlayerNameEntry { Model = model, Livery = entry.Livery, Name = entry.Driver, Country = entry.Country, Team = entry.Team },
+                };
+                _byModel = next;
+                Changed?.Invoke();
+                return false;
+            }
+            if (_pending is not null) return true;
+            if (_cts.Token.WaitHandle.WaitOne(RetryEvery)) return false;
+            if (_pending is not null) return true;
+        }
+        return false;
     }
 
     /// <summary>O jogo guarda registros de todas as pinturas ja carregadas (de varias classes): so contam as da classe do jogador, e so
-    /// se restar uma unica pintura distinta (varias = sessao com IA ou residuo: nao chuta).</summary>
-    LiveryEntry? Resolve(Dictionary<string, int> hits, string className, string carName)
+    /// se restar uma unica pintura distinta (varias = sessao com IA ou residuo: nao chuta). Cada chamada loga uma linha de diagnostico
+    /// com o ranking por contagem (so informativo: nenhum desempate e aplicado, nao ha evidencia de que contagem/ordem identifique o jogador).</summary>
+    LiveryEntry? Resolve(Dictionary<string, int> hits, string className, string carName, int attempt, out string reason)
     {
-        if (className.Length == 0) return null;
-        var mine = hits.Keys
-            .Select(n => _catalog.FirstOrDefault(e => e.Class.Length > 0 && className.StartsWith(e.Class, StringComparison.OrdinalIgnoreCase)
-                                                      && string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)))
-            .Where(e => e is not null).ToList();
-        if (mine.Count > 1) mine = mine.Where(e => FolderMatchesCar(e!.Model, carName)).ToList(); // mesma classe, carros diferentes (ex.: V8 Gen1 e Renault R26)
-        return mine.Count == 1 ? mine[0] : null;
+        LiveryEntry? result = null;
+        string list = "";
+        int sameClass = 0, afterFolder = 0;
+        if (className.Length == 0) reason = "className vazio";
+        else if (hits.Count == 0) reason = "0 hits do probe";
+        else
+        {
+            var mine = hits.Keys
+                .Select(n => _catalog.FirstOrDefault(e => e.Class.Length > 0 && className.StartsWith(e.Class, StringComparison.OrdinalIgnoreCase)
+                                                          && string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)))
+                .Where(e => e is not null).Select(e => e!).ToList();
+            sameClass = mine.Count;
+            list = string.Join("; ", mine.OrderByDescending(e => hits[e.Livery]).Take(20).Select(e => $"{e.Livery} [{e.Model}] x{hits[e.Livery]}"))
+                   + (mine.Count > 20 ? $"; (+{mine.Count - 20})" : "");
+            if (mine.Count > 1) mine = mine.Where(e => FolderMatchesCar(e.Model, carName)).ToList(); // mesma classe, carros diferentes (ex.: V8 Gen1 e Renault R26)
+            afterFolder = mine.Count;
+            if (mine.Count == 1) { result = mine[0]; reason = "ok"; }
+            else reason = mine.Count == 0 ? "nenhuma candidata (classe/pasta)" : "varias candidatas";
+        }
+        Log($"tentativa {attempt}/{MaxAttempts} car='{carName}' class='{className}' hits={hits.Count} naClasse={sameClass} aposPasta={afterFolder} => {(result is null ? "null: " + reason : "ok: " + result.Livery)} | ranking: {list}");
+        return result;
     }
 
     /// <summary>Pasta de Overrides x nome do carro: "formula_v8_g1_b" casa com "Formula V8 Gen1 Model1 (B)" e "renault_r26" com "Renault R26".

@@ -357,9 +357,39 @@ public sealed unsafe class ThemeCanvas : IDisposable
         }
     }
 
+    FlagBitmaps? _flags;
+
+    /// <summary>true se ha bandeira embarcada para o pais (alpha-3 do jogo); pais vazio/desconhecido = false (nada a reservar nem desenhar).</summary>
+    public bool HasFlag(string? country) => !string.IsNullOrEmpty(country) && (_flags ??= new FlagBitmaps(_gfx)).Find(country) != null;
+
+    /// <summary>Desenha a bandeira do pais ajustada (contain, centrada) na caixa, sem deformar mesmo com escala de largura/altura distintas.
+    /// Sem bandeira: nao desenha nada (nunca codigo nem emoji). Devolve se desenhou.</summary>
+    public bool Flag(string? country, float x, float y, float w, float h)
+    {
+        if (string.IsNullOrEmpty(country)) return false;
+        var bmp = (_flags ??= new FlagBitmaps(_gfx)).Find(country);
+        if (bmp == null) return false;
+        var size = bmp->GetSize();
+        if (size.Width <= 0 || size.Height <= 0) return false;
+        float bx = x * WidthScale, by = y * HeightScale, bw = w * WidthScale, bh = h * HeightScale;
+        float k = Math.Min(bw / size.Width, bh / size.Height), fw = size.Width * k, fh = size.Height * k;
+        float l = bx + (bw - fw) / 2, t = by + (bh - fh) / 2;
+        var dest = new RectF(l, t, l + fw, t + fh);
+        var textTransform = Matrix3x2.CreateScale(Scale);
+        Dc->SetTransform(&textTransform);
+        try { Dc->DrawBitmap(bmp, &dest, Opacity, InterpolationMode.HighQualityCubic, null, null); }
+        finally
+        {
+            var geometryTransform = Matrix3x2.CreateScale(Scale * WidthScale, Scale * HeightScale);
+            Dc->SetTransform(&geometryTransform);
+        }
+        return true;
+    }
+
     public void Dispose()
     {
         ClearTextResources();
+        _flags?.Dispose();
         _brush.Dispose();
     }
 }

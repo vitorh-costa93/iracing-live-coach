@@ -99,6 +99,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly PlayerNameStore? _names;
     readonly LiveryDetector? _liveries;
     string _liveryModel = "";
+    readonly DriverCountryResolver? _countries;
     double _namesRefreshAt;
 
     public OverlayDataProvider(IRawMemorySource source, Func<double> clock, int ahead = 4, int behind = 4, BoardOptions? board = null,
@@ -106,6 +107,7 @@ public sealed class OverlayDataProvider : IDisposable
     {
         _names = names;
         _liveries = liveries;
+        if (liveries is not null) _countries = new DriverCountryResolver(liveries.Catalog);
         _launch = new LaunchTracker(launch);
         Inputs = new InputRing(clock);
         if (inputSource is not null) _sampler = new InputSampler(inputSource(), Inputs, clock, InputStats);
@@ -161,6 +163,7 @@ public sealed class OverlayDataProvider : IDisposable
             if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); _qualiEnd.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
+            if (_countries is not null) s = PlayerIdentity.ApplyOpponentCountries(s, _countries.Resolve);
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];
@@ -209,7 +212,8 @@ public sealed class OverlayDataProvider : IDisposable
         {
             // Pintura lida do jogo (varredura em thread propria, so ao entrar numa sessao ou trocar de carro); a escolha manual e o plano B.
             string model = pc is null ? "" : PlayerNameStore.ModelKey(pc.CarName);
-            if (model != _liveryModel) { _liveryModel = model; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
+            string liveryKey = model + "|" + (pc?.ClassName ?? ""); // classe pode chegar depois do carro: re-pede quando muda
+            if (liveryKey != _liveryModel) { _liveryModel = liveryKey; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
             return PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
         }
         return PlayerIdentity.Apply(s, _names.Get);

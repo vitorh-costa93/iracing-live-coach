@@ -137,7 +137,7 @@ public static class CaptionPlate
         switch (variant)
         {
             case "result":
-                Plate18(c, 0, H - Height, Caption18Width, Height, car.Position, full, CarNumber(car), team, bigBox: true, tick: tick, slantEnd: true);
+                Plate18(c, 0, H - Height, Caption18Width, Height, car.Position, full, CarNumber(car), team, bigBox: true, tick: tick, slantEnd: true, country: car.Country);
                 return;
             case "startednow":
                 StartedNow18(c, car, full, team, started, tick);
@@ -196,10 +196,18 @@ public static class CaptionPlate
     /// O AMS2 não informa cor/logo da equipe: tique no vermelho do tema e número em cinza claro, sem logos. Devolve a borda direita do texto.
     /// </summary>
     public static float Plate18(ThemeCanvas c, float x, float y, float w, float h, int position, string fullName, string number, string team, bool bigBox, float rightReserve = 0,
-        Color4? tick = null, bool slantEnd = false)
+        Color4? tick = null, bool slantEnd = false, string? country = null)
     {
         var t = c.Theme;
-        if (slantEnd)
+        if (slantEnd && c.HasFlag(country))
+        {
+            // Ponta direita em diagonal "/" seguida da bandeira do pais do piloto (no lugar das faixas decorativas).
+            float s = h * 0.42f, gap = 6, fh = Math.Min(h * 0.5f, 32), fw = fh * 1.5f, right = x + w - (gap + fw + gap);
+            c.FillPolygon([new(x, y), new(right, y), new(right - s, y + h), new(x, y + h)], t.PanelFill);
+            c.Flag(country, right + gap, y + (h - fh) / 2, fw, fh);
+            rightReserve += s + gap + fw + gap;
+        }
+        else if (slantEnd)
         {
             // Ponta direita em diagonal "/" seguida de duas faixas inclinadas (no lugar da bandeira do país): cor da classe e branco.
             float s = h * 0.42f, gap = 6, f1 = 14, f2 = 8, right = x + w - (gap + f1 + gap + f2);
@@ -231,7 +239,8 @@ public static class CaptionPlate
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
             Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
-            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16));
+            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16 - Chrome.FlagSpace(c, car.Country)));
+            Chrome.CellFlag(c, car.Country, X0, Y0 + HeadH, LeftW, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, LeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, LeftW - 16), Chrome.CellKind.Navy);
             float x = X0 + LeftW;
             var posKind = car.Position == 1 ? Chrome.CellKind.Red : Chrome.CellKind.Navy;
