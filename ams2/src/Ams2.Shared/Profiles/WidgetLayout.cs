@@ -31,7 +31,6 @@ public static class WidgetLayout
     /// "LAP n / N" integrado (o Lap Counter seria repetido) e a TV nao tem o Board.</summary>
     static readonly Dictionary<string, string[]> HiddenByDefault = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["f1-1993"] = ["drivercaption"],
         ["f1-2018"] = ["lapcounter", "board"],
         ["f1-1998"] = ["winner", "pittimer", "qualitower", "qualilap"],
         ["f1-2012"] = ["board"],   // a faixa inferior (ticker) e o duelo (battle) ocupam o lugar do Board
@@ -45,8 +44,9 @@ public static class WidgetLayout
     {
         ["f1-1993"] = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f), ["drivercaption"] = new(0, 780, 1f),
-            ["weather"] = new(1696, 24, .65f), ["tyres"] = new(1699, 130, .65f), ["fuel"] = new(1582, 267, .65f),
+            ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f),
+            // Listas discretas (320x214 com 6 pilotos) no canto da torre; a Qualy Standings ocupa o lugar da Race Standings (grupo exclusivo).
+            ["standings"] = new(32, 24, 1f), ["qualitower"] = new(32, 24, 1f),
             ["inputs"] = new(1542, 620, .5f), ["radar"] = new(900, 585, 1f),
         },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
@@ -125,8 +125,8 @@ public static class WidgetLayout
         {
             ["f1-1993"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["board"] = (1920, 300), ["qualiboard"] = (1920, 300), ["drivercaption"] = (1920, 300),
-                ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197), ["radar"] = (120, 190),
+                ["board"] = (1920, 300), ["qualiboard"] = (1920, 300),
+                ["standings"] = (320, 214), ["qualitower"] = (320, 214), ["inputs"] = (433, 197), ["radar"] = (120, 190),
             },
             ["f1-1998"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {

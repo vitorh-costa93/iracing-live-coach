@@ -438,7 +438,10 @@ public static class ProfileFactory
             Rows = e.d.DefaultRows, TopCount = e.d.HasSelection ? WidgetCatalog.DefaultTopCount : null, NearCount = e.d.HasSelection ? WidgetCatalog.DefaultNearCount : null, Scale = (float)Math.Round(e.slot.Scale * fy, 3),
             // Standings: so posicao + sigla; gap e classe sao opcionais. Board 1998: so legenda de pneus + indicador de pagina.
             // 2018: a torre da TV tem a coluna clara (gap/intervalo/...); o logo da equipe (classe) continua opcional.
-            Columns = e.d.Id == "standings" ? (string.Equals(ThemeCatalog.Canonical(themeId), "f1-2018", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"] : ["pos", "name"])
+            // 1993: listas com a faixa azul ligada e o gap desligado; Inputs so com o grafico (sem velocimetro/barras).
+            Columns = string.Equals(ThemeCatalog.Canonical(themeId), "f1-1993", StringComparison.OrdinalIgnoreCase) && e.d.Id is "standings" or "qualitower" ? ["sponsor"]
+                : string.Equals(ThemeCatalog.Canonical(themeId), "f1-1993", StringComparison.OrdinalIgnoreCase) && e.d.Id == "inputs" ? ["graph"]
+                : e.d.Id == "standings" ? (string.Equals(ThemeCatalog.Canonical(themeId), "f1-2018", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"] : ["pos", "name"])
                 : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]

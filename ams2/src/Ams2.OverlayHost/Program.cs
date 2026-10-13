@@ -106,7 +106,7 @@ internal static class Program
             {
                 var widget = WidgetRegistry.Create(s.Id);
                 widget.UseTheme(theme);
-                widget.Configure(s.Normalized());
+                widget.Configure(s.Normalized(theme.Id));
                 Console.WriteLine($"{theme.Id} {s.Id} {widget.DesignSize.Width.ToString(CultureInfo.InvariantCulture)} {widget.DesignSize.Height.ToString(CultureInfo.InvariantCulture)}");
             }
         }

@@ -23,6 +23,7 @@ public static class PlayerIdentity
             OriginalName = original,
             TeamName = id?.Team.Trim() ?? "",
             Country = id?.Country.Trim() ?? "",
+            CarNumber = Ams2.Shared.Liveries.DriverCountryResolver.NumberOfLivery(id?.Livery),
         };
         if (renamed.Equals(me)) return s;
         var cars = new List<CarSnapshot>(s.Cars.Count);
@@ -43,6 +44,22 @@ public static class PlayerIdentity
             if (country.Length == 0) continue;
             cars ??= new List<CarSnapshot>(s.Cars);
             cars[i] = c with { Country = country };
+        }
+        return cars is null ? s : s with { Cars = cars };
+    }
+
+    /// <summary>Preenche <see cref="CarSnapshot.CarNumber"/> dos adversarios (sem numero) com <paramref name="resolve"/>(nome do jogo); "" = desconhecido.</summary>
+    public static SessionSnapshot ApplyOpponentNumbers(SessionSnapshot s, Func<string, string> resolve)
+    {
+        List<CarSnapshot>? cars = null;
+        for (int i = 0; i < s.Cars.Count; i++)
+        {
+            var c = s.Cars[i];
+            if (c.IsPlayer || c.CarNumber.Length > 0) continue;
+            string number = resolve(c.Name);
+            if (number.Length == 0) continue;
+            cars ??= new List<CarSnapshot>(s.Cars);
+            cars[i] = c with { CarNumber = number };
         }
         return cars is null ? s : s with { Cars = cars };
     }

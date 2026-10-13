@@ -182,7 +182,7 @@ public class BoardGap93Tests
     {
         var rig = new BoardRig(new Sim(3000, (2900, 100), (2950, 100)));
         Assert.Null(rig.RunTo(1.1).Gap93);
-        rig.Board.SetGap93Options(0, 7);
+        rig.Board.SetGap93Options(0, 7, lapInterval: 1);
         var state = rig.RunTo(31.1);
         Assert.NotNull(state.Gap93);
         Assert.Equal(BoardMode.LineTower, state.Mode);

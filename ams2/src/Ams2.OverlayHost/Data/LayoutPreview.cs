@@ -50,12 +50,13 @@ public static class LayoutPreview
         };
     }
 
-    /// <summary>Paises de exemplo nos carros da previa (bandeiras das legendas); so a previa, nunca dados reais.</summary>
+    /// <summary>Paises e numeros de exemplo nos carros da previa (bandeiras e numeros das legendas); so a previa, nunca dados reais.</summary>
     public static OverlayModel WithCountries(OverlayModel m)
     {
         if (m.Session is not { } s) return m;
         string[] countries = ["GBR", "MEX", "FIN", "ITA", "BRA", "NED", "GER", "ESP"];
-        var cars = s.Cars.Select((c, i) => c.Country.Length > 0 ? c : c with { Country = countries[i % countries.Length] }).ToList();
+        string[] numbers = ["2", "26", "5", "7", "27", "8", "6", "1"];
+        var cars = s.Cars.Select((c, i) => (c.Country.Length > 0 ? c : c with { Country = countries[i % countries.Length] }) is var withCountry && withCountry.CarNumber.Length > 0 ? withCountry : withCountry with { CarNumber = numbers[i % numbers.Length] }).ToList();
         var byIndex = cars.GroupBy(c => c.Index).ToDictionary(g => g.Key, g => g.First());
         var standings = m.Standings.Select(r => byIndex.TryGetValue(r.Car.Index, out var c) ? r with { Car = c } : r).ToList();
         return m with { Session = s with { Cars = cars }, Standings = standings };

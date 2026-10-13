@@ -30,6 +30,7 @@ public sealed class BoardTracker
     readonly BoardOptions _o;
     readonly BoardSector98Tracker _sector98;
     readonly BoardGap93Tracker _gap93;
+    int? _lapsRemaining;
 
     // Sessão
     bool _init;
@@ -109,8 +110,8 @@ public sealed class BoardTracker
 
     public BoardOptions Options => _o;
     public BoardState State => _state;
-    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true) =>
-        _gap93.SetOptions(pointPercent, holdSeconds, enabled);
+    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true, int lapInterval = Broadcast93Rules.GapEveryLaps) =>
+        _gap93.SetOptions(pointPercent, holdSeconds, enabled, lapInterval);
 
     /// <summary>Reset total (reinício de sessão, troca de pista/tipo de sessão, relógio voltou, reconexão).</summary>
     public void Reset()
@@ -169,6 +170,7 @@ public sealed class BoardTracker
         UpdateSector(now, s, me, gaps, race);
         UpdateComparison(now, s, me, gaps, race);
         UpdatePlate(s, me);
+        _lapsRemaining = Broadcast93Rules.LapsRemaining(s);
         return _state = Compose(now, race);
     }
 
@@ -513,7 +515,7 @@ public sealed class BoardTracker
             case BoardMode.DriverPlate: items = 1; break;
         }
         return new BoardState(mode, _rev, now, race, start, end, Math.Max(0, end - now), items, _tower, _sectorGap, _cmp, _plate)
-        { SectorGap98 = _sector98.State, Gap93 = _gap93.State };
+        { SectorGap98 = _sector98.State, Gap93 = _gap93.State, LapsRemaining = _lapsRemaining };
     }
 
     // ---------------------------------------------------------------- vizinho

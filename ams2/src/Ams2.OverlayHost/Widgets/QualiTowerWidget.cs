@@ -42,6 +42,7 @@ public sealed class QualiTowerWidget : IWidget
     {
         ThemeStyle.Modern2018 => Size18,
         ThemeStyle.Broadcast2000s => Size04,
+        ThemeStyle.Broadcast93 => (Broadcast93List.Width, Broadcast93List.Height(Rows93, _cfg.ColumnVisible("sponsor"))),
         _ => Size98,
     };
 
@@ -56,6 +57,7 @@ public sealed class QualiTowerWidget : IWidget
         ThemeStyle.Broadcast2000s => Num("rows", 5, 1, 20),
         _ => Num("rows", 6, 2, 10),
     };
+    int Rows93 => Num("rows", Broadcast93List.DefaultRows, Broadcast93List.MinRows, Broadcast93List.MaxRows);
     int Columns98 => _cfg.OptionOr("columns", "2") == "1" ? 1 : 2;
     int NearRows => Num("nearCount", 3, 0, 10);
     int Cutoff => Num("eliminationFrom", 0, 0, 30);
@@ -160,6 +162,7 @@ public sealed class QualiTowerWidget : IWidget
     {
         if (!m.Connected) { _presentation.Reset(); return; }
         if (m.Session is { InSession: false }) return;
+        if (_style == ThemeStyle.Broadcast93) { Draw93(c, m); return; }
         bool preview = Flag("layoutPreview", false);
         var stage = preview ? QualiBoardStage.Tower : _presentation.Update(m.QualiLap, m.Now, m.Quali?.Rows.Count ?? 0,
             _style == ThemeStyle.Broadcast98 ? Num("rows", 8, 2, 10) : int.MaxValue, m.Session?.Track);
@@ -280,6 +283,19 @@ public sealed class QualiTowerWidget : IWidget
             DrawRow(c, t, L, zone[p.Index], zonePositions[zone[p.Index].Car.Index], chequered, true, reference, tyrePlayer);
             zy += Pitch;
         }
+    }
+
+    /// <summary>1993 (Qualy Standings): top N por melhor volta, número de carro + sobrenome; coluna "time" (desligada) mostra tempo do líder e gap.</summary>
+    void Draw93(ThemeCanvas c, OverlayModel m)
+    {
+        if (m.Quali is not { Rows.Count: > 0 } q) return;
+        var field = q.Rows.Select(r => r.Car).ToList();
+        bool time = _cfg.ColumnVisible("time");
+        var lines = q.Rows.Take(Rows93).Select(r => new Broadcast93List.Line(
+            Broadcast93List.Number(r.Car, r.Rank), Broadcast93List.Surname(r.Car, field, _cfg),
+            !time ? null : r.BestLap is not { } best ? "--" : r.Rank == 1 || r.GapToFirst is not { } gap ? _cfg.Fmt.FormatLapTime(best) : _cfg.Fmt.FormatGap(Math.Max(0, gap), defaultSign: false),
+            r.IsPlayer)).ToList();
+        Broadcast93List.Draw(c, lines, _cfg.ColumnVisible("sponsor"));
     }
 
     static void Dots(ThemeCanvas c, Theme.Theme t, (float Box, float Name, float Tyre, float Time, float Width) L, float y)

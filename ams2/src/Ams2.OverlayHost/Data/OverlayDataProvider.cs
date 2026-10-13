@@ -119,8 +119,8 @@ public sealed class OverlayDataProvider : IDisposable
 
     public OverlayModel Current => _current;
     /// <summary>Configuração dinâmica exclusiva do GAP 1993 (ponto em percentual e retenção em segundos).</summary>
-    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true) =>
-        _board.SetGap93Options(pointPercent, holdSeconds, enabled);
+    public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true, int lapInterval = Ams2.Core.Calc.Broadcast93Rules.GapEveryLaps) =>
+        _board.SetGap93Options(pointPercent, holdSeconds, enabled, lapInterval);
     /// <summary>Nomes de exibicao do jogador por modelo de carro (null = sem substituicao).</summary>
     public PlayerNameStore? Names => _names;
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
@@ -163,7 +163,7 @@ public sealed class OverlayDataProvider : IDisposable
             if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); _qualiEnd.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
-            if (_countries is not null) s = PlayerIdentity.ApplyOpponentCountries(s, _countries.Resolve);
+            if (_countries is not null) { s = PlayerIdentity.ApplyOpponentCountries(s, _countries.Resolve); s = PlayerIdentity.ApplyOpponentNumbers(s, _countries.ResolveNumber); }
             if (_sampler is null && s.Player is { } pl) SampleFromSnapshot(now, pl.Inputs);
             if (s.InSession) _gaps.Update(now, s.TrackLength, s.Cars);
             var rel = s.InSession ? RelativeBuilder.Build(s, _gaps, now, _ahead, _behind) : [];

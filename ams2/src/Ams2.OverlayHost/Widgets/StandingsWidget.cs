@@ -23,14 +23,18 @@ public sealed class StandingsWidget : IWidget
     /// <summary>Espaço reservado para o separador "..." (só existe se há topo; o painel só o ocupa quando há salto).</summary>
     float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
     const float SepH = 14;
-    public (float Width, float Height) DesignSize => TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
+    /// <summary>1993: número de pilotos da lista (opção "rows"); mostra sempre o topo, sem janela ao redor do jogador.</summary>
+    int Rows93 => double.TryParse(_cfg.OptionOr("rows", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
+        ? (int)Math.Clamp(Math.Round(v), Broadcast93List.MinRows, Broadcast93List.MaxRows) : Broadcast93List.DefaultRows;
+    public (float Width, float Height) DesignSize => _b93 ? (Broadcast93List.Width, Broadcast93List.Height(Rows93, _cfg.ColumnVisible("sponsor"))) : TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
         : _b18 ? Size18 : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
-    bool _b04, _b98, _b18;
+    bool _b04, _b98, _b18, _b93;
     public void UseTheme(Theme.Theme theme)
     {
         bool modern = theme.Style == ThemeStyle.Modern2018;
         if (modern != _b18) { _valueHold18.Reset(); _values18.Clear(); _rowMotion18.Reset(); }
         _b04 = theme.Style == ThemeStyle.Broadcast2000s; _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = modern;
+        _b93 = theme.Style == ThemeStyle.Broadcast93;
     }
     float Top => RowTop;
     /// <summary>1998–2001 com a coluna "table": tabela inferior de 2 colunas (como a faixa do GP do Brasil 2003). Sem ela, a lista vertical.</summary>
@@ -84,6 +88,7 @@ public sealed class StandingsWidget : IWidget
             return;
         }
 
+        if (_b93) { Draw93(c, m); return; }
         // Letra da classe pela ordem de aparição na classificação (líder da classe mais rápida = A).
         var classes = m.Standings.Select(r => r.Car.ClassName).Distinct().ToList();
         // Topo + janela ao redor do jogador (mesma regra do V3), com salto de posições marcado.
@@ -131,6 +136,17 @@ public sealed class StandingsWidget : IWidget
                 else c.Text(ListGap(r, t), t.Numbers with { Element = "gap" }, L.GapRight - GapTextW, y, GapTextW, BoxH, t.ValueColor, HAlign.Right, t.ValueShadow);
             }
         }
+    }
+
+    /// <summary>1993 (Race Standings): top N pelo número de carro e sobrenome; coluna "time" (desligada) mostra o gap ao líder.</summary>
+    void Draw93(ThemeCanvas c, OverlayModel m)
+    {
+        var field = m.Standings.Select(r => r.Car).ToList();
+        bool time = _cfg.ColumnVisible("time");
+        var lines = m.Standings.Take(Rows93).Select(r => new Broadcast93List.Line(
+            Broadcast93List.Number(r.Car, r.Car.Position), Broadcast93List.Surname(r.Car, field, _cfg),
+            time ? (r.Car.Position == 1 ? "LEADER" : Gap(r, defaultSign: false)) : null, r.IsPlayer)).ToList();
+        Broadcast93List.Draw(c, lines, _cfg.ColumnVisible("sponsor"), tagHeuer: true);
     }
 
     /// <summary>Separador "..." entre o topo e a janela do jogador: três pontos na coluna da posição.</summary>

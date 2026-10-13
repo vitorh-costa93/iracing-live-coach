@@ -14,11 +14,33 @@ public sealed class DriverCountryResolver
     readonly Dictionary<string, string> _short = new(StringComparer.Ordinal);
     readonly Dictionary<string, string> _cache = new(StringComparer.Ordinal);
 
+    // Numero do carro (do "#12" do nome da pintura) pelo mesmo nome normalizado; nome com numeros diferentes entre pinturas = ambiguo (fora).
+    readonly Dictionary<string, string> _numbers = new(StringComparer.Ordinal);
+    static readonly System.Text.RegularExpressions.Regex NumberTag = new(@"#\s*(\d{1,3})\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Numero do carro no nome da pintura ("1986 McLaren #1 - A. Prost" -> "1"); "" se a pintura nao traz.</summary>
+    public static string NumberOfLivery(string? livery)
+        => NumberTag.Match(livery ?? "") is { Success: true } m ? m.Groups[1].Value.TrimStart('0') is { Length: > 0 } n ? n : "0" : "";
+
+    /// <summary>Numero do carro do piloto <paramref name="gameName"/> pelo catalogo ("" = desconhecido ou ambiguo; nao inventa).</summary>
+    public string ResolveNumber(string? gameName)
+    {
+        string n = Normalize(gameName);
+        return _numbers.TryGetValue(n, out var r) ? r : "";
+    }
+
     public DriverCountryResolver(IEnumerable<LiveryEntry> catalog)
     {
         var conflict = new HashSet<string>(StringComparer.Ordinal);
+        var numberConflict = new HashSet<string>(StringComparer.Ordinal);
         foreach (var e in catalog)
         {
+            string num = NumberOfLivery(e.Livery), who = Normalize(e.Driver);
+            if (num.Length > 0 && who.Length > 0)
+            {
+                if (_numbers.TryGetValue(who, out var prevNum)) { if (prevNum != num) numberConflict.Add(who); }
+                else _numbers[who] = num;
+            }
             string country = e.Country.Trim();
             if (country.Length == 0) continue;
             string full = Normalize(e.Driver);
@@ -30,6 +52,7 @@ public sealed class DriverCountryResolver
             else _short[sk] = country;
         }
         foreach (var k in conflict) _short.Remove(k);
+        foreach (var k in numberConflict) _numbers.Remove(k);
     }
 
     /// <summary>Pais (alpha-3 do catalogo) do piloto <paramref name="gameName"/>, ou "" se nao ha correspondencia.</summary>

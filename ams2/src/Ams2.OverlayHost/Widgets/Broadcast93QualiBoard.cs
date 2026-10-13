@@ -11,6 +11,7 @@ public sealed class Broadcast93QualiBoard
 {
     public const float Width = 1920, Height = 300;
     Ams2.Core.CarSnapshot? _reference;
+    readonly FastestLapDetector _fastest = new();
     int _generation = -1, _player = -1;
     string? _track;
     double _lastNow = double.NegativeInfinity;
@@ -49,42 +50,57 @@ public sealed class Broadcast93QualiBoard
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
         if (!m.Connected || m.Session is { GameState: 3 })
-        { _reference = null; _generation = _player = -1; _track = null; _lastNow = double.NegativeInfinity; }
+        { _reference = null; _generation = _player = -1; _track = null; _lastNow = double.NegativeInfinity; _fastest.Reset(); }
         if (!Broadcast93RaceBoard.Visible(m)) return;
         var q = m.QualiLap;
         if (q is not null && (_generation != q.SessionGeneration || _player != q.CarIndex || _track != m.Session!.Track || m.Now < _lastNow))
             _reference = null;
         _generation = q?.SessionGeneration ?? -1; _player = q?.CarIndex ?? -1; _track = m.Session!.Track; _lastNow = m.Now;
-        if (Resolve(m, cfg) is not { } v)
+        _fastest.Update(m.Now, m.Session, _generation);
+
+        // A (resultado da volta) > B (fastest lap) > C (legenda do piloto, padrao).
+        var view = Resolve(m, cfg);
+        // Durante a volta lancada guarda o lider anterior: se esta volta tomar a pole, o delta continua contra ele.
+        if (view is { Result: null }) _reference = m.Session.Cars.FirstOrDefault(car => car.Index == view.ReferenceIndex);
+        if (view?.Result is not null) { LapResult(c, m, cfg, view); return; }
+        bool fastestOn = !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase);
+        if (fastestOn && _fastest.Latest is { } fastest)
         {
-            if (m.QualiLap is { InPit: false, OutLap: true }) Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
-            return;
+            // A propria volta que bateu o recorde primeiro mostra o resultado (A); a placa de FASTEST LAP vem logo depois.
+            double notBefore = q?.LastResult is { } last && Math.Abs(last.At - fastest.At) < 3 ? last.At + ResultHold(cfg) : double.NegativeInfinity;
+            if (fastest.ActiveAt(m.Now, FastestLapDetector.DefaultHold, notBefore))
+            { Broadcast93RaceBoard.Fastest(c, fastest.Car, m.Session.Cars, cfg, m.Session.TrackLength); return; }
         }
+        Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
+    }
+
+    static double ResultHold(WidgetSettings cfg)
+        => double.TryParse(cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) && double.IsFinite(h) ? Math.Clamp(h, 3, 15) : 6;
+
+    /// <summary>A: "SOBRENOME 1'12.266 | (1) azul | -0.267 ciano | SOBRENOME 1'12.533"; volta invalida mostra INVALID no lugar do delta.</summary>
+    void LapResult(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, View v)
+    {
         var player = m.Session!.PlayerCar!;
+        var result = v.Result!;
         Broadcast93RaceBoard.Band(c, 30, 195);
         Broadcast93RaceBoard.Text(c, cfg.Name(player, BroadcastUi.ShortName(player, m.Session.Cars)).ToUpperInvariant(), 165, 42, 590, "name", 38, c.Theme.TextColor);
-        string clock = v.Result is { } finish ? Time(finish.LapTime) : v.Lap.Elapsed is { } live ? Time(live, 1) : "--";
-        if (cfg.Fmt.LapTime is not null) clock = cfg.Fmt.FormatLapTime(v.Result?.LapTime ?? v.Lap.Elapsed ?? 0);
+        string clock = cfg.Fmt.LapTime is not null ? cfg.Fmt.FormatLapTime(result.LapTime) : Time(result.LapTime);
         Broadcast93RaceBoard.Text(c, clock, 210, 125, 500, "time", 50, c.Theme.ValueColor);
-        if (v.Result is { Position: > 0 } result)
-            Broadcast93RaceBoard.Text(c, "(" + result.Position.ToString(CultureInfo.InvariantCulture) + ")", 770, 42, 380, "position", 40, c.Theme.ReadoutColor, HAlign.Center);
+        if (result.Position > 0)
+            Broadcast93RaceBoard.Text(c, "(" + result.Position.ToString(CultureInfo.InvariantCulture) + ")", 770, 42, 380, "position", 44, Broadcast93RaceBoard.Blue, HAlign.Center);
         if (v.ReferenceTime is { } reference)
         {
             var refCar = m.Session.Cars.FirstOrDefault(car => car.Index == v.ReferenceIndex);
             // The result delta belongs to the preceding reference, even when this lap takes pole.
-            if (v.Result is null) _reference = refCar;
-            else if (!v.Personal && v.Result.ReferenceCar is { } resultReference) refCar = resultReference;
+            if (!v.Personal && result.ReferenceCar is { } resultReference) refCar = resultReference;
             else if (_reference is not null && Math.Abs(_reference.BestLapTime - reference) < .001) refCar = _reference;
             else if (!v.Personal) refCar = m.Session.Cars.FirstOrDefault(car => !car.IsPlayer && Math.Abs(car.BestLapTime - reference) < .001);
-            else if (!v.Personal && refCar?.IsPlayer == true) refCar = null;
             string name = refCar is not null ? cfg.Name(refCar, BroadcastUi.ShortName(refCar, m.Session.Cars)).ToUpperInvariant() : v.Personal ? "PERSONAL BEST" : "REFERENCE";
             Broadcast93RaceBoard.Text(c, name, 1220, 42, 535, "name", 38, c.Theme.TextColor);
             Broadcast93RaceBoard.Text(c, cfg.Fmt.LapTime is null ? Time(reference) : cfg.Fmt.FormatLapTime(reference), 1220, 125, 535, "time", 50, c.Theme.ValueColor);
         }
-        string? comparison = v.Result?.Invalid == true ? "INVALID" : v.Delta is { } delta ? cfg.Fmt.FormatGap(delta) : null;
+        string? comparison = result.Invalid ? "INVALID" : v.Delta is { } delta ? cfg.Fmt.FormatGap(delta) : null;
         if (comparison is not null)
-            Broadcast93RaceBoard.Text(c, comparison, 765, 125, 390, "gap", 50, c.Theme.ReadoutColor, HAlign.Center);
-        if (v.Split is { } partial)
-            Broadcast93RaceBoard.Text(c, cfg.Fmt.LapTime is null ? Time(partial.Elapsed) : cfg.Fmt.FormatLapTime(partial.Elapsed), 710, 230, 500, "time", 50, c.Theme.ValueColor, HAlign.Center);
+            Broadcast93RaceBoard.Text(c, comparison, 765, 125, 390, "gap", 50, Broadcast93RaceBoard.Cyan, HAlign.Center);
     }
 }

@@ -149,6 +149,8 @@ public sealed record BoardState(
     public BoardSectorGap? SectorGap98 { get; init; }
     /// <summary>1993: intervalo concluído entre passagens pelo mesmo ponto, sem contador visual.</summary>
     public BoardGap93? Gap93 { get; init; }
+    /// <summary>Voltas restantes do jogador (LapsInEvent - voltas completadas) em corrida por voltas; null por tempo.</summary>
+    public int? LapsRemaining { get; init; }
 
     public static readonly BoardState Empty = new(BoardMode.None, 0, 0, false, double.NegativeInfinity, double.PositiveInfinity,
         double.PositiveInfinity, 0, null, null, null, null);

@@ -362,12 +362,32 @@ public sealed unsafe class ThemeCanvas : IDisposable
     /// <summary>true se ha bandeira embarcada para o pais (alpha-3 do jogo); pais vazio/desconhecido = false (nada a reservar nem desenhar).</summary>
     public bool HasFlag(string? country) => !string.IsNullOrEmpty(country) && (_flags ??= new FlagBitmaps(_gfx)).Find(country) != null;
 
+    DriverPhotos? _photos;
+
+    /// <summary>Foto do piloto (Assets\Drivers\&lt;nome normalizado&gt;) ajustada na caixa; sem arquivo devolve false e o chamador desenha o placeholder.</summary>
+    public bool DriverPhoto(string? name, float x, float y, float w, float h)
+        => !string.IsNullOrEmpty(name) && DrawFitted((_photos ??= new DriverPhotos(_gfx)).FindDriver(name), x, y, w, h);
+
+    /// <summary>Silhueta do carro (Assets\Cars\&lt;pintura normalizada&gt;.png) ajustada na caixa; sem arquivo devolve false.</summary>
+    public bool CarImage(string? livery, float x, float y, float w, float h)
+        => !string.IsNullOrEmpty(livery) && DrawFitted((_photos ??= new DriverPhotos(_gfx)).FindCar(livery), x, y, w, h);
+
+    SponsorBitmaps? _sponsors;
+
+    /// <summary>Logo de patrocinador (Assets\Sponsors\&lt;nome&gt;.png) ajustado (contain) na caixa; sem arquivo devolve false.</summary>
+    public bool Sponsor(string name, float x, float y, float w, float h)
+        => DrawFitted((_sponsors ??= new SponsorBitmaps(_gfx)).Find(name), x, y, w, h);
+
     /// <summary>Desenha a bandeira do pais ajustada (contain, centrada) na caixa, sem deformar mesmo com escala de largura/altura distintas.
     /// Sem bandeira: nao desenha nada (nunca codigo nem emoji). Devolve se desenhou.</summary>
     public bool Flag(string? country, float x, float y, float w, float h)
     {
         if (string.IsNullOrEmpty(country)) return false;
-        var bmp = (_flags ??= new FlagBitmaps(_gfx)).Find(country);
+        return DrawFitted((_flags ??= new FlagBitmaps(_gfx)).Find(country), x, y, w, h);
+    }
+
+    bool DrawFitted(ID2D1Bitmap* bmp, float x, float y, float w, float h)
+    {
         if (bmp == null) return false;
         var size = bmp->GetSize();
         if (size.Width <= 0 || size.Height <= 0) return false;
@@ -390,6 +410,8 @@ public sealed unsafe class ThemeCanvas : IDisposable
     {
         ClearTextResources();
         _flags?.Dispose();
+        _photos?.Dispose();
+        _sponsors?.Dispose();
         _brush.Dispose();
     }
 }

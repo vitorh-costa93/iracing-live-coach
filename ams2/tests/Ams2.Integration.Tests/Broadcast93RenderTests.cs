@@ -32,20 +32,26 @@ public class Broadcast93RenderTests
         return pixels;
     }
 
+    [Theory]
+    [InlineData(false, "e3-standings-quali")]
+    [InlineData(true, "e3-standings-race")]
+    public void Standings_list_draws_the_sponsor_strip(bool tag, string artifact)
+    {
+        Broadcast93List.Line[] lines = [new("0", "HILL", null, false), new("8", "SENNA", null, true), new("2", "PROST", null, false),
+            new("5", "SCHUMACHER", null, false), new("25", "BRUNDLE", null, false), new("6", "PATRESE", null, false)];
+        Assert.Contains(Render(c => Broadcast93List.Draw(c, lines, true, tag), artifact), b => b != 0);
+    }
+
     [Fact]
-    public void First_lap_without_reference_and_late_slower_reference_keep_current_clock()
+    public void Quali_default_is_the_driver_caption_and_does_not_depend_on_the_running_clock()
     {
         var board = new Broadcast93QualiBoard(); var m = Flying();
-        var initial = Render(c => board.Draw(c, m, QualiConfig), "1993-quali-first");
+        var initial = Render(c => board.Draw(c, m, QualiConfig), "1993-quali-caption-default");
         Assert.Contains(initial, b => b != 0);
         m = m with { QualiLap = m.QualiLap! with { Elapsed = 75 } };
-        var empty = Render(c => board.Draw(c, m, QualiConfig));
         var later = m with { QualiLap = m.QualiLap! with { LeaderBestLap = 72.830, LeaderIndex = m.Session!.Cars.First(car => !car.IsPlayer).Index } };
-        var reference = Render(c => board.Draw(c, later, QualiConfig), "1993-quali-slower");
         Assert.Equal(72.830, Broadcast93QualiBoard.Resolve(later, QualiConfig)!.ReferenceTime);
-        Assert.NotEqual(empty, reference);
-        for (int row = 0; row < 300; row++)
-            Assert.Equal(empty[(row * 1920 * 4)..((row * 1920 + 700) * 4)], reference[(row * 1920 * 4)..((row * 1920 + 700) * 4)]);
+        Assert.Equal(initial, Render(c => board.Draw(c, later, QualiConfig)));
     }
 
     [Fact]
@@ -76,7 +82,7 @@ public class Broadcast93RenderTests
     }
 
     [Fact]
-    public void Race_gap_is_fixed_without_countdown_and_outlap_uses_caption()
+    public void Race_gap_is_fixed_without_countdown_then_board_disappears()
     {
         var m = LayoutPreview.ForWidget("board") with { Now = 100, PlayerDriving = true };
         var player = new BoardDriver(0, 2, "Ayrton Senna", "Senna", "SEN", "car", "", true);
@@ -86,7 +92,8 @@ public class Broadcast93RenderTests
         var board = new Broadcast93RaceBoard(); var cfg = new WidgetSettings { Id = "board", Columns = [] };
         var first = Render(c => board.Draw(c, m, cfg), "1993-race-gap");
         Assert.Equal(first, Render(c => board.Draw(c, m with { Now = 103 }, cfg)));
-        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m with { Now = 107 }));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Gap, Broadcast93RaceBoard.Select(m));
+        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(m with { Now = 107 }));
         m = Flying(); m = m with { QualiLap = m.QualiLap! with { OutLap = true, Elapsed = null } };
         var quali = new Broadcast93QualiBoard();
         Assert.Contains(Render(c => quali.Draw(c, m, QualiConfig), "1993-quali-caption"), b => b != 0);

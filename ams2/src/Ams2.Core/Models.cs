@@ -28,7 +28,8 @@ public sealed record CarSnapshot(
     double CurSector1 = 0, double CurSector2 = 0, double CurSector3 = 0,
     double BestSector1 = 0, double BestSector2 = 0, double BestSector3 = 0,
     string TeamName = "",   // equipe da pintura (jogador: escolhida/detectada; IA: achada pelo nome do piloto no catalogo de pinturas); "" = deduzir do nome do carro
-    string Country = "")    // pais do piloto (sigla do jogo, ex. "FIN"; jogador: da pintura; IA: pelo nome do piloto no catalogo; "" = desconhecido)
+    string Country = "",    // pais do piloto (sigla do jogo, ex. "FIN"; jogador: da pintura; IA: pelo nome do piloto no catalogo; "" = desconhecido)
+    string CarNumber = "")  // numero do carro (do "#12" do nome da pintura: jogador pela pintura escolhida, IA pelo nome do piloto no catalogo; "" = desconhecido, o jogo nao informa)
 {
     /// <summary>Tempo do setor <paramref name="k"/> (0..2) da volta corrente, como a memoria informa (<= 0 = sem dado).</summary>
     public double CurSector(int k) => k switch { 0 => CurSector1, 1 => CurSector2, 2 => CurSector3, _ => 0 };

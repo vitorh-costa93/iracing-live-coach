@@ -13,7 +13,7 @@ public sealed record BoardGap93(BoardDriver Player, BoardDriver Neighbor, bool N
 /// <summary>1993: escolhe o vizinho físico na primeira passagem do par e mede um único ponto por volta.</summary>
 public sealed class BoardGap93Tracker
 {
-    sealed record Settings(double PointPercent, double HoldSeconds, bool Enabled);
+    sealed record Settings(double PointPercent, double HoldSeconds, bool Enabled, int LapInterval);
     readonly record struct Sample(CarSnapshot Car, double T);
     readonly record struct Crossing(int Car, double T, int Cycle);
     sealed record Pair(CarSnapshot Player, CarSnapshot Neighbor, bool Ahead, double FirstT, int Cycle);
@@ -28,20 +28,20 @@ public sealed class BoardGap93Tracker
     uint _sequence;
     double? _remaining;
 
-    public BoardGap93Tracker(double pointPercent = 0, double holdSeconds = 7, bool enabled = true)
+    public BoardGap93Tracker(double pointPercent = 0, double holdSeconds = 7, bool enabled = true, int lapInterval = 1)
     {
-        _settings = _active = Normalize(pointPercent, holdSeconds, enabled);
+        _settings = _active = Normalize(pointPercent, holdSeconds, enabled, lapInterval);
     }
 
     public BoardGap93? State { get; private set; }
 
-    /// <summary>Percentual da pista (0 = chegada), retenção em segundos. Aplicado no próximo quadro, zerando a medição.</summary>
-    public void SetOptions(double pointPercent, double holdSeconds, bool enabled = true) =>
-        Volatile.Write(ref _settings, Normalize(pointPercent, holdSeconds, enabled));
+    /// <summary>Percentual da pista (0 = chegada), retenção em segundos e intervalo em voltas (1 = toda volta; 1993 = a cada 3). Aplicado no próximo quadro, zerando a medição.</summary>
+    public void SetOptions(double pointPercent, double holdSeconds, bool enabled = true, int lapInterval = 1) =>
+        Volatile.Write(ref _settings, Normalize(pointPercent, holdSeconds, enabled, lapInterval));
 
-    static Settings Normalize(double pointPercent, double holdSeconds, bool enabled) => new(
+    static Settings Normalize(double pointPercent, double holdSeconds, bool enabled, int lapInterval) => new(
         double.IsFinite(pointPercent) ? Math.Clamp(pointPercent, 0, 99.9) : 0,
-        double.IsFinite(holdSeconds) ? Math.Clamp(holdSeconds, 3, 15) : 7, enabled);
+        double.IsFinite(holdSeconds) ? Math.Clamp(holdSeconds, 3, 15) : 7, enabled, Math.Clamp(lapInterval, 1, 100));
 
     public void Reset()
     {
@@ -115,7 +115,9 @@ public sealed class BoardGap93Tracker
             if (cross.Car != (ahead ? neighbor.Index : me.Index)) continue;
             int playerCycle = ahead ? (int)Math.Floor((mine - marker - 1e-7) / _length) + 1 : cross.Cycle;
             if (playerCycle <= _lastAttempt) continue;
-            _lastAttempt = playerCycle; _tieNeighbor = neighbor.Index;
+            _lastAttempt = playerCycle;
+            if (_active.LapInterval > 1 && !Broadcast93Rules.IsGapLap(playerCycle, _active.LapInterval)) continue;
+            _tieNeighbor = neighbor.Index;
             _pair = new Pair(me, neighbor, ahead, cross.T, playerCycle);
         }
         _previous.Clear();
@@ -132,16 +134,25 @@ public sealed class BoardGap93Tracker
         return Math.Abs(signed) < .001 || (signed >= 0) == pair.Ahead;
     }
 
+    /// <summary>Velocidade (m/s) entre a amostra anterior e a atual; piso de 1 m/s para nao dividir por zero.</summary>
+    double Speed(CarSnapshot c, double now)
+    {
+        var p = _previous[c.Index];
+        return Math.Max(1, (c.TotalDistance(_length) - p.Car.TotalDistance(_length)) / (now - p.T));
+    }
+
+    /// <summary>Vizinho (frente ou atras) com o menor gap em segundos no instante <paramref name="t"/> da passagem.</summary>
     CarSnapshot? Nearest(SessionSnapshot s, CarSnapshot me, double t, double now)
     {
         CarSnapshot? best = null;
-        double distance = double.PositiveInfinity, bestSigned = double.NegativeInfinity;
-        double mine = PositionAt(me, t, now);
+        double distance /* segundos */ = double.PositiveInfinity, bestSigned = double.NegativeInfinity;
+        double mine = PositionAt(me, t, now), mySpeed = Speed(me, now);
         foreach (var c in s.Cars)
         {
             if (c.Index == me.Index || !Continuous(c, now)) continue;
             double signed = SignedDistance(mine, PositionAt(c, t, now));
-            double abs = Math.Abs(signed);
+            // Menor gap em SEGUNDOS: distancia / velocidade de quem esta atras (o jogador se o vizinho esta a frente).
+            double abs = Math.Abs(signed) / (signed >= 0 ? mySpeed : Speed(c, now));
             bool tie = Math.Abs(abs - distance) < .001;
             if (abs < distance - .001 || (tie && (c.Index == _tieNeighbor ||
                 best?.Index != _tieNeighbor && (signed > bestSigned || signed == bestSigned && c.Index < best!.Index))))

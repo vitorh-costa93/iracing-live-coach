@@ -142,13 +142,19 @@ public static class WidgetCatalog
 
     /// <summary>Widgets do tema, na ordem do catalogo (os exclusivos de outros temas ficam de fora).</summary>
     static readonly HashSet<string> Widgets93 = new(StringComparer.OrdinalIgnoreCase)
-        { "board", "qualiboard", "drivercaption", "fuel", "tyres", "weather", "inputs", "radar" };
+        { "board", "qualiboard", "standings", "qualitower", "radar", "inputs" };
     internal static bool Supports93(string id) => Widgets93.Contains(id);
+    /// <summary>Colunas das listas do 1993 (Race/Qualy Standings): faixa azul de patrocinador (ligada) e gap (desligado).</summary>
+    static readonly ColumnDef[] Columns93List = [new("sponsor", "Faixa azul de patrocinador"), new("time", "Gap / tempo ao lado do sobrenome")];
     public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId)).Select(d =>
         ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
-            ? d with { DisplayName = "Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
+            ? d with { DisplayName = "Race Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
         : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualiboard"
-            ? d with { DisplayName = "Quali Board (volta, parcial e resultado)" }
+            ? d with { DisplayName = "Qualy Board (volta, parcial e resultado)" }
+        : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "standings"
+            ? d with { DisplayName = "Race Standings", Columns = Columns93List, WidthColumns = [], HasSelection = false, DefaultScale = 1f }
+        : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualitower"
+            ? d with { DisplayName = "Qualy Standings", Columns = Columns93List }
         :
         d.Id == "inputs" && ThemeCatalog.Canonical(themeId) is var themeKey && (string.Equals(themeKey, "f1-2004", StringComparison.OrdinalIgnoreCase) || string.Equals(themeKey, "f1-2012", StringComparison.OrdinalIgnoreCase))
             ? d with { DisplayName = "Velocímetro", Columns = d.Columns.Where(c => c.Id != "graph").ToArray(), WidthColumns = [] }
@@ -349,6 +355,9 @@ public static class WidgetCatalog
                 new("showFor", "Duração do resultado da volta (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
             ],
             ["drivercaption"] = [new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full")],
+            // Listas discretas da TV de 1993: número de carro + sobrenome; mostram sempre o topo (sem janela ao redor do jogador).
+            ["standings"] = [new("rows", "Pilotos na lista", OptionKind.Number, null, "6", Min: 3, Max: 20)],
+            ["qualitower"] = [new("rows", "Pilotos na lista", OptionKind.Number, null, "6", Min: 3, Max: 20)],
         },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {

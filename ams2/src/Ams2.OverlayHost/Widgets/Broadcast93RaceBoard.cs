@@ -8,58 +8,61 @@ using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Widgets;
 
-/// <summary>1993 plates use cuts, fixed gap results, and only measured session values.</summary>
+/// <summary>
+/// Placa inferior da corrida 1993: so aparece quando ha algo a mostrar, por prioridade PIT STOP &gt; FASTEST LAP &gt; LAPS TO GO &gt; GAP.
+/// Sem nenhum ativo nao desenha nada (o Race Standings fica o tempo todo; a placa some).
+/// </summary>
 public sealed class Broadcast93RaceBoard
 {
     public const float Width = 1920, Height = 300;
-    public static readonly Color4 White = new(.96f, .96f, .91f, 1), Yellow = new(1, .88f, .36f, 1), Cyan = new(.27f, .84f, .94f, 1);
-    public enum Mode { None, Caption, Gap, Fastest }
-    string? _session;
-    int _player = -1, _lastLaps = -1;
-    double _best = double.PositiveInfinity, _lastNow = double.NegativeInfinity, _fastestAt = double.NegativeInfinity;
-    CarSnapshot? _fastest;
-    bool _observed;
-    int _generation = -1;
+    public static readonly Color4 White = new(.96f, .96f, .91f, 1), Yellow = new(1, .88f, .36f, 1), Cyan = new(.27f, .84f, .94f, 1),
+        Blue = new(.30f, .46f, 1f, 1), BandBlue = new(20 / 255f, 40 / 255f, 200 / 255f, 1f), Pure = new(1, 1, 1, 1);
+    public enum Mode { None, Gap, Fastest, Pit, LapsToGo }
+    readonly FastestLapDetector _fastest = new();
 
     public static bool Visible(OverlayModel m)
         => m.Connected && m.PlayerDriving && m.Session is { InSession: true, GameState: 2, PlayerCar: not null };
 
-    public static Mode Select(OverlayModel m)
-        => !Visible(m) ? Mode.None : m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT ? Mode.Gap : Mode.Caption;
+    /// <summary>PIT STOP: parado no box, na pit lane antes da parada desta passagem, ou nos 3 s depois de sair do box.</summary>
+    public static bool PitActive(BroadcastState b, double now)
+        => b.PlayerStopped || b.PlayerInPitLane && b.PlayerStopEndT < b.PlayerPitLaneStartT
+            || now - b.PlayerStopEndT is >= 0 && now - b.PlayerStopEndT < Broadcast93Rules.PitResultHold;
+
+    /// <summary>Cronometro do pit: corre enquanto parado; depois da saida mostra a ultima parada; antes de parar, 0.0.</summary>
+    public static double PitSeconds(BroadcastState b, double now)
+        => b.PlayerStopped ? b.PlayerStopNow(now) : now - b.PlayerStopEndT is >= 0 && now - b.PlayerStopEndT < Broadcast93Rules.PitResultHold ? b.PlayerStopSeconds : 0;
+
+    /// <summary>LAPS TO GO: nos primeiros 6 s da volta em que as voltas restantes sao multiplo de 5 (corrida por voltas).</summary>
+    public static bool LapsToGoActive(OverlayModel m, BroadcastState b)
+        => Broadcast93Rules.IsLapsToGo(Remaining(m)) && m.Now - b.PlayerLapChangedT is >= 0 && m.Now - b.PlayerLapChangedT < Broadcast93Rules.LapsToGoHold;
+
+    static int? Remaining(OverlayModel m) => m.Board?.LapsRemaining ?? (m.Session is { } s ? Broadcast93Rules.LapsRemaining(s) : null);
+
+    public static Mode Select(OverlayModel m, FastestLapEvent? fastest = null, bool fastestEnabled = true)
+    {
+        if (!Visible(m)) return Mode.None;
+        var b = BroadcastUi.State(m);
+        if (PitActive(b, m.Now)) return Mode.Pit;
+        if (fastestEnabled && fastest?.ActiveAt(m.Now) == true) return Mode.Fastest;
+        if (LapsToGoActive(m, b)) return Mode.LapsToGo;
+        return m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT ? Mode.Gap : Mode.None;
+    }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
-        if (!m.Connected || m.Session is { GameState: 3 }) Reset();
+        if (!m.Connected || m.Session is { GameState: 3 }) _fastest.Reset();
         if (!Visible(m)) return;
         var session = m.Session!;
-        var player = session.PlayerCar!;
-        string key = session.Track + "\n" + session.TrackVariation + "\n" + session.Kind;
-        if (_session != key || _generation != (m.QualiLap?.SessionGeneration ?? -1) || _player != player.Index || m.Now < _lastNow || player.LapsCompleted < _lastLaps)
-        { Reset(); _session = key; _player = player.Index; _generation = m.QualiLap?.SessionGeneration ?? -1; }
-        _lastNow = m.Now; _lastLaps = player.LapsCompleted;
-        var bestCar = session.Cars.Where(car => double.IsFinite(car.BestLapTime) && car.BestLapTime > 0).OrderBy(car => car.BestLapTime).FirstOrDefault();
-        if (bestCar is not null && bestCar.BestLapTime < _best - .0005)
+        _fastest.Update(m.Now, session, m.QualiLap?.SessionGeneration ?? -1);
+        bool fastestOn = !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase);
+        switch (Select(m, _fastest.Latest, fastestOn))
         {
-            if (_observed) { _fastest = bestCar; _fastestAt = m.Now; }
-            _best = bestCar.BestLapTime;
-        }
-        _observed = true;
-        var mode = Select(m);
-        if (mode == Mode.Gap) Gap(c, m.Board!.Gap93!, cfg);
-        else if (_fastest is not null && m.Now - _fastestAt is >= 0 and < 7 && !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase)) Fastest(c, _fastest, session.Cars, cfg, session.TrackLength);
-        else
-        {
-            var state = BroadcastUi.State(m);
-            double at = Math.Max(state.SessionSeenT, Math.Max(state.PlayerPositionChangedT, state.PlayerLapChangedT));
-            if (cfg.ColumnVisible("always") || m.Now - at is >= 0 and < BroadcastUi.CaptionHold)
-            {
-                if (string.Equals(cfg.OptionOr("captionMode", "full"), "onboard", StringComparison.OrdinalIgnoreCase)) Onboard(c, player, session.Cars, cfg);
-                else Caption(c, m, cfg);
-            }
+            case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now)); break;
+            case Mode.Fastest: Fastest(c, _fastest.Latest!.Car, session.Cars, cfg, session.TrackLength); break;
+            case Mode.LapsToGo: LapsToGo(c, Remaining(m) ?? 0); break;
+            case Mode.Gap: Gap(c, m.Board!.Gap93!, cfg); break;
         }
     }
-
-    void Reset() { _observed = false; _generation = -1; _session = null; _player = _lastLaps = -1; _best = double.PositiveInfinity; _lastNow = _fastestAt = double.NegativeInfinity; _fastest = null; }
 
     public static void Band(ThemeCanvas c, float y = 30, float height = 230)
         => c.FillRect(0, y, Width, height, c.Theme.PanelFill);
@@ -70,34 +73,9 @@ public sealed class Broadcast93RaceBoard
         c.Text(value, BroadcastUi.Fit(c, value, font, width), x, y, width, Math.Max(62, size * 1.35f), color, align, c.Theme.TextShadow);
     }
 
-    public static void Caption(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, bool qualifying = false)
+    /// <summary>"Mark BLUNDELL": nome em caixa normal e SOBRENOME em caixa alta (ou o nome do perfil, se houver).</summary>
+    public static string FullName(CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
-        if (m.Session?.PlayerCar is not { } car) return;
-        c.FillRect(165, 65, qualifying ? 1590 : 1130, 175, c.Theme.PanelFill);
-        Text(c, cfg.Name(car, BroadcastUi.ShortName(car, m.Session.Cars)).ToUpperInvariant(), 210, 80, 1000, "name", 38, c.Theme.TextColor);
-        if (qualifying || cfg.Id == "board" || cfg.ColumnVisible("team")) Text(c, BroadcastUi.Team(car).ToUpperInvariant(), 210, 157, 1000, "label", 38, c.Theme.ValueColor);
-        if (qualifying)
-        {
-            int pos = m.Quali?.Player?.Rank ?? car.Position;
-            Text(c, pos > 0 ? "(" + pos.ToString(CultureInfo.InvariantCulture) + ")" : "(-)", 1300, 80, 370, "position", 40, c.Theme.ReadoutColor, HAlign.Center);
-            Text(c, QualiCaption.Gap(m, cfg), 1270, 157, 430, "gap", 50, c.Theme.ValueColor, HAlign.Center);
-        }
-    }
-
-    public static void Onboard(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
-        => Text(c, cfg.Name(car, car.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "").ToUpperInvariant(), 165, 180, 1250, "name", 38, c.Theme.TextColor);
-
-    /// <summary>Placa compacta: título ciano + tempo à direita, nome (SOBRENOME em caixa alta), equipe em amarelo e,
-    /// se a extensão da pista for conhecida, a velocidade média da volta ("138.00 Kmh / 85.75 Mph"). Sem retrato/número.</summary>
-    public static void Fastest(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg, double trackLengthM = 0)
-    {
-        if (!double.IsFinite(car.BestLapTime) || car.BestLapTime <= 0) return;
-        bool avg = double.IsFinite(trackLengthM) && trackLengthM > 0;
-        bool team = cfg.Id == "board" || cfg.ColumnVisible("team");
-        float rows = 2 + (team ? 1 : 0) + (avg ? 1 : 0);
-        c.FillRect(165, 30, 900, 20 + rows * 56, c.Theme.PanelFill);
-        Text(c, "FASTEST LAP", 200, 34, 400, "title", 36, Cyan);
-        Text(c, cfg.Fmt.LapTime is null ? Broadcast93QualiBoard.Time(car.BestLapTime) : cfg.Fmt.FormatLapTime(car.BestLapTime), 620, 34, 400, "time", 40, c.Theme.TextColor);
         string name = cfg.Name(car, BroadcastUi.ShortName(car, field));
         if (cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true)
         {
@@ -105,23 +83,114 @@ public sealed class Broadcast93RaceBoard
             int space = full.LastIndexOf(' ');
             name = space < 0 ? full.ToUpperInvariant() : full[..(space + 1)] + full[(space + 1)..].ToUpperInvariant();
         }
-        float y = 34 + 56;
-        Text(c, name, 200, y, 840, "name", 36, c.Theme.TextColor);
-        y += 56;
-        if (team) { Text(c, BroadcastUi.Team(car).ToUpperInvariant(), 200, y, 840, "label", 34, Yellow); y += 56; }
-        if (avg)
-        {
-            double kmh = trackLengthM / 1000 / (car.BestLapTime / 3600);
-            Text(c, kmh.ToString("0.00", CultureInfo.InvariantCulture) + " Kmh / " + (kmh * 0.621371).ToString("0.00", CultureInfo.InvariantCulture) + " Mph", 200, y, 840, "value", 32, c.Theme.TextColor);
-        }
+        return name;
     }
+
+    /// <summary>Iniciais do primeiro e do ultimo nome ("Mark Blundell" -> "MB").</summary>
+    public static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "";
+        return (parts[0][..1] + (parts.Length > 1 ? parts[^1][..1] : "")).ToUpperInvariant();
+    }
+
+    /// <summary>Foto do piloto (Assets\Drivers) ou, sem arquivo, silhueta cinza com as iniciais.</summary>
+    public static void Photo(ThemeCanvas c, string fullName, float x, float y, float w, float h)
+    {
+        if (c.DriverPhoto(fullName, x, y, w, h)) return;
+        c.FillRect(x, y, w, h, new(.40f, .42f, .43f, 1));
+        var dark = new Color4(.27f, .28f, .29f, 1);
+        c.FillEllipse(x + w / 2, y + h * .34f, w * .17f, h * .17f, dark);
+        c.FillPolygon([new(x + w * .10f, y + h), new(x + w * .16f, y + h * .68f), new(x + w * .38f, y + h * .56f), new(x + w * .62f, y + h * .56f), new(x + w * .84f, y + h * .68f), new(x + w * .90f, y + h)], dark);
+        string initials = Initials(fullName);
+        if (initials.Length > 0)
+            c.Text(initials, c.Theme.Text with { Size = h * .26f }, x, y + h * .66f, w, h * .34f, new(.92f, .92f, .88f, 1), HAlign.Center, c.Theme.TextShadow);
+    }
+
+    /// <summary>Linha "26 Mark BLUNDELL": numero do carro em amarelo (se conhecido) e nome em branco.</summary>
+    public static void NameLine(ThemeCanvas c, CarSnapshot car, string name, float x, float y, float width, float size)
+    {
+        float nx = x;
+        if (car.CarNumber.Length > 0)
+        {
+            Text(c, car.CarNumber, x, y, 70, "position", size, Yellow, HAlign.Right);
+            nx = x + 85;
+        }
+        Text(c, name, nx, y, width - (nx - x), "name", size, c.Theme.TextColor);
+    }
+
+    /// <summary>Painel comum da legenda e do FASTEST LAP: foto, "26 Mark BLUNDELL", equipe em amarelo e faixa olivetti.</summary>
+    static void Plate(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg, float top, float height, float firstRow, bool tag = false)
+    {
+        c.FillRect(165, top, 1130, height - 52, c.Theme.PanelFill);
+        Photo(c, car.Name.Trim(), 180, top + 12, 150, height - 12 - 70);
+        NameLine(c, car, FullName(car, field, cfg), 355, top + firstRow, 520, 40);
+        Text(c, BroadcastUi.Team(car).ToUpperInvariant(), 355, top + firstRow + 58, 520, "label", 36, Yellow);
+        // Faixa mais curta, centralizada logo abaixo do painel (como na TV): Olivetti na lenta/fastest lap, TAG Heuer na legenda.
+        float sy = top + height - 52 + 6, sw = 540, sx = 165 + (1130 - sw) / 2;
+        if (tag) SponsorStrip.TagHeuer(c, sx, sy, 400, 46);
+        else SponsorStrip.Olivetti(c, 165 + (1130 - sw) / 2, sy, sw, 46, "computer");
+    }
+
+    /// <summary>Legenda do piloto do jogador (ou observado): foto, "26 Mark BLUNDELL", equipe e faixa olivetti / TAG Heuer.</summary>
+    public static void Caption(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, bool qualifying = false)
+    {
+        if (m.Session?.PlayerCar is not { } car) return;
+        Plate(c, car, m.Session.Cars, cfg, 40, 215, 28, tag: true);
+    }
+
+    public static void Onboard(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
+        => Text(c, cfg.Name(car, car.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "").ToUpperInvariant(), 165, 180, 1250, "name", 38, c.Theme.TextColor);
+
+    /// <summary>FASTEST LAP: foto a esquerda, titulo ciano e tempo (1'27.438) em cima, "2 Alain PROST", equipe em amarelo, velocidade media
+    /// (Kmh / Mph, so com a extensao da pista conhecida) a direita e faixa olivetti.</summary>
+    public static void Fastest(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg, double trackLengthM = 0)
+    {
+        if (!double.IsFinite(car.BestLapTime) || car.BestLapTime <= 0) return;
+        Plate(c, car, field, cfg, 40, 235, 70);
+        Text(c, "FASTEST LAP", 355, 48, 480, "title", 40, Cyan);
+        Text(c, cfg.Fmt.LapTime is null ? Broadcast93QualiBoard.Time(car.BestLapTime) : cfg.Fmt.FormatLapTime(car.BestLapTime), 870, 48, 400, "time", 46, c.Theme.TextColor, HAlign.Right);
+        if (!double.IsFinite(trackLengthM) || trackLengthM <= 0) return;
+        double kmh = trackLengthM / 1000 / (car.BestLapTime / 3600);
+        Text(c, kmh.ToString("0.00", CultureInfo.InvariantCulture) + " Kmh", 870, 110, 400, "value", 36, c.Theme.TextColor, HAlign.Right);
+        Text(c, (kmh * 0.621371).ToString("0.00", CultureInfo.InvariantCulture) + " Mph", 870, 168, 400, "value", 36, c.Theme.TextColor, HAlign.Right);
+    }
+
+    /// <summary>PIT STOP: faixa "PIT STOP" com seta triangular e cronometro grande numa placa escura com o texto "TAG Heuer".</summary>
+    public static void Pit(ThemeCanvas c, double seconds)
+    {
+        c.FillRect(165, 80, 700, 130, c.Theme.PanelFill);
+        c.FillRect(165, 80, 14, 130, BandBlue);
+        Text(c, "PIT STOP", 205, 98, 460, "title", 66, c.Theme.TextColor);
+        c.FillPolygon([new(700, 112), new(780, 145), new(700, 178)], Yellow);
+        c.FillRect(900, 80, 400, 130, c.Theme.PanelFill);
+        Text(c, seconds.ToString("0.0", CultureInfo.InvariantCulture), 900, 92, 400, "time", 100, c.Theme.ValueColor, HAlign.Center);
+        // Placa TAG Heuer (escudo + texto) logo abaixo do painel, como na TV.
+        SponsorStrip.TagHeuer(c, 165 + (1135 - 440) / 2f, 222, 440, 50);
+    }
+
+    /// <summary>LAPS TO GO: bandeira quadriculada pequena (quadrados preto e branco) e "10 LAPS TO GO" ("1 LAP TO GO" no singular).</summary>
+    public static void LapsToGo(ThemeCanvas c, int remaining)
+    {
+        c.FillRect(165, 80, 980, 130, c.Theme.PanelFill);
+        const float cell = 16;
+        for (int row = 0; row < 5; row++)
+            for (int col = 0; col < 8; col++)
+                c.FillRect(200 + col * cell, 105 + row * cell, cell, cell, (row + col) % 2 == 0 ? new Color4(0, 0, 0, 1) : Pure);
+        c.Line(198, 103, 198, 187, new(.85f, .86f, .82f, 1), 3);
+        c.Text(LapsToGoText(remaining), c.Theme.Title with { Size = 70 }, 360, 98, 760, 80, c.Theme.TextColor, HAlign.Left, c.Theme.TextShadow);
+    }
+
+    public static string LapsToGoText(int remaining)
+        => remaining.ToString(CultureInfo.InvariantCulture) + (remaining == 1 ? " LAP TO GO" : " LAPS TO GO");
 
     public static void Gap(ThemeCanvas c, BoardGap93 gap, WidgetSettings cfg)
     {
         Band(c);
         var front = gap.Ahead; var rear = gap.Behind;
-        // Original generic silhouettes, not sprites extracted from broadcast footage.
-        TinyCar(c, 180, 75, new(.72f, .73f, .35f, 1)); TinyCar(c, 1350, 75, new(.89f, .45f, .38f, 1));
+        // Silhueta em Assets\Cars (se o usuario forneceu); senao o desenho generico original, nunca sprites extraidos da transmissao.
+        if (!c.CarImage(front.Team, 180, 65, 290, 90)) TinyCar(c, 180, 75, new(.72f, .73f, .35f, 1));
+        if (!c.CarImage(rear.Team, 1350, 65, 290, 90)) TinyCar(c, 1350, 75, new(.89f, .45f, .38f, 1));
         Text(c, front.Position > 0 ? front.Position.ToString(CultureInfo.InvariantCulture) : "-", 490, 65, 120, "position", 40, c.Theme.TextColor);
         Text(c, rear.Position > 0 ? rear.Position.ToString(CultureInfo.InvariantCulture) : "-", 1660, 65, 120, "position", 40, c.Theme.TextColor);
         Text(c, cfg.Name(front.Name, front.CarIndex, front.ShortName).ToUpperInvariant(), 165, 172, 590, "name", 38, c.Theme.TextColor);
