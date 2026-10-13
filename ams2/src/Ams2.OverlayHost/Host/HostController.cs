@@ -23,6 +23,7 @@ internal sealed class HostController : IDisposable
     readonly OverlayDataProvider _provider;
     readonly ProfileStore _store;
     readonly bool _fake;
+    OverlayModel? _fakeRaw, _fakeModel;
     readonly bool _persist;
     readonly Dictionary<string, WidgetWindow> _windows = [];
     readonly ConcurrentQueue<Action> _queue = new();
@@ -373,6 +374,11 @@ internal sealed class HostController : IDisposable
             if (_saveAt is { } at && DateTime.UtcNow >= at) SaveNow();
 
             var model = _provider.Current;
+            if (_fake) // --fake: o jogo falso nao traz pais; paises de exemplo (os mesmos da previa de layout) para as bandeiras aparecerem
+            {
+                if (!ReferenceEquals(model, _fakeRaw)) { _fakeRaw = model; _fakeModel = LayoutPreview.WithCountries(model); }
+                model = _fakeModel!;
+            }
             _victory?.OnModel(model);
             // Regra unica: widgets so aparecem com o jogador no carro (ou editando o layout). Oculto = janelas escondidas, sem Render e sem vblank.
             bool gate = _edit || model.PlayerDriving;

@@ -37,6 +37,26 @@ public class FlagRenderTests
     }
 
     [Fact]
+    public void Flag_appears_in_the_2018_position_caption_with_the_preview_and_the_live_fake_model()
+    {
+        var theme = Themes.F1_2018;
+        var w = WidgetRegistry.Create("poscaption"); w.UseTheme(theme); w.Configure(LayoutPreview.Settings(new WidgetSettings { Id = "poscaption" }));
+        var preview = LayoutPreview.ForWidget("poscaption");
+        Assert.NotEqual(Render(w, WithCountry(preview, ""), theme), Render(w, preview, theme));
+
+        // --fake com o jogador "pilotando" ignora a previa de layout (WidgetWindow.Render): o HostController aplica os paises de exemplo ao modelo vivo.
+        double now = 0;
+        using var provider = new OverlayDataProvider(new FakeRawSource(() => now), () => now);
+        for (int i = 0; i < 1200; i++) { now += 1.0 / 60; provider.Tick(); }
+        var live = provider.Current;
+        Assert.True(live.PlayerDriving);
+        Assert.All(live.Session!.Cars, c => Assert.Empty(c.Country));
+        var withCountries = LayoutPreview.WithCountries(live);
+        Assert.All(withCountries.Session!.Cars, c => Assert.NotEmpty(c.Country));
+        Assert.NotEqual(Render(w, live, theme), Render(w, withCountries, theme));
+    }
+
+    [Fact]
     public void Flag_appears_in_the_2004_driver_caption_only_when_the_country_is_known()
     {
         var theme = Themes.F1_2004;

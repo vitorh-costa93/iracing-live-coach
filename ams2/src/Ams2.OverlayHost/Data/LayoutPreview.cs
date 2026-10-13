@@ -51,7 +51,7 @@ public static class LayoutPreview
     }
 
     /// <summary>Paises de exemplo nos carros da previa (bandeiras das legendas); so a previa, nunca dados reais.</summary>
-    static OverlayModel WithCountries(OverlayModel m)
+    public static OverlayModel WithCountries(OverlayModel m)
     {
         if (m.Session is not { } s) return m;
         string[] countries = ["GBR", "MEX", "FIN", "ITA", "BRA", "NED", "GER", "ESP"];
