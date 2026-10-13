@@ -105,6 +105,8 @@ public static class SnapshotMapper
         var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(
             System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in buf), 1)).Slice(offset, len);
         int z = bytes.IndexOf((byte)0);
-        return Encoding.UTF8.GetString(z < 0 ? bytes : bytes[..z]).Trim();
+        var text = z < 0 ? bytes : bytes[..z];
+        try { return new UTF8Encoding(false, true).GetString(text).Trim(); }
+        catch (ArgumentException) { return Encoding.Latin1.GetString(text).Trim(); }  // nomes de pilotos chegam em Latin-1 (ex.: Räikkönen)
     }
 }
