@@ -43,7 +43,7 @@ public sealed class BroadcastTracker
     readonly Dictionary<int, double> _lapSum = [];
     readonly Dictionary<int, int> _laps = [];
     SessionKind _kind;
-    string _track = "";
+    string _track = "", _playerId = "";
     int _lastPitCar = -1, _playerPos, _playerLaps = -1, _leaderLaps;
     double _lastPitT = double.NegativeInfinity, _seenT = double.NegativeInfinity, _posT = double.NegativeInfinity, _lapT = double.NegativeInfinity;
     bool _stopped, _inLane;
@@ -58,7 +58,7 @@ public sealed class BroadcastTracker
     public void Reset()
     {
         _pit.Clear(); _stops.Clear(); _lapSum.Clear(); _laps.Clear();
-        _kind = SessionKind.Invalid; _track = "";
+        _kind = SessionKind.Invalid; _track = ""; _playerId = "";
         _lastPitCar = -1; _playerPos = 0; _playerLaps = -1; _leaderLaps = 0;
         _lastPitT = _seenT = _posT = _lapT = _stopStart = _stopEnd = _laneStart = double.NegativeInfinity;
         _stopped = _inLane = false; _stopSecs = 0; _winner = null; _stopHist = [];
@@ -94,6 +94,10 @@ public sealed class BroadcastTracker
         {
             if (_playerPos > 0 && me.Position != _playerPos) _posT = now;
             _playerPos = me.Position;
+            // Pintura detectada depois do inicio da sessao (nome/pais do jogador mudam): reexibe a legenda com a bandeira.
+            string id = me.Name + "|" + me.Country;
+            if (_playerId.Length > 0 && id != _playerId && me.Country.Length > 0) _posT = now;
+            _playerId = id;
             if (_playerLaps >= 0 && me.LapsCompleted > _playerLaps) _lapT = now;
             _playerLaps = me.LapsCompleted;
 

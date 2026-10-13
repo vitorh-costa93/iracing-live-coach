@@ -98,6 +98,7 @@ public sealed class OverlayDataProvider : IDisposable
     bool _wasRadarConnected;
     readonly PlayerNameStore? _names;
     readonly LiveryDetector? _liveries;
+    string _playerDiag = "";
     string _liveryModel = "";
     int _liveryField = -1;
     readonly DriverCountryResolver? _countries;
@@ -219,7 +220,10 @@ public sealed class OverlayDataProvider : IDisposable
             if (field != _liveryField && model.Length > 0) { _liveryField = field; _liveries.SetOpponents(s.Cars.Where(c => c.Index != pc!.Index).Select(c => c.Name)); } // IA da sessao: tira as pinturas dela dos candidatos
             var withPlayer = PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
             // Pais/equipe da IA pelo nome do piloto (catalogo de pinturas): alimenta bandeiras e equipe nas legendas.
-            return PlayerIdentity.ApplyField(withPlayer, n => _liveries.FindDriver(n) is { } e ? (e.Country, e.Team) : null);
+            var result = PlayerIdentity.ApplyField(withPlayer, n => _liveries.FindDriver(n) is { } e ? (e.Country, e.Team) : null);
+            string diag = $"{result.PlayerCar?.Name}|{result.PlayerCar?.Country}|{_liveries.Get(pc?.CarName ?? "")?.Country}";
+            if (diag != _playerDiag) { _playerDiag = diag; Console.Error.WriteLine($"[Player] nome|pais|detectado = {diag}"); }
+            return result;
         }
         return PlayerIdentity.Apply(s, _names.Get);
     }

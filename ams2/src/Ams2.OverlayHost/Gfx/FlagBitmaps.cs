@@ -39,14 +39,14 @@ public sealed unsafe class FlagBitmaps : IDisposable
         if (_bitmaps.TryGetValue(a2, out var cached)) return cached.Get();
         if (_missing.Contains(a2)) return null;
         string path = PathFor(a2)!;
-        if (!File.Exists(path)) { _missing.Add(a2); return null; }
+        if (!File.Exists(path)) { _missing.Add(a2); Console.Error.WriteLine($"[Flag] sem arquivo: {path}"); return null; }
         try
         {
             var loaded = Load(path);
             _bitmaps[a2] = loaded;
             return loaded.Get();
         }
-        catch { _missing.Add(a2); return null; }
+        catch (Exception e) { _missing.Add(a2); Console.Error.WriteLine($"[Flag] falha ao carregar {path}: {e.Message}"); return null; }
     }
 
     ComPtr<ID2D1Bitmap> Load(string path)

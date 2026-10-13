@@ -487,7 +487,8 @@ public sealed class BoardWidget : IWidget
                 const float x0 = 4, y0 = 4, leftW = 230, headH = 26, rowH = 30;
                 float x = ox + x0, y = oy + y0;
                 Chrome.HeaderCell(c, x, y, leftW, headH, "DRIVER", t.Label);
-                Chrome.WhiteCell(c, x, y + headH, leftW, rowH, name, BroadcastUi.Fit(c, name, t.Text, leftW - 16), ink: null);
+                Chrome.WhiteCell(c, x, y + headH, leftW, rowH, name, BroadcastUi.Fit(c, name, t.Text, leftW - 16 - Chrome.FlagSpace(c, d.Country)), ink: null);
+                Chrome.CellFlag(c, d.Country, x, y + headH, leftW, rowH);
                 Chrome.Box(c, x, y + headH + rowH, leftW, rowH, team, BroadcastUi.Fit(c, team, t.Text, leftW - 16), Chrome.CellKind.Navy);
                 float rx = x + leftW;
                 var posKind = d.Position == 1 ? Chrome.CellKind.Red : Chrome.CellKind.Navy;
