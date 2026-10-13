@@ -159,14 +159,15 @@ public sealed class Broadcast93RaceBoard
     /// <summary>PIT STOP: faixa "PIT STOP" com seta triangular e cronometro grande numa placa escura com o texto "TAG Heuer".</summary>
     public static void Pit(ThemeCanvas c, double seconds)
     {
-        c.FillRect(165, 80, 700, 130, c.Theme.PanelFill);
-        c.FillRect(165, 80, 14, 130, BandBlue);
-        Text(c, "PIT STOP", 205, 98, 460, "title", 66, c.Theme.TextColor);
-        c.FillPolygon([new(700, 112), new(780, 145), new(700, 178)], Yellow);
-        c.FillRect(900, 80, 400, 130, c.Theme.PanelFill);
-        Text(c, seconds.ToString("0.0", CultureInfo.InvariantCulture), 900, 92, 400, "time", 100, c.Theme.ValueColor, HAlign.Center);
-        // Placa TAG Heuer (escudo + texto) logo abaixo do painel, como na TV.
-        SponsorStrip.TagHeuer(c, 165 + (1135 - 440) / 2f, 222, 440, 50);
+        // Uma unica barra translucida: "PIT STOP" ciano + seta amarela colada, cronometro amarelo a direita (como na TV).
+        const float bx = 165, bw = 860, by = 70, bh = 100;
+        c.FillRect(bx, by, bw, bh, c.Theme.PanelFill);
+        Text(c, "PIT STOP", bx + 30, by + 8, 380, "title", 66, c.Theme.LabelColor);
+        c.FillPolygon([new(bx + 346, by + 6), new(bx + 410, by + bh / 2), new(bx + 346, by + bh - 6)], Yellow);
+        Text(c, seconds.ToString("0.0", CultureInfo.InvariantCulture), bx + 470, by + 2, 300, "time", 80, c.Theme.ValueColor, HAlign.Center);
+        // Placa TAG Heuer (mais estreita, escudo maior) centralizada abaixo da barra.
+        const float pw = 340, ph = 80;
+        SponsorStrip.TagHeuer(c, bx + (bw - pw) / 2, by + bh + 22, pw, ph, .5f);
     }
 
     /// <summary>LAPS TO GO: bandeira quadriculada pequena (quadrados preto e branco) e "10 LAPS TO GO" ("1 LAP TO GO" no singular).</summary>

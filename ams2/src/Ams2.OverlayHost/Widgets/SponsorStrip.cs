@@ -28,12 +28,12 @@ public static class SponsorStrip
     }
 
     /// <summary>Escudo TAG Heuer a esquerda e "TAG HEUER" bold branco com espacamento entre letras.</summary>
-    public static void TagHeuer(ThemeCanvas c, float x, float y, float w, float h)
+    public static void TagHeuer(ThemeCanvas c, float x, float y, float w, float h, float textScale = 1f)
     {
         Back(c, x, y, w, h);
         float pad = h * .16f, shieldH = h * .76f, shieldW = shieldH * ShieldRatio;
         float tx = x + pad;
         if (c.Sponsor("tagheuer_shield", x + pad, y + (h - shieldH) / 2, shieldW, shieldH)) tx += shieldW + pad * 1.4f;
-        c.Text("TAG HEUER", c.Theme.Text with { Size = h * .66f, Weight = 700, Tracking = h * .07f }, tx, y, x + w - tx - pad, h, White, HAlign.Center);
+        c.Text("TAG HEUER", c.Theme.Text with { Size = h * .66f * textScale, Weight = 700, Tracking = h * .07f * textScale }, tx, y, x + w - tx - pad, h, White, HAlign.Center);
     }
 }
