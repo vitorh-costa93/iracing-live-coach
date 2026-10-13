@@ -10,12 +10,15 @@ namespace Ams2.Shared.Liveries;
 public sealed class LiveryDetector : IDisposable
 {
     const int MaxAttempts = 4;
+    const int SlowAttempts = 10; // depois das rapidas: a pintura pode so aparecer no heap apos o jogador confirmar o carro/entrar na pista
     static readonly TimeSpan RetryEvery = TimeSpan.FromSeconds(15);
+    static readonly TimeSpan SlowRetryEvery = TimeSpan.FromSeconds(60);
 
     readonly List<LiveryEntry> _catalog;
     readonly string[] _folders;
     readonly Dictionary<string, LiveryEntry> _byDriver;
     readonly CancellationTokenSource _cts = new();
+    volatile HashSet<string> _opponents = new(StringComparer.OrdinalIgnoreCase);
     volatile Dictionary<string, PlayerNameEntry> _byModel = new(StringComparer.OrdinalIgnoreCase);
     int _running; // 0/1
 
@@ -50,6 +53,10 @@ public sealed class LiveryDetector : IDisposable
     /// <summary>Identidade detectada para o modelo (CarName do jogo), ou null.</summary>
     public PlayerNameEntry? Get(string carName)
         => _byModel.TryGetValue(PlayerNameStore.ModelKey(carName), out var e) ? e : null;
+
+    /// <summary>Nomes dos pilotos de IA da sessao: pinturas cujo piloto esta entre eles pertencem a carros da IA e nao ao jogador.</summary>
+    public void SetOpponents(IEnumerable<string> names)
+        => _opponents = new HashSet<string>(names.Select(n => n.Trim()).Where(n => n.Length > 0), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Esquece o que foi detectado (a pintura pode ter mudado fora da sessao).</summary>
     public void Forget() => _byModel = new(StringComparer.OrdinalIgnoreCase);
@@ -99,10 +106,11 @@ public sealed class LiveryDetector : IDisposable
     /// <summary>Ate MaxAttempts varreduras para o carro; encerra cedo se chegar um pedido novo. Devolve true se foi substituido por um pedido novo.</summary>
     bool RunOne(string model, string className, string carName)
     {
-        for (int attempt = 0; attempt < MaxAttempts && !_cts.IsCancellationRequested; attempt++)
+        for (int attempt = 0; attempt < MaxAttempts + SlowAttempts && !_cts.IsCancellationRequested; attempt++)
         {
             var hits = GameLiveryProbe.Scan(_folders, n => _catalog.Any(e => string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)), _cts.Token);
             var entry = hits is null ? null : Resolve(hits, className, carName, attempt + 1, out _);
+            // (Resolve loga a tentativa; as lentas continuam ate achar ou chegar um pedido novo)
             if (hits is null) Log($"tentativa {attempt + 1}/{MaxAttempts} model='{model}': jogo nao aberto/sem acesso (null)");
             if (entry is not null)
             {
@@ -115,7 +123,7 @@ public sealed class LiveryDetector : IDisposable
                 return false;
             }
             if (_pending is not null) return true;
-            if (_cts.Token.WaitHandle.WaitOne(RetryEvery)) return false;
+            if (_cts.Token.WaitHandle.WaitOne(attempt + 1 < MaxAttempts ? RetryEvery : SlowRetryEvery)) return false;
             if (_pending is not null) return true;
         }
         return false;
@@ -126,26 +134,42 @@ public sealed class LiveryDetector : IDisposable
     /// com o ranking por contagem (so informativo: nenhum desempate e aplicado, nao ha evidencia de que contagem/ordem identifique o jogador).</summary>
     LiveryEntry? Resolve(Dictionary<string, int> hits, string className, string carName, int attempt, out string reason)
     {
+        var result = Choose(_catalog, hits, className, carName, _opponents, out reason, out string list, out int sameClass, out int afterFolder);
+        Log($"tentativa {attempt}/{MaxAttempts + SlowAttempts} car='{carName}' class='{className}' hits={hits.Count} naClasse={sameClass} aposPasta/IA={afterFolder} ia={_opponents.Count} => {(result is null ? "null: " + reason : "ok: " + result.Livery)} | ranking: {list}");
+        return result;
+    }
+
+    /// <summary>Escolha pura (testavel): classe do jogador, depois pasta do modelo, depois descarta pinturas de pilotos que sao carros da IA na sessao
+    /// (<paramref name="opponents"/>). So devolve quando sobra uma unica pintura; nunca chuta.</summary>
+    public static LiveryEntry? Choose(IReadOnlyList<LiveryEntry> catalog, Dictionary<string, int> hits, string className, string carName, IReadOnlySet<string> opponents, out string reason)
+        => Choose(catalog, hits, className, carName, opponents, out reason, out _, out _, out _);
+
+    static LiveryEntry? Choose(IReadOnlyList<LiveryEntry> catalog, Dictionary<string, int> hits, string className, string carName, IReadOnlySet<string> opponents, out string reason, out string list, out int sameClass, out int afterFolder)
+    {
         LiveryEntry? result = null;
-        string list = "";
-        int sameClass = 0, afterFolder = 0;
+        list = "";
+        sameClass = 0; afterFolder = 0;
         if (className.Length == 0) reason = "className vazio";
         else if (hits.Count == 0) reason = "0 hits do probe";
         else
         {
             var mine = hits.Keys
-                .Select(n => _catalog.FirstOrDefault(e => e.Class.Length > 0 && className.StartsWith(e.Class, StringComparison.OrdinalIgnoreCase)
-                                                          && string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)))
+                .Select(n => catalog.FirstOrDefault(e => e.Class.Length > 0 && className.StartsWith(e.Class, StringComparison.OrdinalIgnoreCase)
+                                                         && string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)))
                 .Where(e => e is not null).Select(e => e!).ToList();
             sameClass = mine.Count;
             list = string.Join("; ", mine.OrderByDescending(e => hits[e.Livery]).Take(20).Select(e => $"{e.Livery} [{e.Model}] x{hits[e.Livery]}"))
                    + (mine.Count > 20 ? $"; (+{mine.Count - 20})" : "");
             if (mine.Count > 1) mine = mine.Where(e => FolderMatchesCar(e.Model, carName)).ToList(); // mesma classe, carros diferentes (ex.: V8 Gen1 e Renault R26)
+            if (mine.Count > 1 && opponents.Count > 0)
+            {
+                var notAi = mine.Where(e => !opponents.Contains(e.Driver.Trim())).ToList(); // pintura de piloto que e carro da IA nao e a do jogador
+                if (notAi.Count > 0) mine = notAi;
+            }
             afterFolder = mine.Count;
             if (mine.Count == 1) { result = mine[0]; reason = "ok"; }
             else reason = mine.Count == 0 ? "nenhuma candidata (classe/pasta)" : "varias candidatas";
         }
-        Log($"tentativa {attempt}/{MaxAttempts} car='{carName}' class='{className}' hits={hits.Count} naClasse={sameClass} aposPasta={afterFolder} => {(result is null ? "null: " + reason : "ok: " + result.Livery)} | ranking: {list}");
         return result;
     }
 
