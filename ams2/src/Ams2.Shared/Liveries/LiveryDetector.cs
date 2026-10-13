@@ -74,6 +74,35 @@ public sealed class LiveryDetector : IDisposable
 
     (string Model, string Class, string Car)? _pending;
 
+    static readonly string LastFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ams2LiveCoach", "last-livery.txt");
+
+    void SaveLast(string model, string livery)
+    {
+        try
+        {
+            var d = ReadLast(); d[model] = livery;
+            File.WriteAllLines(LastFile, d.Select(kv => kv.Key + "	" + kv.Value));
+        }
+        catch { /* cache opcional */ }
+    }
+
+    static Dictionary<string, string> ReadLast()
+    {
+        var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try { foreach (var l in File.ReadAllLines(LastFile)) { var i = l.IndexOf('	'); if (i > 0) d[l[..i]] = l[(i + 1)..]; } } catch { }
+        return d;
+    }
+
+    LiveryEntry? FromLast(string model)
+    {
+        if (!ReadLast().TryGetValue(model, out var liv)) return null;
+        var e = _catalog.FirstOrDefault(c => string.Equals(c.Livery, liv, StringComparison.OrdinalIgnoreCase) && string.Equals(c.Model, model, StringComparison.OrdinalIgnoreCase))
+                ?? _catalog.FirstOrDefault(c => string.Equals(c.Livery, liv, StringComparison.OrdinalIgnoreCase));
+        if (e is null || _opponents.Contains(e.Driver.Trim())) return null;
+        Log($"sem registro no heap: usando ultima pintura vista '{liv}' para '{model}'");
+        return e;
+    }
+
     void Start()
     {
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return;
@@ -110,6 +139,8 @@ public sealed class LiveryDetector : IDisposable
         {
             var hits = GameLiveryProbe.Scan(_folders, n => _catalog.Any(e => string.Equals(e.Livery, n, StringComparison.OrdinalIgnoreCase)), _cts.Token);
             var entry = hits is null ? null : Resolve(hits, className, carName, attempt + 1, out _);
+            if (entry is null && hits is { Count: 0 }) entry = FromLast(model); // em corrida o jogo nao deixa o registro no heap: usa a ultima pintura vista (menu/treino) se nao for de um carro da IA
+            else if (entry is not null) SaveLast(model, entry.Livery);
             // (Resolve loga a tentativa; as lentas continuam ate achar ou chegar um pedido novo)
             if (hits is null) Log($"tentativa {attempt + 1}/{MaxAttempts} model='{model}': jogo nao aberto/sem acesso (null)");
             if (entry is not null)
