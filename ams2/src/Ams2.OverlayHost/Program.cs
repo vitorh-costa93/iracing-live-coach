@@ -16,7 +16,7 @@ namespace Ams2.OverlayHost;
 
 /// <summary>
 /// Uso: Ams2.OverlayHost [--fake] [--png arquivo] [--real] [--theme f1-1998] [--scale 1.0] [--bg RRGGBB|none]
-///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart|racecontrol|qualitower|qualilap|qualiresult] [--sim N] [--x N] [--y N] [--seconds N]
+///                       [--widget relative|standings|fuel|tyres|weather|inputs|lapcounter|drivercaption|pitstops|pittimer|winner|board|radar|livespeed|racestart|racecontrol|battle|poscaption|qualitower|qualilap|qualiresult] [--sim N] [--x N] [--y N] [--seconds N]
 ///                       [--cols id,id|none|all] [--rows N] [--top N] [--near N] [--font FAMILIA] [--opacity 0.2..1]   (so com --png: configura o widget como o perfil)
 ///                       [--radar-range 10..40] [--radar-sens 1..5]   (radar: alcance em metros e sensibilidade; so com --png)
 ///                       [--text-scale 0.6..2] [--settings ARQUIVO.json]   (so com --png: tamanho do texto, que redimensiona o widget; ou o WidgetSettings

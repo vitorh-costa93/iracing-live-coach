@@ -16,11 +16,11 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class DriverCaptionWidget : IWidget
 {
     public string Id => "drivercaption";
-    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
-    bool _b18, _b98, _b93;
+    public (float Width, float Height) DesignSize => _b93 || _b98 ? (1920, 300) : _b18 ? (CaptionPlate.Caption18Width, CaptionPlate.Caption18Height) : _b12 ? (CaptionPlate.DriverWidth, CaptionPlate.Height12) : (CaptionPlate.DriverWidth, CaptionPlate.Height);
+    bool _b18, _b98, _b93, _b12;
     readonly Broadcast04Pulse _motion04 = new();
     readonly Broadcast18Motion _motion18 = new();
-    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; }
+    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; _b12 = theme.Style == ThemeStyle.Broadcast2000s && theme.CellSlant > 0; }
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
@@ -104,7 +104,7 @@ public sealed class DriverCaptionWidget : IWidget
 /// <summary>Desenho das legendas (piloto e vencedor), por tema.</summary>
 public static class CaptionPlate
 {
-    public const float Height = 94, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480;
+    public const float Height = 94, Height12 = 70, DriverWidth = 334, WinnerWidth = 448, Winner98Width = 450, Driver18Width = 480;
     /// <summary>Janela da legenda 2018 (todas as variantes): a de resultado é a mais larga, a STARTED / NOW a mais alta. Desenho alinhado embaixo.</summary>
     public const float Caption18Width = 600, Caption18Height = 132, Started18Top = 56;
 
@@ -143,7 +143,7 @@ public static class CaptionPlate
                 StartedNow18(c, car, full, team, started, tick);
                 return;
             default:
-                Plate18(c, 0, H - Height, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, tick: tick);
+                Plate18(c, 0, H - Height, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, tick: tick, country: car.Country);
                 if (supplier.Length > 0) c.Text(supplier, t.Label with { Weight = 700 }, Driver18Width - 50, H - Height + 50, 36, 32, t.ValueColor, HAlign.Center);
                 return;
         }
@@ -217,6 +217,13 @@ public static class CaptionPlate
             rightReserve += s + gap + f1 + gap + f2;
         }
         else c.FillRoundRect(x, y, w, h, 6, t.PanelFill);
+        // Bandeira do pais do piloto no canto direito da linha do nome (como na TV); sem pais conhecido, sem bandeira e sem reserva.
+        if (c.HasFlag(country))
+        {
+            float fw = bigBox ? 60 : 48, fh = bigBox ? 40 : 32;
+            c.Flag(country, x + w - rightReserve - fw - 14, y + 12, fw, fh);
+            rightReserve += fw + 20;
+        }
         float box = bigBox ? h - 16 : 42, bx = x + 10, byy = bigBox ? y + 8 : y + 10;
         Chrome.PosBox(c, bx, byy, box, box, position.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = bigBox ? 40 : 24 });
         float tx = bx + box + 12;
@@ -230,6 +237,16 @@ public static class CaptionPlate
     }
     const float X0 = 4, Y0 = 4, LeftW = 230, WinLeftW = 280, HeadH = 26, RowH = 30;
 
+    /// <summary>Largura reservada no fim da celula branca do nome para a bandeira (0 sem pais conhecido).</summary>
+    static float FlagRoom04(ThemeCanvas c, string? country) => c.HasFlag(country) ? 42 : 0;
+
+    /// <summary>Bandeira do pais encostada no fim (direita) da celula branca do nome, que termina em <paramref name="cellRight"/> (2004-2008).</summary>
+    static void Flag04(ThemeCanvas c, string? country, float cellRight, float cellTop, float cellH)
+    {
+        const float fw = 34, fh = 22;
+        c.Flag(country, cellRight - fw - 8, cellTop + (cellH - fh) / 2, fw, fh);
+    }
+
     /// <summary>Legenda do piloto; <paramref name="cfg"/> traz o formato do nome e as colunas "team"/"tyre" (equipe e fornecedor de pneus).</summary>
     public static void DrawDriver(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
@@ -238,8 +255,20 @@ public static class CaptionPlate
         if (!cfg.ColumnVisible("tyre")) car = car with { TyreSupplier = "" };
         if (t.Style == ThemeStyle.Broadcast2000s)
         {
+            float flagRoom = FlagRoom04(c, car.Country);
+            if (t.CellSlant > 0)
+            {
+                // 2012: duas linhas coladas na mesma largura ("N ROSBERG" em preto com a bandeira no fim, "Mercedes" em azul-ardosia com o pneu no fim); sem cabecalho nem caixa de posicao.
+                float w12 = LeftW + 40, rh = RowH + 2;
+                string nm = name.ToUpperInvariant();
+                Chrome.Box(c, X0, Y0, w12, rh, nm, BroadcastUi.Fit(c, nm, t.Text, w12 - 24 - flagRoom - 12), Chrome.CellKind.Black);
+                Flag04(c, car.Country, X0 + w12, Y0, rh);
+                Chrome.Box(c, X0, Y0 + rh, w12, rh, team, BroadcastUi.Fit(c, team, t.Text with { Weight = 500 }, w12 - 24 - 48), Chrome.CellKind.Navy);
+                if (car.TyreSupplier.Length > 0) Chrome.TyreBox(c, X0 + w12 - 46, Y0 + rh + 3, 38, rh - 6, car.TyreSupplier, t.Text with { Size = 20 });
+                return;
+            }
             Chrome.HeaderCell(c, X0, Y0, LeftW, HeadH, "DRIVER", t.Label);
-            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16 - Chrome.FlagSpace(c, car.Country)));
+            Chrome.WhiteCell(c, X0, Y0 + HeadH, LeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, LeftW - 16 - flagRoom));
             Chrome.CellFlag(c, car.Country, X0, Y0 + HeadH, LeftW, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, LeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, LeftW - 16), Chrome.CellKind.Navy);
             float x = X0 + LeftW;
@@ -253,7 +282,7 @@ public static class CaptionPlate
         // 2018: placa preta com caixa de posição, tique, "Nome SOBRENOME", número em itálico e equipe; fornecedor de pneus no canto.
         // Sem formato de nome escolhido, o nome completo (a TV mostra nome + sobrenome); com formato, o do perfil.
         string full = cfg.Fmt.Name is null && cfg.Fmt.CarNumber != true ? car.Name : name;
-        Plate18(c, 0, 0, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false);
+        Plate18(c, 0, 0, Driver18Width, Height, car.Position, full, CarNumber(car), team, bigBox: false, country: car.Country);
         if (car.TyreSupplier.Length > 0) c.Text(car.TyreSupplier, t.Label with { Weight = 700 }, Driver18Width - 50, 50, 36, 32, t.ValueColor, HAlign.Center);
     }
 
@@ -305,7 +334,8 @@ public static class CaptionPlate
         {
             Chrome.Box(c, X0, Y0, WinLeftW, HeadH, "Winner", t.Text with { Element = "title" }, Chrome.CellKind.Red);
             Chrome.Checkered(c, X0 + WinLeftW - 130, Y0, 130, HeadH);
-            Chrome.WhiteCell(c, X0, Y0 + HeadH, WinLeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, WinLeftW - 16));
+            Chrome.WhiteCell(c, X0, Y0 + HeadH, WinLeftW, RowH, name, BroadcastUi.Fit(c, name, t.Text, WinLeftW - 16 - FlagRoom04(c, car.Country)));
+            Flag04(c, car.Country, X0 + WinLeftW, Y0 + HeadH, RowH);
             Chrome.Box(c, X0, Y0 + HeadH + RowH, WinLeftW, RowH, team, BroadcastUi.Fit(c, team, t.Text, WinLeftW - 66), Chrome.CellKind.Navy);
             Chrome.TyreBox(c, X0 + WinLeftW - 46, Y0 + HeadH + RowH + 3, 38, RowH - 6, car.TyreSupplier, t.Text with { Size = 22 });
             float bx = X0 + WinLeftW + 6, bw = 160;

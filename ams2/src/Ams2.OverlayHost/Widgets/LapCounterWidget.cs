@@ -12,16 +12,16 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class LapCounterWidget : IWidget
 {
     public string Id => "lapcounter";
-    public (float Width, float Height) DesignSize => _b18 ? (168, 82) : (132, 40);
-    bool _b18;
-    public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
+    public (float Width, float Height) DesignSize => _b18 ? (168, 82) : _b12 ? (170, 40) : (132, 40);
+    bool _b18, _b12;
+    public void UseTheme(Theme.Theme theme) { _b18 = theme.Style == ThemeStyle.Modern2018; _b12 = theme.Style == ThemeStyle.Broadcast2000s && theme.CellSlant > 0; }
     public void Configure(WidgetSettings s) { }
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {
         var t = c.Theme;
         var (w, h) = DesignSize;
-        string text = Format(m, countdown: t.Style == ThemeStyle.Broadcast2000s);
+        string text = Format(m, countdown: t.Style == ThemeStyle.Broadcast2000s && !_b12);
         if (t.Style == ThemeStyle.Modern2018)
         {
             // Cabeçalho da torre 2018: topo arredondado, "LAP" largo com tracking, filete fino, "n / N" regular; filete vermelho embaixo.
@@ -32,6 +32,17 @@ public sealed class LapCounterWidget : IWidget
             string n = text.StartsWith("--") ? "- / -" : text.StartsWith("Lap ") ? text[4..] : text.Replace("/", " / ");
             c.Text(n, t.Numbers with { Size = 26 }, 0, 42, w, 32, t.ValueColor, HAlign.Center);
             c.FillRect(0, h - 4, w, 4, t.AccentBar);
+            return;
+        }
+        if (_b12)
+        {
+            // 2012 ("Lap  41 / 56"): pilula escura inclinada com "Lap" em cinza e "atual / total" em branco; sob bandeira amarela o numero fica em amarelo.
+            string n12 = Format(m, countdown: false);
+            n12 = n12.StartsWith("Lap ") ? n12[4..] : n12.Replace("/", " / ");
+            bool yellow = m.Connected && m.Session is { } ys && ys.FlagColour is 6 or 7;
+            var label = t.Label with { Weight = 500 };
+            Chrome.Box(c, 4, 3, 66, h - 8, "Lap", label, Chrome.CellKind.Black, HAlign.Center, 0, new Vortice.Win32.Numerics.Color4(0.78f, 0.80f, 0.86f, 1f));
+            Chrome.Box(c, 62, 3, w - 66, h - 8, n12, t.Numbers, yellow ? Chrome.CellKind.Yellow : Chrome.CellKind.Black, HAlign.Center, 0);
             return;
         }
         if (t.Style == ThemeStyle.Broadcast2000s)

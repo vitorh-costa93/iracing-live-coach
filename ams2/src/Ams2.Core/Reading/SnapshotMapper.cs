@@ -57,7 +57,7 @@ public static class SnapshotMapper
                     raw.UnfilteredThrottle, raw.UnfilteredBrake, raw.UnfilteredClutch, raw.UnfilteredSteering),
                 raw.Gear, raw.Rpm, raw.MaxRpm, raw.Speed,
                 FuelLiters: raw.FuelLevel * raw.FuelCapacity, FuelCapacity: raw.FuelCapacity,
-                wheels, raw.BrakeBias)
+                wheels, raw.BrakeBias, raw.BoostActive != 0, raw.BoostAmount)
             : null;
 
         // mEventTimeRemaining vem em SEGUNDOS no AMS2 (confirmado em sessao real: 502 -> 8:22; UNSET = -1).

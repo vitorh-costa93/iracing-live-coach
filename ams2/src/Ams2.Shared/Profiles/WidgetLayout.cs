@@ -20,6 +20,11 @@ public static class WidgetLayout
         ["drivercaption", "winner"],
         // Classificacao x corrida: a torre de melhores voltas ocupa o lugar da torre e a placa de volta o do Board (PLANO-QUALI.md).
         ["qualitower", "standings"], ["qualilap", "board"], ["qualiboard", "board"],
+        // 2018: Battle e legenda de posicao ocupam o lugar do Board (nunca juntos) e, na classificacao, o da Quali Lap.
+        ["battle", "poscaption"], ["qualilap", "battle"], ["qualilap", "poscaption"],
+        // 2012: legendas, cronometro de box, duelo e vencedor ocupam o mesmo lugar da TV (embaixo, acima da faixa); a Quali Lap fica no lugar deles
+        // e nao convive com a faixa inferior de classificacao.
+        ["winner", "pittimer", "battle", "drivercaption", "qualilap"], ["ticker", "qualilap"],
     ];
 
     /// <summary>Widgets desligados no perfil padrao do tema (alem dos DefaultVisible=false do catalogo). 2018: a torre tem o cabecalho
@@ -29,6 +34,7 @@ public static class WidgetLayout
         ["f1-1993"] = ["drivercaption"],
         ["f1-2018"] = ["lapcounter", "board"],
         ["f1-1998"] = ["winner", "pittimer", "qualitower", "qualilap"],
+        ["f1-2012"] = ["board"],   // a faixa inferior (ticker) e o duelo (battle) ocupam o lugar do Board
     };
 
     /// <summary>O widget comeca desligado no perfil padrao do tema?</summary>
@@ -69,6 +75,21 @@ public static class WidgetLayout
             // barra de volta (278x126 x1.3 = 362x164) embaixo ao centro, abaixo do Pit Timer (y<=845), entre o Winner (x<=615) e o Inputs (x>=1700).
             ["qualitower"] = new(32, 24, 1.4f), ["qualilap"] = new(779, 880, 1.3f), ["qualiresult"] = new(640, 88, 1.15f),
         },
+        ["f1-2012"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // 2012 (GP da Malasia 2012, video 16:9 mapeado para 1920x1080): torre de siglas em x~114/y~46, pilula "Lap n / N" no topo-centro, legendas
+            // nome/equipe embaixo a esquerda do centro (x=366, acima da faixa), duelo (caixas de velocidade + placas) logo acima, faixa de 5 celulas
+            // em y=1000 (x=60..1660, antes do grafico de pedais em x>=1700). Board desligado (ticker no lugar).
+            ["standings"] = new(114, 46, 1.15f), ["lapcounter"] = new(874, 40, 1.1f),
+            ["relative"] = new(640, 905, 1.25f), ["drivercaption"] = new(366, 908, 1.2f), ["winner"] = new(366, 880, 1.1f), ["board"] = new(650, 866, 1.2f),
+            ["pitstops"] = new(114, 560, 1f), ["pittimer"] = new(366, 930, 1.2f),
+            ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1700, 690, 0.6f),
+            ["inputgraph"] = new(1700, 988, 0.6f),
+            ["radar"] = new(900, 585, 1f),
+            ["battle"] = new(342, 832, 1.2f), ["ticker"] = new(60, 1000, 1f),
+            // Classificacao (mesma logica do 2004, pele 2012): torre no lugar da Standings, resultado a direita dela, barra de volta embaixo ao centro.
+            ["qualitower"] = new(114, 46, 1.2f), ["qualilap"] = new(780, 880, 1.2f), ["qualiresult"] = new(640, 88, 1.15f),
+        },
         ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
             // 2018: torre em x~80/y~46 da TV (o projeto reserva 34 a esquerda para o marcador roxo), cabecalho "LAP" com ~67 px de altura;
@@ -87,6 +108,9 @@ public static class WidgetLayout
             ["racestart"] = new(1600, 560, 0.65f),
             // Race Control (so 2018) acima a direita da torre (que termina em x=295): 240x149 em (320, 40), antes do banner WINNER (x>=570).
             ["racecontrol"] = new(320, 40, 0.8f),
+            // Battle (so 2018) no lugar do Board, embaixo ao centro (760x124): x=700..1460, y=940..1064, depois da legenda do piloto (x<=632) e
+            // antes do Inputs (x>=1542). Legenda de posicao (1000x94 x0.9 = 900x85) logo ao lado da legenda do piloto: x=640..1540, y=962..1047.
+            ["battle"] = new(700, 940, 1f), ["poscaption"] = new(640, 962, 0.9f),
             // Classificacao: torre no lugar da Standings; resultado (500x382, so ao fim da sessao) centrado em x=710..1210, y=196..578: abaixo
             // do banner WINNER (y<=114) e do Race Control (y<=189), acima do Radar (y>=585) e a esquerda do Pit Lane (x>=1250). Com o bloco
             // ELIMINATED (eliminationFrom > 0) a janela cresce para baixo sobre o Radar (opcao do usuario; o Radar so aparece com carro ao lado).
@@ -116,11 +140,18 @@ public static class WidgetLayout
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
                 ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406),
             },
+            ["f1-2012"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490), ["inputgraph"] = (342, 132),
+                ["lapcounter"] = (170, 40), ["drivercaption"] = (334, 70), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
+                ["battle"] = (970, 130), ["ticker"] = (1600, 40),
+                ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406),
+            },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
-                ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186),
+                ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186), ["battle"] = (760, 124), ["poscaption"] = (1000, 94),
                 ["qualitower"] = (284, 626), ["qualilap"] = (664, 152), ["qualiresult"] = (500, 382),
             },
         };

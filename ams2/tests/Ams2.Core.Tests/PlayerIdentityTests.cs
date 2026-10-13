@@ -41,6 +41,21 @@ public class PlayerIdentityTests
     }
 
     [Fact]
+    public void ApplyField_fills_country_and_team_of_ai_cars_by_driver_name_and_leaves_the_player_alone()
+    {
+        var sim = Grid(["Adam Alpha", "Vitor COSTA", "Carl Gamma"], ["M", "M", "M"]);
+        var before = sim.Snapshot();
+        var after = PlayerIdentity.ApplyField(before, n => n == "Adam Alpha" ? ("ITA", "Ferrari") : null);
+        var adam = after.Cars.Single(c => c.Name == "Adam Alpha");
+        Assert.Equal(("ITA", "Ferrari"), (adam.Country, adam.TeamName));
+        Assert.Equal(("", ""), (after.PlayerCar!.Country, after.PlayerCar.TeamName));
+        Assert.Equal(("", ""), (after.Cars.Single(c => c.Name == "Carl Gamma").Country, after.Cars.Single(c => c.Name == "Carl Gamma").TeamName));
+        Assert.Equal(before.Cars.Select(c => (c.Index, c.Position, c.LapDistance)), after.Cars.Select(c => (c.Index, c.Position, c.LapDistance)));
+        Assert.Same(after, PlayerIdentity.ApplyField(after, n => n == "Adam Alpha" ? ("ITA", "Ferrari") : null));   // idempotente
+        Assert.Same(before, PlayerIdentity.ApplyField(before, _ => null));
+    }
+
+    [Fact]
     public void Apply_without_override_keeps_the_game_name_but_fills_original()
     {
         var sim = Grid(["A", "Vitor COSTA", "C"], ["x", "y", "z"]);

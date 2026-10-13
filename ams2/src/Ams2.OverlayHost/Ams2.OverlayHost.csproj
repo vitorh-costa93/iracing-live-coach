@@ -42,4 +42,11 @@
     </Content>
   </ItemGroup>
 
+  <!-- Bandeiras de pais (PNGs do V3), copiadas para Assets\Flags ao lado do exe. -->
+  <ItemGroup>
+    <Content Include="Assets\Flags\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

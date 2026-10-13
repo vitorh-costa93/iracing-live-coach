@@ -110,7 +110,7 @@ public sealed class LiveSpeedWidget : IWidget
     }
 
     /// <summary>Ícone de velocímetro: arco de ~270° aberto embaixo, ponteiro para cima-direita e cubo.</summary>
-    static void Gauge(ThemeCanvas c, float cx, float cy, float rad, Color4 ink)
+    internal static void Gauge(ThemeCanvas c, float cx, float cy, float rad, Color4 ink)
     {
         const int n = 18;
         float a0 = MathF.PI * 0.75f, a1 = MathF.PI * 2.25f;   // de baixo-esquerda, passando pelo topo, ate baixo-direita

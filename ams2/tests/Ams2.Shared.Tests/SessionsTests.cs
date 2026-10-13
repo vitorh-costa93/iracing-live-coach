@@ -22,7 +22,7 @@ public class SessionsTests
                 Assert.False(s.ShowsIn("race"));
                 Assert.False(s.ShowsIn("practice"));
             }
-            else if (d.Id is "standings" or "board" or "lapcounter")   // dao lugar a Quali Tower / Quali Lap na classificacao (WidgetLayout.ExclusiveGroups)
+            else if (d.Id is "standings" or "board" or "lapcounter" or "battle" or "poscaption" or "ticker")   // dao lugar a Quali Tower / Quali Lap na classificacao (WidgetLayout.ExclusiveGroups)
             {
                 Assert.Equal([SessionIds.Practice, SessionIds.Race], s.EffectiveSessions);
                 Assert.False(s.ShowsIn("qualify"));

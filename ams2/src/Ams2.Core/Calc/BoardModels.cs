@@ -48,7 +48,8 @@ public sealed record BoardDriver(
     string Code,          // sigla de 3 letras ("ALO")
     string Team,          // nome do carro sem "(M)"/"(B)" e sem o nome da classe
     string TyreSupplier,  // "M", "B" ou ""
-    bool IsPlayer);
+    bool IsPlayer,
+    string Country = "");  // sigla do pais do piloto ("" = desconhecido)
 
 /// <summary>
 /// Um piloto na página da torre da linha. <see cref="PageSlot"/> 1..PageSize; <see cref="Column"/> 0 = esquerda (slots 1–4),
@@ -196,7 +197,7 @@ public static class BoardText
     }
 
     public static BoardDriver Driver(CarSnapshot c, IEnumerable<CarSnapshot> field) =>
-        new(c.Index, c.Position, c.Name, ShortName(c, field), Code(c.Name), Team(c), c.TyreSupplier, c.IsPlayer);
+        new(c.Index, c.Position, c.Name, ShortName(c, field), Code(c.Name), Team(c), c.TyreSupplier, c.IsPlayer, c.Country);
 
     /// <summary>"+0.239", "+12.345"; a partir de 60 s "+1:02.345". Negativos com "-".</summary>
     public static string Gap(double seconds)

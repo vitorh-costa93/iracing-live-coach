@@ -10,10 +10,12 @@ public class DriverCountryTests
     [InlineData("SWE", "se")] [InlineData("CAN", "ca")] [InlineData("ESP", "es")] [InlineData("AUS", "au")] [InlineData("NLD", "nl")]
     [InlineData("CHE", "ch")] [InlineData("PRT", "pt")] [InlineData("POL", "pl")] [InlineData("COL", "co")] [InlineData("ARG", "ar")]
     [InlineData(" fin ", "fi")] [InlineData("fi", "fi")]
+    [InlineData("ENG", "gb-eng")] [InlineData("SCO", "gb-sct")] [InlineData("gb-wls", "gb-wls")] [InlineData("GER", "de")] [InlineData("MEX", "mx")]
+    [InlineData("Brazil", "br")] [InlineData(" Italy ", "it")] [InlineData("England", "gb-eng")] [InlineData("JAP", "jp")] [InlineData("SPA", "es")]
     public void Alpha3_maps_to_lowercase_alpha2(string input, string expected) => Assert.Equal(expected, CountryCodes.ToAlpha2(input));
 
     [Theory]
-    [InlineData(null)] [InlineData("")] [InlineData("XXX")] [InlineData("Q")] [InlineData("zz")]
+    [InlineData(null)] [InlineData("")] [InlineData("XXX")] [InlineData("Q")] [InlineData("zz")] [InlineData("Atlantis")] [InlineData("gb-xx")] [InlineData("  ")]
     public void Unknown_or_empty_has_no_flag(string? input) => Assert.Null(CountryCodes.ToAlpha2(input));
 
     [Fact]
