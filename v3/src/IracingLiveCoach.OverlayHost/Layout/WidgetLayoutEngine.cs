@@ -50,9 +50,12 @@ public static class WidgetLayoutEngine
         var hidden = columns.FirstOrDefault(c => c.Key == hiddenKey && c.Visible);
         if (hidden is null) return columns.ToList();
         bool hasGrow = columns.Any(c => c.Key == growKey && c.Visible);
+        float otherFootprints = columns.Where(c => c.Visible && c.Key != hiddenKey).Sum(c => c.FootprintPx);
         return columns.Select(c =>
             c.Key == hiddenKey ? c with { Visible = false }
             : c.Key == growKey && hasGrow ? c with { WidthPx = c.WidthPx + hidden.FootprintPx }
+            : !hasGrow && c.Visible && otherFootprints > 0
+                ? c with { WidthPx = c.WidthPx + hidden.FootprintPx * c.FootprintPx / otherFootprints }
             : c).ToList();
     }
 

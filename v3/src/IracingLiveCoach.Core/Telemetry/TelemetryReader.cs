@@ -18,12 +18,9 @@ public record RelativeCarStatus(int PositionOffset, bool P2PActive);
 /// RelativeCarStatus above (P2P-strip only, behind-only), this carries driver code/gap/tire/P2P
 /// together and can be ahead (negative PositionOffset) or behind (positive).
 /// P2PUsesRemaining/P2PSecondsRemaining/P2PInCooldown are only meaningful when P2PActive
-/// is non-null (the session publishes P2P at all). P2PSecondsRemaining/P2PInCooldown are computed
-/// from the SF23's OWN PUBLICLY DOCUMENTED Overtake System rules (20s active window, 100s
-/// cooldown -- see UpdateFullRelative's own doc comment for the source and the disclosed
-/// car-specific caveat) combined with the REAL live CarIdxP2P_Status transition, giving an actual
-/// countdown rather than a vague elapsed-time approximation -- corrected 14/09/2026 after the
-/// driver confirmed this is a real feature they use today.</summary>
+/// is non-null. The bank is decoded from the SDK; cooldown follows observed SDK active-to-off
+/// transitions and the SF23's measured 100-second lockout. No active state is inferred from a
+/// previous bank or a fixed activation countdown.</summary>
 public record RelativeRow(int PositionOffset, string DriverCode, double? GapSeconds, int? TireCompound, bool? P2PActive, int? P2PUsesRemaining, double? P2PSecondsRemaining, bool P2PInCooldown, string FlagEmoji, string LicString, string? LicColorHex, int IRating, int CarClassId, string ManufacturerBadge, bool IsPlayer = false, int ClassPosition = 0, string ClassShortName = "", string? ClassColorHex = null, string CarNumber = "", int OverallPosition = 0, int ClassRank = 0, FlagBadge Flag = FlagBadge.None, int LapsDiff = 0, bool InPit = false);
 
 /// <summary>One row of the full classification/standings widget (Task 6).
@@ -156,11 +153,9 @@ public class TelemetryReader : IDisposable
 
     // Push-to-pass: iRacing publishes CarIdxP2P_* in every session (also for classes without it,
     // as zeros), so the session only "has" P2P once a car actually shows a bank or an activation.
-    private DateTime _lastP2PEvidenceUtc = DateTime.MinValue;
-    private readonly P2PCooldownTracker _p2pCooldown = new();
+    private readonly P2PStateTracker _p2pState = new();
     private int? _incidentLimit;
     private int _leaderLap;
-    private bool SessionHasP2P => (DateTime.UtcNow - _lastP2PEvidenceUtc).TotalSeconds < 30;
 
     // 13/09/2026: WeatherUpdated is throttled to ~10Hz (every 6th telemetry tick, 60Hz/6=10) --
     // see this plan's own Global Constraints for why a full-MaxNumCars scan doesn't need 60Hz here.
@@ -193,14 +188,6 @@ public class TelemetryReader : IDisposable
     private int _proximityTickCounter;
     private int _fullFieldTickCounter;
 
-    // 16/09/2026 correction: the previous SF23-specific 20s-active/100s-cooldown model was WRONG
-    // -- the driver confirmed CarIdxP2P_Count IS the real remaining-seconds bank the SF23 Overtake
-    // System exposes directly ("começa com 200s e vai diminuindo conforme usa"), not a discrete
-    // activation counter needing a fabricated countdown. There is no separate cooldown field, so
-    // that invented phase-timer machinery (UpdateP2PPhase and its two dictionaries) was removed
-    // rather than guessed at again -- CarIdxP2P_Status/CarIdxP2P_Count are read and passed through
-    // as-is everywhere P2P is reported.
-
     // CarIdxOnPitRoad is published per car.  The SDK does not expose a formatted pit timer, so
     // retain the real transition locally and present its elapsed duration.  Once a car exits, the
     // last completed pit (lap + duration) remains available as useful race context.
@@ -225,19 +212,9 @@ public class TelemetryReader : IDisposable
     private readonly Dictionary<int, int> _preGreenGrid = new();
     /// <summary>Class id -> CarClassEstLapTime, the reference lap CarIdxEstTime is measured on.</summary>
     private Dictionary<int, double> _classLapTimeById = new();
-    // CarIdxP2P_Count is only meaningful for an OTS car.  Some non-OTS entries expose an
-    // uninitialised integer instead of the SDK's usual Int32.MaxValue sentinel, so retain the
-    // last valid bank per car and mark a short recharge window only when the real bank rises.
-    // 16/09/2026: the driver confirmed the real bank is 200 s (matching their own car's Int32
-    // reading, a clean 200 -> 196 -> 193 -> ... countdown). Opponents decode through GetFloat as
-    // 0..20 with the SAME real decay rate per second (19.985 -> 19.683 -> 19.371 -> 19.07 across
-    // ~9s is ~0.1/s in the raw float, i.e. ~1/s once scaled by 10 -- identical to the player's own
-    // ~1/s Int32 decay). The float is therefore the real value in TENS of seconds, not seconds --
-    // RawP2PMaxSeconds is its own ceiling (the sanity check happens before scaling); P2PMaxSeconds
-    // is the real, final 0..200 scale shared by both the player's Int32 path and the opponents'
-    // scaled-float path.
-    private const float RawP2PMaxSeconds = 20f;
-    public const int P2PMaxSeconds = 200;
+    // Real SF23 captures contain integer seconds for the player and float bits in tens of
+    // seconds for opponents. P2PStateTracker validates both observed encodings.
+    public const int P2PMaxSeconds = P2PStateTracker.MaxSeconds;
     // 16/09/2026 correction: this was previously "fixed" by multiplying CarIdx by 4 under the
     // theory that GetInt's index parameter is a byte offset. Verified against IRSDKSharper's own
     // source (IRacingSdkData.GetInt): the method already does `Offset + datum.Offset + index * 4`
@@ -478,9 +455,6 @@ public class TelemetryReader : IDisposable
         ResetPerSessionState();
         _sessionKey = null;
         RubberLatch.Reset();
-        _lastP2PEvidenceUtc = DateTime.MinValue;
-        _p2pCooldown.Reset();
-        _lastP2PAnomalyLogByCarIdx.Clear();
         // Always notify: closing can happen between telemetry frames, while the last known
         // in-car state is still true. The V2 window then hides every locked widget immediately.
         OnTrackStateChanged?.Invoke(false);
@@ -723,18 +697,6 @@ public class TelemetryReader : IDisposable
         }
     }
 
-    // 16/09/2026: root cause found from real session data logged by LogP2PAnomaly below. Every
-    // opponent logged the EXACT SAME raw int, 1101004800, at every tick -- not noise (garbage from
-    // an out-of-bounds/misaligned read varies per car and per tick), a fixed, well-formed value.
-    // Its bits (0x41A00000) decode as the IEEE-754 float 20.0 -- and sajax's own irsdkdocs entry
-    // for the per-player shortcut "P2P_Count" documents its type as float, not int (an array and
-    // its single-value "shortcut" always share the same underlying type in this SDK). So
-    // CarIdxP2P_Count is a float[] being misread through GetInt, which reinterprets the raw bytes
-    // instead of converting -- reading it through GetFloat is what actually fixes this, not any
-    // index/stride change (both the original code and the reverted "CarIdx * 4" attempt used
-    // GetInt and were equally wrong for this reason).
-    private static int? ReadP2PCount(float raw) => raw is >= 0 and <= RawP2PMaxSeconds ? (int)Math.Round(raw * 10) : null;
-
     // Kept for live evidence if a future value still falls outside the confirmed 0..200 s Super
     // Formula bank -- now logs the float itself, throttled per car to avoid flooding.
     private readonly Dictionary<int, DateTime> _lastP2PAnomalyLogByCarIdx = new();
@@ -752,23 +714,25 @@ public class TelemetryReader : IDisposable
         catch { /* diagnostics must never break the real read path */ }
     }
 
-    // 16/09/2026: the driver correctly flagged that a CONSTANT 20.0 for every idle opponent doesn't
-    // match "starts at 200s and drains" -- that constant is far more consistent with the SF23's own
-    // publicly documented Overtake rule of a 20-SECOND ACTIVATION WINDOW per use, i.e. this field
-    // may report the fixed per-activation duration for an idle car, not a personal remaining bank.
-    // Logging every read (not just anomalies), throttled, to see whether/how it actually changes
-    // when a car is active vs idle -- real behavior over time, not another single-snapshot guess.
-    private readonly Dictionary<int, DateTime> _lastP2PTraceLogByCarIdx = new();
-    private void LogP2PTrace(int carIdx, bool? active, float raw)
+    // Log only SDK status / bank availability transitions, capped per session. Bank countdowns
+    // do not log every frame. Keep raw values and schema so a future missing opponent activation
+    // can be distinguished from a presentation bug without guessing from a previous bank.
+    private readonly Dictionary<int, (bool? RawActive, int BankState, bool? DisplayedActive, bool Cooldown)> _lastP2PLogState = new();
+    private int _p2pLogLines;
+    private void LogP2PState(int carIdx, bool? rawActive, int? rawBits, int? seconds, bool? displayedActive, bool cooldown)
     {
         try
         {
-            var now = DateTime.UtcNow;
-            if (_lastP2PTraceLogByCarIdx.TryGetValue(carIdx, out var last) && (now - last).TotalSeconds < 3) return;
-            _lastP2PTraceLogByCarIdx[carIdx] = now;
-            var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-trace.log");
+            var state = (rawActive, seconds is null ? -1 : seconds > 0 ? 1 : 0, displayedActive, cooldown);
+            if (_lastP2PLogState.TryGetValue(carIdx, out var previous) && state == previous) return;
+            _lastP2PLogState[carIdx] = state;
+            if (_p2pLogLines++ >= 1024) return;
+            _sdk.Data.TelemetryDataProperties.TryGetValue("CarIdxP2P_Status", out var statusDatum);
+            _sdk.Data.TelemetryDataProperties.TryGetValue("CarIdxP2P_Count", out var countDatum);
+            string asFloat = rawBits is int bits ? BitConverter.Int32BitsToSingle(bits).ToString("R", CultureInfo.InvariantCulture) : "missing";
+            var path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "iracing-live-coach", "p2p-status.log");
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
-            System.IO.File.AppendAllText(path, $"{now:O} CarIdx={carIdx} Status={active} RawCount(float)={raw}\n");
+            System.IO.File.AppendAllText(path, $"{DateTime.UtcNow:O} Session={_sessionKey} CarIdx={carIdx} Player={carIdx == _playerCarIdx} StatusType={statusDatum?.VarType} StatusCount={statusDatum?.Count} CountType={countDatum?.VarType} CountCount={countDatum?.Count} RawStatus={rawActive} RawCountBits={rawBits} RawCountFloat={asFloat} BankSeconds={seconds} Active={displayedActive} Cooldown={cooldown}\n");
         }
         catch { /* diagnostics must never break the real read path */ }
     }
@@ -776,32 +740,27 @@ public class TelemetryReader : IDisposable
     // CarIdxP2P_Count is declared as an int, but iRacing fills the player's slot with the bank in
     // seconds (200 -> 0) and every other car's slot with a FLOAT in tens of seconds (20.0 -> 0.0),
     // verified live (SF23, Interlagos). Decode the raw 32 bits both ways and keep whichever is in
-    // range. There is no "recharging" state in this system: the bank only goes down as it is used,
-    // so a car is ACTIVE (status on), AVAILABLE (bank > 0) or EMPTY.
+    // range. The activation is passed through independently of bank decoding; the post-use
+    // lockout is tracked from this car's actual active-to-off transition.
     private (bool? Active, int? Seconds, bool IsCharging) ReadP2P(int carIdx)
     {
         bool? active = null;
-        int? seconds = null;
+        int? rawBits = null;
         try { active = _sdk.Data.GetBool("CarIdxP2P_Status", carIdx); }
         catch { /* not published for this car/session */ }
         try
         {
-            int bits = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
-            if (bits is >= 0 and <= P2PMaxSeconds) seconds = bits;
-            else
-            {
-                float asFloat = BitConverter.Int32BitsToSingle(bits);
-                seconds = ReadP2PCount(asFloat);
-                if (seconds is null) LogP2PAnomaly(carIdx, asFloat);
-            }
+            rawBits = _sdk.Data.GetInt("CarIdxP2P_Count", carIdx);
         }
         catch { /* the count can be omitted independently of the status */ }
 
-        var now = DateTime.UtcNow;
-        if (active == true || seconds > 0) _lastP2PEvidenceUtc = now;
-        if (!SessionHasP2P) return (null, null, false); // class without push-to-pass: no column at all
-        bool lockedOut = _p2pCooldown.Update(carIdx, active, now);
-        return (active, seconds, lockedOut);
+        var state = _p2pState.Update(carIdx, active, rawBits, DateTime.UtcNow);
+        int? seconds = P2PStateTracker.DecodeSeconds(rawBits);
+        // -1 is the SDK's normal unavailable sentinel, not a corrupt float.
+        if (rawBits is int bits && bits != -1 && seconds is null)
+            LogP2PAnomaly(carIdx, BitConverter.Int32BitsToSingle(bits));
+        LogP2PState(carIdx, active, rawBits, seconds, state.Active, state.InCooldown);
+        return state;
     }
 
     private void RefreshRaceSessionFlag()
@@ -865,6 +824,10 @@ public class TelemetryReader : IDisposable
 
     private void ResetPerSessionState()
     {
+        _p2pState.Reset();
+        _lastP2PAnomalyLogByCarIdx.Clear();
+        _lastP2PLogState.Clear();
+        _p2pLogLines = 0;
         _pitStops.Reset();
         _lapHistory.Reset();
         _flagBadges.Reset();

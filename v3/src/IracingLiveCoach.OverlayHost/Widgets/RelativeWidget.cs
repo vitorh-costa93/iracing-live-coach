@@ -100,6 +100,16 @@ public sealed unsafe class RelativeWidget : IDisposable
     }
 
     private bool _hasP2P;
+    private string? _p2PSessionContext;
+    private void SyncSessionContext(SessionStatus? session)
+    {
+        if (session is null) return;
+        string context = session.SessionTypeText + "|" + session.PlayerCarName;
+        if (_p2PSessionContext == context) return;
+        _p2PSessionContext = context;
+        _hasP2P = false;
+        RebuildEffectiveColumns();
+    }
     private readonly Dictionary<(string, int), string> _nameFit = new();
 
     /// <summary>Item 9: the Overtake column's visibility is a per-SESSION decision, never a
@@ -177,7 +187,16 @@ public sealed unsafe class RelativeWidget : IDisposable
     }
 
     /// <summary>Spec §12's simulation preview -- see StandingsWidget.SetSimulatedRows for the same rationale.</summary>
-    public void SetSimulatedRows(List<RelativeRow>? rows) => _simulatedRows = rows;
+    public void SetSimulatedRows(List<RelativeRow>? rows)
+    {
+        if ((_simulatedRows is null) != (rows is null))
+        {
+            _p2PSessionContext = null;
+            _hasP2P = false;
+            RebuildEffectiveColumns();
+        }
+        _simulatedRows = rows;
+    }
 
     private void SetBrushColor(Color4 color)
     {
@@ -198,13 +217,17 @@ public sealed unsafe class RelativeWidget : IDisposable
                 var rect = new RectF(x, y - 16, x + 200, y);
                 dc->DrawText(p, (uint)simLabel.Length, _fmt.StatusFormat, &rect, (ID2D1Brush*)_brush.Get(), DrawTextOptions.None, MeasuringMode.Natural);
             }
+            SyncSessionContext(_simulatedSession);
             SyncP2PColumn(simulated);
             DrawPanel(dc, x, y, simulated.Where(r => _relativeRules.Includes(r.PositionOffset)).ToList(), _simulatedSession, _simulatedPlayer);
             return;
         }
 
         List<RelativeRow> rows;
-        lock (_lock) { rows = _rows; }
+        SessionStatus? session;
+        PlayerCarStatus? player;
+        lock (_lock) { rows = _rows; session = _sessionStatus; player = _playerStatus; }
+        SyncSessionContext(session);
         // Item 9: decide on the FULL field received this tick, before it gets windowed down to the
         // configured ahead/behind rows below -- see SyncP2PColumn's own doc comment.
         SyncP2PColumn(rows);
@@ -222,9 +245,6 @@ public sealed unsafe class RelativeWidget : IDisposable
             return;
         }
 
-        SessionStatus? session;
-        PlayerCarStatus? player;
-        lock (_lock) { session = _sessionStatus; player = _playerStatus; }
         DrawPanel(dc, x, y, rows.Where(r => r.IsPlayer || _relativeRules.Includes(r.PositionOffset)).ToList(), session, player);
     }
 

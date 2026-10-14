@@ -106,6 +106,12 @@ public static unsafe class Program
 
     public static int Main()
     {
+        using var instance = OverlayInstanceLease.TryAcquire();
+        if (instance is null)
+        {
+            Console.WriteLine("V3 OverlayHost is already running.");
+            return 0;
+        }
         // Numbers in the overlay ("38.5 L", "+3.816") must not follow the Windows locale (pt-BR would
         // print "38,5"); set before any worker thread starts so they inherit it.
         System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;

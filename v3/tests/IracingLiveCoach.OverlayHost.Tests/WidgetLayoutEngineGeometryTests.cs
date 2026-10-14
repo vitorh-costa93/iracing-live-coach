@@ -142,6 +142,22 @@ public class WidgetLayoutEngineGeometryTests
     }
 
     [Fact]
+    public void Overtake_keeps_width_even_when_name_is_hidden()
+    {
+        var cols = new List<ColumnDefinition>
+        {
+            new("name", ColumnWidthMode.Flexible, 105, 60, ColumnAlignment.Left, 0, 6, false, 0),
+            new("gap", ColumnWidthMode.Fixed, 25, 25, ColumnAlignment.Right, 0, 6, true, 1),
+            new("irating", ColumnWidthMode.Fixed, 45, 45, ColumnAlignment.Center, 0, 6, true, 2),
+            new("overtake", ColumnWidthMode.Fixed, 62, 62, ColumnAlignment.Center, 0, 0, true, 3),
+        };
+        var off = WidgetLayoutEngine.HideKeepingWidth(cols, "overtake");
+        Assert.Equal(WidgetLayoutEngine.SumVisibleColumnFootprints(cols), WidgetLayoutEngine.SumVisibleColumnFootprints(off), 3);
+        Assert.True(off.Single(c => c.Key == "gap").WidthPx > 25);
+        Assert.True(off.Single(c => c.Key == "irating").WidthPx > 45);
+    }
+
+    [Fact]
     public void Hiding_a_contextual_column_keeps_the_width_and_gives_it_to_the_name()
     {
         var cols = new List<ColumnDefinition>
