@@ -210,7 +210,10 @@ public sealed class LiveryDetector : IDisposable
     {
         var sm = System.Text.RegularExpressions.Regex.Match(carName, @"\(([A-Za-z])\)");
         string supplier = sm.Success ? sm.Groups[1].Value.ToLowerInvariant() : "";
-        var words = carName.ToLowerInvariant().Split([' ', '-', '(', ')', '_'], StringSplitOptions.RemoveEmptyEntries).Select(w => w.StartsWith("gen") ? "g" + w[3..] : w).ToHashSet();
+        // O modelo oficial MP4/8 usa uma barra; a pasta de Overrides e mp48.
+        // Normalize apenas barras internas ao identificador, mantendo os limites das palavras.
+        string modelName = System.Text.RegularExpressions.Regex.Replace(carName.ToLowerInvariant(), @"(?<=[a-z0-9])/(?=[a-z0-9])", "");
+        var words = modelName.Split([' ', '-', '(', ')', '_'], StringSplitOptions.RemoveEmptyEntries).Select(w => w.StartsWith("gen") ? "g" + w[3..] : w).ToHashSet();
         foreach (var part in folder.ToLowerInvariant().Split(['_', '-'], StringSplitOptions.RemoveEmptyEntries))
             if (!(words.Contains(part) || (part.Length == 1 && part == supplier))) return false;
         return true;

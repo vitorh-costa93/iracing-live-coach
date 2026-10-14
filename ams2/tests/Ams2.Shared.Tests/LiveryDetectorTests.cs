@@ -30,6 +30,11 @@ public class LiveryDetectorTests
     [InlineData("formula_v8_g1_m", "Formula V8 Gen1 Model1 (B) - Low Downforce", false)]
     [InlineData("renault_r26", "Renault R26 - Low Downforce", true)]
     [InlineData("renault_r26", "Formula V8 Gen1 Model1 (B) - Low Downforce", false)]
+    [InlineData("mclaren_mp48", "McLaren Cosworth MP4/8", true)]
+    [InlineData("mclaren_mp48", "McLaren Cosworth MP4/8 - High Downforce", true)]
+    [InlineData("mclaren_mp48", "McLaren Cosworth MP4/8 (M)", true)]
+    [InlineData("mclaren_mp48", "McLaren MP4/6", false)]
+    [InlineData("mclaren_mp48", "Formula HiTech Gen2 Model1", false)]
     public void FolderMatchesCar_casa_pasta_com_nome_do_carro(string folder, string car, bool expected)
         => Assert.Equal(expected, LiveryDetector.FolderMatchesCar(folder, car));
 
@@ -41,6 +46,27 @@ public class LiveryDetectorTests
     ];
 
     static Dictionary<string, int> Hits(params string[] names) => names.ToDictionary(n => n, _ => 1);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Choose_MP48_identifica_Senna_e_preserva_ambiguidade(bool andrettiInField)
+    {
+        List<LiveryEntry> catalog =
+        [
+            new("McLaren-Ford #8 A. Senna", "Ayrton Senna", "BRA", "McLaren-Ford", "mclaren_mp48") { Class = "F-Hitech_Gen2" },
+            new("McLaren-Ford #7 M. Andretti", "Michael Andretti", "USA", "McLaren-Ford", "mclaren_mp48") { Class = "F-Hitech_Gen2" },
+            new("Scuderia Ferrari #27 J. Alesi", "Jean Alesi", "FRA", "Ferrari", "formula_hitech_g2m1") { Class = "F-Hitech_Gen2" },
+        ];
+        var hits = Hits(catalog.Select(e => e.Livery).ToArray());
+        var opponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (andrettiInField) opponents.Add("Michael Andretti");
+        var selected = LiveryDetector.Choose(catalog, hits, "F-Hitech_Gen2", "McLaren Cosworth MP4/8", opponents, out _);
+        if (andrettiInField)
+            Assert.Equal(catalog[0], selected);
+        else
+            Assert.Null(selected);
+    }
 
     [Fact]
     public void Choose_unica_candidata_da_pasta_vence_e_traz_pais_BRA()
