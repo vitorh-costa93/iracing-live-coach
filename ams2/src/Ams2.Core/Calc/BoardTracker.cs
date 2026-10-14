@@ -30,6 +30,7 @@ public sealed class BoardTracker
     readonly BoardOptions _o;
     readonly BoardSector98Tracker _sector98;
     readonly BoardGap93Tracker _gap93;
+    readonly Broadcast99RacePresentation _race99;
     int? _lapsRemaining;
 
     // Sessão
@@ -104,6 +105,7 @@ public sealed class BoardTracker
     {
         _o = options ?? BoardOptions.Default;
         _sector98 = new BoardSector98Tracker(_o);
+        _race99 = new Broadcast99RacePresentation(_o);
         _gap93 = new BoardGap93Tracker(_o.GapPointPercent, _o.GapHoldSeconds, enabled: false);
         Reset();
     }
@@ -126,6 +128,7 @@ public sealed class BoardTracker
         _tower = null; _towerPage = _towerPageCount = -1;
         CloseSector();
         _sector98.Reset();
+        _race99.Reset();
         _gap93.Reset();
         _cmpLaps = _cmpNb = _cmpHist = -1; _cmp = null;
         _plate = null; _plateSrc = null;
@@ -159,6 +162,7 @@ public sealed class BoardTracker
         CollectEvents(now, s);
         _sector98.Update(now, s, _events.Where(e => e.Marker > 0).Select(e => (e.Car, e.Marker, e.T)),
             marker => marker == 3 ? _len : (_bLo[marker] + _bHi[marker]) / 2);
+        _race99.Update(now, s, gaps, _sector98.Completed, playerDriving);
         foreach (var e in _events)
         {
             var c = Find(s, e.Car)!;
@@ -515,7 +519,7 @@ public sealed class BoardTracker
             case BoardMode.DriverPlate: items = 1; break;
         }
         return new BoardState(mode, _rev, now, race, start, end, Math.Max(0, end - now), items, _tower, _sectorGap, _cmp, _plate)
-        { SectorGap98 = _sector98.State, Gap93 = _gap93.State, LapsRemaining = _lapsRemaining };
+        { SectorGap98 = _sector98.State, Race99 = _race99.State, Gap93 = _gap93.State, LapsRemaining = _lapsRemaining };
     }
 
     // ---------------------------------------------------------------- vizinho

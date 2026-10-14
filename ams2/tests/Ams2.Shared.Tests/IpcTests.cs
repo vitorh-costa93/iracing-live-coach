@@ -50,7 +50,7 @@ public class IpcTests
         using var client = new IpcClient(pipe);
         client.Start();
         await WaitFor(() => client.Connected);
-        var p = ProfileFactory.CreateDefault("Teste", "f1-1998").WithWidget(new WidgetSettings { Id = "fuel", X = 7, Y = 8, Columns = ["laps"] });
+        var p = ProfileFactory.CreateDefault("Teste", "f1-2004").WithWidget(new WidgetSettings { Id = "fuel", X = 7, Y = 8, Columns = ["laps"] });
         await client.SendAsync(IpcCommands.ApplyProfile, m => m with { Data = p });
         Assert.Equal("Teste", got!.Name);
         Assert.Equal(7, got.Get("fuel")!.X);

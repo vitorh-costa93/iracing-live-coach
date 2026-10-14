@@ -6,8 +6,16 @@ public enum SectorMark { None, Slower, PersonalBest, OverallBest }
 /// <summary>Setor concluido (<see cref="Index"/> 0..2). <see cref="FromMemory"/> = tempo do jogo (mCurrentSectorNTimes) em vez do derivado.</summary>
 public sealed record QualiSector(int Index, double Time, SectorMark Mark, bool FromMemory);
 
-/// <summary>Parcial ao fim do setor <see cref="Sector"/> (1 ou 2): tempo da volta ate ali e diferenca para o melhor pessoal e para o lider (mesmo ponto).</summary>
-public sealed record QualiSplit(int Sector, double Elapsed, double? DeltaPersonal, double? DeltaLeader, double At);
+/// <summary>Cumulative times and frozen crossing speeds from one observed best lap, never independent sector minima.</summary>
+public sealed record QualiTimingReference(CarSnapshot Car, IReadOnlyList<double?> Times, IReadOnlyList<double?> SpeedsMps);
+
+/// <summary>Partial crossing (1 or 2), with its observed timing references and interpolated passage speed.</summary>
+public sealed record QualiSplit(int Sector, double Elapsed, double? DeltaPersonal, double? DeltaLeader, double At)
+{
+    public double? SpeedMps { get; init; }
+    public QualiTimingReference? LeaderReference { get; init; }
+    public QualiTimingReference? PersonalReference { get; init; }
+}
 
 /// <summary>
 /// Volta concluida do jogador: tempo, posicao na tabela com essa volta, diferenca para o 1o (melhor dos OUTROS carros; negativo = nova pole),
@@ -17,6 +25,8 @@ public sealed record QualiLapResult(int Lap, double LapTime, int Position, doubl
     IReadOnlyList<QualiSector?> Sectors, double At, bool FromMemory)
 {
     public CarSnapshot? ReferenceCar { get; init; }
+    public double? SpeedMps { get; init; }
+    public bool WasOutLap { get; init; }
 }
 
 /// <summary>Volta em andamento do jogador (placa de volta da classificacao).</summary>
@@ -39,6 +49,8 @@ public sealed record QualiLapState(
     /// <summary>Tracker session/reset generation, so presentation can reset even when car and track stay the same.</summary>
     public int SessionGeneration { get; init; }
     public int PitExitGeneration { get; init; }
+    public QualiTimingReference? LeaderReference { get; init; }
+    public QualiTimingReference? PersonalReference { get; init; }
     public static readonly QualiLapState Empty = new(-1, 0, 0, false, false, null, [null, null, null], [null, null, null], [null, null, null], null, null, null, -1, null);
 }
 
@@ -70,6 +82,10 @@ public sealed class QualiLapTracker
     readonly double[,] _secTime = new double[MaxCars, 3], _prevMem = new double[MaxCars, 3], _best = new double[MaxCars, 3];
     readonly bool[,] _secMem = new bool[MaxCars, 3];
     readonly double[][] _bestSplits = new double[MaxCars][];   // parciais acumuladas [S1, S1+S2, volta] da melhor volta observada
+    readonly double[] _speed = new double[MaxCars];
+    readonly double?[,] _crossSpeed = new double?[MaxCars, 3];
+    readonly QualiTimingReference?[] _references = new QualiTimingReference?[MaxCars];
+    readonly double[] _lastLapMemory = new double[MaxCars], _referencePrevLast = new double[MaxCars], _referencePendUntil = new double[MaxCars];
     readonly double[] _bestLapObs = new double[MaxCars];
     // Pendencia de troca pelo valor da memoria: setor k (-1 = nada), ate quando, melhor anterior.
     readonly int[] _pendSec = new int[MaxCars];
@@ -110,6 +126,9 @@ public sealed class QualiLapTracker
     {
         _seen[i] = _previousPit[i] = false; _lapStart[i] = _secStart[i] = double.NaN; _lapBad[i] = _secBad[i] = _lapPit[i] = false;
         for (int k = 0; k < 3; k++) { _secTime[i, k] = double.NaN; _prevMem[i, k] = 0; _best[i, k] = double.NaN; _secMem[i, k] = false; }
+        _references[i] = null;
+        _lastLapMemory[i] = _referencePrevLast[i] = 0; _referencePendUntil[i] = double.NegativeInfinity;
+        for (int k = 0; k < 3; k++) _crossSpeed[i, k] = null;
         _bestSplits[i] = null!; _bestLapObs[i] = double.NaN; _pendSec[i] = -1;
     }
 
@@ -166,8 +185,10 @@ public sealed class QualiLapTracker
                 else if (c.LapsCompleted != _laps[i]) { _lapStart[i] = _secStart[i] = double.NaN; ClearLap(i); }
             }
             ApplyPending(i, c, now);
+            ReconcileReferenceMemory(i, c, now);
             _seen[i] = true; _laps[i] = c.LapsCompleted; _sector[i] = c.Sector; _dist[i] = d; _t[i] = now;
-            _previousPit[i] = pit;
+            _previousPit[i] = pit; _speed[i] = c.SpeedMps;
+            _lastLapMemory[i] = c.LastLapTime;
             for (int k = 0; k < 3; k++) _prevMem[i, k] = c.CurSector(k);
         }
 
@@ -181,6 +202,7 @@ public sealed class QualiLapTracker
 
     void CompleteSector(int i, CarSnapshot c, int k, double tm, double now, SessionSnapshot s)
     {
+        _crossSpeed[i, k] = CrossingSpeed(i, c.SpeedMps, tm, now);
         double derived = double.IsNaN(_secStart[i]) ? double.NaN : tm - _secStart[i];
         double mem = c.CurSector(k);
         bool memNew = mem > 0 && Math.Abs(mem - _prevMem[i, k]) > 1e-6;
@@ -199,11 +221,13 @@ public sealed class QualiLapTracker
         {
             double elapsed = tm - _lapStart[i];
             int leader = LeaderIndex(s);
-            _split = new QualiSplit(k + 1, elapsed, SplitDelta(i, k, elapsed), leader >= 0 ? SplitDelta(leader, k, elapsed) : null, tm);
+            _split = new QualiSplit(k + 1, elapsed, SplitDelta(i, k, elapsed, s), leader >= 0 ? SplitDelta(leader, k, elapsed, s) : null, tm)
+            { SpeedMps = _crossSpeed[i, k], LeaderReference = Reference(leader, s), PersonalReference = Reference(i, s) };
         }
     }
 
-    double? SplitDelta(int car, int k, double elapsed) => _bestSplits[car] is { } sp ? elapsed - sp[k] : null;
+    double? SplitDelta(int car, int k, double elapsed, SessionSnapshot s)
+        => Reference(car, s)?.Times[k] is { } time ? elapsed - time : null;
 
     /// <summary>Valor da memoria que chegou depois da troca de setor: substitui o derivado (e corrige o melhor) enquanto a janela estiver aberta.</summary>
     void ApplyPending(int i, CarSnapshot c, double now)
@@ -227,6 +251,10 @@ public sealed class QualiLapTracker
         {
             _bestLapObs[i] = lap;
             _bestSplits[i] = [_secTime[i, 0], _secTime[i, 0] + _secTime[i, 1], lap];
+            _references[i] = new(c, [_secTime[i, 0], _secTime[i, 0] + _secTime[i, 1], lap],
+                [_crossSpeed[i, 0], _crossSpeed[i, 1], _crossSpeed[i, 2]]);
+            _referencePrevLast[i] = _lastLapMemory[i];
+            _referencePendUntil[i] = tl + MemorySettleSeconds + .5;
         }
         if (i == _player && !double.IsNaN(lap))
         {
@@ -248,7 +276,7 @@ public sealed class QualiLapTracker
         double? gap = others.Count > 0 ? lap - others.Min() : null;
         double? dPers = double.IsNaN(before) ? null : lap - before;
         bool improved = !invalid && (double.IsNaN(before) || lap < before);
-        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory) { ReferenceCar = s.Cars.Where(o => o.Index != c.Index && double.IsFinite(o.BestLapTime) && o.BestLapTime > 0).MinBy(o => o.BestLapTime) };
+        return new QualiLapResult(c.CurrentLap > 0 ? c.CurrentLap - 1 : c.LapsCompleted, lap, pos, gap, dPers, improved, invalid, sectors, at, fromMemory) { WasOutLap = _lapPit[c.Index], SpeedMps = _crossSpeed[c.Index, 2], ReferenceCar = s.Cars.Where(o => o.Index != c.Index && double.IsFinite(o.BestLapTime) && o.BestLapTime > 0).MinBy(o => o.BestLapTime) };
     }
 
     /// <summary>LastLapTime do jogo que muda logo depois da linha e bate com o derivado: vira o tempo oficial do resultado.</summary>
@@ -262,7 +290,43 @@ public sealed class QualiLapTracker
         _result = r with { LapTime = v, GapToFirst = gap, DeltaPersonal = dp, Improved = !r.Invalid && (dp is null || dp < 0), FromMemory = true };
     }
 
-    void ClearLap(int i) { for (int k = 0; k < 3; k++) { _secTime[i, k] = double.NaN; _secMem[i, k] = false; } }
+    /// <summary>Official best correction for the same observed finish, including non-player cars.</summary>
+    void ReconcileReferenceMemory(int i, CarSnapshot c, double now)
+    {
+        if (now > _referencePendUntil[i] || _references[i] is not { } reference
+            || reference.Car.LapsCompleted != c.LapsCompleted || !SameIdentity(reference.Car, c)) return;
+        double v = c.LastLapTime;
+        if (!double.IsFinite(v) || v <= 0 || Math.Abs(v - _referencePrevLast[i]) < 1e-6
+            || Math.Abs(v - reference.Times[2]!.Value) >= MemoryTolerance
+            || !double.IsFinite(c.BestLapTime) || c.BestLapTime <= 0 || Math.Abs(c.BestLapTime - v) > .002) return;
+        // The official last and best must identify this observed lap. Do not rescale its
+        // measured partials or crossing speeds, nor reconcile an unrelated newer best.
+        double[] times = [reference.Times[0]!.Value, reference.Times[1]!.Value, v];
+        _bestLapObs[i] = v; _bestSplits[i] = times;
+        _references[i] = reference with { Car = c, Times = times.Select(t => (double?)t).ToArray() };
+        _referencePendUntil[i] = double.NegativeInfinity;
+    }
+
+    static bool SameIdentity(CarSnapshot a, CarSnapshot b) => a.Index == b.Index && a.Name == b.Name
+        && a.OriginalName == b.OriginalName && a.CarName == b.CarName && a.ClassName == b.ClassName;
+
+    void ClearLap(int i) { for (int k = 0; k < 3; k++) { _crossSpeed[i, k] = null; _secTime[i, k] = double.NaN; _secMem[i, k] = false; } }
+
+    double? CrossingSpeed(int i, double current, double at, double now)
+    {
+        if (!double.IsFinite(current) || current <= 0 || !double.IsFinite(_speed[i]) || _speed[i] <= 0) return null;
+        double fraction = now > _t[i] ? Math.Clamp((at - _t[i]) / (now - _t[i]), 0, 1) : 1;
+        return _speed[i] + (current - _speed[i]) * fraction;
+    }
+
+    QualiTimingReference? Reference(int i, SessionSnapshot s)
+    {
+        if (i is < 0 or >= MaxCars || _references[i] is not { } reference) return null;
+        var car = s.Cars.FirstOrDefault(c => c.Index == i);
+        // An unobserved newer best lap invalidates its old split speeds and times.
+        return car is not null && SameIdentity(reference.Car, car) && (car.BestLapTime <= 0 || Math.Abs(car.BestLapTime - reference.Times[2]!.Value) <= .002)
+            ? reference : null;
+    }
 
     // ---------------------------------------------------------------- composicao
 
@@ -283,7 +347,7 @@ public sealed class QualiLapTracker
         bool pit = pc.InPitLane || pc.InGarage;
         return new QualiLapState(i, pc.CurrentLap, Math.Clamp(pc.Sector, 0, 2), pit, !pit && _lapPit[i], elapsed,
             SectorsOf(i, s), personal, overall, _split, Positive(pc.BestLapTime) ?? Nan(_bestLapObs[i]),
-            leader >= 0 ? s.Cars.First(c => c.Index == leader).BestLapTime : null, leader, _result) { SessionGeneration = _sessionGeneration, PitExitGeneration = _pitExitGeneration };
+            leader >= 0 ? s.Cars.First(c => c.Index == leader).BestLapTime : null, leader, _result) { SessionGeneration = _sessionGeneration, PitExitGeneration = _pitExitGeneration, LeaderReference = Reference(leader, s), PersonalReference = Reference(i, s) };
     }
 
     /// <summary>Setores concluidos da volta atual do carro, com a cor (comparados aos melhores atuais).</summary>

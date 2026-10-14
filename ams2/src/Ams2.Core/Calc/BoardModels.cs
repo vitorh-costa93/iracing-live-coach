@@ -111,6 +111,9 @@ public sealed record BoardSectorGap(
 {
     /// <summary>Stable first observed opening; OpenT can be refined when the second crossing arrives.</summary>
     public double? WindowStartedT { get; init; }
+    /// <summary>1999: passagem concluída no marcador imediatamente anterior, do mesmo par e identidade.</summary>
+    public double? PreviousGapSeconds { get; init; }
+    public int? PlayerLapsCompleted { get; init; }
 }
 
 /// <summary>Uma volta do comparativo. Delta = jogador − vizinho (negativo = jogador mais rápido, verde). null = sem tempo.</summary>
@@ -147,6 +150,7 @@ public sealed record BoardState(
 {
     /// <summary>Tema 1998: par escolhido no setor anterior; contador desde a primeira passagem, seguido do split congelado.</summary>
     public BoardSectorGap? SectorGap98 { get; init; }
+    public Broadcast99RaceState? Race99 { get; init; }
     /// <summary>1993: intervalo concluído entre passagens pelo mesmo ponto, sem contador visual.</summary>
     public BoardGap93? Gap93 { get; init; }
     /// <summary>Voltas restantes do jogador (LapsInEvent - voltas completadas) em corrida por voltas; null por tempo.</summary>

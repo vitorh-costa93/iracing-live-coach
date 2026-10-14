@@ -5,10 +5,13 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
 {
     readonly Dictionary<int, Sample> _previous = new();
     Pair? _reference, _window;
+    BoardSectorGap? _completed;
+    string? _completedPlayerIdentity, _completedNeighborIdentity;
     string? _playerIdentity;
     int _playerIndex = -1;
     double _lastNow = double.NegativeInfinity;
     public BoardSectorGap? State { get; private set; }
+    public BoardSectorGap? Completed => _completed;
 
     readonly record struct Sample(CarSnapshot Car, double T);
     readonly record struct Crossing(double T, double D0, double D1, double T0, double T1)
@@ -26,11 +29,14 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
         public Crossing? First, Second;
         public double OpenT, StartedT, Gap, CloseT;
         public bool Invalid;
+        public double? PreviousGap;
+        public int? PlayerLaps;
     }
 
     public void Reset()
     {
         _previous.Clear(); _reference = _window = null; State = null;
+        _completed = null; _completedPlayerIdentity = _completedNeighborIdentity = null;
         _playerIndex = -1; _playerIdentity = null; _lastNow = double.NegativeInfinity;
     }
 
@@ -53,6 +59,9 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
         }
         if (!Valid(_reference)) _reference = null;
         if (!Valid(_window) || now >= _window!.CloseT) { _window = null; State = null; }
+        if (_completed is { } done && (Identity(me) != _completedPlayerIdentity || !Continuous(me, now, s.TrackLength)
+            || s.Cars.FirstOrDefault(c => c.Index == done.Neighbor.CarIndex) is not { } oldNeighbor
+            || Identity(oldNeighbor) != _completedNeighborIdentity || !Continuous(oldNeighbor, now, s.TrackLength))) _completed = null;
 
         int firstCar = _reference is { } current ? (current.Ahead ? current.Neighbor : current.Player) : -1;
         foreach (var e in events.OrderBy(e => e.T).ThenBy(e => e.Car == firstCar ? 0 : 1).ThenBy(e => e.Car))
@@ -78,7 +87,9 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
             bool split = active.Second is not null;
             double gap = split ? active.Gap : (active.Ahead ? 1 : -1) * Math.Max(0, now - active.OpenT);
             State = new BoardSectorGap(active.Marker, BoardText.Driver(me, s.Cars), BoardText.Driver(nb, s.Cars),
-                active.Ahead, gap, split, BoardText.Gap(gap), active.OpenT, active.CloseT) { WindowStartedT = active.StartedT };
+                active.Ahead, gap, split, BoardText.Gap(gap), active.OpenT, active.CloseT)
+                { WindowStartedT = active.StartedT, PreviousGapSeconds = active.PreviousGap, PlayerLapsCompleted = active.PlayerLaps };
+            if (split) { _completed = State; _completedPlayerIdentity = active.PlayerIdentity; _completedNeighborIdentity = active.NeighborIdentity; }
         }
         else { _window = null; State = null; }
 
@@ -94,11 +105,16 @@ internal sealed class BoardSector98Tracker(BoardOptions options)
         double d0 = previous.Car.LapDistance, d1 = car.LapDistance;
         if (marker == 3 && d1 < d0) d1 += len;
         var crossing = new Crossing(t, d0, d1, previous.T, now);
+        if (car.Index == pair.Player) pair.PlayerLaps = car.LapsCompleted;
         if (pair.First is null)
         {
             // Overtaking invalidates this reference; never substitute another car mid-comparison.
             if (car.Index != first) { pair.Invalid = true; return; }
             pair.First = crossing; pair.StartedT = pair.OpenT = t; pair.CloseT = t + options.SectorMaxWindowSeconds;
+            if (_completed is { } last && last.Sector % 3 + 1 == marker && last.Player.CarIndex == pair.Player
+                && last.Neighbor.CarIndex == pair.Neighbor && _completedPlayerIdentity == pair.PlayerIdentity
+                && _completedNeighborIdentity == pair.NeighborIdentity && last.NeighborAhead == pair.Ahead)
+                pair.PreviousGap = last.GapSeconds;
             // A real crossing at the next mark starts the newer window even if the older pair is incomplete.
             _window = pair;
         }

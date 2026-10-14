@@ -85,7 +85,7 @@ public static class Themes
     /// </summary>
     public static readonly Theme F1_1998 = new(
         Id: "f1-1998",
-        DisplayName: "F1 1998-2001",
+        DisplayName: "F1 1999",
         Title: new FontToken("Reddit Sans", 800, 30f),
         Label: new FontToken("Reddit Sans", 800, 25f),
         Text: new FontToken("Reddit Sans", 800, 30f),

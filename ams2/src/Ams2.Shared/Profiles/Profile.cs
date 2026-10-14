@@ -319,7 +319,8 @@ public sealed record Profile
     /// </summary>
     // 5: the f1-2004 input graph becomes an independent widget/window.
     // 6: text size is independent; dimensions and semantic font overrides are saved separately.
-    public const int CurrentSchemaVersion = 6;
+    // 7: composition of 1999 contains only the two boards, inputs and proximity radar.
+    public const int CurrentSchemaVersion = 7;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Name { get; init; } = "Padrão";
@@ -376,6 +377,13 @@ public sealed record Profile
                 var overflow = effective / scale;
                 w = w with { Scale = scale, WidthScale = overflow == 1 ? w.WidthScale : overflow,
                     HeightScale = overflow == 1 ? w.HeightScale : overflow, TextScale = overflow == 1 ? null : overflow };
+            }
+            if (w is not null && SchemaVersion < 7 && themeId == "f1-1998")
+            {
+                if (d.Id == "board" && w.Columns is { Length: 1 } && w.Columns[0] == "tyre")
+                    w = w with { Columns = ["team", "tyre"] };
+                if (d.Id == "radar" && w.Sessions is null)
+                    w = w with { Sessions = [SessionIds.Practice, SessionIds.Race] };
             }
             list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
@@ -442,12 +450,13 @@ public static class ProfileFactory
             Columns = string.Equals(ThemeCatalog.Canonical(themeId), "f1-1993", StringComparison.OrdinalIgnoreCase) && e.d.Id is "standings" or "qualitower" ? ["sponsor"]
                 : string.Equals(ThemeCatalog.Canonical(themeId), "f1-1993", StringComparison.OrdinalIgnoreCase) && e.d.Id == "inputs" ? ["graph"]
                 : e.d.Id == "standings" ? (string.Equals(ThemeCatalog.Canonical(themeId), "f1-2018", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"] : ["pos", "name"])
-                : e.d.Id == "board" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["tyre"]
+                : e.d.Id is "board" or "qualiboard" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["team", "tyre"]
                 // f1-1998: lista vertical e lista por lado sao o padrao; tabela inferior (standings) e barra de tempo dividido (relative) sao opcionais.
                 : e.d.Id == "relative" && string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) ? ["pos", "name", "gap"]
                 // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos (os campos ficam visiveis).
                 // Radar: "native" (indicador nativo) tambem e opcional.
                 : e.d.Columns.Any(col => col.Id == "always") ? e.d.Columns.Where(col => col.Id is not ("always" or "native")).Select(col => col.Id).ToArray() : null,
+            Sessions = string.Equals(themeId, "f1-1998", StringComparison.OrdinalIgnoreCase) && e.d.Id == "radar" ? [SessionIds.Practice, SessionIds.Race] : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }

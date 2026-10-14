@@ -56,7 +56,10 @@ public sealed class SessionFilterTests : IDisposable
         await WaitFor(async () => (await client.SendAsync(IpcCommands.GetState))!.Session == SessionIds.Race, 8000, "host nao viu a sessao de corrida");
 
         var st = (await client.SendAsync(IpcCommands.GetState))!;
-        Assert.Equal(["qualiboard", "qualilap", "qualiresult", "qualitower"], st.HiddenBySession.Order());
+        Assert.Equal(["qualiboard"], st.HiddenBySession.Order());
+        Assert.Equal(new[] { "board", "qualiboard", "inputs", "radar" }.Order(), st.Widgets.Select(w => w.Id).Order());
+        st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2004" }))!;
+        Assert.Equal(["qualilap", "qualiresult", "qualitower"], st.HiddenBySession.Order());
 
         st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "fuel", Patch = new WidgetPatch { Sessions = ["qualify"] } }))!;
         Assert.Equal(["qualify"], st.Widgets.Single(w => w.Id == "fuel").Sessions);
@@ -77,7 +80,10 @@ public sealed class SessionFilterTests : IDisposable
         using var client = await StartHost(quali: true);
         await WaitFor(async () => (await client.SendAsync(IpcCommands.GetState))!.Session == SessionIds.Qualify, 8000, "host nao viu a sessao de classificacao");
         var st = (await client.SendAsync(IpcCommands.GetState))!;
-        // Torre de corrida e Board dao lugar a Quali Tower e a Quali Lap (WidgetLayout.ExclusiveGroups): fora da classificacao por padrao.
+        // 1999 reserva a classificacao ao Qualy Board e oculta o radar por padrao.
+        Assert.Equal(["board", "radar"], st.HiddenBySession.Order());
+        st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2004" }))!;
+        // As tabelas independentes continuam suportadas no 2004.
         Assert.Equal(["board", "lapcounter", "standings"], st.HiddenBySession.Order());
         st = (await client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "standings", Patch = new WidgetPatch { Sessions = ["qualify", "race"] } }))!;
         Assert.Equal(["board", "lapcounter"], st.HiddenBySession.Order());
@@ -89,7 +95,7 @@ public sealed class SessionFilterTests : IDisposable
         if (IracingRunning) return;
         var png = Path.Combine(_dir, "q.png");
         Directory.CreateDirectory(_dir);
-        var psi = new ProcessStartInfo(HostExe(), $"--png \"{png}\" --widget qualitower --sim 45") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+        var psi = new ProcessStartInfo(HostExe(), $"--png \"{png}\" --widget qualitower --theme f1-2004 --sim 45") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
         psi.Environment["AMS2_FAKE_QUALI"] = "1";
         using var p = Process.Start(psi)!;
         string output = p.StandardOutput.ReadToEnd();

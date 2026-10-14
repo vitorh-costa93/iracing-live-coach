@@ -13,7 +13,7 @@ public class RadarSettingsTests
         Assert.Equal((900, 585, 1f), (r.X, r.Y, r.Scale));
         Assert.Equal((15, 3), (r.EffectiveRadarRange, r.EffectiveRadarSensitivity));
         Assert.Equal([], r.Columns);                                   // "Sempre visivel" desligado: so com carro proximo
-        Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("fuel")!.RadarRange);
+        Assert.Null(ProfileFactory.CreateDefault("x", theme).Get("inputs")!.RadarRange);
     }
 
     [Fact]

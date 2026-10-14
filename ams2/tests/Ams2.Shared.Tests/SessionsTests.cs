@@ -33,16 +33,16 @@ public class SessionsTests
     }
 
     [Fact]
-    public void Quali_widgets_exist_in_every_theme_and_are_visible_in_the_default_profile()
+    public void Standalone_quali_widgets_exist_in_supported_themes_and_are_visible_in_the_default_profile()
     {
-        foreach (var t in ThemeCatalog.All.Where(t => t.Id != "f1-1993"))
+        foreach (var t in ThemeCatalog.All.Where(t => t.Id is not ("f1-1993" or "f1-1998")))
         {
             var p = ProfileFactory.CreateDefault("P", t.Id);
             foreach (var id in Quali)
             {
                 var w = p.Get(id);
                 Assert.NotNull(w);
-                Assert.Equal(t.Id != "f1-1998" || id == "qualiresult", w!.Visible);
+                Assert.True(w!.Visible);
                 Assert.Null(w.Sessions);
             }
         }
@@ -80,7 +80,7 @@ public class SessionsTests
     [Fact]
     public void Json_has_no_sessions_block_by_default_and_round_trips_custom_values()
     {
-        var p = ProfileFactory.CreateDefault("P", "f1-1998").Normalized();
+        var p = ProfileFactory.CreateDefault("P", "f1-2004").Normalized();
         Assert.DoesNotContain("\"sessions\"", JsonSerializer.Serialize(p, ProfileStore.Json));
 
         p = p.WithWidget(p.Get("fuel")! with { Sessions = ["practice"] }).Normalized();
@@ -91,7 +91,7 @@ public class SessionsTests
 
         // Perfil antigo (sem o campo e sem os widgets de classificacao): os widgets existentes continuam em todas as sessoes, salvo a torre de
         // corrida e o Board, que dao lugar a Quali Tower / Quali Lap na classificacao; os novos entram so na classificacao.
-        var old = new Profile { Name = "Velho", ThemeId = "f1-1998", Widgets = [new WidgetSettings { Id = "standings", X = 5 }, new WidgetSettings { Id = "fuel" }] }.Normalized();
+        var old = new Profile { Name = "Velho", ThemeId = "f1-2004", Widgets = [new WidgetSettings { Id = "standings", X = 5 }, new WidgetSettings { Id = "fuel" }] }.Normalized();
         Assert.Equal([SessionIds.Practice, SessionIds.Race], old.Get("standings")!.EffectiveSessions);
         Assert.Equal([SessionIds.Practice, SessionIds.Race], old.Get("board")!.EffectiveSessions);
         Assert.Equal(SessionIds.All, old.Get("fuel")!.EffectiveSessions);

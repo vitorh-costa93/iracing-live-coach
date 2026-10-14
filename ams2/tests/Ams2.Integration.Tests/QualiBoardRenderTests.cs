@@ -84,20 +84,33 @@ public class QualiBoardRenderTests
     }
 
     [Fact]
-    public void Composer_reveals_rows_in_order_and_pages_without_resizing()
+    public void Board99_outlap_has_no_pagination_and_flying_lap_has_all_five_states()
     {
         var board = new QualiBoardWidget(); board.UseTheme(Themes.F1_1998);
-        board.Configure(new WidgetSettings { Id = "qualiboard" });
-        var title = Render(board, Model(.2), artifact: "quali-title");
-        var first = Render(board, Model(1), artifact: "quali-row1");
-        var second = Render(board, Model(1.45), artifact: "quali-row2");
-        Assert.NotEqual(title, first); Assert.NotEqual(first, second);
-        // Second row changes while the already revealed first row remains stable.
-        Assert.Equal(first[0..(1920 * 93 * 4)], second[0..(1920 * 93 * 4)]);
-        var settled = Render(board, Model(5), artifact: "quali-page1");
-        var pageTwo = Render(board, Model(12), artifact: "quali-page2");
-        Assert.NotEqual(settled, pageTwo);
+        var cfg = new WidgetSettings { Id = "qualiboard" };
+        board.Configure(cfg);
+        var model = LayoutPreview.ForWidget("qualilap") with { Now = 100, PlayerDriving = true };
+        var q = model.QualiLap! with { OutLap = true, InPit = false, LastResult = null, LastSplit = null };
+        var outlap = model with { QualiLap = q };
+        var caption = Render(board, outlap, artifact: "quali99-outlap");
+        Assert.Contains(caption, b => b != 0);
+        Assert.Equal(caption, Render(board, outlap with { Now = 120, Quali = null }));
         Assert.Equal((1920f, 300f), board.DesignSize);
+        var reference = new QualiTimingReference(model.Session!.Cars.First(c => !c.IsPlayer), [24.402, 55, 90], [85.14, 70, 72]);
+        q = q with { OutLap = false, Elapsed = 24, Sector = 0, LeaderReference = reference, LeaderBestLap = 90 };
+        var approach = Render(board, model with { QualiLap = q }, artifact: "quali99-approach");
+        Assert.NotEqual(caption, approach);
+        q = q with { LastSplit = new(1, 24.673, null, .271, 99) { LeaderReference = reference, SpeedMps = 83.39 }, Sector = 1 };
+        var split = Render(board, model with { QualiLap = q }, artifact: "quali99-split");
+        Assert.NotEqual(approach, split);
+        q = q with { LastSplit = null, Elapsed = 30 };
+        var live = Render(board, model with { QualiLap = q }, artifact: "quali99-live");
+        Assert.NotEqual(split, live);
+        q = q with { LastResult = new(1, 90.65, 5, .65, null, false, false, [null, null, null], 99, false) { SpeedMps = 73.64 } };
+        var finish = Render(board, model with { QualiLap = q }, artifact: "quali99-finish");
+        Assert.NotEqual(live, finish);
+        Assert.DoesNotContain(Render(board, model with { QualiLap = q, PlayerDriving = false }), b => b != 0);
+        Assert.DoesNotContain(Render(board, model with { QualiLap = q, Session = model.Session with { InSession = false, GameState = 5 } }), b => b != 0);
     }
 
     [Fact]

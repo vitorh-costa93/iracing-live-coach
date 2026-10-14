@@ -51,16 +51,9 @@ public static class WidgetLayout
         },
         ["f1-1998"] = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["standings"] = new(32, 24, 1.15f), ["lapcounter"] = new(867, 24, 1.4f),
-            ["relative"] = new(640, 900, 0.8f), ["drivercaption"] = new(0, 780, 1f), ["winner"] = new(0, 780, 1f), ["board"] = new(0, 780, 1f),
-            ["pitstops"] = new(32, 560, 0.9f), ["pittimer"] = new(0, 780, 1f),
-            ["weather"] = new(1696, 24, 0.65f), ["tyres"] = new(1699, 130, 0.65f), ["fuel"] = new(1582, 267, 0.65f), ["inputs"] = new(1542, 620, 0.5f),
+            ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f),
+            ["inputs"] = new(1542, 620, 0.5f),
             ["radar"] = new(900, 585, 1f),
-            // Classificacao: lista de 2 colunas (834x182 x1.0) no canto da torre, terminando em x=866 antes do Lap Counter (x>=867, visivel
-            // em todas as sessoes); tempo corrente (640x124) embaixo ao centro, no lugar do Board, entre o Winner (x<=572) e o Inputs (x>=1542),
-            // abaixo do Pit Timer (y<=831); resultado (834x262, so ao fim da sessao) centrado na faixa livre entre a lista (y<=206) e o
-            // Pit Stops/Radar (y>=560): x=543..1377, y=260..522. A torre continua na tela (sem grupo exclusivo).
-            ["qualiboard"] = new(0, 780, 1f), ["qualitower"] = new(0, 780, 1f), ["qualilap"] = new(0, 780, 1f), ["qualiresult"] = new(543, 260, 1f),
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -130,9 +123,7 @@ public static class WidgetLayout
             },
             ["f1-1998"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["standings"] = (191, 372), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 144), ["inputs"] = (692, 197),
-                ["lapcounter"] = (132, 40), ["drivercaption"] = (1920, 300), ["pitstops"] = (716, 156), ["pittimer"] = (1920, 300), ["winner"] = (1920, 300), ["board"] = (1920, 300), ["radar"] = (120, 190),
-                ["qualitower"] = (1920, 300), ["qualilap"] = (1920, 300), ["qualiresult"] = (834, 262), ["qualiboard"] = (1920, 300),
+                ["inputs"] = (692, 197), ["board"] = (1920, 300), ["radar"] = (120, 190), ["qualiboard"] = (1920, 300),
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {

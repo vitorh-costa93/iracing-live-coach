@@ -4,6 +4,17 @@ namespace Ams2.Core.Tests;
 
 public class BoardSector98Tests
 {
+    [Fact]
+    public void Previous_sector_value_is_measured_for_same_physical_pair_and_frozen()
+    {
+        var rig = Rig((900, 100), (950, 100));
+        var sector = rig.RunTo(11.1).SectorGap98!;
+        Assert.Null(sector.PreviousGapSeconds);
+        var line = rig.RunTo(21.1).SectorGap98!;
+        Assert.True(line.IsSplit);
+        Assert.Equal(sector.GapSeconds, line.PreviousGapSeconds);
+        Assert.Equal(line.PreviousGapSeconds, rig.RunTo(22).SectorGap98!.PreviousGapSeconds);
+    }
     static BoardRig Rig(params (double Distance, double Speed)[] cars) =>
         new(new Sim(3000, cars) { PlayerIndex = 0, AutoPositions = true }) { Dt = .05 };
 

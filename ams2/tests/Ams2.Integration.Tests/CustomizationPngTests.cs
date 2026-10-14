@@ -48,11 +48,11 @@ public sealed class CustomizationPngTests
     }
 
     [Theory]
-    [InlineData("relative", "f1-1998")]
+    [InlineData("relative", "f1-2004")]
     [InlineData("standings", "f1-2004")]
     [InlineData("inputs", "f1-2018")]
     [InlineData("board", "f1-2004")]
-    [InlineData("weather", "f1-1998")]
+    [InlineData("weather", "f1-2004")]
     [InlineData("standings", "f1-2018")]
     [InlineData("lapcounter", "f1-2018")]
     [InlineData("drivercaption", "f1-2018")]
@@ -83,7 +83,7 @@ public sealed class CustomizationPngTests
     }
 
     [Theory]
-    [InlineData("standings", "f1-1998", "name")]
+    [InlineData("standings", "f1-2004", "name")]
     [InlineData("standings", "f1-2004", "gap")]
     [InlineData("relative", "f1-2018", "name")]
     [InlineData("relative", "f1-2004", "gap")]
@@ -666,41 +666,36 @@ public sealed class CustomizationPngTests
         Assert.True(QualiTower(new() { ["rows"] = "20" }, theme: T).H > d.H);
     }
 
-    // ---- Lista de classificacao 1998 (WidgetCatalog.OptionsFor("f1-1998", "qualitower")) ----
+    // ---- Qualy Board 1999 substitui torre/placa independentes ----
 
     [Fact]
-    public void Quali_tower_1998_columns_rows_elimination_and_clock_variants()
+    public void Quali_board_1999_has_fixed_size_outlap_and_result_hold_options()
     {
         const string T = "f1-1998";
-        var d = QualiTower(null, theme: T);
-        Assert.Equal((1920, 300), (d.W, d.H));
-        Assert.True(d.Png.Length > 2000);
-        var zone = QualiTower(new() { ["eliminationFrom"] = "5" }, theme: T);
-        Assert.Equal((d.W, d.H), (zone.W, zone.H));
-        Assert.NotEqual(d.Png, zone.Png);
-        // Uma coluna: metade da largura, o dobro das linhas.
-        var one = QualiTower(new() { ["columns"] = "1" }, theme: T);
-        Assert.Equal((d.W, d.H), (one.W, one.H));
-        Assert.NotEqual(d.Png, one.Png);
-        Assert.Equal(d.H, QualiTower(new() { ["rows"] = "10" }, theme: T).H);
-        Assert.NotEqual(d.Png, QualiTower(new() { ["rows"] = "10" }, theme: T).Png);
-        // Sem o cabecalho do relogio a janela fica mais baixa.
-        var noClock = QualiTower(new() { ["showClock"] = "true" }, theme: T);
-        Assert.Equal((d.W, d.H), (noClock.W, noClock.H));
-        Assert.NotEqual(d.Png, noClock.Png);
-        // Jogador sem tempo (t=5 s): entra no fim da lista com "NO TIME" no lugar da diferenca.
-        Assert.NotEqual(d.Png, QualiTower(null, 5, theme: T).Png);
+        var outlap = QualiLap(T, 5, widget: "qualiboard");
+        Assert.Equal((1920, 300), (outlap.W, outlap.H));
+        Assert.True(outlap.Png.Length > 2000);
+        var running = QualiLap(T, 20, widget: "qualiboard");
+        Assert.Equal((outlap.W, outlap.H), (running.W, running.H));
+        Assert.NotEqual(outlap.Png, running.Png);
+        var result = QualiLap(T, 45, widget: "qualiboard");
+        Assert.NotEqual(running.Png, result.Png);
+        var extended = QualiLap(T, 50, new() { ["showFor"] = "15" }, widget: "qualiboard");
+        var normal = QualiLap(T, 50, widget: "qualiboard");
+        Assert.Equal((outlap.W, outlap.H), (extended.W, extended.H));
+        Assert.NotEqual(normal.Png, extended.Png);
     }
+
     // ---- Placa de volta da classificacao (WidgetCatalog.OptionsFor(tema, "qualilap")); AMS2_FAKE_QUALI=1: em t=5 s o inicio da volta
     // nao foi visto (tempo corrente desconhecido: oculta sem "always"), volta lancada a partir de t=10,75 s, S1 em t~20,9 s, S2 em t~30,9 s,
     // resultado da volta (30.480, P5) em t~41,2 s ----
 
-    static (int W, int H, byte[] Png) QualiLap(string theme, double sim, Dictionary<string, string>? options = null)
+    static (int W, int H, byte[] Png) QualiLap(string theme, double sim, Dictionary<string, string>? options = null, string widget = "qualilap")
     {
         string png = Path.Combine(Path.GetTempPath(), $"ams2-ql-{Guid.NewGuid():N}.png");
         string json = Path.ChangeExtension(png, ".json");
-        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = "qualilap", Options = options }, ProfileStore.Json));
-        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget qualilap --theme {theme} --settings \"{json}\"")
+        File.WriteAllText(json, JsonSerializer.Serialize(new WidgetSettings { Id = widget, Options = options }, ProfileStore.Json));
+        var psi = new ProcessStartInfo(Exe(), $"--png \"{png}\" --sim {sim.ToString(System.Globalization.CultureInfo.InvariantCulture)} --widget {widget} --theme {theme} --settings \"{json}\"")
             { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
         psi.Environment["AMS2_FAKE_QUALI"] = "1";
         using var p = Process.Start(psi)!;
@@ -719,7 +714,6 @@ public sealed class CustomizationPngTests
     [Theory]
     [InlineData("f1-2018", 664, 152)]
     [InlineData("f1-2004", 350, 126)]
-    [InlineData("f1-1998", 1920, 300)]
     public void Quali_lap_hides_without_a_flying_lap_and_draws_running_time_and_result(string theme, int w, int h)
     {
         // t=5: volta sem inicio observado = oculta (dois quadros vazios iguais); com "always" desenha a placa.
@@ -758,10 +752,10 @@ public sealed class CustomizationPngTests
     }
 
     [Fact]
-    public void Quali_lap_2004_sector_strip_and_1998_speed_options()
+    public void Quali_lap_2004_sector_strip_and_1999_board_speed_options()
     {
         Assert.NotEqual(QualiLap("f1-2004", 22).Png, QualiLap("f1-2004", 22, new() { ["showSectors"] = "true" }).Png);
-        Assert.NotEqual(QualiLap("f1-1998", 45).Png, QualiLap("f1-1998", 45, new() { ["showSpeed"] = "false" }).Png);
+        Assert.NotEqual(QualiLap("f1-1998", 45, widget: "qualiboard").Png, QualiLap("f1-1998", 45, new() { ["showSpeed"] = "false" }, widget: "qualiboard").Png);
     }
 
     // ---- Resultado da classificacao (WidgetCatalog.OptionsFor(tema, "qualiresult")); AMS2_FAKE_QUALI=1 + AMS2_FAKE_QUALI_END=1: a sessao
@@ -792,7 +786,6 @@ public sealed class CustomizationPngTests
     [Theory]
     [InlineData("f1-2018", 500, 382)]
     [InlineData("f1-2004", 256, 406)]
-    [InlineData("f1-1998", 834, 262)]
     public void Quali_result_appears_at_the_end_of_the_session_for_showFor_seconds(string theme, int w, int h)
     {
         // Sessao em andamento: oculto (dois quadros vazios iguais); com "always" desenha a lista atual na mesma janela.
@@ -810,7 +803,7 @@ public sealed class CustomizationPngTests
         Assert.True(QualiResult(theme, 64, new() { ["showFor"] = "30" }).Png.Length > running.Png.Length + 1000);
         // Volta final depois do fim (o 16 marca tempo em t~70 s): o resultado volta.
         Assert.True(QualiResult(theme, 76).Png.Length > running.Png.Length + 1000);
-        // Linhas e eliminados: menos linhas = janela menor (1998: duas colunas); eliminados mudam o desenho.
+        // Linhas e eliminados: menos linhas = janela menor; eliminados mudam o desenho no 2018.
         Assert.True(QualiResult(theme, 50, new() { ["rows"] = "4" }).H < h);
         var zone = QualiResult(theme, 50, new() { ["eliminationFrom"] = "4" });
         if (theme == "f1-2004") Assert.Equal(shown.Png, zone.Png); else Assert.NotEqual(shown.Png, zone.Png);

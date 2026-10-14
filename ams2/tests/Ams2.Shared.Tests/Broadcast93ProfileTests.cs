@@ -29,7 +29,7 @@ public class Broadcast93ProfileTests
         foreach (var id in new[] { "drivercaption", "fuel", "tyres", "weather" })
         {
             Assert.DoesNotContain(id, defs.Select(d => d.Id));
-            Assert.True(WidgetCatalog.Find(id, "f1-1998") is not null);   // continuam nos outros temas
+            Assert.True(WidgetCatalog.Find(id, "f1-2004") is not null);   // continuam nos outros temas
         }
         Assert.StartsWith("Race Board", defs.Single(d => d.Id == "board").DisplayName);
         Assert.StartsWith("Qualy Board", defs.Single(d => d.Id == "qualiboard").DisplayName);

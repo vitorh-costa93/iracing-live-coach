@@ -12,7 +12,9 @@ public sealed class TempStore : IDisposable
 
 public class ProfileTests
 {
-    const string Theme = "f1-1998";
+    // Serialization/normalization of optional widgets is exercised in 2004;
+    // 1999 intentionally no longer contains the standalone tables/captions.
+    const string Theme = "f1-2004";
 
     [Fact]
     public void Default_profile_has_every_catalog_widget_in_order()
@@ -21,11 +23,14 @@ public class ProfileTests
         Assert.Equal(WidgetCatalog.ForTheme(Theme).Select(w => w.Id), p.Ordered.Select(w => w.Id));
         Assert.All(p.Widgets, w => Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale));
         // o board substitui Relative e Driver Caption no layout padrao (continuam no catalogo, desligados)
-        Assert.All(p.Widgets, w => Assert.Equal(w.Id is not ("relative" or "drivercaption" or "winner" or "pittimer" or "qualitower" or "qualilap"), w.Visible));
+        Assert.True(p.Get("standings")!.Visible);
+        Assert.True(p.Get("board")!.Visible);
+        Assert.False(p.Get("relative")!.Visible);
+        Assert.False(p.Get("drivercaption")!.Visible);
         // composicao da TV: standings no canto superior esquerdo, board embaixo ao centro
         Assert.Equal((32, 24), (p.Get("standings")!.X, p.Get("standings")!.Y));
-        Assert.Equal(780, p.Get("board")!.Y);
-        Assert.Equal(0, p.Get("board")!.X);
+        Assert.Equal(866, p.Get("board")!.Y);
+        Assert.Equal(650, p.Get("board")!.X);
         Assert.Equal((5, 3), (p.Get("standings")!.TopCount, p.Get("standings")!.NearCount));
         Assert.Null(p.Get("standings")!.Rows);
         Assert.Equal(3, p.Get("relative")!.Rows);
@@ -83,7 +88,7 @@ public class ProfileTests
         Directory.CreateDirectory(dir);
         // perfil v1: Standings com Rows=8, sem TopCount/NearCount e sem o widget "board"
         File.WriteAllText(Path.Combine(dir, "antigo.json"),
-            "{\"schemaVersion\":1,\"name\":\"Antigo\",\"themeId\":\"f1-1998\",\"widgets\":[{\"id\":\"standings\",\"visible\":true,\"x\":10,\"y\":20,\"scale\":1,\"opacity\":1,\"order\":0,\"rows\":12,\"columns\":[\"pos\",\"name\",\"gap\"]}]}");
+            "{\"schemaVersion\":1,\"name\":\"Antigo\",\"themeId\":\"f1-2004\",\"widgets\":[{\"id\":\"standings\",\"visible\":true,\"x\":10,\"y\":20,\"scale\":1,\"opacity\":1,\"order\":0,\"rows\":12,\"columns\":[\"pos\",\"name\",\"gap\"]}]}");
         var p = t.Store.Load(Theme, "Antigo")!;
         var s = p.Get("standings")!;
         Assert.Equal((10, 20), (s.X, s.Y));
@@ -104,9 +109,9 @@ public class ProfileTests
     }
 
     [Fact]
-    public void Board_defaults_keep_only_tyre_in_f1_1998()
+    public void Board_defaults_keep_team_and_tyre_in_1999()
     {
-        Assert.Equal(["tyre"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
+        Assert.Equal(["team", "tyre"], ProfileFactory.CreateDefault("x", "f1-1998").Get("board")!.Columns);
         Assert.Null(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Columns);   // todas visiveis
         // 2018: a TV nao tem o Board e a torre traz o "LAP n / N": Board e Lap Counter desligados (continuam no perfil); Relative tambem.
         var p18 = ProfileFactory.CreateDefault("x", "f1-2018");
@@ -115,7 +120,7 @@ public class ProfileTests
         Assert.False(p18.Get("relative")!.Visible);
         Assert.True(p18.Get("standings")!.Visible);
         Assert.True(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Visible);
-        Assert.True(ProfileFactory.CreateDefault("x", "f1-1998").Get("lapcounter")!.Visible);
+        Assert.Null(ProfileFactory.CreateDefault("x", "f1-1998").Get("lapcounter"));
     }
 
     [Fact]
@@ -125,9 +130,9 @@ public class ProfileTests
         Assert.DoesNotContain(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "flag");
         Assert.Contains(WidgetCatalog.Find("relative")!.Columns, c => c.Id == "bar");
         Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")!.Columns);
-        Assert.Equal(["pos", "name"], ProfileFactory.CreateDefault("x", "f1-1998").Get("standings")!.Columns);   // so posicao + sigla, sem gap/classe
+        Assert.Null(ProfileFactory.CreateDefault("x", "f1-1998").Get("standings"));
         Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-2018").Get("standings")!.Columns);   // 2018: coluna clara (gap/modos) como na TV
-        Assert.Equal(["pos", "name", "gap"], ProfileFactory.CreateDefault("x", "f1-1998").Get("relative")!.Columns);
+        Assert.Null(ProfileFactory.CreateDefault("x", "f1-1998").Get("relative"));
         Assert.Contains(WidgetCatalog.Find("standings")!.Columns, c => c.Id == "table");
         // perfis antigos com a coluna "flag" carregam sem erro: a coluna desconhecida e ignorada
         var old = ProfileFactory.CreateDefault("x", "f1-2004").Get("standings")! with { Columns = ["pos", "name", "flag"] };
@@ -142,7 +147,7 @@ public class ProfileTests
             var d = WidgetCatalog.Find(id);
             Assert.NotNull(d);
             Assert.Contains(d!.Columns, c => c.Id == "always");
-            foreach (var theme in new[] { "f1-1998", "f1-2004", "f1-2018" })
+            foreach (var theme in new[] { "f1-2004", "f1-2018" })
             {
                 var w = ProfileFactory.CreateDefault("x", theme).Get(id)!.Normalized();
                 Assert.False(w.ColumnVisible("always"));      // padrao: so aparece nos eventos

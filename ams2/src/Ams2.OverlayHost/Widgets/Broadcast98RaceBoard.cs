@@ -8,85 +8,42 @@ using Vortice.Win32.Numerics;
 
 namespace Ams2.OverlayHost.Widgets;
 
-/// <summary>Rodapé de transmissão 1998: um único painel e um único evento por quadro.</summary>
+/// <summary>Rodapé de transmissão 1999 (ID de perfil 1998): um único painel e evento por quadro.</summary>
 public sealed class Broadcast98RaceBoard
 {
     public const float Width = 1920, Height = 300;
-    public enum Mode { None, Caption, Laps, Sector, Tower, Pit, Winner }
-    long _key = long.MinValue;
-    double _since;
-    int _comparisonLap = -1;
-    double _comparisonSince;
-    double _lastNow = double.NegativeInfinity;
+    public enum Mode { None, Caption, Laps, Sector, Tower, Pit, Winner, Fastest, Remaining }
 
     public static Mode Select(OverlayModel m)
     {
-        if (!m.Connected || m.Session?.PlayerCar is null) return Mode.None;
-        var bc = BroadcastUi.State(m);
-        if (bc.Winner is { } win && m.Now - win.FinishedT is >= 0 and < BroadcastUi.WinnerHold) return Mode.Winner;
-        if (bc.PlayerStopped || m.Now - bc.PlayerStopEndT is >= 0 and < BroadcastUi.PitTimerHold) return Mode.Pit;
-        var board = m.Board;
-        if (board?.Mode == BoardMode.LineTower && board.Tower is not null) return Mode.Tower;
-        if (board?.SectorGap98 is not null) return Mode.Sector;
-        if (board?.Mode == BoardMode.LapComparison && board.LapComparison is not null) return Mode.Laps;
-        return Mode.Caption;
+        if (!m.Connected || !m.PlayerDriving || m.Session is not { InSession: true, GameState: 2, PlayerCar: not null }) return Mode.None;
+        return m.Board?.Race99?.Mode switch
+        {
+            Broadcast99RaceMode.Pit => Mode.Pit,
+            Broadcast99RaceMode.Fastest => Mode.Fastest,
+            Broadcast99RaceMode.Table => Mode.Tower,
+            Broadcast99RaceMode.Gap => Mode.Sector,
+            Broadcast99RaceMode.Remaining => Mode.Remaining,
+            Broadcast99RaceMode.Caption => Mode.Caption,
+            _ => Mode.None,
+        };
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
-        if (m.Now < _lastNow) { _key = long.MinValue; _comparisonLap = -1; }
-        _lastNow = m.Now;
+        var state = m.Board?.Race99;
+        if (state is null) return;
         var mode = Select(m);
-        var b = m.Board;
-        if (mode == Mode.Laps && b?.LapComparison is { } lc)
+        if (mode == Mode.None) return;
+        switch (mode)
         {
-            if (_comparisonLap != lc.PlayerLapsCompleted) { _comparisonLap = lc.PlayerLapsCompleted; _comparisonSince = m.Now; }
-            if (m.Now - _comparisonSince >= 6) mode = Mode.Caption;
+            case Mode.Tower: Table99(c, state, m.Now, cfg); break;
+            case Mode.Sector when state.Gap is { } gap: Sector(c, gap, cfg); break;
+            case Mode.Fastest when state.Fastest is { } fastest: Fastest99(c, fastest, m.Session!.Cars, cfg); break;
+            case Mode.Remaining: Remaining99(c, state, cfg); break;
+            case Mode.Pit: Pit(c, m, cfg); break;
+            default: Caption(c, m.Session!.PlayerCar!, m.Session.Cars, cfg); break;
         }
-        long key = mode switch
-        {
-            Mode.Tower => 10000 + b!.Tower!.PageIndex,
-            Mode.Sector => 20000 + (long)Math.Round(b!.SectorGap98!.OpenT * 100),
-            Mode.Laps => 30000 + b!.LapComparison!.PlayerLapsCompleted,
-            _ => -(int)mode,
-        };
-        double eventStart = mode switch
-        {
-            Mode.Tower => b!.Tower!.PageStartT,
-            Mode.Sector => b!.SectorGap98!.OpenT,
-            Mode.Pit => BroadcastUi.State(m).PlayerStopStartT,
-            Mode.Winner => BroadcastUi.State(m).Winner!.FinishedT,
-            _ => m.Now,
-        };
-        if (_key != key)
-        {
-            _since = _key == long.MinValue && double.IsFinite(eventStart) ? eventStart : m.Now;
-            _key = key;
-        }
-        float alpha = (float)Math.Clamp((m.Now - _since) / 0.16, 0, 1);
-        if (mode == Mode.Caption)
-        {
-            var bc = BroadcastUi.State(m);
-            double last = Math.Max(bc.SessionSeenT, Math.Max(bc.PlayerPositionChangedT, bc.PlayerLapChangedT));
-            alpha *= BroadcastUi.Fade(m.Now - last, 6, 0.16, 0.2);
-            if (cfg.ColumnVisible("always")) alpha = 1;
-        }
-        if (mode == Mode.Pit && !BroadcastUi.State(m).PlayerStopped)
-            alpha *= (float)Math.Clamp((BroadcastUi.PitTimerHold - (m.Now - BroadcastUi.State(m).PlayerStopEndT)) / 0.2, 0, 1);
-        if (mode == Mode.Winner)
-            alpha *= (float)Math.Clamp((BroadcastUi.WinnerHold - (m.Now - BroadcastUi.State(m).Winner!.FinishedT)) / 0.2, 0, 1);
-        BroadcastUi.WithAlpha(c, alpha, () =>
-        {
-            switch (mode)
-            {
-                case Mode.Tower: Tower(c, b!.Tower!, m.Now, cfg); break;
-                case Mode.Sector: Sector(c, b!.SectorGap98!, cfg); break;
-                case Mode.Laps: Laps(c, b!.LapComparison!, cfg); break;
-                case Mode.Caption: Caption(c, m.Session!.PlayerCar!, m.Session.Cars, cfg); break;
-                case Mode.Pit: Pit(c, m, cfg); break;
-                case Mode.Winner: Winner(c, BroadcastUi.State(m).Winner!, m.Session!.Cars, cfg); break;
-            }
-        });
     }
 
     public static void Band(ThemeCanvas c, float y = 0, float h = Height)
@@ -94,44 +51,51 @@ public sealed class Broadcast98RaceBoard
 
     static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
     static void Name(ThemeCanvas c, string s, float x, float y, float w, HAlign align = HAlign.Left, float size = 48, string element = "name")
-        => c.Text(s, BroadcastUi.Fit(c, s, c.Theme.Text with { Element = element, Size = size }, w), x, y, w, Math.Max(62, size * 1.3f), c.Theme.TextColor, align, c.Theme.TextShadow);
+        => c.Text(s, BroadcastUi.Fit(c, s, c.Theme.Text with { Element = element, Size = size, Weight = 600 }, w), x, y, w, Math.Max(62, size * 1.3f), c.Theme.TextColor, align, c.Theme.TextShadow);
     static void Number(ThemeCanvas c, string s, float x, float y, float w, float size = 52, HAlign align = HAlign.Left, string element = "value")
-        => c.Text(s, BroadcastUi.Fit(c, s, c.Theme.Numbers with { Element = element, Size = size }, w), x, y, w, Math.Max(65, size * 1.3f), c.Theme.ValueColor, align, c.Theme.ValueShadow);
+        => c.Text(s, BroadcastUi.Fit(c, s, c.Theme.Numbers with { Element = element, Size = size, Weight = 400 }, w), x, y, w, Math.Max(65, size * 1.3f), c.Theme.ValueColor, align, c.Theme.ValueShadow);
 
-    void Tower(ThemeCanvas c, BoardTower tower, double now, WidgetSettings cfg)
+    static readonly Color4 Cyan = new(0.08f, 0.76f, 0.78f, 1);
+    static readonly Color4 Yellow = new(0.92f, 0.94f, 0.22f, 1);
+
+    static void Table99(ThemeCanvas c, Broadcast99RaceState state, double now, WidgetSettings cfg)
     {
         Band(c);
-        double age = now - tower.PageStartT;
-        if (age < 0.6)
+        // Eight entries per page, four rows in each column; no permanent standings/title.
+        int page = Math.Max(0, (int)(state.ShownSeconds / state.PageHoldSeconds));
+        int half = (state.PageSize + 1) / 2;
+        foreach (var (row, i) in state.Rows.Skip(page * state.PageSize).Take(state.PageSize).Select((r, i) => (r, i)))
         {
-            c.Text("CLASSIFICATION", c.Theme.Text with { Element = "title", Size = 28 }, 40, 10, 800, 40,
-                new Color4(1f, 0.86f, 0.1f, 1f), HAlign.Left, c.Theme.TextShadow);
-            return;
+            float x = 155 + i / half * 810, y = 20 + i % half * Math.Min(62, 260f / half);
+            Chrome.AccentBox(c, x, y, 54, 52, N(row.Driver.Position), c.Theme.Numbers with { Element = "position", Size = 46, Weight = 400 });
+            Name(c, cfg.Name(row.Driver.Name, row.Driver.CarIndex, row.Driver.ShortName).ToUpperInvariant(), x + 76, y - 4, 480);
+            string value = row.Driver.Position == 1 ? "LAP " + N(state.Lap)
+                : row.LapsBehind > 0 ? cfg.Fmt.FormatLaps(row.LapsBehind, false)
+                : row.GapSeconds is { } gap ? cfg.Fmt.FormatGap(Math.Abs(gap), false) : "--";
+            c.Text(value, c.Theme.Numbers with { Element = "gap", Size = 46, Weight = 400 }, x + 520, y - 4, 245, 62, Yellow, HAlign.Right, c.Theme.ValueShadow);
         }
-        foreach (var row in tower.Entries)
-        {
-            double start = Math.Max(row.CrossedT, tower.PageStartT + 0.6 + (row.PageSlot - 1) * 0.45);
-            float a = (float)Math.Clamp((now - start) / 0.12, 0, 1);
-            BroadcastUi.WithAlpha(c, a, () =>
-            {
-                float x = 160 + row.Column * 810, y = 20 + row.Row * 62;
-                Chrome.AccentBox(c, x, y, 54, 52, N(row.Position), c.Theme.Numbers with { Element = "position", Size = 46 });
-                string name = cfg.Name(row.Name, row.CarIndex, row.ShortName).ToUpperInvariant();
-                Name(c, name, x + 76, y - 4, cfg.Width("name", 480));
-                string value = row.GapKind switch
-                {
-                    BoardGapKind.Leader => "LAP " + N(row.GapLaps),
-                    BoardGapKind.Laps => cfg.Fmt.FormatLaps(row.GapLaps, false),
-                    _ => cfg.Fmt.FormatGap(row.GapSeconds, false),
-                };
-                if (row.GapKind is BoardGapKind.Leader or BoardGapKind.Laps)
-                    c.Text(value, c.Theme.Label with { Element = "gap", Size = 43 }, x + 555, y - 2, cfg.Width("gap", 210), 58, c.Theme.ValueColor, HAlign.Right, c.Theme.TextShadow);
-                else Number(c, value, x + 520, y - 5, cfg.Width("gap", 245), 46, HAlign.Right, element: "gap");
-            });
-        }
-        // A transmissão não acrescenta contador X/Y à tabela. A opção continua disponível.
-        if (cfg.ColumnVisible("page") && tower.PageCount > 1)
-            c.Text($"{tower.PageIndex + 1}/{tower.PageCount}", c.Theme.Label with { Size = 22 }, Width - 130, 268, 90, 26, c.Theme.LabelColor, HAlign.Right);
+    }
+
+    public static void Fastest99(ThemeCanvas c, FastestLapEvent fastest, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
+    {
+        Caption(c, fastest.Car, field, cfg);
+        c.Text("LAP", c.Theme.Label with { Size = 51, Weight = 600 }, 1150, 101, 190, 65, Yellow, shadow: c.Theme.TextShadow);
+        c.Text("FASTEST LAP", c.Theme.Text with { Element = "title", Size = 43, Weight = 600 }, 1360, 113, 510, 60, Cyan, shadow: c.Theme.TextShadow);
+        c.Text(fastest.Car.LapsCompleted > 0 ? N(fastest.Car.LapsCompleted) : "--", c.Theme.Numbers with { Size = 68, Weight = 400 }, 1150, 174, 160, 90, Yellow, HAlign.Center, c.Theme.ValueShadow);
+        c.Text(cfg.Fmt.FormatLapTime(fastest.LapTime), c.Theme.Numbers with { Element = "time", Size = 61, Weight = 400 }, 1350, 180, 510, 90, Yellow, HAlign.Right, c.Theme.ValueShadow);
+        c.FillRect(1070, 10, 780, 72, new Color4(0, 0, 0, 1));
+        c.Sponsor("tagheuer_shield", 1090, 18, 70, 56);
+        c.Text("TAGHeuer  TIMING", c.Theme.Text with { Size = 47, Weight = 600 }, 1180, 14, 650, 64, new Color4(1, 1, 1, 1));
+    }
+
+    public static void Remaining99(ThemeCanvas c, Broadcast99RaceState state, WidgetSettings cfg)
+    {
+        Band(c, 100, 200);
+        c.FillRect(1060, 20, 750, 72, new Color4(0, .61f, .73f, 1));
+        c.Text("SIEMENS", c.Theme.Text with { Size = 49, Weight = 600 }, 1070, 23, 730, 65, new Color4(1, 1, 1, 1), HAlign.Center, c.Theme.TextShadow);
+        c.Text(N(state.LapsRemaining ?? 0) + " LAPS REMAINING", c.Theme.Text with { Element = "title", Size = 55, Tracking = 4, Weight = 600 }, 450, 105, 1300, 80, Yellow, HAlign.Center, c.Theme.TextShadow);
+        var leader = state.Leader;
+        Name(c, "Leader - " + (leader is null ? "--" : cfg.Name(leader.Name, leader.CarIndex, leader.ShortName).ToUpperInvariant()), 530, 206, 1200, HAlign.Center, 50);
     }
 
     public static void Sector(ThemeCanvas c, BoardSectorGap split, WidgetSettings cfg)
@@ -143,10 +107,12 @@ public sealed class Broadcast98RaceBoard
         Chrome.AccentBox(c, 1650, 135, 140, 125, N(rear.Position), c.Theme.Numbers with { Element = "position", Size = 100 });
         Chrome.SplitBar(c, 292, 135, 380, 32, false);
         Chrome.SplitBar(c, 1248, 135, 380, 32, true);
-        Name(c, cfg.Name(front.Name, front.CarIndex, front.ShortName).ToUpperInvariant(), 290, 182, 565, size: 49);
-        Name(c, cfg.Name(rear.Name, rear.CarIndex, rear.ShortName).ToUpperInvariant(), 1065, 182, 565, HAlign.Right, 49);
+        Name(c, cfg.Name(front.Name, front.CarIndex, front.ShortName).ToUpperInvariant(), 290, 182, 450, size: 49);
+        Name(c, cfg.Name(rear.Name, rear.CarIndex, rear.ShortName).ToUpperInvariant(), 1210, 182, 420, HAlign.Right, 49);
         string gap = split.IsSplit ? cfg.Fmt.FormatGap(Math.Abs(split.GapSeconds), false) : Math.Abs(split.GapSeconds).ToString("0.0", CultureInfo.InvariantCulture);
-        Number(c, gap, 775, 105, 370, 62, HAlign.Center, element: "gap");
+        c.Text(gap, c.Theme.Numbers with { Element = "gap", Size = 62, Weight = 400 }, 775, 105, 370, 80, Yellow, HAlign.Center, c.Theme.ValueShadow);
+        if (split.PreviousGapSeconds is { } previous)
+            c.Text("(" + cfg.Fmt.FormatGap(Math.Abs(previous), false) + ")", c.Theme.Numbers with { Element = "gap", Size = 49, Weight = 400 }, 750, 188, 420, 65, Yellow, HAlign.Center, c.Theme.ValueShadow);
     }
 
     public static void Laps(ThemeCanvas c, BoardLapComparison comparison, WidgetSettings cfg)
@@ -173,13 +139,11 @@ public sealed class Broadcast98RaceBoard
     public static void Caption(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)
     {
         Band(c, 80, 220);
-        Chrome.Bubble(c, 165, 116, 88, 50, CaptionPlate.CarNumber(car), c.Theme.Numbers with { Size = 43 });
-        Name(c, cfg.Name(car, BroadcastUi.ShortName(car, field)).ToUpperInvariant(), 285, 110, 900, size: 50);
+        Chrome.Bubble(c, 165, 116, 88, 50, N(car.Position), c.Theme.Numbers with { Element = "position", Size = 43, Weight = 400 });
+        Name(c, cfg.Name(car, BroadcastUi.ShortName(car, field)).ToUpperInvariant(), 285, 110, 800, size: 50);
         if (cfg.ColumnVisible("tyre")) Chrome.TyreEmblem(c, 210, 219, 27, car.TyreSupplier, c.Theme.Text with { Size = 37 });
         if (cfg.Id == "board" || cfg.ColumnVisible("team"))
-            c.Text(BroadcastUi.Team(car).ToUpperInvariant(), BroadcastUi.Fit(c, BroadcastUi.Team(car), c.Theme.Label with { Element = "name", Size = 46 }, 900), 285, 190, 900, 60, c.Theme.LabelColor, shadow: c.Theme.TextShadow);
-        Chrome.AccentBox(c, 1410, 110, 140, 135, N(car.Position), c.Theme.Numbers with { Element = "position", Size = 105 });
-        // Legenda ciano (patrocinador na transmissão real) omitida: o SDK do AMS2 não fornece o dado.
+            c.Text(BroadcastUi.Team(car).ToUpperInvariant(), BroadcastUi.Fit(c, BroadcastUi.Team(car), c.Theme.Label with { Element = "name", Size = 46 }, 900), 285, 190, 900, 60, Cyan, shadow: c.Theme.TextShadow);
     }
 
     public static void Pit(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
@@ -188,7 +152,7 @@ public sealed class Broadcast98RaceBoard
         Band(c, 80, 220);
         float nameWidth = Math.Min(1500, cfg.Width("name", 720));
         Name(c, cfg.Name(car, BroadcastUi.ShortName(car, m.Session.Cars)).ToUpperInvariant(), 1700 - nameWidth, 92, nameWidth, HAlign.Right, 52);
-        c.Text("PIT STOP", c.Theme.Label with { Size = 52, Tracking = 6 }, 785, 175, 440, 65, c.Theme.ValueColor, shadow: c.Theme.TextShadow);
+        c.Text("PIT STOP", c.Theme.Label with { Size = 52, Tracking = 6 }, 785, 175, 440, 65, Yellow, shadow: c.Theme.TextShadow);
         Number(c, BroadcastUi.StopTime(BroadcastUi.State(m).PlayerStopNow(m.Now)), 1260, 160, 440, 80, HAlign.Right, element: "time");
     }
 

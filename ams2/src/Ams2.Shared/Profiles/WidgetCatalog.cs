@@ -20,7 +20,8 @@ public sealed record WidgetDef(
     /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
     public bool InTheme(string themeId)
         => (Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase)))
-            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id));
+            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id))
+            && (ThemeCatalog.Canonical(themeId) != "f1-1998" || WidgetCatalog.Supports99(Id));
 }
 
 public enum OptionKind { Choice, Toggle, Number }
@@ -144,10 +145,19 @@ public static class WidgetCatalog
     static readonly HashSet<string> Widgets93 = new(StringComparer.OrdinalIgnoreCase)
         { "board", "qualiboard", "standings", "qualitower", "radar", "inputs" };
     internal static bool Supports93(string id) => Widgets93.Contains(id);
+    static readonly HashSet<string> Widgets99 = new(StringComparer.OrdinalIgnoreCase)
+        { "board", "qualiboard", "inputs", "radar" };
+    internal static bool Supports99(string id) => Widgets99.Contains(id);
     /// <summary>Colunas das listas do 1993 (Race/Qualy Standings): faixa azul de patrocinador (ligada) e gap (desligado).</summary>
     static readonly ColumnDef[] Columns93List = [new("sponsor", "Faixa azul de patrocinador"), new("time", "Gap / tempo ao lado do sobrenome")];
     public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId)).Select(d =>
-        ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
+        ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "board"
+            ? d with { DisplayName = "Race Board (gaps, pit stop, volta rápida e legenda)", Columns = [new("team", "Equipe"), new("tyre", "Fornecedor de pneus")], WidthColumns = [], Caps = DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime }
+        : ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "qualiboard"
+            ? d with { DisplayName = "Qualy Board (out lap, intermediárias e resultado)", Columns = [new("team", "Equipe"), new("tyre", "Fornecedor de pneus")], Caps = DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime | DisplayCaps.Speed }
+        : ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "radar"
+            ? d with { DefaultSessions = [SessionIds.Practice, SessionIds.Race] }
+        : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
             ? d with { DisplayName = "Race Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
         : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "qualiboard"
             ? d with { DisplayName = "Qualy Board (volta, parcial e resultado)" }
@@ -364,7 +374,8 @@ public static class WidgetCatalog
             ["qualiboard"] =
             [
                 new("compareTo", "Comparar com", OptionKind.Choice, [O("leader", "Líder (melhor tempo da sessão)"), O("personal", "Melhor volta pessoal")], "leader"),
-                new("showSpeed", "Velocidade na linha de chegada", OptionKind.Toggle, null, "true"),
+                new("showSpeed", "Velocidade na passagem pelas intermediárias e chegada", OptionKind.Toggle, null, "true"),
+                new("showFor", "Retenção do resultado da volta (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
             ],
             // Lista de classificacao do 1998 (Monaco 2003): colunas de caixas amarelas + NOME, 1o com o tempo, demais a diferenca sem "+".
             ["qualitower"] =
@@ -408,7 +419,7 @@ public static class ThemeCatalog
     public static readonly IReadOnlyList<ThemeDef> All =
     [
         new("f1-1993", "F1 1993", true),
-        new("f1-1998", "F1 1998-2001", true),
+        new("f1-1998", "F1 1999", true),
         new("f1-2004", "F1 2004-2008", true),
         new("f1-2012", "F1 2012", true),
         new("f1-2018", "F1 2018", true),

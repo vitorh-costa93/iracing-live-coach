@@ -24,7 +24,9 @@ public static class LayoutPreview
         return model with
         {
             Broadcast = model.Broadcast! with { Winner = null, PlayerStopEndT = double.NegativeInfinity },
-            Board = model.Board! with { Gap93 = new BoardGap93(BoardText.Driver(player, model.Session.Cars),
+            Board = model.Board! with { Race99 = new Broadcast99RaceState(Broadcast99RaceMode.Caption,
+                player.CurrentLap, model.Now, [], null, null, null, null),
+                Gap93 = new BoardGap93(BoardText.Driver(player, model.Session.Cars),
                 BoardText.Driver(neighbor, model.Session.Cars), true, 1.268, "1.268", model.Now - 1.268,
                 model.Now, model.Now + 7) },
         };

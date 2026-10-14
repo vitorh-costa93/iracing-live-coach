@@ -48,17 +48,19 @@ public sealed class HostIpcTests : IDisposable
         client.Start();
         await WaitFor(() => client.Connected, 10000, "cliente nao conectou ao host");
 
-        // Estado inicial: 6 widgets, tema 1998, perfil padrao, dados do escritor falso chegando.
+        // Estado inicial: quatro widgets do tema 1999 (ID legado 1998), perfil padrao e dados fake.
         var st = (await client.SendAsync(IpcCommands.GetState))!;
         Assert.True(st.Fake);
         Assert.Equal("f1-1998", st.Theme);
         Assert.Equal("Padrão", st.ActiveProfile);
         Assert.Equal(WidgetCatalog.ForTheme("f1-1998").Select(w => w.Id), st.Widgets.Select(w => w.Id));
+        Assert.Equal(new[] { "board", "qualiboard", "inputs", "radar" }.Order(), st.Widgets.Select(w => w.Id).Order());
         Assert.All(new[] { "f1-1998", "f1-2004", "f1-2018" }, id => Assert.Contains(st.Themes, t => t.Id == id && t.Available));
         await WaitFor(() => client.SendAsync(IpcCommands.GetState).Result!.GameConnected, 8000, "escritor falso nao conectou");
 
         // Aplicar um perfil inteiro (o Control Center envia Data) e depois alterar um widget ao vivo.
-        var profile = ProfileFactory.CreateDefault("Corrida", "f1-1998", 1920, 1080);
+        await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2004" });
+        var profile = ProfileFactory.CreateDefault("Corrida", "f1-2004", 1920, 1080);
         st = (await client.SendAsync(IpcCommands.ApplyProfile, m => m with { Data = profile }))!;
         Assert.Equal("Corrida", st.ActiveProfile);
 
@@ -97,29 +99,29 @@ public sealed class HostIpcTests : IDisposable
 
         // Erros viram resposta, nao derrubam o host.
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2099" }));
-        // Cada tema tem seus perfis: trocar para 2004 e 2018 carrega o perfil padrao do tema, sem tocar no de 1998.
-        foreach (var th in new[] { "f1-2004", "f1-2018" })
+        // Cada tema tem seus perfis: 1999 e 2018 mantem o padrao, sem tocar no customizado de 2004.
+        foreach (var th in new[] { "f1-1998", "f1-2018" })
         {
             st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = th }))!;
             Assert.Equal(th, st.Theme);
             Assert.Equal("Padrão", st.ActiveProfile);
         }
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendAsync(IpcCommands.SetWidget, m => m with { Widget = "nope", Patch = new WidgetPatch() }));
-        st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-1998" }))!;
-        Assert.Equal("f1-1998", st.Theme);
-        Assert.Contains("qualiboard", st.HiddenBySession);
+        st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2004" }))!;
+        Assert.Equal("f1-2004", st.Theme);
+        Assert.Contains("qualitower", st.HiddenBySession);
 
         // Perfil e alteracoes foram gravados em disco (salvamento com atraso curto).
         var store = new ProfileStore(_dir);
-        await WaitFor(() => store.Load("f1-1998", "Corrida")?.Get("fuel")?.X == 100, 4000, "alteracao nao foi salva no perfil");
-        var saved = store.Load("f1-1998", "Corrida")!;
+        await WaitFor(() => store.Load("f1-2004", "Corrida")?.Get("fuel")?.X == 100, 4000, "alteracao nao foi salva no perfil");
+        var saved = store.Load("f1-2004", "Corrida")!;
         Assert.Equal(1.5f, saved.Get("fuel")!.Scale);
         Assert.Equal(1.2f, saved.Get("fuel")!.WidthScale);
         Assert.Equal(0.8f, saved.Get("fuel")!.HeightScale);
         Assert.Equal(0.7f, saved.Get("fuel")!.ElementFonts!["value"].Scale);
         Assert.Equal(300, saved.Get("fuel")!.ElementFonts!["value"].Weight);
         Assert.Equal((7, 4), (saved.Get("standings")!.TopCount, saved.Get("standings")!.NearCount));
-        Assert.Equal("Corrida", store.GetActiveProfile("f1-1998"));
+        Assert.Equal("Corrida", store.GetActiveProfile("f1-2004"));
 
         // Reconexao: um segundo cliente novo ve o mesmo estado.
         using var client2 = new IpcClient(_pipe);

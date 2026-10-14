@@ -674,7 +674,6 @@ public class ThemeOptionsTests
     [Theory]
     [InlineData("f1-2018", 500f, 382f)]
     [InlineData("f1-2004", 256f, 406f)]
-    [InlineData("f1-1998", 834f, 262f)]
     public void Quali_result_sits_in_a_free_area_and_clears_every_widget_visible_in_qualifying(string theme, float w, float h)
     {
         // Sem grupo exclusivo: a torre de classificacao continua na tela quando o resultado aparece.
