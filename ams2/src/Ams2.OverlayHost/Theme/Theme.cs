@@ -220,18 +220,18 @@ public static class Themes
         OutInk: Rgb(170, 172, 178),
         SubPanelFill: Rgb(46, 58, 60, 0.92f));
 
-    // Barlow Semi Condensed Bold (bundled in the fonts folder, OFL): closest match to the condensed all-caps sans of the 1993 TV graphics
-    // (white lettering with a heavy drop shadow); no extracted broadcast assets.
+    // Arial Bold (sistema do Windows): grotesca larga estilo Helvetica Bold das legendas de TV de 1993 (letras brancas com contorno/sombra curta
+    // escura, numeros dourados), conforme as referencias em reference/1993/user-refs. A Barlow condensada era estreita demais.
     public static readonly Theme F1_1993 = F1_1998 with
     {
         Id = "f1-1993", DisplayName = "F1 1993", Style = ThemeStyle.Broadcast93,
-        Title = new("Barlow Semi Condensed", 700, 30), Label = new("Barlow Semi Condensed", 700, 27),
-        Text = new("Barlow Semi Condensed", 700, 30), Numbers = new("Barlow Semi Condensed", 700, 32),
+        Title = new("Arial", 700, 28), Label = new("Arial", 700, 25),
+        Text = new("Arial", 700, 28), Numbers = new("Arial", 700, 28),
         PanelFill = Rgb(85, 91, 86, .48f), NumberColor = Rgb(244, 244, 233),
         ValueColor = Rgb(255, 224, 91), LabelColor = Rgb(70, 213, 239),
         ReadoutColor = Rgb(70, 213, 239),
-        TextShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
-        ValueShadow = new(3, 4, Rgb(0, 0, 0, .85f)),
+        TextShadow = new(2, 2, Rgb(0, 0, 0, .9f)),
+        ValueShadow = new(2, 2, Rgb(0, 0, 0, .9f)),
     };
     /// <summary>
     /// F1 2012 (gráfico de TV 2011–2013; ref. exemplos do GP da Malásia 2012): mesma lógica do 2004, em células escuras inclinadas "/" com gradiente
