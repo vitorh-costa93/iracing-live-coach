@@ -99,3 +99,15 @@ public sealed class LiveryCatalogTests : IDisposable
         Assert.Contains(all, e => e.Team.Length > 0 && e.Country.Length == 3);
     }
 }
+
+public class TeamFromLiveryTests
+{
+    [Theory]
+    [InlineData("Benetton-Ford #5 M. Schumacher", "M. Schumacher", "Benetton-Ford")]
+    [InlineData("1986 Arrows #17 - C. Danner", "Christian Danner", "1986 Arrows")]
+    [InlineData("Christian Klien #15", "Christian Klien", "Red Bull")]
+    [InlineData("Jacques Villeneuve #22", "Jacques Villeneuve", "BMW Sauber")]
+    [InlineData("1999 BAR #22 - J. Villeneuve", "Jacques Villeneuve", "1999 BAR")]
+    public void Team_comes_from_the_livery_name_or_the_2006_table(string livery, string driver, string expected)
+        => Assert.Equal(expected, Ams2.Shared.Liveries.LiveryCatalog.TeamFromLivery(livery, driver));
+}

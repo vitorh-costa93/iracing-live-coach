@@ -68,7 +68,7 @@ public static class BroadcastUi
     /// <summary>Equipe da pintura escolhida (jogador) ou deduzida do nome do carro: sem o sufixo de fornecedor "(M)"/"(B)" e sem o nome da classe.</summary>
     public static string Team(CarSnapshot car)
     {
-        if (car.TeamName.Length > 0) return car.TeamName;
+        if (car.TeamName.Length > 0) return System.Text.RegularExpressions.Regex.Replace(car.TeamName, @"^(19|20)\d\d\s+", ""); // "1986 Arrows" -> "Arrows" (o ano so distingue a silhueta)
         string t = car.CarName.Trim();
         int p = t.LastIndexOf('(');
         if (p > 0 && t.EndsWith(')')) t = t[..p].Trim();

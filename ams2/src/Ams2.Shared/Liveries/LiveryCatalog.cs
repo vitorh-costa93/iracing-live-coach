@@ -100,8 +100,8 @@ public static class LiveryCatalog
                     {
                         string live = ((string?)lo.Attribute("NAME") ?? "").Trim();
                         if (live.Length == 0) continue;
-                        string team = TeamOf(lo);
                         drivers.TryGetValue(live, out var ai);
+                        string team = TeamOf(lo, live, ai.Name);
                         string driver = ai.Name ?? NumberSuffix.Replace(live, "").Trim();
                         result.TryAdd((model, live), new LiveryEntry(live, driver, ai.Country ?? "", team, model) { Class = ai.Class ?? "" });
                     }
@@ -121,14 +121,29 @@ public static class LiveryCatalog
         return terms.Length == 0 ? all : all.Where(e => terms.All(t => e.SearchText.Contains(t, StringComparison.OrdinalIgnoreCase)));
     }
 
-    /// <summary>Equipe = pasta que contem a textura BODY (ex.: "...\McLaren\Livery X.dds" -> "McLaren"); vazio se nao der para deduzir.</summary>
-    static string TeamOf(XElement liveryOverride)
+    static readonly Regex GenericFolder = new(@"^F1[ _]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    static readonly Regex NumberAndDriver = new(@"\s*#\d+.*$", RegexOptions.Compiled);
+
+    /// <summary>Equipe = pasta que contem a textura BODY (ex.: "...\McLaren\Livery X.dds" -> "McLaren"). Pastas de pacote ("F1_Season_1993",
+    /// "F1 2006 Skinpack") nao dizem a equipe: ai vale o nome da pintura sem "#numero piloto" ("Benetton-Ford #5 M. Schumacher" -> "Benetton-Ford"),
+    /// ou a tabela de 2006 quando a pintura so cita o piloto. Vazio se nao der para deduzir.</summary>
+    internal static string TeamOf(XElement liveryOverride, string livery = "", string? driver = null)
     {
         string? path = liveryOverride.Elements("TEXTURE").FirstOrDefault(t => string.Equals((string?)t.Attribute("NAME"), "BODY", StringComparison.OrdinalIgnoreCase))?.Attribute("PATH")?.Value
                        ?? liveryOverride.Element("PREVIEWIMAGE")?.Attribute("PATH")?.Value;
         if (string.IsNullOrWhiteSpace(path)) return "";
         var parts = path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? parts[^2].Trim() : "";
+        string folder = parts.Length >= 2 ? parts[^2].Trim() : "";
+        if (folder.Length > 0 && !GenericFolder.IsMatch(folder)) return folder;
+        return TeamFromLivery(livery, driver) is { Length: > 0 } t ? t : folder;
+    }
+
+    /// <summary>Equipe pelo nome da pintura; so o piloto no nome (2006): tabela por piloto. Prefixo de ano ("1986 Arrows") fica, para distinguir epocas.</summary>
+    public static string TeamFromLivery(string livery, string? driver)
+    {
+        string head = NumberAndDriver.Replace(livery ?? "", "").Trim();
+        if (driver is not null && string.Equals(head, driver.Trim(), StringComparison.OrdinalIgnoreCase) && ClassicTeams.Of2006(driver) is { } t) return t;
+        return head;
     }
 
     /// <summary>"F-V8_Gen1_2006_Equal" -> "F-V8_Gen1": a classe e o que vem antes do primeiro "_" seguido de ano ou de nivel.</summary>
