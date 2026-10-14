@@ -3,11 +3,30 @@ using Ams2.Core.Calc;
 using Ams2.Core.Raw;
 using Ams2.Core.Reading;
 using Ams2.Shared.PlayerNames;
+using Ams2.Shared.Liveries;
 
 namespace Ams2.Core.Tests;
 
 public class PlayerIdentityTests
 {
+    [Fact]
+    public void ApplyFieldByCar_same_driver_keeps_the_team_of_each_car_season()
+    {
+        using var detector = new LiveryDetector(
+        [
+            new("Benetton-Ford #5 M. Schumacher", "Michael Schumacher", "DEU", "Benetton-Ford", "formula_hitech_g2m1") { Class = "F-Hitech_Gen2" },
+            new("Ferrari #3 M. Schumacher", "Michael Schumacher", "DEU", "Ferrari", "formula_v10_g1") { Class = "F-V10_Gen1" },
+        ]);
+        var before = Grid(["Michael Schumacher", "Vitor COSTA", "Michael Schumacher"],
+            ["Formula V10 Gen1 Model1", "Formula V10 Gen1 Model1", "Formula HiTech Gen2 Model1"]).Snapshot();
+        before = before with { Cars = before.Cars.Select(c => c with { ClassName = c.Index == 2 ? "F-Hitech_Gen2" : "F-V10_Gen1" }).ToArray() };
+        var after = PlayerIdentity.ApplyFieldByCar(before, c => detector.FindDriver(c.Name, c.CarName, c.ClassName) is { } e ? (e.Country, e.Team) : null);
+        Assert.Equal("Ferrari", after.Cars[0].TeamName);
+        Assert.Equal("Benetton-Ford", after.Cars[2].TeamName);
+        Assert.Equal("", after.PlayerCar!.TeamName);
+        Assert.Equal(before.Cars.Select(c => (c.Index, c.Position, c.LapDistance)), after.Cars.Select(c => (c.Index, c.Position, c.LapDistance)));
+    }
+
     static Sim Grid(string[] names, string[] cars, int player = 1)
         => new(7000, (300, 60), (200, 60), (100, 60)) { PlayerIndex = player, Names = names, CarNames = cars, AutoPositions = true };
 

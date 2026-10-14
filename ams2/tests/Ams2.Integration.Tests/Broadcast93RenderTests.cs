@@ -82,7 +82,7 @@ public class Broadcast93RenderTests
     }
 
     [Fact]
-    public void Race_gap_is_fixed_without_countdown_then_board_disappears()
+    public void Race_gap_is_fixed_without_countdown_then_caption_returns()
     {
         var m = LayoutPreview.ForWidget("board") with { Now = 100, PlayerDriving = true };
         var player = new BoardDriver(0, 2, "Ayrton Senna", "Senna", "SEN", "car", "", true);
@@ -93,7 +93,7 @@ public class Broadcast93RenderTests
         var first = Render(c => board.Draw(c, m, cfg), "1993-race-gap");
         Assert.Equal(first, Render(c => board.Draw(c, m with { Now = 103 }, cfg)));
         Assert.Equal(Broadcast93RaceBoard.Mode.Gap, Broadcast93RaceBoard.Select(m));
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(m with { Now = 107 }));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m with { Now = 107 }));
         m = Flying(); m = m with { QualiLap = m.QualiLap! with { OutLap = true, Elapsed = null } };
         var quali = new Broadcast93QualiBoard();
         Assert.Contains(Render(c => quali.Draw(c, m, QualiConfig), "1993-quali-caption"), b => b != 0);
@@ -106,13 +106,13 @@ public class Broadcast93RenderTests
         var m = LayoutPreview.ForWidget("board") with { Now = 100, PlayerDriving = true, Board = null, Broadcast = BroadcastState.Empty };
         m = m with { Session = m.Session! with { InSession = true, GameState = 2 } };
         var board = new Broadcast93RaceBoard(); var cfg = new WidgetSettings { Id = "board", Columns = [] };
-        Assert.DoesNotContain(Render(c => board.Draw(c, m, cfg)), b => b != 0);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, m, cfg)), Render(c => board.Draw(c, m, cfg)));
         var bestCar = m.Session.Cars.MinBy(car => car.BestLapTime)!;
         var updated = m with { Now = 101, Session = m.Session with { Cars = m.Session.Cars.Select(car => car.Index == bestCar.Index ? car with { BestLapTime = car.BestLapTime - .4 } : car).ToArray() } };
         var visible = Render(c => board.Draw(c, updated, cfg), "1993-race-fastest");
         Assert.Contains(visible, b => b != 0);
-        Assert.DoesNotContain(Render(c => board.Draw(c, updated, cfg with { Options = new() { ["showFastest"] = "false" } })), b => b != 0);
-        Assert.DoesNotContain(Render(c => board.Draw(c, updated with { Now = 108 }, cfg)), b => b != 0);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, updated, cfg)), Render(c => board.Draw(c, updated, cfg with { Options = new() { ["showFastest"] = "false" } })));
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, updated, cfg)), Render(c => board.Draw(c, updated with { Now = 108 }, cfg)));
     }
 
     [Fact]
@@ -122,14 +122,14 @@ public class Broadcast93RenderTests
         m = m with { Session = m.Session! with { InSession = true, GameState = 2,
             Cars = m.Session!.Cars.Select(car => car with { BestLapTime = 0 }).ToArray() } };
         var board = new Broadcast93RaceBoard(); var cfg = new WidgetSettings { Id = "board", Columns = [] };
-        Assert.DoesNotContain(Render(c => board.Draw(c, m, cfg)), b => b != 0);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, m, cfg)), Render(c => board.Draw(c, m, cfg)));
         var updated = m with { Now = 101, Session = m.Session with { Cars = m.Session.Cars.Select(car => car.IsPlayer ? car with { BestLapTime = 80.123 } : car).ToArray() } };
         var actual = Render(c => board.Draw(c, updated, cfg));
         Assert.Contains(actual, b => b != 0);
         Assert.Equal(Render(c => Broadcast93RaceBoard.Fastest(c, updated.Session!.PlayerCar!, updated.Session.Cars, cfg, updated.Session.TrackLength)), actual);
         // Attaching after that time already exists seeds the baseline without a stale event.
         var attached = new Broadcast93RaceBoard();
-        Assert.DoesNotContain(Render(c => attached.Draw(c, updated, cfg)), b => b != 0);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, updated, cfg)), Render(c => attached.Draw(c, updated, cfg)));
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class Broadcast93RenderTests
         Assert.Contains(Render(c => board.Draw(c, record, cfg)), b => b != 0);
         // Same track, player, clock direction and lap count; only the provider's generation changes.
         var restarted = record with { Now = 102, QualiLap = record.QualiLap! with { SessionGeneration = 2 } };
-        Assert.DoesNotContain(Render(c => board.Draw(c, restarted, cfg)), b => b != 0);
+        Assert.Equal(Render(c => Broadcast93RaceBoard.Caption(c, restarted, cfg)), Render(c => board.Draw(c, restarted, cfg)));
         Assert.Equal(Render(c => new Broadcast93RaceBoard().Draw(c, restarted, cfg)), Render(c => board.Draw(c, restarted, cfg)));
     }
 

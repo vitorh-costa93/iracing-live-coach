@@ -67,13 +67,17 @@ public static class PlayerIdentity
     /// <summary>Preenche pais e equipe dos carros da IA (sem pais/equipe ainda) pelo nome do piloto, com <paramref name="lookup"/> (catalogo de
     /// pinturas do jogo). Nomes desconhecidos ficam como estao. So Country/TeamName mudam; o carro do jogador nao e tocado.</summary>
     public static SessionSnapshot ApplyField(SessionSnapshot s, Func<string, (string Country, string Team)?> lookup)
+        => ApplyFieldByCar(s, c => lookup(c.Name));
+
+    /// <summary>Preenche a identidade da IA usando tambem modelo e classe, para distinguir temporadas do mesmo piloto.</summary>
+    public static SessionSnapshot ApplyFieldByCar(SessionSnapshot s, Func<CarSnapshot, (string Country, string Team)?> lookup)
     {
         List<CarSnapshot>? cars = null;
         for (int i = 0; i < s.Cars.Count; i++)
         {
             var c = s.Cars[i];
             if (c.IsPlayer || c.Index == s.Player?.Index || (c.Country.Length > 0 && c.TeamName.Length > 0)) continue;
-            if (lookup(c.Name) is not { } hit) continue;
+            if (lookup(c) is not { } hit) continue;
             var next = c with
             {
                 Country = c.Country.Length > 0 ? c.Country : hit.Country.Trim(),

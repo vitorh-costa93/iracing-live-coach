@@ -9,16 +9,17 @@ using Vortice.Win32.Numerics;
 namespace Ams2.OverlayHost.Widgets;
 
 /// <summary>
-/// Placa inferior da corrida 1993: so aparece quando ha algo a mostrar, por prioridade PIT STOP &gt; FASTEST LAP &gt; LAPS TO GO &gt; GAP.
-/// Sem nenhum ativo nao desenha nada (o Race Standings fica o tempo todo; a placa some).
+/// Placa inferior 1993: PIT STOP &gt; FASTEST LAP &gt; LAPS TO GO &gt; GAP &gt; legenda do jogador.
+/// Eventos medidos retêm seu tempo visível quando interrompidos por um evento prioritário.
 /// </summary>
 public sealed class Broadcast93RaceBoard
 {
     public const float Width = 1920, Height = 300;
     public static readonly Color4 White = new(.96f, .96f, .91f, 1), Yellow = new(1, .88f, .36f, 1), Cyan = new(.27f, .84f, .94f, 1),
         Blue = new(.30f, .46f, 1f, 1), BandBlue = new(20 / 255f, 40 / 255f, 200 / 255f, 1f), Pure = new(1, 1, 1, 1);
-    public enum Mode { None, Gap, Fastest, Pit, LapsToGo }
+    public enum Mode { None, Caption, Gap, Fastest, Pit, LapsToGo }
     readonly FastestLapDetector _fastest = new();
+    readonly Broadcast93RacePresentation _presentation = new();
 
     public static bool Visible(OverlayModel m)
         => m.Connected && m.PlayerDriving && m.Session is { InSession: true, GameState: 2, PlayerCar: not null };
@@ -45,22 +46,24 @@ public sealed class Broadcast93RaceBoard
         if (PitActive(b, m.Now)) return Mode.Pit;
         if (fastestEnabled && fastest?.ActiveAt(m.Now) == true) return Mode.Fastest;
         if (LapsToGoActive(m, b)) return Mode.LapsToGo;
-        return m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT ? Mode.Gap : Mode.None;
+        return m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT ? Mode.Gap : Mode.Caption;
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
         if (!m.Connected || m.Session is { GameState: 3 }) _fastest.Reset();
-        if (!Visible(m)) return;
+        if (!Visible(m)) { _presentation.Reset(); _fastest.Reset(); return; }
         var session = m.Session!;
         _fastest.Update(m.Now, session, m.QualiLap?.SessionGeneration ?? -1);
         bool fastestOn = !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase);
-        switch (Select(m, _fastest.Latest, fastestOn))
+        var frame = _presentation.Update(m, _fastest.Latest, fastestOn);
+        switch (frame.Mode)
         {
             case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now)); break;
             case Mode.Fastest: Fastest(c, _fastest.Latest!.Car, session.Cars, cfg, session.TrackLength); break;
-            case Mode.LapsToGo: LapsToGo(c, Remaining(m) ?? 0); break;
-            case Mode.Gap: Gap(c, m.Board!.Gap93!, cfg); break;
+            case Mode.LapsToGo: LapsToGo(c, frame.Remaining ?? 0); break;
+            case Mode.Gap: Gap(c, frame.Gap!, cfg); break;
+            case Mode.Caption: Caption(c, m, cfg); break;
         }
     }
 
@@ -137,6 +140,8 @@ public sealed class Broadcast93RaceBoard
     {
         if (m.Session?.PlayerCar is not { } car) return;
         Plate(c, car, m.Session.Cars, cfg, 40, 215, 28, tag: true);
+        if (!qualifying && car.Position > 0)
+            Text(c, "P " + car.Position.ToString(CultureInfo.InvariantCulture), 900, 68, 350, "position", 56, Yellow, HAlign.Right);
     }
 
     public static void Onboard(ThemeCanvas c, CarSnapshot car, IReadOnlyList<CarSnapshot> field, WidgetSettings cfg)

@@ -214,13 +214,13 @@ public sealed class OverlayDataProvider : IDisposable
         {
             // Pintura lida do jogo (varredura em thread propria, so ao entrar numa sessao ou trocar de carro); a escolha manual e o plano B.
             string model = pc is null ? "" : PlayerNameStore.ModelKey(pc.CarName);
-            string liveryKey = model + "|" + (pc?.ClassName ?? ""); // classe pode chegar depois do carro: re-pede quando muda
+            string liveryKey = (pc?.CarName.Trim() ?? "") + "|" + (pc?.ClassName ?? ""); // classe/fornecedor podem mudar sem mudar ModelKey
             if (liveryKey != _liveryModel) { _liveryModel = liveryKey; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
             int field = s.Cars.Count;
             if (field != _liveryField && model.Length > 0) { _liveryField = field; _liveries.SetOpponents(s.Cars.Where(c => c.Index != pc!.Index).Select(c => c.Name)); } // IA da sessao: tira as pinturas dela dos candidatos
             var withPlayer = PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
-            // Pais/equipe da IA pelo nome do piloto (catalogo de pinturas): alimenta bandeiras e equipe nas legendas.
-            var result = PlayerIdentity.ApplyField(withPlayer, n => _liveries.FindDriver(n) is { } e ? (e.Country, e.Team) : null);
+            // Equipe da IA depende do carro/classe da pintura, nunca do tema ou do nome global do piloto.
+            var result = PlayerIdentity.ApplyFieldByCar(withPlayer, c => _liveries.FindDriver(c.Name, c.CarName, c.ClassName) is { } e ? (e.Country, e.Team) : null);
             string diag = $"{result.PlayerCar?.Name}|{result.PlayerCar?.Country}|{_liveries.Get(pc?.CarName ?? "")?.Country}";
             if (diag != _playerDiag) { _playerDiag = diag; Console.Error.WriteLine($"[Player] nome|pais|detectado = {diag}"); }
             return result;

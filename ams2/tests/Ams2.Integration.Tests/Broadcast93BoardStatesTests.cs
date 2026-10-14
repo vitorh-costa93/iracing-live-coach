@@ -66,13 +66,50 @@ public class Broadcast93BoardStatesTests
     };
 
     [Fact]
-    public void Nothing_active_draws_nothing_and_caption_mode_is_gone()
+    public void Nothing_active_keeps_player_caption_and_position()
     {
         var m = Race();
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(m));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m));
         var board = new Broadcast93RaceBoard();
-        Assert.DoesNotContain(Render(c => board.Draw(c, m, Cfg)), b => b != 0);
-        Assert.DoesNotContain(Render(c => board.Draw(c, m with { Now = Now + 30 }, Cfg)), b => b != 0);
+        Assert.Contains(Render(c => board.Draw(c, m, Cfg), "race93-caption"), b => b != 0);
+        Assert.Contains(Render(c => board.Draw(c, m with { Now = Now + 30 }, Cfg)), b => b != 0);
+    }
+
+    [Fact]
+    public void Caption_uses_actual_1999_team_under_1993_theme()
+    {
+        var m = Race();
+        var player = m.Session!.PlayerCar!;
+        m = m with { Session = m.Session with { Cars = m.Session.Cars.Select(c => c.Index == player.Index
+            ? c with { Name = "Michael Schumacher", TeamName = "Ferrari", CarName = "F-V10_Gen2_1999_Ferrari" } : c).ToArray() } };
+        Assert.Equal("Ferrari", BroadcastUi.Team(m.Session.PlayerCar!));
+        var board = new Broadcast93RaceBoard();
+        var actual = Render(c => board.Draw(c, m, Cfg), "race93-schumacher99-ferrari");
+        var wrong = m with { Session = m.Session with { Cars = m.Session.Cars.Select(c => c.IsPlayer
+            ? c with { TeamName = "Benetton-Ford" } : c).ToArray() } };
+        Assert.NotEqual(actual, Render(c => new Broadcast93RaceBoard().Draw(c, wrong, Cfg)));
+        var moved = m with { Session = m.Session with { Cars = m.Session.Cars.Select(c => c.IsPlayer
+            ? c with { Position = c.Position + 1 } : c).ToArray() } };
+        Assert.NotEqual(actual, Render(c => new Broadcast93RaceBoard().Draw(c, moved, Cfg)));
+    }
+
+    [Fact]
+    public void Fastest_does_not_consume_gap_and_remaining_display_windows()
+    {
+        var m = WithLapStart(WithGap(Race(10)), 0);
+        var fastest = new FastestLapEvent(m.Session!.Cars[1], 87.438, Now);
+        var presentation = new Broadcast93RacePresentation();
+        Assert.Equal(Broadcast93RaceBoard.Mode.Fastest, presentation.Update(m, fastest).Mode);
+        for (double age = .5; age < 7; age += .5)
+            Assert.Equal(Broadcast93RaceBoard.Mode.Fastest, presentation.Update(m with { Now = Now + age }, fastest).Mode);
+        Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, presentation.Update(m with { Now = Now + 7 }, fastest).Mode);
+        for (double age = 7.5; age < 13; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
+        var gap = presentation.Update(m with { Now = Now + 13 }, fastest);
+        Assert.Equal(Broadcast93RaceBoard.Mode.Gap, gap.Mode);
+        Assert.Equal(m.Board!.Gap93, gap.Gap);
+        for (double age = 13.5; age < 20; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, presentation.Update(m with { Now = Now + 20 }, fastest).Mode);
+        Assert.Equal(Broadcast93RaceBoard.Mode.None, presentation.Update(m with { PlayerDriving = false }).Mode);
     }
 
     [Fact]
@@ -84,7 +121,7 @@ public class Broadcast93BoardStatesTests
         Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, Broadcast93RaceBoard.Select(m, fastest, fastestEnabled: false));
         Assert.Equal(Broadcast93RaceBoard.Mode.Gap, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { LapsRemaining = 7 } }));
         Assert.Equal(Broadcast93RaceBoard.Mode.Pit, Broadcast93RaceBoard.Select(WithPit(m, 3), fastest));
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { Gap93 = null, LapsRemaining = 7 } }));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { Gap93 = null, LapsRemaining = 7 } }));
     }
 
     [Fact]
@@ -93,13 +130,13 @@ public class Broadcast93BoardStatesTests
         var m = WithLapStart(Race(10), 0);
         Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, Broadcast93RaceBoard.Select(m));
         Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, Broadcast93RaceBoard.Select(m with { Now = Now + 5.9 }));
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(m with { Now = Now + 6.1 }));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m with { Now = Now + 6.1 }));
         Assert.Equal("10 LAPS TO GO", Broadcast93RaceBoard.LapsToGoText(10));
         Assert.Equal("1 LAP TO GO", Broadcast93RaceBoard.LapsToGoText(1));
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(WithLapStart(Race(7), 0)));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(WithLapStart(Race(7), 0)));
         var timed = WithLapStart(Race(10), 0);
         timed = timed with { Board = timed.Board! with { LapsRemaining = null }, Session = timed.Session! with { LapsInEvent = 0 } };
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(timed));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(timed));
     }
 
     [Fact]
@@ -140,7 +177,7 @@ public class Broadcast93BoardStatesTests
         Assert.Contains(Render(c => board.Draw(c, fastest, Cfg), "e2-board-fastest"), b => b != 0);
         Assert.Contains(Render(c => board.Draw(c, WithGap(m with { Now = Now + 30 }), Cfg), "e2-board-gap"), b => b != 0);
         Assert.Contains(Render(c => board.Draw(c, WithLapStart(m with { Now = Now + 60 }, 1), Cfg), "e2-board-lapstogo10"), b => b != 0);
-        Assert.Equal(Broadcast93RaceBoard.Mode.None, Broadcast93RaceBoard.Select(WithLapStart(Race(1), 1)));   // 1 is not a multiple of 5: the singular text is only a formatter
+        Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(WithLapStart(Race(1), 1)));   // 1 is not a multiple of 5: the singular text is only a formatter
         Assert.Contains(Render(c => Broadcast93RaceBoard.LapsToGo(c, 1), "e2-board-lapstogo-singular-forced"), b => b != 0);
         Assert.Contains(Render(c => board.Draw(c, WithPit(m with { Now = Now + 120 }, 12.3), Cfg), "e2-board-pit-running"), b => b != 0);
         var left = m with { Now = Now + 150, Broadcast = BroadcastState.Empty with { PlayerStopEndT = Now + 149, PlayerStopSeconds = 2.4 } };
