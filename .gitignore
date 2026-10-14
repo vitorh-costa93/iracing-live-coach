@@ -501,5 +501,7 @@ ams2/fonts/Formula1Display-*.ttf
 
 ams2/src/Ams2.OverlayHost/Assets/Drivers/*.jpg
 ams2/src/Ams2.OverlayHost/Assets/Drivers/*.png
+ams2/src/Ams2.OverlayHost/Assets/Drivers/*.jpeg
 ams2/src/Ams2.OverlayHost/Assets/Cars/*.png
 ams2/src/Ams2.OverlayHost/Assets/Cars/*.jpg
+ams2/src/Ams2.OverlayHost/Assets/Cars/*.jpeg

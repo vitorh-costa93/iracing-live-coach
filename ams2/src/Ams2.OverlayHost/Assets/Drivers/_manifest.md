@@ -1,99 +1,69 @@
-# Fotos de pilotos (uso pessoal)
+# Fotos de pilotos — catálogo pessoal
 
-Fotos de terceiros, NAO versionadas (ver .gitignore). Origem: imagem principal do artigo da Wikipedia (EN), tipicamente Wikimedia Commons (licencas CC BY/CC BY-SA/dominio publico conforme a pagina do arquivo; verificar na pagina do arquivo antes de redistribuir). Recorte superior ~3:4, 300 px.
+Imagens de terceiros fora do Git. Inventário revisado em 14/10/2026. Fontes e licenças transcritas dos TSV de photos_new/photos_r2; oito retratos históricos anteriores tiveram sua licença consultada no Commons. As páginas vinculadas identificam os autores e os termos de atribuição.
 
-| Arquivo | Piloto | Fonte |
-|---|---|---|
-| aguri_suzuki.jpg | Aguri Suzuki | https://en.wikipedia.org/wiki/Aguri_Suzuki (imagem: https://upload.wikimedia.org/wikipedia/commons/a/ac/Suzuki_Sepang_25.png) |
-| alain_prost.jpg | Alain Prost | https://en.wikipedia.org/wiki/Alain_Prost (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/7/74/Festival_automobile_international_2015_-_Photocall_-_065_%28cropped3%29.jpg/500px-Festival_automobile_international_2015_-_Photocall_-_065_%28cropped3%29.jpg) |
-| alan_jones.jpg | Alan Jones | https://en.wikipedia.org/wiki/Alan_Jones_(racing_driver) (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ce/Jones_alan.JPG/500px-Jones_alan.JPG) |
-| alessandro_zanardi.jpg | Alessandro Zanardi | https://en.wikipedia.org/wiki/Alex_Zanardi (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Alex_Zanardi_%28cropped%29.JPG/500px-Alex_Zanardi_%28cropped%29.JPG) |
-| alexander_wurz.jpg | Alexander Wurz | https://en.wikipedia.org/wiki/Alexander_Wurz (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/Alexander_Wurz_-_2016_24_Hours_of_Le_Mans_-_Pit_Walk_%28cropped%29.jpg/500px-Alexander_Wurz_-_2016_24_Hours_of_Le_Mans_-_Pit_Walk_%28cropped%29.jpg) |
-| andrea_de_cesaris.jpg | Andrea de Cesaris | https://en.wikipedia.org/wiki/Andrea_de_Cesaris (imagem: https://upload.wikimedia.org/wikipedia/commons/2/22/Andrea_De_Cesaris_1982.jpg) |
-| ayrton_senna.jpg | Ayrton Senna | https://en.wikipedia.org/wiki/Ayrton_Senna (imagem: https://upload.wikimedia.org/wikipedia/commons/9/9f/Ayrton_Senna_Pesawat_RC_Cropped.jpg) |
-| bernd_schneider.jpg | Bernd Schneider | https://en.wikipedia.org/wiki/Bernd_Schneider_(racing_driver) (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/6/68/BerndSchneider.JPG/500px-BerndSchneider.JPG) |
-| bertrand_gachot.jpg | Bertrand Gachot | https://en.wikipedia.org/wiki/Bertrand_Gachot (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/0/08/Bertrand_Gachot_-_1991_US_GP.jpg/500px-Bertrand_Gachot_-_1991_US_GP.jpg) |
-| christian_danner.jpg | Christian Danner | https://en.wikipedia.org/wiki/Christian_Danner (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f6/Christian_Danner_1995_Deutsche_Tourenwagen_Meisterschaft%2C_Donington_Park.jpg/500px-Christian_Danner_1995_Deutsche_Tourenwagen_Meisterschaft%2C_Donington_Park.jpg) |
-| christian_fittipaldi.jpg | Christian Fittipaldi | https://en.wikipedia.org/wiki/Christian_Fittipaldi (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f9/Christian_Fittipaldi_2006_Curitiba.jpg/500px-Christian_Fittipaldi_2006_Curitiba.jpg) |
-| christian_klien.jpg | Christian Klien | https://en.wikipedia.org/wiki/Christian_Klien (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/37/Christian_Klien_2.jpg/500px-Christian_Klien_2.jpg) |
-| christijan_albers.jpg | Christijan Albers | https://en.wikipedia.org/wiki/Christijan_Albers (imagem: https://upload.wikimedia.org/wikipedia/commons/0/04/Christijan_Albers_2006_%28cropped%29.JPG) |
-| damon_hill.jpg | Damon Hill | https://en.wikipedia.org/wiki/Damon_Hill (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cf/Damon_Hill_at_the_Atlassian_Williams_Racing_Fan_Zone_of_2026_%28028A8241%29.jpg/500px-Damon_Hill_at_the_Atlassian_Williams_Racing_Fan_Zone_of_2026_%28028A8241%29.jpg) |
-| david_coulthard.jpg | David Coulthard | https://en.wikipedia.org/wiki/David_Coulthard (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a4/David_Coulthard_at_the_2025_Adelaide_Grand_Final_Parade_-_12.jpg/500px-David_Coulthard_at_the_2025_Adelaide_Grand_Final_Parade_-_12.jpg) |
-| derek_warwick.jpg | Derek Warwick | https://en.wikipedia.org/wiki/Derek_Warwick (imagem: https://upload.wikimedia.org/wikipedia/commons/4/47/Derek_Warwick_Silverstone_2014.JPG) |
-| eddie_cheever.jpg | Eddie Cheever | https://en.wikipedia.org/wiki/Eddie_Cheever (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/8/87/Eddie_Cheever_Jr_2009_Indy_500_Second_Qual_Day.JPG/500px-Eddie_Cheever_Jr_2009_Indy_500_Second_Qual_Day.JPG) |
-| eddie_irvine.jpg | Eddie Irvine | https://en.wikipedia.org/wiki/Eddie_Irvine (imagem: https://upload.wikimedia.org/wikipedia/commons/e/eb/Eddie_Irvine_after_the_1999_Australian_Grand_Prix.jpg) |
-| elio_de_angelis.jpg | Elio de Angelis | https://en.wikipedia.org/wiki/Elio_de_Angelis (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4e/Anefo_932-2371_Elio_de_Angelis_03.07.1982.jpg/500px-Anefo_932-2371_Elio_de_Angelis_03.07.1982.jpg) |
-| emanuele_pirro.jpg | Emanuele Pirro | https://en.wikipedia.org/wiki/Emanuele_Pirro (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b3/Emanuele_Pirro_2012_WEC_Fuji_2_%28cropped%29.jpg/500px-Emanuele_Pirro_2012_WEC_Fuji_2_%28cropped%29.jpg) |
-| erik_comas.jpg | Érik Comas | https://en.wikipedia.org/wiki/Érik_Comas (imagem: https://upload.wikimedia.org/wikipedia/commons/d/d2/Comas_lm2005.jpg) |
-| felipe_massa.jpg | Felipe Massa | https://en.wikipedia.org/wiki/Felipe_Massa (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e7/Felipe_Massa.jpg/500px-Felipe_Massa.jpg) |
-| fernando_alonso.jpg | Fernando Alonso | https://en.wikipedia.org/wiki/Fernando_Alonso (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Alonso-68_%2824710447098%29.jpg/500px-Alonso-68_%2824710447098%29.jpg) |
-| franck_montagny.jpg | Franck Montagny | https://en.wikipedia.org/wiki/Franck_Montagny (imagem: https://upload.wikimedia.org/wikipedia/commons/a/a9/Franck_Montagny_Le_Mans_drivers_parade_2011_crop.jpg) |
-| gerhard_berger.jpg | Gerhard Berger | https://en.wikipedia.org/wiki/Gerhard_Berger (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c9/Gerhard_Berger_1991USA_%28cropped%29.jpg/500px-Gerhard_Berger_1991USA_%28cropped%29.jpg) |
-| giancarlo_fisichella.jpg | Giancarlo Fisichella | https://en.wikipedia.org/wiki/Giancarlo_Fisichella (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e2/Giancarlo_Fisichella_2012_WEC_Fuji.jpg/500px-Giancarlo_Fisichella_2012_WEC_Fuji.jpg) |
-| gianni_morbidelli.jpg | Gianni Morbidelli | https://en.wikipedia.org/wiki/Gianni_Morbidelli (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Gianni_morbidelli_spafrancorchamps2014.JPG/500px-Gianni_morbidelli_spafrancorchamps2014.JPG) |
-| heinz_harald_frentzen.jpg | Heinz-Harald Frentzen | https://en.wikipedia.org/wiki/Heinz-Harald_Frentzen (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8a/Heinz-Harald_Frentzen_a_%28cropped%29.jpg/500px-Heinz-Harald_Frentzen_a_%28cropped%29.jpg) |
-| huub_rothengatter.jpg | Huub Rothengatter | https://en.wikipedia.org/wiki/Huub_Rothengatter (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/7/72/Huub_Rothengatter_in_1977.jpg/500px-Huub_Rothengatter_in_1977.jpg) |
-| ivan_capelli.jpg | Ivan Capelli | https://en.wikipedia.org/wiki/Ivan_Capelli (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1c/Capelli_1991_%28cropped%29.jpg/500px-Capelli_1991_%28cropped%29.jpg) |
-| jacques_laffite.jpg | Jacques Laffite | https://en.wikipedia.org/wiki/Jacques_Laffite (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d3/Jacques_Laffite_2015.jpg/500px-Jacques_Laffite_2015.jpg) |
-| jacques_villeneuve.jpg | Jacques Villeneuve | https://en.wikipedia.org/wiki/Jacques_Villeneuve (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Jacques_Villeneuve_Peugeot_208_T16_Lydden_Hill_2014_006_%28cropped2%29.jpg/500px-Jacques_Villeneuve_Peugeot_208_T16_Lydden_Hill_2014_006_%28cropped2%29.jpg) |
-| jarno_trulli.jpg | Jarno Trulli | https://en.wikipedia.org/wiki/Jarno_Trulli (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/30/12._Internationale_Sportnacht_Davos_2014_%2815246044859%29_%28cropped%29.jpg/500px-12._Internationale_Sportnacht_Davos_2014_%2815246044859%29_%28cropped%29.jpg) |
-| jean_alesi.jpg | Jean Alesi | https://en.wikipedia.org/wiki/Jean_Alesi (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Jean_Alesi%2C_GIMS_2019%2C_Le_Grand-Saconnex_%28GIMS0047%29.jpg/500px-Jean_Alesi%2C_GIMS_2019%2C_Le_Grand-Saconnex_%28GIMS0047%29.jpg) |
-| jean_louis_schlesser.jpg | Jean-Louis Schlesser | https://en.wikipedia.org/wiki/Jean-Louis_Schlesser (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4e/Jean-Louis_Schlesser%2C_2013.JPG/500px-Jean-Louis_Schlesser%2C_2013.JPG) |
-| jean_marc_gounon.jpg | Jean-Marc Gounon | https://en.wikipedia.org/wiki/Jean-Marc_Gounon (imagem: https://upload.wikimedia.org/wikipedia/commons/e/ea/Jean-Marc_Gounon_%282015%29.JPG) |
-| jenson_button.jpg | Jenson Button | https://en.wikipedia.org/wiki/Jenson_Button (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0c/Jenson_Button_2024_WEC_Fuji.jpg/500px-Jenson_Button_2024_WEC_Fuji.jpg) |
-| jj_lehto.jpg | JJ Lehto | https://en.wikipedia.org/wiki/JJ_Lehto (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/JJ_Lehto_%283rd_placed%29_on_the_podium_for_the_2004_Le_Mans_%2850884348761%29.jpg/500px-JJ_Lehto_%283rd_placed%29_on_the_podium_for_the_2004_Le_Mans_%2850884348761%29.jpg) |
-| johnny_herbert.jpg | Johnny Herbert | https://en.wikipedia.org/wiki/Johnny_Herbert (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bf/Johnny_Herbert_%2831729263593%29.jpg/500px-Johnny_Herbert_%2831729263593%29.jpg) |
-| jonathan_palmer.jpg | Jonathan Palmer | https://en.wikipedia.org/wiki/Jonathan_Palmer (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/Jonathan_Palmer_Profile.jpg/500px-Jonathan_Palmer_Profile.jpg) |
-| juan_pablo_montoya.jpg | Juan-Pablo Montoya | https://en.wikipedia.org/wiki/Juan_Pablo_Montoya (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/DSC1509_%2851683678455%29%28cropped%29.jpg/500px-DSC1509_%2851683678455%29%28cropped%29.jpg) |
-| karl_wendlinger.jpg | Karl Wendlinger | https://en.wikipedia.org/wiki/Karl_Wendlinger (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ef/GTS_class_winners_%2810th_overall%29_-_Karl_Wendlinger_-_Chrysler_Viper_GTS-R_-_on_the_podium_at_the_1999_Le_Mans_%2851897678180%29_%28cropped%29.jpg/500px-GTS_class_winners_%2810th_overall%29_-_Karl_Wendlinger_-_Chrysler_Viper_GTS-R_-_on_the_podium_at_the_1999_Le_Mans_%2851897678180%29_%28cropped%29.jpg) |
-| keke_rosberg.jpg | Keke Rosberg | https://en.wikipedia.org/wiki/Keke_Rosberg (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3c/Anefo_932-2378_Keke_Rosberg%2C_Zandvoort%2C_03-07-1982_-_Restoration.jpg/500px-Anefo_932-2378_Keke_Rosberg%2C_Zandvoort%2C_03-07-1982_-_Restoration.jpg) |
-| kimi_raikkonen.jpg | Kimi Räikkönen | https://en.wikipedia.org/wiki/Kimi_Räikkönen (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/F12019_Schloss_Gabelhofen_%2822%29_%28cropped%29.jpg/500px-F12019_Schloss_Gabelhofen_%2822%29_%28cropped%29.jpg) |
-| luca_badoer.jpg | Luca Badoer | https://en.wikipedia.org/wiki/Luca_Badoer (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/98/Luca_Badoer_2021_%28cropped%29.jpg/500px-Luca_Badoer_2021_%28cropped%29.jpg) |
-| marc_gene.jpg | Marc Gené | https://en.wikipedia.org/wiki/Marc_Gené (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/6/61/Marc_Gene_2007_Montjuic.jpg/500px-Marc_Gene_2007_Montjuic.jpg) |
-| marc_surer.jpg | Marc Surer | https://en.wikipedia.org/wiki/Marc_Surer (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/3e/Marc_Surer_1982.jpg/500px-Marc_Surer_1982.jpg) |
-| mark_blundell.jpg | Mark Blundell | https://en.wikipedia.org/wiki/Mark_Blundell (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Mark_Blundell_%285399713991%29.jpg/500px-Mark_Blundell_%285399713991%29.jpg) |
-| mark_webber.jpg | Mark Webber | https://en.wikipedia.org/wiki/Mark_Webber_(racing_driver) (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Mark_Webber_at_the_Melbourne_Walk_during_the_2026_Australian_Grand_Prix_%28028A8720%29.jpg/500px-Mark_Webber_at_the_Melbourne_Walk_during_the_2026_Australian_Grand_Prix_%28028A8720%29.jpg) |
-| martin_brundle.jpg | Martin Brundle | https://en.wikipedia.org/wiki/Martin_Brundle (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/36/Martin_Brundle_2021_%2851591210921%29_%28cropped%29.jpg/500px-Martin_Brundle_2021_%2851591210921%29_%28cropped%29.jpg) |
-| michael_andretti.jpg | Michael Andretti | https://en.wikipedia.org/wiki/Michael_Andretti (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Michael_Andretti_%2853785910028%29_%28cropped%29.jpg/500px-Michael_Andretti_%2853785910028%29_%28cropped%29.jpg) |
-| michael_bartels.jpg | Michael Bartels | https://en.wikipedia.org/wiki/Michael_Bartels (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5f/Michael_Bartels_2024.jpg/500px-Michael_Bartels_2024.jpg) |
-| michael_schumacher.jpg | Michael Schumacher | https://en.wikipedia.org/wiki/Michael_Schumacher (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c2/Michael_Schumacher%2C_September_2005.jpg/500px-Michael_Schumacher%2C_September_2005.jpg) |
-| michele_alboreto.jpg | Michele Alboreto | https://en.wikipedia.org/wiki/Michele_Alboreto (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Michele_Alboreto_at_the_Hungarian_Formula_One_Grand_Prix_in_Budapest_in_1988_%28JOKAMAA2H-2%29.tif/lossy-page1-500px-Michele_Alboreto_at_the_Hungarian_Formula_One_Grand_Prix_in_Budapest_in_1988_%28JOKAMAA2H-2%29.tif.jpg) |
-| mika_hakkinen.jpg | Mika Häkkinen | https://en.wikipedia.org/wiki/Mika_Häkkinen (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a6/Mika_H%C3%A4kkinen_Champions_for_Charity_2016-07-27.jpg/500px-Mika_H%C3%A4kkinen_Champions_for_Charity_2016-07-27.jpg) |
-| mika_salo.jpg | Mika Salo | https://en.wikipedia.org/wiki/Mika_Salo (imagem: https://upload.wikimedia.org/wikipedia/commons/c/c7/Mika_Salo_Le_Mans_2009_cropped.jpg) |
-| nelson_piquet.jpg | Nelson Piquet | https://en.wikipedia.org/wiki/Nelson_Piquet (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5b/Cerimonia_de_entrega_da_medalha_Bras%C3%ADlia_60_anos_-_16.jpg/500px-Cerimonia_de_entrega_da_medalha_Bras%C3%ADlia_60_anos_-_16.jpg) |
-| nick_heidfeld.jpg | Nick Heidfeld | https://en.wikipedia.org/wiki/Nick_Heidfeld (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2c/Nick_Heidfeld_Goodwood_Festival_of_Speed_2019_%2848242681251%29.jpg/500px-Nick_Heidfeld_Goodwood_Festival_of_Speed_2019_%2848242681251%29.jpg) |
-| nico_rosberg.jpg | Nico Rosberg | https://en.wikipedia.org/wiki/Nico_Rosberg (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1b/Nico_Rosberg_obtuvo_el_segundo_lugar.jpg/500px-Nico_Rosberg_obtuvo_el_segundo_lugar.jpg) |
-| nicola_larini.jpg | Nicola Larini | https://en.wikipedia.org/wiki/Nicola_Larini (imagem: https://upload.wikimedia.org/wikipedia/commons/6/6d/Nicola_Larini_2006_Curitiba.jpg) |
-| nigel_mansell.jpg | Nigel Mansell | https://en.wikipedia.org/wiki/Nigel_Mansell (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e4/Nigel_Mansell_-_Mexican_Grand_Prix_01_%28cropped%29.jpeg/500px-Nigel_Mansell_-_Mexican_Grand_Prix_01_%28cropped%29.jpeg) |
-| olivier_panis.jpg | Olivier Panis | https://en.wikipedia.org/wiki/Olivier_Panis (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c6/Paris_-_Retromobile_2012_-_Olivier_Panis_-_Fiskens_-_006.jpg/500px-Paris_-_Retromobile_2012_-_Olivier_Panis_-_Fiskens_-_006.jpg) |
-| patrick_tambay.jpg | Patrick Tambay | https://en.wikipedia.org/wiki/Patrick_Tambay (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Zandvoort_circuit_De_striptekenaar_Graton_in_de_pits%2C_NL-HlmNHA_54005237_-_Patrick_Tambay_%28cropped%29.JPG/500px-Zandvoort_circuit_De_striptekenaar_Graton_in_de_pits%2C_NL-HlmNHA_54005237_-_Patrick_Tambay_%28cropped%29.JPG) |
-| pedro_de_la_rosa.jpg | Pedro de la Rosa | https://en.wikipedia.org/wiki/Pedro_de_la_Rosa (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fe/Pedro_de_la_Rosa_2010_Malaysia.jpg/500px-Pedro_de_la_Rosa_2010_Malaysia.jpg) |
-| pedro_diniz.jpg | Pedro Diniz | https://en.wikipedia.org/wiki/Pedro_Diniz (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/11/Fazenda_da_Toca_foto_kiko_ferrite_02295_-_Pedro_Paulo_Diniz_%28cropped%29.jpg/500px-Fazenda_da_Toca_foto_kiko_ferrite_02295_-_Pedro_Paulo_Diniz_%28cropped%29.jpg) |
-| pedro_lamy.jpg | Pedro Lamy | https://en.wikipedia.org/wiki/Pedro_Lamy (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/Pedro_Lamy_Le_Mans_Series_Interlagos_Novembro_2007.jpg/500px-Pedro_Lamy_Le_Mans_Series_Interlagos_Novembro_2007.jpg) |
-| philippe_alliot.jpg | Philippe Alliot | https://en.wikipedia.org/wiki/Philippe_Alliot (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Philippe_Alliot_en_1993_%28bearb_Sp%29.jpg/500px-Philippe_Alliot_en_1993_%28bearb_Sp%29.jpg) |
-| philippe_streiff.jpg | Philippe Streiff | https://en.wikipedia.org/wiki/Philippe_Streiff (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Festival_automobile_international_2014_-_Photocall_-_019.jpg/500px-Festival_automobile_international_2014_-_Photocall_-_019.jpg) |
-| ralf_schumacher.jpg | Ralf Schumacher | https://en.wikipedia.org/wiki/Ralf_Schumacher (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Ralf_Schumacher%2C_2016.png/500px-Ralf_Schumacher%2C_2016.png) |
-| rene_arnoux.jpg | René Arnoux | https://en.wikipedia.org/wiki/René_Arnoux (imagem: https://upload.wikimedia.org/wikipedia/commons/6/6f/Rene_Arnoux_WSR2008_HU.png) |
-| ricardo_zonta.jpg | Ricardo Zonta | https://en.wikipedia.org/wiki/Ricardo_Zonta (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Ricardo_Zonta_2007_Curitiba.jpg/500px-Ricardo_Zonta_2007_Curitiba.jpg) |
-| riccardo_patrese.jpg | Riccardo Patrese | https://en.wikipedia.org/wiki/Riccardo_Patrese (imagem: https://upload.wikimedia.org/wikipedia/commons/3/3e/Riccardo_Patrese_in_the_paddock_before_the_1993_British_Grand_Prix_%2833686653515%29_%28Cropped%29.jpg) |
-| robert_doornbos.jpg | Robert Doornbos | https://en.wikipedia.org/wiki/Robert_Doornbos (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/Robert_Doornbos_-_Red_Bull_Racing.jpg/500px-Robert_Doornbos_-_Red_Bull_Racing.jpg) |
-| robert_kubica.jpg | Robert Kubica | https://en.wikipedia.org/wiki/Robert_Kubica (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Robert_Kubica_at_Monza_2023.jpg/500px-Robert_Kubica_at_Monza_2023.jpg) |
-| roberto_moreno.jpg | Roberto Moreno | https://en.wikipedia.org/wiki/Roberto_Moreno (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Roberto_Bud_suite_97.tif/lossy-page1-500px-Roberto_Bud_suite_97.tif.jpg) |
-| rubens_barrichello.jpg | Rubens Barrichello | https://en.wikipedia.org/wiki/Rubens_Barrichello (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/ae/Rubinho.jpg/500px-Rubinho.jpg) |
-| sakon_yamamoto.jpg | Sakon Yamamoto | https://en.wikipedia.org/wiki/Sakon_Yamamoto (imagem: https://upload.wikimedia.org/wikipedia/commons/6/69/Sakon_Yamamoto_20220818.jpg) |
-| satoru_nakajima.jpg | Satoru Nakajima | https://en.wikipedia.org/wiki/Satoru_Nakajima (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/8/8b/Satoru_Nakajima_2008_Motorsport_Japan_%28cropped%29.jpg/500px-Satoru_Nakajima_2008_Motorsport_Japan_%28cropped%29.jpg) |
-| scott_speed.jpg | Scott Speed | https://en.wikipedia.org/wiki/Scott_Speed (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Scott_Speed_at_the_2025_Adelaide_Grand_Final_-_04.jpg/500px-Scott_Speed_at_the_2025_Adelaide_Grand_Final_-_04.jpg) |
-| stefan_johansson.jpg | Stefan Johansson | https://en.wikipedia.org/wiki/Stefan_Johansson (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0f/Stefan_Johansson_at_the_2026_Adelaide_Motorsport_Festival_%28028A6526%29.jpg/500px-Stefan_Johansson_at_the_2026_Adelaide_Motorsport_Festival_%28028A6526%29.jpg) |
-| stephane_sarrazin.jpg | Stéphane Sarrazin | https://en.wikipedia.org/wiki/Stéphane_Sarrazin (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f0/Stephane_Sarrazin_40.jpg/500px-Stephane_Sarrazin_40.jpg) |
-| takuma_sato.jpg | Takuma Sato | https://en.wikipedia.org/wiki/Takuma_Sato (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Takuma_Sato_%282021%29.jpg/500px-Takuma_Sato_%282021%29.jpg) |
-| thierry_boutsen.jpg | Thierry Boutsen | https://en.wikipedia.org/wiki/Thierry_Boutsen (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4b/Thierry_Boutsen_at_the_2026_Adelaide_Motorsport_Festival_%28028A6498%29.jpg/500px-Thierry_Boutsen_at_the_2026_Adelaide_Motorsport_Festival_%28028A6498%29.jpg) |
-| tiago_monteiro.jpg | Tiago Monteiro | https://en.wikipedia.org/wiki/Tiago_Monteiro (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ec/Tiago_monteiro_spafrancorchamps2014_%28cropped%29.JPG/500px-Tiago_monteiro_spafrancorchamps2014_%28cropped%29.JPG) |
-| toranosuke_takagi.jpg | Toranosuke Takagi | https://en.wikipedia.org/wiki/Toranosuke_Takagi (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f2/Toranosuke_Takagi_2008_Super_GT.jpg/500px-Toranosuke_Takagi_2008_Super_GT.jpg) |
-| ukyo_katayama.jpg | Ukyo Katayama | https://en.wikipedia.org/wiki/Ukyo_Katayama (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d7/Ukyo_Katayama_PA166402.jpg/500px-Ukyo_Katayama_PA166402.jpg) |
-| vitantonio_liuzzi.jpg | Vitantonio Liuzzi | https://en.wikipedia.org/wiki/Vitantonio_Liuzzi (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/0/01/Vitantonio_Liuzzi_2011_Malaysia.jpg/500px-Vitantonio_Liuzzi_2011_Malaysia.jpg) |
-| yannick_dalmas.jpg | Yannick Dalmas | https://en.wikipedia.org/wiki/Yannick_Dalmas (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2c/Yannick_DALMAS.JPG/500px-Yannick_DALMAS.JPG) |
-| yuji_ide.jpg | Yuji Ide | https://en.wikipedia.org/wiki/Yuji_Ide (imagem: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/Yuji_Ide_2010_Super_GT_Fuji_400km.jpg/500px-Yuji_Ide_2010_Super_GT_Fuji_400km.jpg) |
+O ano descreve a fotografia original, não o upload/digitalização. Há retratos próximos da temporada dos mods; não são todos do ano exato. Alain Prost: fotografia de 1989, substituindo a imagem de evento recente.
 
-Sem foto: Allen Berg, Johnny Dumfries, Luis Perez-Sala (sem imagem na Wikipedia). Descartados (so carro/capacete/pessoa errada): Adrian Campos, Alessandro Nannini, Emanuele Naspetti, Eric Bernard, Fabrizio Barbazza, Marco Apicella, Oscar Larrauri, Pedro Chaves, Piercarlo Ghinzani, Pierluigi Martini, Stefano Modena, Teo Fabi, Toshio Suzuki, Naoki Hattori, Mauricio Gugelmin, Alex Caffi, Julian Bailey, Gabriele Tarquini, Olivier Grouillard, Eric van de Poele.
+| Arquivo | Piloto | Ano | Fonte / atribuição | Licença |
+|---|---|---|---|---|
+| alain_prost.jpg | Alain Prost | 1989 | [Commons](https://commons.wikimedia.org/wiki/File:Alain_Prost_1989_Belgian_GP_podium.jpg) | CC BY 2.0 |
+| alan_jones.jpg | Alan Jones | 1980 | [Commons](https://commons.wikimedia.org/wiki/File%3AAlan_Jones_1980.jpg) | CC0 |
+| alexander_wurz.jpg | Alexander Wurz | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Alex_Wurz_2006.jpg) | CC BY 2.0 |
+| andrea_de_cesaris.jpg | Andrea de Cesaris | 1982 | [Commons](https://commons.wikimedia.org/wiki/File:Andrea_De_Cesaris_1982.jpg) | CC BY-SA 3.0 |
+| ayrton_senna.jpg | Ayrton Senna | 1989 | [Commons](https://commons.wikimedia.org/wiki/File:Ayrton_Senna_Imola_1989_Cropped.jpg) | CC BY 2.0 |
+| bertrand_gachot.jpg | Bertrand Gachot | 1991 | [Commons](https://commons.wikimedia.org/wiki/File:Bertrand_Gachot_-_1991_US_GP.jpg) | CC BY 2.0 |
+| christian_klien.jpg | Christian Klien | 2005 | [Commons](https://commons.wikimedia.org/wiki/File:Christian_Klien_2.jpg) | CC BY-SA 2.0 |
+| christijan_albers.jpg | Christijan Albers | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Christijan_Albers_2006.JPG) | CC BY 2.5 |
+| damon_hill.jpg | Damon Hill | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Damon_Hill_in_the_paddock_before_the_1993_British_Grand_Prix_(32873541593).jpg) | CC BY-SA 2.0 |
+| david_coulthard.jpg | David Coulthard | 2007 | [Commons](https://commons.wikimedia.org/wiki/File%3ADavid_Coulthard_2007.jpg) | CC BY-SA 3.0 |
+| derek_warwick.jpg | Derek Warwick | 1982 | [Commons](https://commons.wikimedia.org/wiki/File%3AGrand_Pris_van_Nederland_te_Zandvoort_koppen_coureurs%2C_Derek_Warwick%2C_Bestanddeelnr_932-2375.jpg) | CC0 |
+| eddie_cheever.jpg | Eddie Cheever | 1986 | [Commons](https://commons.wikimedia.org/wiki/File%3AEddie_Cheever_-_Roma_-_1986_cropped.jpg) | CC BY-SA 4.0 |
+| eddie_irvine.jpg | Eddie Irvine | 1999 | [Commons](https://commons.wikimedia.org/wiki/File%3AEddie_Irvine_after_the_1999_Australian_Grand_Prix.jpg) | CC BY-SA 3.0 |
+| elio_de_angelis.jpg | Elio de Angelis | 1982 | [Commons](https://commons.wikimedia.org/wiki/File:Anefo_932-2371_Elio_de_Angelis_03.07.1982.jpg) | CC0 |
+| erik_comas.jpg | Érik Comas | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Erik_Comas_en_1993.jpg) | CC0 |
+| fernando_alonso.jpg | Fernando Alonso | 2006 | [Commons](https://commons.wikimedia.org/wiki/File%3AFernando_Alonso_2006_United_States_GP_%28178149823%29.jpg) | CC BY 2.0 |
+| franck_montagny.jpg | Franck Montagny | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Franck_Montagny_2006_United_States_GP_%28178217905%29.jpg) | CC BY 2.0 |
+| gerhard_berger.jpg | Gerhard Berger | 1991 | [Commons](https://commons.wikimedia.org/wiki/File:Gerhard_Berger_1991USA_%28cropped%29.jpg) | CC BY 2.0 |
+| giancarlo_fisichella.jpg | Giancarlo Fisichella | 2006 | [Commons](https://commons.wikimedia.org/wiki/File%3AGiancarlo_Fisichella_won_the_2006_Malaysian_GP_cropped.jpg) | CC BY 2.0 |
+| ivan_capelli.jpg | Ivan Capelli | 1991 | [Commons](https://commons.wikimedia.org/wiki/File:Capelli_1991_%28cropped%29.jpg) | CC BY 2.0 |
+| jacques_villeneuve.jpg | Jacques Villeneuve | 2002 | [Commons](https://commons.wikimedia.org/wiki/File%3AJacques_Villeneuve_2002.jpg) | CC BY-SA 3.0 |
+| jarno_trulli.jpg | Jarno Trulli | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Jarno_Trulli_Helsinki_2006.jpg) | CC BY 3.0 |
+| jean_alesi.jpg | Jean Alesi | 2001 | [Commons](https://commons.wikimedia.org/wiki/File:Jean_Alesi_2001.jpg) | CC BY-SA 3.0 |
+| jenson_button.jpg | Jenson Button | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Jenson_Button_2007.jpg) | CC BY 2.0 |
+| keke_rosberg.jpg | Keke Rosberg | 1982 | [Commons](https://commons.wikimedia.org/wiki/File:Anefo_932-2378_Keke_Rosberg%2C_Zandvoort%2C_03-07-1982_-_Restoration.jpg) | CC0 |
+| kimi_raikkonen.jpg | Kimi Räikkönen | 2002 | [Commons](https://commons.wikimedia.org/wiki/File:Kimi_Raikkonen_at_Mengjia_Longshan_Temple_20020319_(cropped).jpg) | CC BY-SA 3.0 |
+| luca_badoer.jpg | Luca Badoer | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Luca_Badoer_in_the_paddock_before_the_1993_British_Grand_Prix_%2833302781330%29.jpg) | CC BY-SA 2.0 |
+| marc_gene.jpg | Marc Gené | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Marc_Gene_2007_Montjuic.jpg) | Public domain |
+| marc_surer.jpg | Marc Surer | 1982 | [Commons](https://commons.wikimedia.org/wiki/File:Marc_Surer_1982.jpg) | CC0 |
+| mark_webber.jpg | Mark Webber | 2005 | [Commons](https://commons.wikimedia.org/wiki/File:Mark_Webber_2005.jpg) | CC BY-SA 3.0 |
+| michael_schumacher.jpg | Michael Schumacher | 1994 | [Commons](https://commons.wikimedia.org/wiki/File:Michael_Schumacher_Benetton_1994_%28cropped%29.jpg) | CC BY 4.0 |
+| michele_alboreto.jpg | Michele Alboreto | 1988 | [Commons](https://commons.wikimedia.org/wiki/File:Michele_Alboreto_at_the_Hungarian_Formula_One_Grand_Prix_in_Budapest_in_1988_%28JOKAMAA2H-2%29.tif) | CC BY 4.0 |
+| mika_hakkinen.jpg | Mika Häkkinen | 1998 | [Commons](https://commons.wikimedia.org/wiki/File:Mika_H%C3%A4kkinen_at_Silverstone%2C_August_1998_%28edited%29.jpg) | CC BY 2.0 |
+| nelson_piquet.jpg | Nelson Piquet | 1987 | [Commons](https://commons.wikimedia.org/wiki/File:Nelson_Piquet_at_the_West_German_Formula_One_Grand_Prix_in_Hockenheim_in_1987_%28JOKAMAA2F-7%29.tif) | CC BY 4.0 |
+| nick_heidfeld.jpg | Nick Heidfeld | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Nick_Heidfeld_2006_N%C3%BCrburgring.jpg) | CC BY-SA 4.0 |
+| nico_rosberg.jpg | Nico Rosberg | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Nico_Rosberg_2007.jpg) | CC BY-SA 3.0 |
+| nigel_mansell.jpg | Nigel Mansell | 1991 | [Commons](https://commons.wikimedia.org/wiki/File:NigelMansell.jpg) | CC BY 2.0 |
+| olivier_panis.jpg | Olivier Panis | 2002 | [Commons](https://commons.wikimedia.org/wiki/File:Olivier_Panis_2002.jpg) | CC BY-SA 3.0 |
+| patrick_tambay.jpg | Patrick Tambay | 1983 | [Commons](https://commons.wikimedia.org/wiki/File:Zandvoort_circuit_De_striptekenaar_Graton_in_de_pits,_NL-HlmNHA_54005237_-_Patrick_Tambay_(cropped).JPG) | CC0 |
+| pedro_de_la_rosa.jpg | Pedro de la Rosa | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Pedro_de_la_Rosa_2006.jpg) | CC BY 2.0 |
+| philippe_alliot.jpg | Philippe Alliot | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Philippe_Alliot_en_1993_%28bearb_Sp%29.jpg) | CC0 |
+| ralf_schumacher.jpg | Ralf Schumacher | 2004 | [Commons](https://commons.wikimedia.org/wiki/File:Ralf_Schumacher-N%C3%BCrburgring2004.jpg) | CC BY-SA 3.0 |
+| ricardo_zonta.jpg | Ricardo Zonta | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Ricardo_Zonta_2007_Curitiba.jpg) | CC BY-SA 3.0 |
+| riccardo_patrese.jpg | Riccardo Patrese | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Riccardo_Patrese_in_the_paddock_before_the_1993_British_Grand_Prix_%2833686653515%29_%28Cropped%29.jpg) | CC BY-SA 2.0 |
+| robert_doornbos.jpg | Robert Doornbos | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Robert_Doornbos_-_Red_Bull_Racing.jpg) | CC BY-SA 3.0 |
+| robert_kubica.jpg | Robert Kubica | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Kubica_Warszawa.jpg) | Public domain |
+| rubens_barrichello.jpg | Rubens Barrichello | 1999 | [Commons](https://commons.wikimedia.org/wiki/File:BARRICHELLO_Rubens-24x30-1999.jpg) | CC BY 3.0 |
+| scott_speed.jpg | Scott Speed | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Scott_Speed_2006_United_States_GP_(178146889).jpg) | CC BY 2.0 |
+| stephane_sarrazin.jpg | Stéphane Sarrazin | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Stephane_Sarrazin_2007_Mil_Milhas_Brasil.jpg) | CC BY-SA 3.0 |
+| takuma_sato.jpg | Takuma Sato | 2004-05 | [Commons](https://commons.wikimedia.org/wiki/File:Takuma_Sato_smiling.jpg) | CC BY-SA 2.0 |
+| thierry_boutsen.jpg | Thierry Boutsen | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Thierry_Boutsen_1993.jpg) | CC BY-SA 2.0 |
+| tiago_monteiro.jpg | Tiago Monteiro | 2005 | [Commons](https://commons.wikimedia.org/wiki/File:Tiago_Monteiro.jpg) | CC BY-SA 2.0 |
+| vitantonio_liuzzi.jpg | Vitantonio Liuzzi | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Tonio_Liuzzi_300607.JPG) | CC BY 2.5 |
 
-Carros: nenhuma imagem de perfil obtida.
+## Sem foto aprovada
+
+Na ausência de retrato adequado, o overlay usa a silhueta. As fotos recentes, com época inadequada ou descartadas pelo usuário foram retiradas, com backup pessoal fora do repositório.
+
+Aguri Suzuki, Alessandro Nannini, Alessandro Zanardi, Allen Berg, Christian Danner, Christian Fittipaldi, Emanuele Naspetti, Fabrizio Barbazza, Felipe Massa, Heinz-Harald Frentzen, Huub Rothengatter, JJ Lehto, Jacques Laffite, Jean-Marc Gounon, Johnny Dumfries, Johnny Herbert, Jonathan Palmer, Juan-Pablo Montoya, Karl Wendlinger, Marco Apicella, Mark Blundell, Martin Brundle, Michael Andretti, Mika Salo, Pedro Diniz, Pedro Lamy, Philippe Streiff, Piercarlo Ghinzani, Pierluigi Martini, René Arnoux, Sakon Yamamoto, Stefan Johansson, Teo Fabi, Toranosuke Takagi, Toshio Suzuki, Ukyo Katayama, Yuji Ide.
+
+Jacques Villeneuve, Takuma Sato e Tiago Monteiro continuam com os retratos existentes, cuja qualidade é limitada. Não apareceu substituta melhor nesta rodada.

@@ -41,6 +41,27 @@ New-Item -ItemType Directory -Force $publishFlags | Out-Null
 Copy-Item (Join-Path $flagsDir "*.png") $publishFlags -Force
 Write-Host "Publicado: $overlayExe e $controlCenterExe"
 
+# dotnet publish preserva arquivos de publicacoes anteriores. Uma foto retirada
+# deve desaparecer tambem da instalacao para permitir o fallback de silhueta.
+foreach ($assetKind in @("Drivers", "Cars")) {
+    $sourceAssets = Join-Path $repoRoot "ams2\src\Ams2.OverlayHost\Assets\$assetKind"
+    $targetAssets = Join-Path $publishDir "Assets\$assetKind"
+    if (-not (Test-Path -LiteralPath $sourceAssets -PathType Container)) {
+        throw "Pasta de assets ausente: $sourceAssets"
+    }
+    New-Item -ItemType Directory -Force -Path $targetAssets | Out-Null
+    $sourceImages = @(Get-ChildItem -LiteralPath $sourceAssets -File | Where-Object {
+        $_.Extension.ToLowerInvariant() -in @(".png", ".jpg", ".jpeg")
+    })
+    $sourceNames = @($sourceImages | ForEach-Object { $_.Name })
+    Get-ChildItem -LiteralPath $targetAssets -File | Where-Object {
+        $_.Extension.ToLowerInvariant() -in @(".png", ".jpg", ".jpeg") -and $_.Name -notin $sourceNames
+    } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+    foreach ($image in $sourceImages) {
+        Copy-Item -LiteralPath $image.FullName -Destination $targetAssets -Force
+    }
+}
+
 Write-Host "Espelhando build para $desktopInstallDir ..."
 $desktopOverlayExe = Join-Path $desktopInstallDir "Ams2.OverlayHost.exe"
 $desktopControlCenterExe = Join-Path $desktopInstallDir "Ams2.ControlCenter.exe"
