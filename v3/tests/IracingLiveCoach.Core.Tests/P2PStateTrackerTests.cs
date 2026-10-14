@@ -15,8 +15,8 @@ public class P2PStateTrackerTests
         var active = tracker.Update(17, true, OpponentBank(19.985f), T0);
         Assert.Equal((true, 200, false), active);
         Assert.Equal((false, 150, false), tracker.Update(3, false, 150, T0.AddSeconds(1)));
-        Assert.Equal((false, 197, true), tracker.Update(17, false, OpponentBank(19.7f), T0.AddSeconds(3)));
-        Assert.Equal((false, 197, false), tracker.Update(17, false, OpponentBank(19.7f), T0.AddSeconds(103)));
+        Assert.Equal((false, 200, true), tracker.Update(17, false, OpponentBank(19.985f), T0.AddSeconds(3)));
+        Assert.Equal((false, 200, false), tracker.Update(17, false, OpponentBank(19.985f), T0.AddSeconds(103)));
     }
 
     [Fact]
@@ -24,7 +24,9 @@ public class P2PStateTrackerTests
     {
         var tracker = new P2PStateTracker();
         tracker.Update(17, false, OpponentBank(1f), T0);
-        Assert.Equal((false, 0, false), tracker.Update(17, false, 0, T0.AddMinutes(5)));
+        Assert.Equal((true, 0, false), tracker.Update(17, false, 0, T0.AddMinutes(5)));
+        Assert.Equal((false, 0, true), tracker.Update(17, false, 0, T0.AddMinutes(6)));
+        Assert.Equal((false, 0, false), tracker.Update(17, false, 0, T0.AddMinutes(10)));
     }
 
     [Fact]
@@ -32,7 +34,7 @@ public class P2PStateTrackerTests
     {
         var tracker = new P2PStateTracker();
         tracker.Update(17, true, OpponentBank(20f), T0);
-        Assert.True(tracker.Update(17, false, OpponentBank(19f), T0.AddSeconds(2)).InCooldown);
+        Assert.True(tracker.Update(17, false, OpponentBank(20f), T0.AddSeconds(2)).InCooldown);
         tracker.Reset();
         Assert.False(tracker.SessionHasP2P);
         Assert.Equal(((bool?)null, (int?)null, false), tracker.Update(17, false, 0, T0.AddSeconds(3)));
@@ -40,12 +42,21 @@ public class P2PStateTrackerTests
     }
 
     [Fact]
-    public void Unknown_opponent_status_is_not_fabricated_from_a_decreasing_bank()
+    public void Draining_bank_counts_as_active_even_when_status_stays_off_then_cools_down()
     {
         var tracker = new P2PStateTracker();
-        tracker.Update(17, null, OpponentBank(20f), T0);
-        Assert.Equal(((bool?)null, (int?)190, false), tracker.Update(17, null, OpponentBank(19f), T0.AddSeconds(10)));
-        Assert.Equal((false, 180, false), tracker.Update(17, false, OpponentBank(18f), T0.AddSeconds(20)));
+        tracker.Update(17, false, OpponentBank(20f), T0);
+        Assert.Equal((true, 190, false), tracker.Update(17, false, OpponentBank(19f), T0.AddSeconds(1)));
+        Assert.Equal((true, 190, false), tracker.Update(17, false, OpponentBank(19f), T0.AddSeconds(2)));
+        Assert.Equal((false, 190, true), tracker.Update(17, false, OpponentBank(19f), T0.AddSeconds(4)));
+    }
+
+    [Fact]
+    public void Static_bank_with_status_off_stays_available()
+    {
+        var tracker = new P2PStateTracker();
+        tracker.Update(17, false, OpponentBank(20f), T0);
+        Assert.Equal((false, 200, false), tracker.Update(17, false, OpponentBank(20f), T0.AddSeconds(30)));
     }
 
     [Theory]

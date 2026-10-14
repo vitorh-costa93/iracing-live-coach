@@ -5,6 +5,9 @@ public sealed class P2PStateTracker
 {
     public const int MaxSeconds = 200;
     private readonly P2PCooldownTracker _cooldown = new();
+    /// <summary>The bank only ever goes down, and only while the overtake is in use. A drop seen within this window counts as active.</summary>
+    public static readonly TimeSpan DrainHold = TimeSpan.FromSeconds(2.5);
+    private readonly Dictionary<int, (int Seconds, DateTime DrainedAt)> _bank = new();
     public bool SessionHasP2P { get; private set; }
 
     /// <summary>
@@ -25,7 +28,14 @@ public sealed class P2PStateTracker
         int? seconds = DecodeSeconds(rawCountBits);
         if (active == true || seconds > 0) SessionHasP2P = true;
         if (!SessionHasP2P) return (null, null, false);
-        // A decreasing bank by itself does not prove that the car is still active in this frame.
+        // Opponents' CarIdxP2P_Status stayed off while their bank visibly drained (SF23 race, 14/10/2026):
+        // a falling bank is the real evidence of use, so it counts as active even when the status says otherwise.
+        if (seconds is int s)
+        {
+            if (_bank.TryGetValue(carIdx, out var prev) && s < prev.Seconds) _bank[carIdx] = (s, now);
+            else _bank[carIdx] = (s, _bank.TryGetValue(carIdx, out prev) ? prev.DrainedAt : DateTime.MinValue);
+            if (active != true && _bank[carIdx].DrainedAt != DateTime.MinValue && now - _bank[carIdx].DrainedAt <= DrainHold) active = true;
+        }
         return (active, seconds, _cooldown.Update(carIdx, active, now));
     }
 
@@ -33,5 +43,6 @@ public sealed class P2PStateTracker
     {
         SessionHasP2P = false;
         _cooldown.Reset();
+        _bank.Clear();
     }
 }
