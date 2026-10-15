@@ -25,7 +25,7 @@ public partial class MainWindow
     {
         ["position"] = "Posição", ["posChange"] = "Posições +/-", ["offset"] = "Offset", ["carNumber"] = "Número", ["brand"] = "Emblema", ["flag"] = "Bandeira",
         ["name"] = "Piloto", ["license"] = "Carteira (SR)", ["iratingDelta"] = "iRating + Δ", ["irating"] = "iRating",
-        ["interval"] = "Interval", ["lastLap"] = "Última volta", ["lapDelta"] = "Δ volta", ["avgGap"] = "Gap médio (melhores voltas)", ["pit"] = "Pit",
+        ["interval"] = "Interval", ["lastLap"] = "Última volta", ["lapDelta"] = "Δ volta", ["bestLap"] = "Melhor volta", ["avgGap"] = "Gap médio (melhores voltas)", ["pit"] = "Pit",
         ["gap"] = "Gap", ["overtake"] = "Overtake (P2P)",
     };
 
@@ -84,7 +84,7 @@ public partial class MainWindow
                 return (AvgGapWindows.Select(n => $"{n} melhores voltas").ToArray(), at < 0 ? 1 : at,
                     i => UpdateColumn("avgGap", c => c with { LapWindow = AvgGapWindows[Math.Clamp(i, 0, AvgGapWindows.Length - 1)] }));
             }
-            case "lastLap":
+            case "lastLap": case "bestLap":
                 return (["m:ss.000", "m:ss.00", "m:ss.0", "m:ss"], 3 - Math.Clamp(column.DecimalPlaces ?? 3, 0, 3), i => SetDecimals(column.Key, 3 - i));
             case "position": return (["Inteiro (1, 2, 3…)"], 0, null);
             case "carNumber": return (["#00"], 0, null);

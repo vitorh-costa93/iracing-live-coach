@@ -66,6 +66,7 @@ public sealed unsafe class StandingsWidget : IDisposable
     private const float IntervalColumnWidthDip = 66f;
     private const float LastLapColumnWidthDip = 80f;
     private const float LapDeltaColumnWidthDip = 84f;
+    private const float BestLapColumnWidthDip = 80f;
     private const float AvgGapColumnWidthDip = 84f;
     public const int DefaultAvgGapWindow = 5;
     private const float OvertakeColumnWidthDip = 64f;
@@ -99,11 +100,13 @@ public sealed unsafe class StandingsWidget : IDisposable
         new("interval", ColumnWidthMode.Fixed, IntervalColumnWidthDip, IntervalColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 8, DecimalPlaces: 3),
         new("lastLap", ColumnWidthMode.Fixed, LastLapColumnWidthDip, LastLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 9, DecimalPlaces: 3),
         new("lapDelta", ColumnWidthMode.Fixed, LapDeltaColumnWidthDip, LapDeltaColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 10, DecimalPlaces: 3),
+        // Best lap of each car: practice and qualifying only (hidden in the race by default).
+        new("bestLap", ColumnWidthMode.Fixed, BestLapColumnWidthDip, BestLapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, true, 11, DecimalPlaces: 3, ShowInRace: false),
         // Optional (hidden by default): average of the N fastest clean laps, theirs minus mine.
-        new("avgGap", ColumnWidthMode.Fixed, AvgGapColumnWidthDip, AvgGapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 11, DecimalPlaces: 3, LapWindow: DefaultAvgGapWindow),
-        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 12),
-        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 13, DecimalPlaces: 3),
-        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 14),
+        new("avgGap", ColumnWidthMode.Fixed, AvgGapColumnWidthDip, AvgGapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 12, DecimalPlaces: 3, LapWindow: DefaultAvgGapWindow),
+        new("pit", ColumnWidthMode.Fixed, PitColumnWidthDip, PitColumnWidthDip, ColumnAlignment.Center, 0, ColumnGapDip, true, 13),
+        new("gap", ColumnWidthMode.Fixed, GapColumnWidthDip, GapColumnWidthDip, ColumnAlignment.Right, 0, ColumnGapDip, false, 14, DecimalPlaces: 3),
+        new("overtake", ColumnWidthMode.Fixed, OvertakeColumnWidthDip, OvertakeColumnWidthDip, ColumnAlignment.Center, 0, 0, true, 15),
     ];
 
     /// <summary>Old saved profiles gain columns added later (posChange) -- see ColumnDefaults.</summary>
@@ -535,6 +538,13 @@ public sealed unsafe class StandingsWidget : IDisposable
                     bool isBest = overallBest is double ob && row.BestLapTime is double bt && Math.Abs(bt - ob) < 0.0005
                         && (row.TimedOrder || row.LastLapTime is double ll && Math.Abs(ll - ob) < 0.0005);
                     DrawTextCell(dc, cellX, y, cellWidth, lapText, lapText == "—" ? PaletteTokens.TextDisabled : isBest ? PaletteTokens.BestLapPurple : PaletteTokens.TextPrimary, placement.Column.Alignment);
+                    break;
+                }
+                case "bestLap":
+                {
+                    string bestText = row.BestLapTime is > 0 ? LapTimeFormatting.FormatTruncated(row.BestLapTime.Value, placement.Column.DecimalPlaces ?? 3) : "—";
+                    bool isOverallBest = overallBest is double best && row.BestLapTime is double mine && Math.Abs(mine - best) < 0.0005;
+                    DrawTextCell(dc, cellX, y, cellWidth, bestText, bestText == "—" ? PaletteTokens.TextDisabled : isOverallBest ? PaletteTokens.BestLapPurple : PaletteTokens.TextPrimary, placement.Column.Alignment);
                     break;
                 }
                 case "lapDelta":
