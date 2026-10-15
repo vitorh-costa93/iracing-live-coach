@@ -91,6 +91,9 @@ O ano descreve a fotografia original, não o upload/digitalização. Há retrato
 | satoru_nakajima.jpg | Satoru Nakajima | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
 | stefano_modena.jpg | Stefano Modena | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
 | yannick_dalmas.jpg | Yannick Dalmas | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| oscar_larrauri.jpg | Oscar Larrauri | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
+| rene_arnoux.jpg | René Arnoux | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
+| stefan_johansson.jpg | Stefan Johansson | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
 
 ## Sem foto aprovada
 
@@ -100,4 +103,4 @@ Aguri Suzuki, Alessandro Nannini, Alessandro Zanardi, Allen Berg, Christian Dann
 
 Jacques Villeneuve, Takuma Sato e Tiago Monteiro continuam com os retratos existentes, cuja qualidade é limitada. Não apareceu substituta melhor nesta rodada.
 
-Nota 1988/1991: Johnny Herbert, Martin Brundle, Naoki Hattori, Oscar Larrauri, René Arnoux e Stefan Johansson seguem sem retrato de época.
+Nota 1988/1991: Johnny Herbert, Martin Brundle e Naoki Hattori seguem sem retrato de época: o formulaonehistory só tem fotos de 1995 (Herbert), 1997 (Brundle) e fim dos anos 90 (Hattori), fora da era dos mods.
