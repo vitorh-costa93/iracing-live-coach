@@ -51,6 +51,11 @@ Imagens fora do Git. Fontes/licenças transcritas de cars_new/*.tsv; o ano da fo
 | williams.png | Williams FW28 | 2006 | [Commons](https://commons.wikimedia.org/wiki/File:Williams_FW28.jpg) | CC BY 2.0 |
 | williams_renault.png | FW15C | 1993 | [Commons](https://commons.wikimedia.org/wiki/File:Damon_Hill_-_Williams_FW15C_at_the_1993_British_Grand_Prix_%2833557427941%29.jpg) | CC BY-SA 2.0 |
 
+| 1988_*.png, brabham_yamaha, coloni_ford, jordan_ford, ligier_lamborghini, lotus_judd, mclaren_honda, minardi_ferrari, tyrrell_honda, leyton_house_ilmor | mods 1988 (Gen2) e 1991 (Gen4) | - | Commons (fotos de museu/Goodwood dos modelos da época) | vários CC |
+
 ## Pendências
+
+Mods 1988/1991 sem imagem (silhueta): 1988 AGS, Eurobrun, March, Minardi, Osella; 1991 AGS, Dallara, Fondmetal, Footwork, Lambo, Lola.
+
 
 BAR 1999, Minardi 1986 e Zakspeed 1986 continuam com ícone genérico: candidatos encontrados nesta rodada não atendem ao enquadramento/identificação. O blueprint Zakspeed-861-f1-1986.png foi rejeitado porque a própria imagem identifica 1985/841. As fotos do Minardi M186 em exposição são frontais; a BAR encontrada está parcialmente cortada.

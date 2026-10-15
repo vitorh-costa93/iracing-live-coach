@@ -60,6 +60,38 @@ O ano descreve a fotografia original, não o upload/digitalização. Há retrato
 | tiago_monteiro.jpg | Tiago Monteiro | 2005 | [Commons](https://commons.wikimedia.org/wiki/File:Tiago_Monteiro.jpg) | CC BY-SA 2.0 |
 | vitantonio_liuzzi.jpg | Vitantonio Liuzzi | 2007 | [Commons](https://commons.wikimedia.org/wiki/File:Tonio_Liuzzi_300607.JPG) | CC BY 2.5 |
 
+| adrian_campos.jpg | Adrian Campos | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| aguri_suzuki.jpg | Aguri Suzuki | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| alessandro_nannini.jpg | Alessandro Nannini | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| alessandro_zanardi.jpg | Alessandro Zanardi | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| alex_caffi.jpg | Alex Caffi | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| bernd_schneider.jpg | Bernd Schneider | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| emanuele_pirro.jpg | Emanuele Pirro | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| eric_bernard.jpg | Éric Bernard | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| eric_van_de_poele.jpg | Eric van de Poele | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| fabrizio_barbazza.jpg | Fabrizio Barbazza | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| gabriele_tarquini.jpg | Gabriele Tarquini | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| gianni_morbidelli.jpg | Gianni Morbidelli | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| jean_louis_schlesser.jpg | Jean-Louis Schlesser | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| jj_lehto.jpg | JJ Lehto | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| jonathan_palmer.jpg | Jonathan Palmer | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| julian_bailey.jpg | Julian Bailey | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| karl_wendlinger.jpg | Karl Wendlinger | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| luis_perez_sala.jpg | Luis Pérez-Sala | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| mark_blundell.jpg | Mark Blundell | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| mauricio_gugelmin.jpg | Mauricio Gugelmin | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| michael_bartels.jpg | Michael Bartels | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| nicola_larini.jpg | Nicola Larini | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| olivier_grouillard.jpg | Olivier Grouillard | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| pedro_chaves.jpg | Pedro Chaves | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| philippe_streiff.jpg | Philippe Streiff | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| piercarlo_ghinzani.jpg | Piercarlo Ghinzani | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| pierluigi_martini.jpg | Pierluigi Martini | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| roberto_moreno.jpg | Roberto Moreno | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| satoru_nakajima.jpg | Satoru Nakajima | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| stefano_modena.jpg | Stefano Modena | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+| yannick_dalmas.jpg | Yannick Dalmas | 1986-93 | formulaonehistory.com / f1forgottendrivers.com (retrato de época; uso pessoal, não redistribuir) | - |
+
 ## Sem foto aprovada
 
 Na ausência de retrato adequado, o overlay usa a silhueta. As fotos recentes, com época inadequada ou descartadas pelo usuário foram retiradas, com backup pessoal fora do repositório.
@@ -67,3 +99,5 @@ Na ausência de retrato adequado, o overlay usa a silhueta. As fotos recentes, c
 Aguri Suzuki, Alessandro Nannini, Alessandro Zanardi, Allen Berg, Christian Danner, Christian Fittipaldi, Emanuele Naspetti, Fabrizio Barbazza, Felipe Massa, Heinz-Harald Frentzen, Huub Rothengatter, JJ Lehto, Jacques Laffite, Jean-Marc Gounon, Johnny Dumfries, Johnny Herbert, Jonathan Palmer, Juan-Pablo Montoya, Karl Wendlinger, Marco Apicella, Mark Blundell, Martin Brundle, Michael Andretti, Mika Salo, Pedro Diniz, Pedro Lamy, Philippe Streiff, Piercarlo Ghinzani, Pierluigi Martini, René Arnoux, Sakon Yamamoto, Stefan Johansson, Teo Fabi, Toranosuke Takagi, Toshio Suzuki, Ukyo Katayama, Yuji Ide.
 
 Jacques Villeneuve, Takuma Sato e Tiago Monteiro continuam com os retratos existentes, cuja qualidade é limitada. Não apareceu substituta melhor nesta rodada.
+
+Nota 1988/1991: Johnny Herbert, Martin Brundle, Naoki Hattori, Oscar Larrauri, René Arnoux e Stefan Johansson seguem sem retrato de época.
