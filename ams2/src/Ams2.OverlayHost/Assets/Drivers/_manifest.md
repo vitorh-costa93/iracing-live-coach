@@ -94,6 +94,9 @@ O ano descreve a fotografia original, não o upload/digitalização. Há retrato
 | oscar_larrauri.jpg | Oscar Larrauri | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
 | rene_arnoux.jpg | René Arnoux | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
 | stefan_johansson.jpg | Stefan Johansson | anos 80 | formulaonehistory.com (retrato de época dos anos 80; uso pessoal, não redistribuir) | - |
+| johnny_herbert.jpg | Johnny Herbert | 1995 | formulaonehistory.com (foto de outra época, aceita pelo usuário; uso pessoal, não redistribuir) | - |
+| martin_brundle.jpg | Martin Brundle | 1997 | formulaonehistory.com (foto de outra época, aceita pelo usuário; uso pessoal, não redistribuir) | - |
+| naoki_hattori.jpg | Naoki Hattori | fim dos anos 90 | formulaonehistory.com (foto de outra época, aceita pelo usuário; uso pessoal, não redistribuir) | - |
 
 ## Sem foto aprovada
 
@@ -103,4 +106,4 @@ Aguri Suzuki, Alessandro Nannini, Alessandro Zanardi, Allen Berg, Christian Dann
 
 Jacques Villeneuve, Takuma Sato e Tiago Monteiro continuam com os retratos existentes, cuja qualidade é limitada. Não apareceu substituta melhor nesta rodada.
 
-Nota 1988/1991: Johnny Herbert, Martin Brundle e Naoki Hattori seguem sem retrato de época: o formulaonehistory só tem fotos de 1995 (Herbert), 1997 (Brundle) e fim dos anos 90 (Hattori), fora da era dos mods.
+Nota 1988/1991: Herbert, Brundle e Hattori usam fotos de outra época (1995, 1997 e fim dos anos 90), aceitas pelo usuário.
