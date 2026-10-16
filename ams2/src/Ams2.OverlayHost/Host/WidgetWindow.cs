@@ -277,6 +277,7 @@ internal sealed class WidgetWindow : IDisposable
 
     public void Dispose()
     {
+        (_widget as IDisposable)?.Dispose();
         _canvas.Dispose();
         _gfx.Dispose();
         _win.Close();

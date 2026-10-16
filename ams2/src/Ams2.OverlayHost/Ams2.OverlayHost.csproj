@@ -40,6 +40,10 @@
     <Content Include="..\..\fonts\*.ttf" Link="fonts\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Fontes originais do GPxPatch (ams2\fonts\gpxpatch, fora do git): copiadas para fonts\gpxpatch se existirem. -->
+    <Content Include="..\..\fonts\gpxpatch\*.ttf" Link="fonts\gpxpatch\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- Bandeiras de pais (PNGs do V3), copiadas para Assets\Flags ao lado do exe. -->
@@ -57,6 +61,7 @@
     <Content Include="Assets\Cars\**" Exclude="Assets\Cars\.gitkeep">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Assets\GpxPatch\**" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Sponsors\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

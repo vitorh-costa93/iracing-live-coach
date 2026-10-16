@@ -33,12 +33,33 @@ public static class WidgetLayout
     {
         ["f1-2018"] = ["lapcounter", "board"],
         ["f1-1998"] = ["winner", "pittimer", "qualitower", "qualilap"],
+        ["f1-1999-digital"] = ["winner", "pittimer", "qualitower", "qualilap"],
         ["f1-2012"] = ["board"],   // a faixa inferior (ticker) e o duelo (battle) ocupam o lugar do Board
+    };
+
+    /// <summary>
+    /// GPxSAT: temas em que o widget "gpxsat" nasce ligado e os equivalentes antigos desligados (o codigo deles continua). Os quatro modos usam a camada nova. Inputs Graph, Radar e os sem equivalente no GPx
+    /// (Weather, Tyres, Fuel, Quali Result) preservam as escolhas; instrumentos GPxCInfo substituem o velocímetro antigo em 2004/2012.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> GpxSatReplaces = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["f1-2004"] = ["inputs", "standings", "lapcounter", "drivercaption", "winner", "board", "pitstops", "pittimer", "qualitower", "qualilap"],
+        ["f1-1999-digital"] = ["board", "qualiboard"],
+        ["f1-1998"] = ["board", "qualiboard"],
+        ["f1-2012"] = ["inputs", "standings", "lapcounter", "drivercaption", "winner", "board", "pitstops", "pittimer", "qualitower", "qualilap", "ticker", "battle"],
     };
 
     /// <summary>O widget comeca desligado no perfil padrao do tema?</summary>
     public static bool HiddenIn(string themeId, string widgetId)
-        => HiddenByDefault.TryGetValue(ThemeCatalog.Canonical(themeId), out var h) && h.Contains(widgetId, StringComparer.OrdinalIgnoreCase);
+    {
+        themeId = ThemeCatalog.Canonical(themeId);
+        if (string.Equals(widgetId, "gpxsat", StringComparison.OrdinalIgnoreCase)) return !GpxSatReplaces.ContainsKey(themeId);
+        if (GpxSatReplaces.TryGetValue(themeId, out var g) && g.Contains(widgetId, StringComparer.OrdinalIgnoreCase)) return true;
+        return HiddenByDefault.TryGetValue(themeId, out var h) && h.Contains(widgetId, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Camadas de tela inteira e transparentes (so desenham as telas do momento): podem ficar sobre os outros widgets.</summary>
+    public static readonly IReadOnlySet<string> FullScreenLayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gpxsat" };
 
     static readonly Dictionary<string, Dictionary<string, Slot>> Slots = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -54,6 +75,14 @@ public static class WidgetLayout
             ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f),
             ["inputs"] = new(1542, 620, 0.5f),
             ["radar"] = new(900, 585, 1f),
+            ["gpxsat"] = new(0, 0, 1f), ["gpxgauges"] = new(341, 567, 1.406f),
+        },
+        ["f1-1999-digital"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["board"] = new(0, 780, 1f), ["qualiboard"] = new(0, 780, 1f),
+            ["inputs"] = new(1542, 620, 0.5f),
+            ["radar"] = new(900, 585, 1f),
+            ["gpxsat"] = new(0, 0, 1f), ["gpxgauges"] = new(341, 567, 1.406f),
         },
         ["f1-2004"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -67,6 +96,7 @@ public static class WidgetLayout
             // so ao fim da sessao) a direita dela (x=640..935, y=88..555): abaixo do Lap Counter (y<=80) e acima do Pit Stops (y>=560);
             // barra de volta (278x126 x1.3 = 362x164) embaixo ao centro, abaixo do Pit Timer (y<=845), entre o Winner (x<=615) e o Inputs (x>=1700).
             ["qualitower"] = new(32, 24, 1.4f), ["qualilap"] = new(779, 880, 1.3f), ["qualiresult"] = new(640, 88, 1.15f),
+            ["gpxsat"] = new(0, 0, 1f), ["gpxgauges"] = new(341, 567, 1.406f),
         },
         ["f1-2012"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -82,6 +112,7 @@ public static class WidgetLayout
             ["battle"] = new(342, 832, 1.2f), ["ticker"] = new(60, 1000, 1f),
             // Classificacao (mesma logica do 2004, pele 2012): torre no lugar da Standings, resultado a direita dela, barra de volta embaixo ao centro.
             ["qualitower"] = new(114, 46, 1.2f), ["qualilap"] = new(780, 880, 1.2f), ["qualiresult"] = new(640, 88, 1.15f),
+            ["gpxsat"] = new(0, 0, 1f), ["gpxgauges"] = new(341, 567, 1.406f),
         },
         ["f1-2018"] = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -119,24 +150,28 @@ public static class WidgetLayout
             ["f1-1993"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["board"] = (1920, 300), ["qualiboard"] = (1920, 300),
-                ["standings"] = (320, 214), ["qualitower"] = (320, 214), ["inputs"] = (433, 197), ["radar"] = (120, 190),
+                ["standings"] = (320, 216), ["qualitower"] = (320, 216), ["inputs"] = (433, 197), ["radar"] = (120, 190),
             },
             ["f1-1998"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
-                ["inputs"] = (692, 197), ["board"] = (1920, 300), ["radar"] = (120, 190), ["qualiboard"] = (1920, 300),
+                ["inputs"] = (692, 197), ["board"] = (1920, 300), ["radar"] = (120, 190), ["qualiboard"] = (1920, 300), ["gpxsat"] = (1920, 1080), ["gpxgauges"] = (256, 200),
+            },
+            ["f1-1999-digital"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["inputs"] = (692, 197), ["board"] = (1920, 300), ["radar"] = (120, 190), ["qualiboard"] = (1920, 300), ["gpxsat"] = (1920, 1080), ["gpxgauges"] = (256, 200),
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490), ["inputgraph"] = (342, 132),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
-                ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406),
+                ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406), ["gpxsat"] = (1920, 1080), ["gpxgauges"] = (256, 200),
             },
             ["f1-2012"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490), ["inputgraph"] = (342, 132),
                 ["lapcounter"] = (170, 40), ["drivercaption"] = (334, 70), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
                 ["battle"] = (970, 130), ["ticker"] = (1600, 40),
-                ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406),
+                ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406), ["gpxsat"] = (1920, 1080), ["gpxgauges"] = (256, 200),
             },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {

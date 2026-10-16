@@ -498,6 +498,8 @@ ams2/.env
 ams2/**/bin/
 ams2/**/obj/
 ams2/fonts/Formula1Display-*.ttf
+# Fontes originais do GPxPatch (terceiros): copia local para build/publish, nunca commitar.
+ams2/fonts/gpxpatch/
 
 ams2/src/Ams2.OverlayHost/Assets/Drivers/*.jpg
 ams2/src/Ams2.OverlayHost/Assets/Drivers/*.png
@@ -505,3 +507,6 @@ ams2/src/Ams2.OverlayHost/Assets/Drivers/*.jpeg
 ams2/src/Ams2.OverlayHost/Assets/Cars/*.png
 ams2/src/Ams2.OverlayHost/Assets/Cars/*.jpg
 ams2/src/Ams2.OverlayHost/Assets/Cars/*.jpeg
+
+# GPxCInfo original artwork (personal installation only)
+ams2/src/Ams2.OverlayHost/Assets/GpxPatch/

@@ -139,8 +139,6 @@ internal static class Program
         provider.Radar.Options = RadarWidget.OptionsFor(fromFile is not null && o.Widget == "radar" ? (fromFile with { Id = "radar" }).Normalized()
             : new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());
         if (o.PlayerName is not null) { provider.Tick(); if (provider.Current.Session?.PlayerCar is { } me) names.Set(me.CarName, o.PlayerName); }
-        if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); }
-        else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); Thread.Sleep(16); }
 
         float scale = o.Scale ?? 1f;
         var theme = Themes.Get(o.ThemeId);
@@ -157,7 +155,15 @@ internal static class Program
         // "layoutPreview" e flag de execucao (LayoutPreview.Settings), fora do catalogo: Normalized(theme) a descarta, entao reaplica a do arquivo.
         if (fromFile?.Option("layoutPreview") is { } lp)
             settings = settings with { Options = new Dictionary<string, string>(settings.Options ?? [], StringComparer.OrdinalIgnoreCase) { ["layoutPreview"] = lp } };
+        // GPxSAT: previewScreen/previewMs (tela forcada e instante da animacao) tambem sao flags de execucao fora do catalogo.
+        foreach (var key in new[] { "previewScreen", "previewMs" })
+            if (fromFile?.Option(key) is { } pv)
+                settings = settings with { Options = new Dictionary<string, string>(settings.Options ?? [], StringComparer.OrdinalIgnoreCase) { [key] = pv } };
         widget.Configure(settings);
+        // Simulacao depois de configurar o widget: os que guardam historico por quadro (GPxSAT: sky messages, splits) veem cada tick.
+        var observer = widget as Ams2.OverlayHost.Widgets.GpxSat.IGpxFrameObserver;
+        if (fake) for (int i = 0; i < (int)(o.Sim * 60); i++) { simNow += 1.0 / 60; provider.Tick(); observer?.Observe(provider.Current); }
+        else while (wall.Elapsed.TotalSeconds < 3) { provider.Tick(); observer?.Observe(provider.Current); Thread.Sleep(16); }
         // Same independent geometry axes as the live window; font size is configured separately.
         float rs = settings.RenderScale;
         int w = (int)Math.Ceiling(widget.DesignSize.Width * settings.ScaleX), h = (int)Math.Ceiling(widget.DesignSize.Height * settings.ScaleY);
@@ -172,6 +178,7 @@ internal static class Program
         widget.Draw(canvas, provider.Current);
         canvas.End();
         gfx.EndFrame();
+        (widget as IDisposable)?.Dispose();
 
         (byte, byte, byte)? bg = o.Bg.Equals("none", StringComparison.OrdinalIgnoreCase) ? null
             : (Convert.ToByte(o.Bg[..2], 16), Convert.ToByte(o.Bg[2..4], 16), Convert.ToByte(o.Bg[4..6], 16));
@@ -256,7 +263,7 @@ internal static class Program
             o.Fake && o.ProfilesDir is null ? Ams2.Shared.Victory.VictoryStore.InMemory() : new Ams2.Shared.Victory.VictoryStore(o.ProfilesDir), autoPlay: !o.Fake);
         using var host = new HostController(provider, store, o.Fake, o.ThemeId, o.Profile, single ? [o.Widget!] : null, persist: !single && !o.Measure, victory: victory);
         if (single && (o.X is not null || o.Y is not null || o.Scale is not null))
-            host.ApplyPatch(o.Widget!, new WidgetPatch { X = o.X, Y = o.Y, Scale = o.Scale });
+            host.ApplyPatch(o.Widget!, new WidgetPatch { Visible = true, X = o.X, Y = o.Y, Scale = o.Scale });
         OverlayWindow.RegisterHotkeys();
         host.StartIpc(o.Pipe);
         if (o.Edit) host.SetEditModeDirect(true);

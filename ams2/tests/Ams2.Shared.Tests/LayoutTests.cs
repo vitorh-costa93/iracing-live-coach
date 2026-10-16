@@ -19,7 +19,8 @@ public class LayoutTests
         return list;
     }
 
-    static bool Exclusive(string a, string b) => WidgetLayout.ExclusiveGroups.Any(g => g.Contains(a) && g.Contains(b));
+    static bool Exclusive(string a, string b) => WidgetLayout.FullScreenLayers.Contains(a) || WidgetLayout.FullScreenLayers.Contains(b)
+        || WidgetLayout.ExclusiveGroups.Any(g => g.Contains(a) && g.Contains(b));
 
     [Theory, MemberData(nameof(Themes))]
     public void Every_widget_has_a_design_size(string theme)

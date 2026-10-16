@@ -7,7 +7,7 @@ namespace Ams2.OverlayHost.Widgets;
 /// <summary>Cria widgets pelo id (usado por --widget). Os widgets não conhecem o tema: só pedem tokens ao canvas.</summary>
 public static class WidgetRegistry
 {
-    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "battle", "poscaption", "ticker", "qualitower", "qualilap", "qualiboard", "qualiresult"];
+    public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "battle", "poscaption", "ticker", "qualitower", "qualilap", "qualiboard", "qualiresult", "gpxsat", "gpxgauges"];
 
     public static IWidget Create(string? id) => (id ?? "relative").ToLowerInvariant() switch
     {
@@ -35,6 +35,8 @@ public static class WidgetRegistry
         "qualilap" => new QualiLapWidget(),
         "qualiboard" => new QualiBoardWidget(),
         "qualiresult" => new QualiResultWidget(),
+        "gpxgauges" => new GpxSat.GpxGaugesWidget(),
+        "gpxsat" => new GpxSat.GpxSatWidget(),
         // Id do catalogo (p.ex. widget exclusivo de um tema) ainda sem desenho: janela vazia em vez de cair no Relative.
         var other when WidgetCatalog.Find(other) is not null => new PlaceholderWidget(WidgetCatalog.Find(other)!.Id),
         _ => new RelativeWidget(),

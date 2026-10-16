@@ -252,7 +252,10 @@ public static class Themes
         CellSlant = 10f,
     };
 
-    public static IReadOnlyList<Theme> All { get; } = [F1_1993, F1_1998, F1_2004, F1_2012, F1_2018];
+    /// <summary>F1 1999 Digital (GPxSAT modo Digital): mesma pele do 1999 para os widgets que continuam (inputs, radar); as telas sao do widget gpxsat.</summary>
+    public static readonly Theme F1_1999Digital = F1_1998 with { Id = "f1-1999-digital", DisplayName = "F1 1999 Digital" };
+
+    public static IReadOnlyList<Theme> All { get; } = [F1_1993, F1_1998, F1_1999Digital, F1_2004, F1_2012, F1_2018];
 
     public static Theme Get(string? id) => id is null ? F1_1998 : All.FirstOrDefault(t => string.Equals(t.Id, Ams2.Shared.Profiles.ThemeCatalog.Canonical(id), StringComparison.OrdinalIgnoreCase)) ?? F1_1998;
 }

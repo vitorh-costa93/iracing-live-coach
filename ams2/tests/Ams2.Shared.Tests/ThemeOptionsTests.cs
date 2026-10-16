@@ -317,7 +317,8 @@ public class ThemeOptionsTests
         Assert.DoesNotContain("poscaption", ids);
         Assert.DoesNotContain("livespeed", ids);
         var p = ProfileFactory.CreateDefault("x", T2012);
-        Assert.True(p.Get("ticker")!.Visible);
+        Assert.False(p.Get("ticker")!.Visible);
+        Assert.True(p.Get("gpxsat")!.Visible);
         Assert.False(p.Get("board")!.Visible);   // a faixa inferior (ticker) ocupa o lugar do Board
         Assert.Equal(["mode", "pageSeconds"], WidgetCatalog.OptionsFor(T2012, "ticker").Select(d => d.Id));
         Assert.Equal(["rival", "gapSeconds", "showDrs", "always"], WidgetCatalog.OptionsFor(T2012, "battle").Select(d => d.Id));
@@ -572,6 +573,7 @@ public class ThemeOptionsTests
         foreach (var x in profile.Widgets.Where(x => x.Visible && x.Id is not ("qualitower" or "standings")))
         {
             if (!WidgetCatalog.Find(x.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.FullScreenLayers.Contains(x.Id)) continue;   // GPxSAT: camada transparente de tela inteira
             if (WidgetLayout.Rect(theme, x.Id) is not { } o) continue;
             bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
             Assert.False(overlap, $"qualitower ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");
@@ -639,6 +641,7 @@ public class ThemeOptionsTests
         {
             if (WidgetLayout.ExclusiveGroups.Any(g => g.Contains("qualilap") && g.Contains(x.Id))) continue;
             if (!WidgetCatalog.Find(x.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.FullScreenLayers.Contains(x.Id)) continue;   // GPxSAT: camada transparente de tela inteira
             if (WidgetLayout.Rect(theme, x.Id) is not { } o) continue;
             bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
             Assert.False(overlap, $"qualilap ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");
@@ -686,6 +689,7 @@ public class ThemeOptionsTests
         foreach (var x in profile.Widgets.Where(x => x.Visible && x.Id != "qualiresult"))
         {
             if (!WidgetCatalog.Find(x.Id)!.Sessions.Contains(SessionIds.Qualify)) continue;
+            if (WidgetLayout.FullScreenLayers.Contains(x.Id)) continue;   // GPxSAT: camada transparente de tela inteira
             if (WidgetLayout.Rect(theme, x.Id) is not { } o) continue;
             bool overlap = q.X < o.X + o.W && o.X < q.X + q.W && q.Y < o.Y + o.H && o.Y < q.Y + q.H;
             Assert.False(overlap, $"qualiresult ({q.X},{q.Y} {q.W}x{q.H}) sobrepoe {x.Id} ({o.X},{o.Y} {o.W}x{o.H})");

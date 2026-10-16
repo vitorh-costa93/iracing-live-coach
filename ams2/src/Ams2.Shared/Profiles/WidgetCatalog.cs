@@ -21,7 +21,7 @@ public sealed record WidgetDef(
     public bool InTheme(string themeId)
         => (Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase)))
             && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id))
-            && (ThemeCatalog.Canonical(themeId) != "f1-1998" || WidgetCatalog.Supports99(Id));
+            && (!WidgetCatalog.Is99(themeId) || WidgetCatalog.Supports99(Id));
 }
 
 public enum OptionKind { Choice, Toggle, Number }
@@ -123,8 +123,13 @@ public static class WidgetCatalog
         // Classificacao (todos os temas, PLANO-QUALI.md): nascem so na sessao de classificacao. qualitower, qualilap e qualiresult desenhados nos 3 temas.
         new("qualitower", "Quali Tower", null, null, null, "", [], 32, 24, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
-        new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1993", "f1-1998"], DefaultSessions: [SessionIds.Qualify]),
+        new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1993", "f1-1998", "f1-1999-digital"], DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
+        new("gpxgauges", "Instrumentos GPxCInfo (Lo2k)", null, null, null, "", [], 341, 567, DefaultScale: 1.406f,
+            Themes: ["f1-1998", "f1-1999-digital", "f1-2004", "f1-2012"]),
+        // GPxSAT (GPxPatch do GP4): camada de tela inteira com as telas do modo do tema (Classic, Digital, Digital 2004, Digital 2010).
+        new("gpxsat", "GPxSAT (telas do GPxPatch)", null, null, null, "", [], 0, 0, DefaultScale: 1f, Caps: DisplayCaps.Name,
+            Themes: ["f1-1998", "f1-1999-digital", "f1-2004", "f1-2012"]),
     ];
 
     /// <summary>Colunas criadas no esquema 3: entram visiveis nas listas de colunas salvas por perfis antigos (migracao).</summary>
@@ -146,16 +151,19 @@ public static class WidgetCatalog
         { "board", "qualiboard", "standings", "qualitower", "radar", "inputs" };
     internal static bool Supports93(string id) => Widgets93.Contains(id);
     static readonly HashSet<string> Widgets99 = new(StringComparer.OrdinalIgnoreCase)
-        { "board", "qualiboard", "inputs", "radar" };
+        { "board", "qualiboard", "inputs", "radar", "gpxsat", "gpxgauges" };
     internal static bool Supports99(string id) => Widgets99.Contains(id);
+    /// <summary>Temas da familia 1999 (F1 1999 e F1 1999 Digital): mesma composicao de widgets.</summary>
+    public static bool Is99(string themeId) => ThemeCatalog.Canonical(themeId) is var t
+        && (string.Equals(t, "f1-1998", StringComparison.OrdinalIgnoreCase) || string.Equals(t, "f1-1999-digital", StringComparison.OrdinalIgnoreCase));
     /// <summary>Colunas das listas do 1993 (Race/Qualy Standings): faixa azul de patrocinador (ligada) e gap (desligado).</summary>
     static readonly ColumnDef[] Columns93List = [new("sponsor", "Faixa azul de patrocinador"), new("time", "Gap / tempo ao lado do sobrenome")];
     public static IEnumerable<WidgetDef> ForTheme(string themeId) => All.Where(d => d.InTheme(themeId)).Select(d =>
-        ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "board"
+        Is99(themeId) && d.Id == "board"
             ? d with { DisplayName = "Race Board (gaps, pit stop, volta rápida e legenda)", Columns = [new("team", "Equipe"), new("tyre", "Fornecedor de pneus")], WidthColumns = [], Caps = DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime }
-        : ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "qualiboard"
+        : Is99(themeId) && d.Id == "qualiboard"
             ? d with { DisplayName = "Qualy Board (out lap, intermediárias e resultado)", Columns = [new("team", "Equipe"), new("tyre", "Fornecedor de pneus")], Caps = DisplayCaps.Name | DisplayCaps.Gap | DisplayCaps.LapTime | DisplayCaps.Speed }
-        : ThemeCatalog.Canonical(themeId) == "f1-1998" && d.Id == "radar"
+        : Is99(themeId) && d.Id == "radar"
             ? d with { DefaultSessions = [SessionIds.Practice, SessionIds.Race] }
         : ThemeCatalog.Canonical(themeId) == "f1-1993" && d.Id == "board"
             ? d with { DisplayName = "Race Board (gap, volta mais rápida e legenda)", Columns = [], WidthColumns = [] }
@@ -404,9 +412,49 @@ public static class WidgetCatalog
         },
     };
 
+    /// <summary>
+    /// Opcoes do GPxSAT (gpxsat.ini do GPxPatch), iguais nos quatro temas. Padroes = os do GPx; o passo da animacao e 2x FadingSpeed.
+    /// </summary>
+    static readonly IReadOnlyList<OptionDef> GpxSatOptions =
+    [
+        new("showMode", "ShowMode: telas exibidas", OptionKind.Choice,
+            [O("all", "Todas"), O("sky", "Só sky messages + time left"), O("none", "Nenhuma")], "all"),
+        new("showTimeLeft", "Time left / lap counter no topo", OptionKind.Toggle, null, "true"),
+        new("raceStandings", "Corrida: standings", OptionKind.Choice,
+            [O("off", "Desligado (SpeedSplit)"), O("standings", "Classificação"), O("pitstops", "Pit stops"), O("interval", "Intervalos (2010)")], "off"),
+        new("qualiStandings", "Fora da corrida: standings de classificação", OptionKind.Toggle, null, "true"),
+        new("speedSplitRace", "Corrida: SpeedSplit", OptionKind.Choice,
+            [O("ahead", "Gap para o carro à frente"), O("behind", "Gap para o carro atrás"), O("trap", "Speed trap")], "ahead"),
+        new("speedSplitQuali", "Fora da corrida: SpeedSplit", OptionKind.Choice,
+            [O("split", "Split de quali"), O("trap", "Speed trap")], "split"),
+        new("directorsCut", "Director's cut (corrida)", OptionKind.Toggle, null, "false"),
+        new("showLogo", "Logo do patrocinador ao fim da animação", OptionKind.Toggle, null, "false"),
+        new("fadingSpeed", "FadingSpeed (passo = 2x, ms)", OptionKind.Number, null, "10", Min: 1, Max: 50),
+        new("skySeconds", "Sky messages na tela (s)", OptionKind.Number, null, "8", Min: 2, Max: 30),
+        new("splitSeconds", "Splits/gaps/trap na tela (s)", OptionKind.Number, null, "8", Min: 2, Max: 30),
+        new("pageSeconds", "Standings: segundos por página", OptionKind.Number, null, "6", Min: 2, Max: 30),
+        new("bottomTower", "2010: torre inferior", OptionKind.Choice, [O("off", "Desligada"), O("standings", "Gap ao líder"), O("pitstops", "Pit stops"), O("interval", "Intervalos")], "off"),
+        new("raceProgression", "2010: torre lateral de corrida", OptionKind.Toggle, null, "true"),
+        new("qualiMode", "2010: valor na torre de classificação", OptionKind.Choice, [O("gap", "Gap ao líder"), O("absolute", "Tempo absoluto")], "gap"),
+        new("raceTowerCars", "2010: carros na torre de corrida", OptionKind.Number, null, "10", Min: 1, Max: 32),
+        new("qualiTowerCars", "2010: carros na torre de classificação", OptionKind.Number, null, "22", Min: 1, Max: 32),
+        new("bottomCars", "2010: carros na torre inferior", OptionKind.Number, null, "5", Min: 1, Max: 10),
+        new("alwaysTower", "2010: manter torre com standings", OptionKind.Toggle, null, "false"),
+        new("showLapInStandings", "2010: mostrar volta nas standings", OptionKind.Toggle, null, "true"),
+        new("lapsLeftMode", "Contador de voltas", OptionKind.Choice, [O("remaining", "Voltas restantes"), O("current", "Volta atual")], "remaining"),
+        new("microTime", "Microtime", OptionKind.Toggle, null, "false"),
+        new("microCompare", "Microtime: referência", OptionKind.Choice, [O("leader", "Melhor da sessão"), O("personal", "Melhor pessoal")], "leader"),
+        new("microAbsolute", "Microtime: tempos absolutos (senão delta)", OptionKind.Toggle, null, "false"),
+        new("infoScreen", "Lista de modos ativos", OptionKind.Toggle, null, "false"),
+        new("trackMap", "Mapa aprendido da pista", OptionKind.Choice, [O("off", "Desligado"), O("always", "Sempre"), O("auto", "Bandeira amarela")], "auto"),
+        new("originalFonts", "Fontes originais do GPxPatch (fonts/gpxpatch ou GP3; Barlow só se faltarem)", OptionKind.Toggle, null, "true"),
+        new("aspect", "Área 4:3", OptionKind.Choice, [O("pillarbox", "Centrada 4:3 (como o GPx)"), O("stretch", "Esticada na janela")], "pillarbox"),
+    ];
+
     /// <summary>Opcoes do widget no tema (vazio = nenhuma).</summary>
     public static IReadOnlyList<OptionDef> OptionsFor(string themeId, string widgetId)
-        => ThemeOptions.TryGetValue(ThemeCatalog.Canonical(themeId), out var t) && t.TryGetValue(widgetId, out var o) ? o : [];
+        => string.Equals(widgetId, "gpxsat", StringComparison.OrdinalIgnoreCase) ? (Find("gpxsat")!.InTheme(themeId) ? GpxSatOptions.Select(o => o.Id == "showTimeLeft" && ThemeCatalog.Canonical(themeId) == "f1-1998" ? o with { Default = "false" } : o).ToArray() : [])
+        : ThemeOptions.TryGetValue(Is99(themeId) ? "f1-1998" : ThemeCatalog.Canonical(themeId), out var t) && t.TryGetValue(widgetId, out var o) ? o : [];
 }
 
 public sealed record ThemeDef(string Id, string DisplayName, bool Available);
@@ -420,6 +468,7 @@ public static class ThemeCatalog
     [
         new("f1-1993", "F1 1993", true),
         new("f1-1998", "F1 1999", true),
+        new("f1-1999-digital", "F1 1999 Digital", true),
         new("f1-2004", "F1 2004-2008", true),
         new("f1-2012", "F1 2012", true),
         new("f1-2018", "F1 2018", true),

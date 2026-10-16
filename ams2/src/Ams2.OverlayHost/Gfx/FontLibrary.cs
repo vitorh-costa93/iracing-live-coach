@@ -15,6 +15,30 @@ public sealed unsafe class FontLibrary : IDisposable
     public IReadOnlyList<string> Families { get; private set; } = [];
     public string? Directory { get; private set; }
 
+    /// <summary>Pastas das fontes originais do GPxPatch carregadas em runtime (vazio = nenhuma encontrada ou desligada).</summary>
+    public IReadOnlyList<string> OriginalDirectories { get; private set; } = [];
+    public string? OriginalDirectory => OriginalDirectories.Count > 0 ? OriginalDirectories[0] : null;
+
+    /// <summary>Instalacao padrao do GPxPatch (GP3).</summary>
+    public const string DefaultGpxFontDirectory = @"C:\Microprose\Grand Prix 3\gpxpdata\gfx\fonts";
+
+    /// <summary>
+    /// Pastas das fontes do GPxPatch, em ordem de prioridade: AMS2_GPX_FONTS (lista separada por ';'; "off" desliga), a pasta local
+    /// fonts\gpxpatch (ao lado do exe ou ams2\fonts\gpxpatch no repo, fora do git) e a instalacao padrao do GP3.
+    /// </summary>
+    public static IReadOnlyList<string> FindOriginalFontDirectories(string? themeFontDirectory = null)
+    {
+        string? env = Environment.GetEnvironmentVariable("AMS2_GPX_FONTS");
+        if (string.Equals(env, "off", StringComparison.OrdinalIgnoreCase)) return [];
+        var candidates = new List<string?>();
+        if (!string.IsNullOrWhiteSpace(env)) candidates.AddRange(env.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "fonts", "gpxpatch"));
+        if (themeFontDirectory is not null) candidates.Add(Path.Combine(themeFontDirectory, "gpxpatch"));
+        candidates.Add(DefaultGpxFontDirectory);
+        return candidates.Where(d => !string.IsNullOrWhiteSpace(d) && System.IO.Directory.Exists(d) && System.IO.Directory.GetFiles(d!, "*.ttf").Length > 0)
+            .Select(d => Path.GetFullPath(d!)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     public static string? FindFontDirectory()
     {
         string local = Path.Combine(AppContext.BaseDirectory, "fonts");
@@ -40,7 +64,17 @@ public sealed unsafe class FontLibrary : IDisposable
     void Initialize(IDWriteFactory* factory)
     {
         Directory = FindFontDirectory();
-        if (Directory is null) { Console.Error.WriteLine("[Fonts] pasta de fontes nÃ£o encontrada."); return; }
+        if (Directory is null) Console.Error.WriteLine("[Fonts] pasta de fontes nÃ£o encontrada.");
+        // Fontes originais do GPxPatch (terceiros): fonte primaria dos modos GPxSAT, lidas em runtime; a copia local fica fora do git.
+        OriginalDirectories = FindOriginalFontDirectories(Directory);
+        var files = new List<string>();
+        if (Directory is not null) files.AddRange(System.IO.Directory.GetFiles(Directory, "*.ttf"));
+        // Mesmo arquivo em mais de uma pasta: vale o da pasta de maior prioridade.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dir in OriginalDirectories)
+            foreach (var f in System.IO.Directory.GetFiles(dir, "*.ttf"))
+                if (seen.Add(Path.GetFileName(f))) files.Add(f);
+        if (files.Count == 0) return;
 
         ComPtr<IDWriteFactory3> factory3 = default;
         if (factory->QueryInterface(__uuidof<IDWriteFactory3>(), (void**)factory3.GetAddressOf()).Failure)
@@ -53,7 +87,7 @@ public sealed unsafe class FontLibrary : IDisposable
         ThrowIfFailed(f3.Get()->CreateFontSetBuilder(builder.GetAddressOf()));
 
         int added = 0;
-        foreach (string path in System.IO.Directory.GetFiles(Directory, "*.ttf"))
+        foreach (string path in files)
         {
             using ComPtr<IDWriteFontFaceReference> faceRef = default;
             fixed (char* p = path)

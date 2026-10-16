@@ -35,14 +35,16 @@ public class SessionsTests
     [Fact]
     public void Standalone_quali_widgets_exist_in_supported_themes_and_are_visible_in_the_default_profile()
     {
-        foreach (var t in ThemeCatalog.All.Where(t => t.Id is not ("f1-1993" or "f1-1998")))
+        foreach (var t in ThemeCatalog.All.Where(t => !WidgetCatalog.Is99(t.Id) && t.Id != "f1-1993"))
         {
             var p = ProfileFactory.CreateDefault("P", t.Id);
             foreach (var id in Quali)
             {
                 var w = p.Get(id);
                 Assert.NotNull(w);
-                Assert.True(w!.Visible);
+                // GPxSAT: no 2004 a camada gpxsat faz as telas de classificacao (os widgets antigos seguem no perfil, desligados).
+                bool replaced = WidgetLayout.GpxSatReplaces.TryGetValue(t.Id, out var r) && r.Contains(id);
+                Assert.Equal(!replaced, w!.Visible);
                 Assert.Null(w.Sessions);
             }
         }

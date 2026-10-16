@@ -102,6 +102,10 @@ public sealed unsafe class ThemeCanvas : IDisposable
     }
 
     ID2D1DeviceContext* Dc => _gfx.Context;
+    /// <summary>Contexto D2D e recursos do device, para superficies que desenham direto em pixels do device (GPxSAT: caixas
+    /// alinhadas ao pixel e texto sem transformacao). Quem usar deve restaurar transformacao e parametros de texto.</summary>
+    internal ID2D1DeviceContext* DeviceContext => Dc;
+    internal DeviceResources Resources => _gfx;
 
     void EnsureResources()
     {
@@ -357,6 +361,26 @@ public sealed unsafe class ThemeCanvas : IDisposable
         }
     }
 
+    GpxInstrumentBitmaps? _gpxGauges;
+
+    /// <summary>Arte local opcional do GPxCInfo, fora do git. Ângulo no sentido anti-horário, como no GPx.</summary>
+    public bool GpxGaugeImage(string name, float x, float y, float w, float h, float degrees = 0, float alpha = 1)
+    {
+        var bitmap = (_gpxGauges ??= new GpxInstrumentBitmaps(_gfx)).Find(name);
+        if (bitmap == null) return false;
+        Matrix3x2 saved;
+        Dc->GetTransform(&saved);
+        var transform = Matrix3x2.CreateRotation(-degrees * MathF.PI / 180, new Vector2(x + w/2, y + h/2)) * saved;
+        Dc->SetTransform(&transform);
+        try
+        {
+            var dest = new RectF(x, y, x+w, y+h);
+            Dc->DrawBitmap(bitmap, &dest, Opacity * alpha, InterpolationMode.HighQualityCubic, null, null);
+        }
+        finally { Dc->SetTransform(&saved); }
+        return true;
+    }
+
     FlagBitmaps? _flags;
 
     /// <summary>true se ha bandeira embarcada para o pais (alpha-3 do jogo); pais vazio/desconhecido = false (nada a reservar nem desenhar).</summary>
@@ -409,7 +433,7 @@ public sealed unsafe class ThemeCanvas : IDisposable
     public void Dispose()
     {
         ClearTextResources();
-        _flags?.Dispose();
+        _gpxGauges?.Dispose(); _flags?.Dispose();
         _photos?.Dispose();
         _sponsors?.Dispose();
         _brush.Dispose();

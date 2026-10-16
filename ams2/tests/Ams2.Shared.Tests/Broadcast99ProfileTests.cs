@@ -5,7 +5,7 @@ namespace Ams2.Shared.Tests;
 
 public sealed class Broadcast99ProfileTests
 {
-    static readonly string[] Supported = ["board", "qualiboard", "inputs", "radar"];
+    static readonly string[] Supported = ["board", "qualiboard", "inputs", "radar", "gpxsat", "gpxgauges"];
 
     [Fact]
     public void Theme99_keeps_legacy_id_and_only_four_requested_widgets()
@@ -15,7 +15,8 @@ public sealed class Broadcast99ProfileTests
         Assert.Equal(Supported.Order(), defs.Select(d => d.Id).Order());
         var profile = ProfileFactory.CreateDefault("1999", "f1-1998").Normalized();
         Assert.Equal(Supported.Order(), profile.Widgets.Select(w => w.Id).Order());
-        Assert.All(profile.Widgets, widget => Assert.True(widget.Visible));
+        // GPxSAT substitui os boards antigos; eles continuam disponíveis sem desenhar em duplicidade.
+        Assert.All(profile.Widgets, widget => Assert.Equal(widget.Id is not ("board" or "qualiboard"), widget.Visible));
         foreach (var id in new[] { "board", "qualiboard" })
         {
             Assert.Equal(["team", "tyre"], profile.Get(id)!.Columns);
@@ -33,7 +34,7 @@ public sealed class Broadcast99ProfileTests
         Assert.Equal(SessionIds.All, profile.Get("inputs")!.EffectiveSessions);
         Assert.Equal(["practice", "race"], profile.Get("radar")!.EffectiveSessions);
         foreach (var session in SessionIds.All)
-            Assert.Single(profile.Widgets.Where(w => w.Visible && w.ShowsIn(session) && w.Id is "board" or "qualiboard"));
+            Assert.Single(profile.Widgets.Where(w => w.Visible && w.ShowsIn(session) && w.Id == "gpxsat"));
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public sealed class Broadcast99ProfileTests
             new() { Id = "qualitower" }, new() { Id = "qualilap" }, new() { Id = "qualiresult" }
         ] };
         var migrated = original.Normalized();
-        Assert.Equal(7, migrated.SchemaVersion);
+        Assert.Equal(Profile.CurrentSchemaVersion, migrated.SchemaVersion);
         Assert.Equal(Supported.Order(), migrated.Widgets.Select(w => w.Id).Order());
         var board = migrated.Get("board")!;
         Assert.Equal((111, 222, .8f, 1.2f, .9f, "Arial", 600, 1.1f),

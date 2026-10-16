@@ -57,7 +57,7 @@ public sealed class SessionFilterTests : IDisposable
 
         var st = (await client.SendAsync(IpcCommands.GetState))!;
         Assert.Equal(["qualiboard"], st.HiddenBySession.Order());
-        Assert.Equal(new[] { "board", "qualiboard", "inputs", "radar" }.Order(), st.Widgets.Select(w => w.Id).Order());
+        Assert.Equal(new[] { "board", "qualiboard", "inputs", "radar", "gpxsat", "gpxgauges" }.Order(), st.Widgets.Select(w => w.Id).Order());
         st = (await client.SendAsync(IpcCommands.SetTheme, m => m with { Theme = "f1-2004" }))!;
         Assert.Equal(["qualilap", "qualiresult", "qualitower"], st.HiddenBySession.Order());
 

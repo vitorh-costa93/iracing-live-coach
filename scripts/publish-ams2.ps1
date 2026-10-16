@@ -35,6 +35,18 @@ foreach ($exe in @($overlayExe, $controlCenterExe)) {
 $publishFonts = Join-Path $publishDir "fonts"
 New-Item -ItemType Directory -Force $publishFonts | Out-Null
 Copy-Item (Join-Path $fontsDir "*.ttf") $publishFonts -Force
+# Fontes originais do GPxPatch (copia local fora do git; o host tambem le a instalacao do GP3 em runtime).
+$gpxFonts = Join-Path $fontsDir "gpxpatch"
+if (Test-Path (Join-Path $gpxFonts "*.ttf")) {
+    $publishGpx = Join-Path $publishFonts "gpxpatch"
+    New-Item -ItemType Directory -Force $publishGpx | Out-Null
+    Copy-Item (Join-Path $gpxFonts "*.ttf") $publishGpx -Force
+}
+# Artwork opcional do GPxPatch, pessoal e fora do Git.
+$gpxArtwork = Join-Path $repoRoot "ams2\src\Ams2.OverlayHost\Assets\GpxPatch"
+if (Test-Path -LiteralPath $gpxArtwork) {
+    Copy-Item -LiteralPath $gpxArtwork -Destination (Join-Path $publishDir "Assets") -Recurse -Force
+}
 # Bandeiras de pais (Assets\Flags ao lado do exe), tambem copiadas explicitamente em single-file.
 $publishFlags = Join-Path $publishDir "Assets\Flags"
 New-Item -ItemType Directory -Force $publishFlags | Out-Null

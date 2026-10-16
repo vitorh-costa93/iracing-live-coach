@@ -22,9 +22,10 @@ public class ProfileTests
         var p = ProfileFactory.CreateDefault("A", Theme);
         Assert.Equal(WidgetCatalog.ForTheme(Theme).Select(w => w.Id), p.Ordered.Select(w => w.Id));
         Assert.All(p.Widgets, w => Assert.Equal(WidgetLayout.Get(Theme, w.Id).Scale, w.Scale));
-        // o board substitui Relative e Driver Caption no layout padrao (continuam no catalogo, desligados)
-        Assert.True(p.Get("standings")!.Visible);
-        Assert.True(p.Get("board")!.Visible);
+        // GPxSAT Digital 2004: a camada gpxsat substitui torre, board, legendas e afins (continuam no catalogo, desligados)
+        Assert.True(p.Get("gpxsat")!.Visible);
+        Assert.False(p.Get("standings")!.Visible);
+        Assert.False(p.Get("board")!.Visible);
         Assert.False(p.Get("relative")!.Visible);
         Assert.False(p.Get("drivercaption")!.Visible);
         // composicao da TV: standings no canto superior esquerdo, board embaixo ao centro
@@ -119,7 +120,8 @@ public class ProfileTests
         Assert.False(p18.Get("lapcounter")!.Visible);
         Assert.False(p18.Get("relative")!.Visible);
         Assert.True(p18.Get("standings")!.Visible);
-        Assert.True(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Visible);
+        Assert.False(ProfileFactory.CreateDefault("x", "f1-2004").Get("board")!.Visible);   // GPxSAT no lugar
+        Assert.False(ProfileFactory.CreateDefault("x", "f1-2012").Get("ticker")!.Visible);
         Assert.Null(ProfileFactory.CreateDefault("x", "f1-1998").Get("lapcounter"));
     }
 

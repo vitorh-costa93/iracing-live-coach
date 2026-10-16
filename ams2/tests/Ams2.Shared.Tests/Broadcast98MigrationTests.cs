@@ -16,7 +16,8 @@ public class Broadcast98MigrationTests
         Assert.Equal((0, 780, 1.5f), (board.X, board.Y, board.Scale));
         Assert.Equal("Arial", board.Font); Assert.Null(board.TextScale);
         Assert.Null(p.Get("qualitower")); Assert.Null(p.Get("qualilap"));
-        Assert.True(p.Get("qualiboard")!.Visible);
+        Assert.False(p.Get("qualiboard")!.Visible);
+        Assert.True(p.Get("gpxsat")!.Visible);
         Assert.Equal("Arial", p.Get("qualiboard")!.Font);
         Assert.Null(p.Get("qualiboard")!.TextScale);
         Assert.Equal(1.2f, p.Get("qualiboard")!.Scale);
@@ -48,6 +49,6 @@ public class Broadcast98MigrationTests
             Assert.Equal((0, 780), (p.Get(id)!.X, p.Get(id)!.Y));
         }
         foreach (var session in new[] { "race", "qualify" })
-            Assert.Single(p.Widgets.Where(w => w.Visible && w.ShowsIn(session) && w.Id is "board" or "qualiboard"));
+            Assert.Single(p.Widgets.Where(w => w.Visible && w.ShowsIn(session) && w.Id == "gpxsat"));
     }
 }
