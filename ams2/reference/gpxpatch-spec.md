@@ -38,6 +38,19 @@ Elementos (TGAs em `gfx\digital2010`): barras inclinadas (paralelogramo) com can
 - `race_control.tga` (1024x32) = faixa larga de controle de prova (bandeiras/mensagens). `timing_background_1..3` = fundos de tempos de setor.
 - Opções: `ShowF1Logo` 0/1/2 (2 = só câmera externa), cores `ColorTextPit` vermelho, `PitExit` verde, `Faster` verde, `Retired` cinza translúcido; fotos de piloto e bandeiras opcionais.
 
+### 3b. Evidências do fórum GP4 (grandprixgames.org, 16/10/2026)
+Fonte: tópicos "GPxPatch 4.10 RELEASED" (read.php?4,1031223) e "GPxPatch 4.11 W.I.P." (read.php?4,1031777), capturas imgur J7KQQvR e XqCj4yL (17/05/2013).
+- **Standings "normais" (torre inferior, 2010)**: 8 carros em 2 colunas de 4 (esq. 1-4, dir. 5-8), cada linha = posição + nome "M SCHUMACHER" + gap "+3.297"; líder em barra vermelha, demais pretas, paralelogramo inclinado; **logo LG** centralizado acima, **logo F1** embaixo à esquerda; pílula "Lap 2 / 55" no topo central. Só aparecem na corrida, 8 carros/página (como na TV real).
+- **Modo Interval** (4.11, tecla B): gap para o carro da frente em vez do líder; na barra de 5 carros a linha mostra "1 SCH Interval | 2 HIL +2.506 | 3 BRU +0.512 | 4 BEG +0.976 | 5 VER +0.446". Aparece com mais frequência conforme a corrida avança (a cada 2-3 voltas no modo diretor). Setas verde/vermelha de posição ganha/perdida só nas torres, não nas standings normais.
+- **Caixa do piloto (embaixo-esq.)**: "J VERSTAPPEN / Benetton Ford" (nome + equipe), número em losango (5), logo LG ao lado; **caixa de gap à direita**: "4 G BERGER (+0.446) / 5 J VERSTAPPEN" (carro à frente com intervalo, piloto seguido).
+- **Menu de teclas** no canto sup. direito (lista vermelha/branca: Standings, Director's cut, Pit stops, Next page, Gap car behind, ...), visível quando se pressiona a tecla de ajuda.
+- **Marcadores de pit**: pequenos triângulos vermelho (carro entrou no pit, quem está atrás sobe) e verde (carro saiu) nas torres; só corrida.
+- **Rótulos de sessão** editáveis em gpxsat.ini `[String]`: Short_FriPrac1=P1, Short_FriPrac2=P2, Short_SatPrac=P3, Short_Qualify=Q (padrão Q3 na 4.10), Short_PreRaceWarmup=PR. A pílula do relógio mostra "Q1 5:58".
+- **Bandeira quadriculada na quali**: aparece ao lado do piloto quando laps<2, ou laps<3 estando no pit (carro sem mais voltas lançadas); deve permanecer até o fim da sessão (pedido da comunidade).
+- **Classificação final** (planejada, não entregue na 4.10): título com ano + nome do GP, ao fim da sessão, para cada tipo de sessão. `three_letter_codes.ini` fornece os códigos de 3 letras; nomes são capitalizados (acento não é, bug conhecido).
+- `CarsPerPage=5` em [Digital2010]. Mods de 3ª parte ("New F1 Graphics", Lo2k 2004 TV, siemens_2004.tga + LG) só trocam TGAs em `gpxpdata\gfx` e escolhem "Digital 2004" no menu GPxSAT.
+- Capturas de Classic/Digital/2004 continuam sem fonte: as imagens do fórum são Photobucket/ImageShack mortas, os demais imgur dos tópicos são assinaturas/sprites.
+
 ## 4. Classic (~1999) e Digital (alternativo)
 - **Classic**: faixa preta "TAG HEUER TIMING" (logo TAG vermelho/verde + wordmark) e logo Siemens alternados (animação: show 1500ms, fade out 1500/500, idle 500). Posições em blocos de 8; caixas coloridas redondas A–G/M/P (círculos 32px com letra: A preto, B vermelho, C laranja, D amarelo, E azul, F vermelho-claro, G dourado, M azul, P amarelo/vermelho) marcam pneus/estado; grade de quadrados amarelos com nº 1–22 para bandeira amarela (zona de pista); bandeira quadriculada ondulada na chegada (`classic_flag`). Fonte "manana". Sombra de fonte ligada.
 - **Digital**: mesmos A–G/M/P porém como quadrados 64px (A preto, B vermelho, C laranja, D amarelo, E roxo-azul, F vermelho, G dourado, M azul, P amarelo/vermelho); 6 carros/página; fonte "futura"; xadrez digital no final; mesma grade amarela de nº. É o "alternativo ao de 1999" (canais por assinatura).
