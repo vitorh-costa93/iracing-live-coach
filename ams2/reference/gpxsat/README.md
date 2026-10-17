@@ -39,3 +39,12 @@ AMS2, Formula V10 Gen2, Donington GP, 5 oponentes, dirigido por piloto automáti
 - **2012:** torre de posições (1–6) e painéis laterais, volta completa até a linha de chegada.
 
 Ainda não conferido em jogo: parciais S1/S2/S3 com cores, speed trap e as telas de classificação (exigem sessão de classificação). Barrichello/Stewart sem aparecer no overlay é problema separado (livery/nomes).
+
+## Validação em jogo com piloto automático (17/10/2026, 2ª rodada)
+
+Corrida de 6 carros em Donington GP, carro dirigido por script via memória compartilhada (~20 m/s, sem bater).
+- **1999 Classic (f1-1998):** volta completa. Banners Intermediate 1/2 e Finish Line com diferença (+38.633, +1 Lap, +2 Laps), Lap/Fastest Lap com nome, equipe e tempo.
+- **1999 Digital:** volta completa. Barras com diferença (+1:09.951, +1 Lap, +2 Laps) e faixa Fastest Lap/Lap.
+- **2004:** volta completa. Barra de diferença (+5 Laps, +6 Laps), "RACE n Laps remaining", clima, pneus e combustível. Pendente: nomes em caixa alta ("L. BADOER") e letras espaçadas; devem ficar como nas transmissões ("V. Costa").
+- **2012:** overlay renderizado (torre, Fastest Lap, "3 Laps remaining", "Final lap", bandeiras), mas o carro começou fora da pista e não completou volta limpa; parciais/speed trap deste tema não foram conferidos.
+- Parciais S1/S2/S3 coloridas e speed trap não foram identificados nos recortes amostrados.
