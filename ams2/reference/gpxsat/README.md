@@ -28,3 +28,14 @@ As fontes em `ams2/fonts/gpxpatch/` e imagens em `Assets/GpxPatch/` ficam fora d
 ## Verificação desta entrega
 
 Build Release de Host e Control Center; testes Core, Shared e Integration; 68 prévias de telas e painel de instrumentos; conferência visual dos quatro modos e confirmação das quatro famílias originais. Nenhum jogo foi iniciado/controlado. Resultados finais e publicação estão registrados em `docs/CODEX_CONTINUIDADE.md` na raiz.
+
+## Validação em jogo (17/10/2026)
+
+AMS2, Formula V10 Gen2, Donington GP, 5 oponentes, dirigido por piloto automático visual (linha de pilotagem, ~3:10/volta). Conferido por capturas de tela:
+
+- **1999 Classic (f1-1998):** velocímetro GPxGauges, Inputs, banners de diferença ("L. BADOER +1 Lap") e de nome/equipe ("M. SCHUMACHER / Ferrari").
+- **1999 Digital:** banners azuis com tempos (1:14.515, 1:10.700), "V. COSTA 6", "+ 1 Lap".
+- **2004:** painel de clima/pneus/combustível, "Laps remaining", banner "5 L. BADOER +35.700 V. COSTA".
+- **2012:** torre de posições (1–6) e painéis laterais, volta completa até a linha de chegada.
+
+Ainda não conferido em jogo: parciais S1/S2/S3 com cores, speed trap e as telas de classificação (exigem sessão de classificação). Barrichello/Stewart sem aparecer no overlay é problema separado (livery/nomes).
