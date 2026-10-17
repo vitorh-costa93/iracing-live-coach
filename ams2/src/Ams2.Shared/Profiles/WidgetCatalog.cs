@@ -364,7 +364,7 @@ public static class WidgetCatalog
             ["board"] = [
                 new("gapPointPercent", "Ponto de medição do gap (% da volta; 0 = chegada)", OptionKind.Number, null, "0", Min: 0, Max: 99.9),
                 new("gapArrow", "Seta na placa de gap", OptionKind.Toggle, null, "true"),
-                new("gapHoldSeconds", "Duração do resultado do gap (s)", OptionKind.Number, null, "7", Min: 3, Max: 15),
+                new("gapHoldSeconds", "Duração do resultado do gap (s)", OptionKind.Number, null, "6", Min: 3, Max: 15),
                 new("showFastest", "Mostrar nova volta mais rápida da corrida", OptionKind.Toggle, null, "true"),
                 new("captionMode", "Legenda", OptionKind.Choice, [O("full", "Nome e equipe"), O("onboard", "Sobrenome a bordo")], "full"),
             ],

@@ -11,3 +11,8 @@ Validação por telemetria sintética e renderização do aplicativo. Não houve
 Race Board mantém a legenda do jogador com foto (ou silhueta), nome, equipe e posição entre os eventos. A prioridade continua pit → fastest → voltas restantes → gap → legenda. Gap medido e voltas restantes conservam sua duração visível quando encobertos por um evento prioritário; uma volta rápida de sete segundos não pode consumir toda a janela do gap ou das voltas restantes. Menu/pausa, troca de sessão ou identidade e descontinuidade do relógio descartam os eventos pendentes.
 
 A identidade dos adversários é consultada por piloto **e carro/classe**, sem selecionar a primeira temporada do catálogo. A equipe vem da pintura do carro, independentemente do tema visual: Schumacher num carro de 1999 é Ferrari mesmo no tema de 1993; a pintura de 1993 continua Benetton. Cache de pintura de outro carro/fornecedor não é reutilizado. Nomes ambíguos sem carro compatível permanecem sem identificação; não se inventa uma equipe.
+
+## Alinhamento com a lógica de aparição de 1999 — 17/10/2026
+
+Qualy Board usa `QualiBoard99Presentation` (sem duplicar cálculo): out lap (`FIRST LAP OUT OF PITS` sobre a legenda), relógio desde a volta lançada, aproximação até 5 s antes da referência, intermediária 3 s (delta ciano, `INTERMEDIATE n`) e resultado por `showFor` (6 s padrão). Volta mais rápida (7 s) continua depois do resultado. Race Board: pit → fastest (7 s) → gap → voltas restantes → legenda; gap e voltas restantes 6 s (`gapHoldSeconds` padrão 6). Tabela de início de volta segue fora de escopo. Visibilidade por sessão: Board/Standings treino+corrida, Qualy Board/Standings classificação, Radar treino+corrida em perfis novos, Inputs em todas.
+

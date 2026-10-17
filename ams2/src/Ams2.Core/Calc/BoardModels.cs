@@ -34,7 +34,7 @@ public sealed record BoardOptions
     /// <summary>1993: ponto único da pista em percentual; 0 = linha de chegada (default de produto).</summary>
     public double GapPointPercent { get; init; } = 0;
     /// <summary>1993: retenção do resultado concluído, em segundos.</summary>
-    public double GapHoldSeconds { get; init; } = 7;
+    public double GapHoldSeconds { get; init; } = 6;
 
     public static readonly BoardOptions Default = new();
 }

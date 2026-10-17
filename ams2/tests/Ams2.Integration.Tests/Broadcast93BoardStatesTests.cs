@@ -102,23 +102,24 @@ public class Broadcast93BoardStatesTests
         Assert.Equal(Broadcast93RaceBoard.Mode.Fastest, presentation.Update(m, fastest).Mode);
         for (double age = .5; age < 7; age += .5)
             Assert.Equal(Broadcast93RaceBoard.Mode.Fastest, presentation.Update(m with { Now = Now + age }, fastest).Mode);
-        Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, presentation.Update(m with { Now = Now + 7 }, fastest).Mode);
-        for (double age = 7.5; age < 13; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
-        var gap = presentation.Update(m with { Now = Now + 13 }, fastest);
+        var gap = presentation.Update(m with { Now = Now + 7 }, fastest);
         Assert.Equal(Broadcast93RaceBoard.Mode.Gap, gap.Mode);
         Assert.Equal(m.Board!.Gap93, gap.Gap);
-        for (double age = 13.5; age < 20; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
+        for (double age = 7.5; age < 14; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
+        Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, presentation.Update(m with { Now = Now + 14 }, fastest).Mode);
+        for (double age = 14.5; age < 20; age += .5) presentation.Update(m with { Now = Now + age }, fastest);
         Assert.Equal(Broadcast93RaceBoard.Mode.Caption, presentation.Update(m with { Now = Now + 20 }, fastest).Mode);
         Assert.Equal(Broadcast93RaceBoard.Mode.None, presentation.Update(m with { PlayerDriving = false }).Mode);
     }
 
     [Fact]
-    public void Priority_is_pit_then_fastest_then_laps_to_go_then_gap()
+    public void Priority_is_pit_then_fastest_then_gap_then_laps_to_go()
     {
         var m = WithLapStart(WithGap(Race(10)), 1);
         var fastest = new FastestLapEvent(m.Session!.Cars[1] with { BestLapTime = 87.438 }, 87.438, Now - 1);
         Assert.Equal(Broadcast93RaceBoard.Mode.Fastest, Broadcast93RaceBoard.Select(m, fastest));
-        Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, Broadcast93RaceBoard.Select(m, fastest, fastestEnabled: false));
+        Assert.Equal(Broadcast93RaceBoard.Mode.Gap, Broadcast93RaceBoard.Select(m, fastest, fastestEnabled: false));
+        Assert.Equal(Broadcast93RaceBoard.Mode.LapsToGo, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { Gap93 = null } }, fastest, fastestEnabled: false));
         Assert.Equal(Broadcast93RaceBoard.Mode.Gap, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { LapsRemaining = 7 } }));
         Assert.Equal(Broadcast93RaceBoard.Mode.Pit, Broadcast93RaceBoard.Select(WithPit(m, 3), fastest));
         Assert.Equal(Broadcast93RaceBoard.Mode.Caption, Broadcast93RaceBoard.Select(m with { Board = m.Board! with { Gap93 = null, LapsRemaining = 7 } }));

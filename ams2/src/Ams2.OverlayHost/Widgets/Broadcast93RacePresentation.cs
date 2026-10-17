@@ -43,8 +43,8 @@ public sealed class Broadcast93RacePresentation
         { _lapAt = b.PlayerLapChangedT; _remaining = m.Board?.LapsRemaining ?? Broadcast93Rules.LapsRemaining(s); _remainingShown = 0; }
         _mode = Broadcast93RaceBoard.PitActive(b, m.Now) ? Broadcast93RaceBoard.Mode.Pit
             : fastestEnabled && fastest?.ActiveAt(m.Now) == true ? Broadcast93RaceBoard.Mode.Fastest
-            : _remaining is not null ? Broadcast93RaceBoard.Mode.LapsToGo
-            : _gap is not null ? Broadcast93RaceBoard.Mode.Gap : Broadcast93RaceBoard.Mode.Caption;
+            : _gap is not null ? Broadcast93RaceBoard.Mode.Gap
+            : _remaining is not null ? Broadcast93RaceBoard.Mode.LapsToGo : Broadcast93RaceBoard.Mode.Caption;
         return new(_mode, _gap, _remaining);
     }
 }

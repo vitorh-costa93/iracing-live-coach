@@ -9,7 +9,7 @@ using Vortice.Win32.Numerics;
 namespace Ams2.OverlayHost.Widgets;
 
 /// <summary>
-/// Placa inferior 1993: PIT STOP &gt; FASTEST LAP &gt; LAPS TO GO &gt; GAP &gt; legenda do jogador.
+/// Placa inferior 1993: PIT STOP &gt; FASTEST LAP &gt; GAP &gt; LAPS TO GO &gt; legenda do jogador.
 /// Eventos medidos retêm seu tempo visível quando interrompidos por um evento prioritário.
 /// </summary>
 public sealed class Broadcast93RaceBoard
@@ -45,8 +45,8 @@ public sealed class Broadcast93RaceBoard
         var b = BroadcastUi.State(m);
         if (PitActive(b, m.Now)) return Mode.Pit;
         if (fastestEnabled && fastest?.ActiveAt(m.Now) == true) return Mode.Fastest;
-        if (LapsToGoActive(m, b)) return Mode.LapsToGo;
-        return m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT ? Mode.Gap : Mode.Caption;
+        if (m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT) return Mode.Gap;
+        return LapsToGoActive(m, b) ? Mode.LapsToGo : Mode.Caption;
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)

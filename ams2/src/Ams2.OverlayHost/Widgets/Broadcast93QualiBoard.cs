@@ -71,8 +71,37 @@ public sealed class Broadcast93QualiBoard
             if (fastest.ActiveAt(m.Now, FastestLapDetector.DefaultHold, notBefore))
             { Broadcast93RaceBoard.Fastest(c, fastest.Car, m.Session.Cars, cfg, m.Session.TrackLength); return; }
         }
+        // Mesma cadencia do Qualy Board 1999 (QualiBoard99Presentation): out lap, relogio, aproximacao (5 s), intermediaria (3 s).
+        var live = Broadcast99QualiBoard.Resolve(m, cfg);
+        if (live.Stage is QualiBoard99Stage.Running or QualiBoard99Stage.Approach or QualiBoard99Stage.Split) { Live(c, m, cfg, live); return; }
         Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
+        if (live.Stage == QualiBoard99Stage.OutLap)
+            Broadcast93RaceBoard.Text(c, "FIRST LAP OUT OF PITS", 880, 68, 400, "label", 34, Broadcast93RaceBoard.Yellow, HAlign.Right);
     }
+
+    /// <summary>Relogio a esquerda; referencia a direita na aproximacao; na intermediaria, delta ciano e "INTERMEDIATE n" no centro.</summary>
+    static void Live(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, QualiBoard99Presentation.View v)
+    {
+        var player = m.Session!.PlayerCar!;
+        bool crossed = v.Stage == QualiBoard99Stage.Split;
+        Broadcast93RaceBoard.Band(c, 30, 195);
+        Broadcast93RaceBoard.Text(c, cfg.Name(player, BroadcastUi.ShortName(player, m.Session.Cars)).ToUpperInvariant(), 165, 42, 590, "name", 38, c.Theme.TextColor);
+        if (v.Time is { } elapsed)
+            Broadcast93RaceBoard.Text(c, crossed && cfg.Fmt.LapTime is null ? Time(elapsed) : cfg.Fmt.LapTime is not null ? cfg.Fmt.FormatLapTime(elapsed) : Tenths(elapsed), 210, 125, 500, "time", 50, c.Theme.ValueColor);
+        if (v.Stage == QualiBoard99Stage.Running) return;
+        bool personal = string.Equals(cfg.OptionOr("compareTo", "leader"), "personal", StringComparison.OrdinalIgnoreCase);
+        var refCar = v.ReferenceCar ?? m.Session.Cars.FirstOrDefault(car => car.Index == (personal ? player.Index : m.QualiLap!.LeaderIndex));
+        string name = refCar is not null ? cfg.Name(refCar, BroadcastUi.ShortName(refCar, m.Session.Cars)).ToUpperInvariant() : personal ? "PERSONAL BEST" : "REFERENCE";
+        Broadcast93RaceBoard.Text(c, name, 1220, 42, 535, "name", 38, c.Theme.TextColor);
+        if (v.ReferenceTime is { } reference)
+            Broadcast93RaceBoard.Text(c, cfg.Fmt.LapTime is null ? Time(reference) : cfg.Fmt.FormatLapTime(reference), 1220, 125, 535, "time", 50, c.Theme.ValueColor);
+        if (!crossed) return;
+        if (v.Delta is { } delta) Broadcast93RaceBoard.Text(c, cfg.Fmt.FormatGap(delta), 765, 125, 390, "gap", 50, Broadcast93RaceBoard.Cyan, HAlign.Center);
+        Broadcast93RaceBoard.Text(c, "INTERMEDIATE " + v.Mark.ToString(CultureInfo.InvariantCulture), 765, 185, 390, "label", 34, Broadcast93RaceBoard.Yellow, HAlign.Center);
+    }
+
+    /// <summary>Relogio em andamento com uma casa (44.9; 1'07.9), como o cronometro da transmissao.</summary>
+    static string Tenths(double seconds) => Time(Math.Floor(seconds * 10) / 10, 1);
 
     static double ResultHold(WidgetSettings cfg)
         => double.TryParse(cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) && double.IsFinite(h) ? Math.Clamp(h, 3, 15) : 6;

@@ -134,7 +134,7 @@ internal static class Program
         {
             static double GapOption(WidgetSettings? cfg, string key, double fallback)
                 => double.TryParse(cfg?.Option(key), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : fallback;
-            provider.SetGap93Options(GapOption(fromFile, "gapPointPercent", 0), GapOption(fromFile, "gapHoldSeconds", 7));
+            provider.SetGap93Options(GapOption(fromFile, "gapPointPercent", 0), GapOption(fromFile, "gapHoldSeconds", 6));
         }
         provider.Radar.Options = RadarWidget.OptionsFor(fromFile is not null && o.Widget == "radar" ? (fromFile with { Id = "radar" }).Normalized()
             : new WidgetSettings { Id = "radar", RadarRange = o.RadarRange, RadarSensitivity = o.RadarSens, Columns = cols }.Normalized());

@@ -43,15 +43,25 @@ public class Broadcast93RenderTests
     }
 
     [Fact]
-    public void Quali_default_is_the_driver_caption_and_does_not_depend_on_the_running_clock()
+    public void Quali_follows_1999_cadence_out_lap_clock_split_and_result_holds()
     {
-        var board = new Broadcast93QualiBoard(); var m = Flying();
-        var initial = Render(c => board.Draw(c, m, QualiConfig), "1993-quali-caption-default");
-        Assert.Contains(initial, b => b != 0);
-        m = m with { QualiLap = m.QualiLap! with { Elapsed = 75 } };
-        var later = m with { QualiLap = m.QualiLap! with { LeaderBestLap = 72.830, LeaderIndex = m.Session!.Cars.First(car => !car.IsPlayer).Index } };
-        Assert.Equal(72.830, Broadcast93QualiBoard.Resolve(later, QualiConfig)!.ReferenceTime);
-        Assert.Equal(initial, Render(c => board.Draw(c, later, QualiConfig)));
+        var m = Flying();
+        Assert.Equal(QualiBoard99Stage.Running, Broadcast99QualiBoard.Resolve(m, QualiConfig).Stage);
+        var board = new Broadcast93QualiBoard();
+        var clock = Render(c => board.Draw(c, m, QualiConfig), "1993-quali-clock");
+        Assert.Contains(clock, b => b != 0);
+        var later = m with { QualiLap = m.QualiLap! with { Elapsed = 75 } };
+        Assert.NotEqual(clock, Render(c => board.Draw(c, later, QualiConfig)));
+        var outLap = m with { QualiLap = m.QualiLap with { OutLap = true, Elapsed = null } };
+        Assert.Equal(QualiBoard99Stage.OutLap, Broadcast99QualiBoard.Resolve(outLap, QualiConfig).Stage);
+        // Intermediate: 3 s; result: showFor (6 s por padrao).
+        var split = m with { QualiLap = m.QualiLap with { Elapsed = 44.9, LastSplit = new(1, 41.971, null, -.290, 99) } };
+        Assert.Equal(QualiBoard99Stage.Split, Broadcast99QualiBoard.Resolve(split, QualiConfig).Stage);
+        Assert.NotEqual(QualiBoard99Stage.Split, Broadcast99QualiBoard.Resolve(split with { Now = 102.1 }, QualiConfig).Stage);
+        var result = new QualiLapResult(3, 72.533, 1, -.297, null, true, false, [null, null, null], 99, true);
+        var finish = m with { QualiLap = m.QualiLap with { LastResult = result } };
+        Assert.Equal(QualiBoard99Stage.Finish, Broadcast99QualiBoard.Resolve(finish with { Now = 104.9 }, QualiConfig).Stage);
+        Assert.NotEqual(QualiBoard99Stage.Finish, Broadcast99QualiBoard.Resolve(finish with { Now = 105.1 }, QualiConfig).Stage);
     }
 
     [Fact]

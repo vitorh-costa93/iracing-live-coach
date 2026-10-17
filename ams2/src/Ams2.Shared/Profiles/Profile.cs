@@ -462,7 +462,7 @@ public static class ProfileFactory
                 // Widgets de transmissao: coluna "always" = sempre visivel; o padrao e aparecer so nos eventos (os campos ficam visiveis).
                 // Radar: "native" (indicador nativo) tambem e opcional.
                 : e.d.Columns.Any(col => col.Id == "always") ? e.d.Columns.Where(col => col.Id is not ("always" or "native")).Select(col => col.Id).ToArray() : null,
-            Sessions = WidgetCatalog.Is99(themeId) && e.d.Id == "radar" ? [SessionIds.Practice, SessionIds.Race] : null,
+            Sessions = (WidgetCatalog.Is99(themeId) || string.Equals(ThemeCatalog.Canonical(themeId), "f1-1993", StringComparison.OrdinalIgnoreCase)) && e.d.Id == "radar" ? [SessionIds.Practice, SessionIds.Race] : null,
         }).ToList();
         return new Profile { Name = name, ThemeId = themeId, Widgets = list };
     }
