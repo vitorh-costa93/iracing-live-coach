@@ -95,7 +95,7 @@ internal static class Win32
 
     [DllImport("gdi32.dll")] static extern int D3DKMTSetProcessSchedulingPriorityClass(nint process, int priorityClass);
 
-    /// <summary>Classe de agendamento de GPU do processo (D3DKMT): HIGH(4) e aceita sem admin em geral; senão ABOVE_NORMAL(3).
+    /// <summary>Classe de agendamento de GPU do processo (D3DKMT): ABOVE_NORMAL(3): REALTIME/HIGH roubavam GPU do jogo e pioravam o gráfico dele.
     /// Com o jogo em 90% de GPU, é o que mantém os instrumentos do overlay fluidos. Falhas são ignoradas.</summary>
     public static void RaiseGpuPriority()
     {
@@ -104,7 +104,7 @@ internal static class Win32
             var me = GetCurrentProcess();
             var refused = new List<string>();
             string accepted = "nenhuma";
-            foreach (var (cls, name) in new[] { (5, "REALTIME"), (4, "HIGH"), (3, "ABOVE_NORMAL") })
+            foreach (var (cls, name) in new[] { (3, "ABOVE_NORMAL") })
             {
                 int rc = D3DKMTSetProcessSchedulingPriorityClass(me, cls);
                 if (rc == 0) { accepted = name; break; }
