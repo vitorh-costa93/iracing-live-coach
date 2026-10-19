@@ -33,6 +33,7 @@ public partial class MainWindow
         CoachEngineerBox.IsChecked = s.EngineerEnabled;
         CoachFuelCallsBox.IsChecked = s.FuelCalls;
         CoachPitCallsBox.IsChecked = s.PitCalls;
+        CoachRejoinCallsBox.IsChecked = s.RejoinCalls;
         CoachFlagCallsBox.IsChecked = s.FlagCalls;
         CoachGapCallsBox.IsChecked = s.GapCalls;
         CoachSkillBox.SelectedIndex = (int)s.Skill;
@@ -84,6 +85,7 @@ public partial class MainWindow
         EngineerEnabled = CoachEngineerBox.IsChecked == true,
         FuelCalls = CoachFuelCallsBox.IsChecked == true,
         PitCalls = CoachPitCallsBox.IsChecked == true,
+        RejoinCalls = CoachRejoinCallsBox.IsChecked == true,
         FlagCalls = CoachFlagCallsBox.IsChecked == true,
         GapCalls = CoachGapCallsBox.IsChecked == true,
         Skill = (SkillLevel)Math.Max(0, CoachSkillBox.SelectedIndex),

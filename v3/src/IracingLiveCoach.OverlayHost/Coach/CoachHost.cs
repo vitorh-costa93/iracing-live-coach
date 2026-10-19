@@ -96,6 +96,7 @@ public sealed class CoachHost : IDisposable
         _started = true;
         _reader.CoachSampleUpdated += OnSample;
         _reader.CoachContextChanged += OnContext;
+        _reader.PitLossLog += _engineerLog.Append;
         // First load + the context the reader already knows (if the first SessionInfo came before we
         // subscribed), off the calling thread.
         RunApply(() =>
@@ -223,6 +224,7 @@ public sealed class CoachHost : IDisposable
                 _engine.FlagCallsEnabled = s.FlagCalls;
                 _engine.GapCallsEnabled = s.GapCalls;
                 _engine.PitCallsEnabled = s.PitCalls;
+                _engine.RejoinCallsEnabled = s.RejoinCalls;
                 // Re-enabled after being off: the context event may have been dropped meanwhile.
                 if (s.Enabled && !wasEnabled && _lastCtx != null)
                     _engine.SetContext(_lastCtx);
@@ -265,7 +267,7 @@ public sealed class CoachHost : IDisposable
             if (_disposed) return;
             _disposed = true;
         }
-        try { _reader.CoachSampleUpdated -= OnSample; _reader.CoachContextChanged -= OnContext; } catch { }
+        try { _reader.CoachSampleUpdated -= OnSample; _reader.CoachContextChanged -= OnContext; _reader.PitLossLog -= _engineerLog.Append; } catch { }
         try { _poll.Dispose(); } catch { }
         // Wait for an in-flight settings apply (it checks _disposed before starting), then release I/O.
         bool applyIdle = Monitor.TryEnter(_applyGate, TimeSpan.FromSeconds(3));

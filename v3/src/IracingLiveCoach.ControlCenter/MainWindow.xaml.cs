@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private readonly ProfilesIpcClient _profilesClient = new();
     private readonly ClassColorsIpcClient _classColorsClient = new();
 
-    private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper", "trace", "coach-report", "coach"];
+    private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper", "trace", "coach-report", "coach", "pit-rejoin"];
 
     private static readonly Dictionary<string, (string Label, string Icon)> WidgetInfo = new()
     {
@@ -51,6 +51,7 @@ public partial class MainWindow : Window
         ["trace"] = ("Live Telemetry", "geo:IconTrace"),
         ["coach-report"] = ("AI Coach Report", "geo:IconReport"),
         ["coach"] = ("Coach", "geo:IconCoach"),
+        ["pit-rejoin"] = ("Pit Rejoin", ""),
     };
 
     private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
@@ -162,6 +163,7 @@ public partial class MainWindow : Window
         ["trace"] = new WidgetUiState(28, 720, 560, 210, AutoSize: false),
         ["coach-report"] = new WidgetUiState(28, 310, 520, 30, Visible: false),
         ["coach"] = new WidgetUiState(28, 944, 560, 84, AutoSize: false),
+        ["pit-rejoin"] = new WidgetUiState(1270, 160, 340, 30),
     };
 
     private void SeedStateFromStore()

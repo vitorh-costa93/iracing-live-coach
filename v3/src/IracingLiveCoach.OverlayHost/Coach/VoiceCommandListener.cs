@@ -4,7 +4,7 @@ namespace IracingLiveCoach.OverlayHost.Coach;
 
 /// <summary>
 /// Fixed multilingual (en + pt-BR) command grammar. Intents: lastlap, worstcorner, score, focus, repeat,
-/// summary, fuel, gapahead, gapbehind, position, laps, pit (answers come in the coach language).
+/// summary, fuel, gapahead, gapbehind, position, laps, pit, rejoin (answers come in the coach language).
 /// Tolerant to a missing microphone or recognizer (IsAvailable = false, Start returns false).
 /// </summary>
 public sealed class VoiceCommandListener : IDisposable
@@ -23,6 +23,7 @@ public sealed class VoiceCommandListener : IDisposable
         ("position", new[] { "position", "what position am I", "posição", "qual minha posição" }),
         ("laps", new[] { "laps remaining", "how many laps left", "quantas voltas faltam", "voltas restantes" }),
         ("pit", new[] { "pit this lap", "box", "do I need to pit", "box nesta volta", "preciso parar" }),
+        ("rejoin", new[] { "where will I rejoin", "where do I rejoin", "rejoin", "onde eu volto", "onde eu volto na pista", "onde eu saio do box" }),
     };
 
     private SpeechRecognitionEngine? _engine;

@@ -13,6 +13,8 @@ public sealed class EngineerOptions
     public bool Flags { get; set; } = true;
     public bool Gaps { get; set; } = true;
     public bool Pit { get; set; } = true;
+    /// <summary>"If you pit now, you rejoin P9..." calls (races).</summary>
+    public bool Rejoin { get; set; } = true;
 }
 
 /// <summary>Strategy numbers the engineer works with, also used to answer voice questions.
@@ -21,6 +23,8 @@ public sealed record EngineerStatus(double FuelL, double AvgPerLap, double LapsL
     double ShortL, int AddL, bool BoxNow, int Position, double GapAheadSec, double GapBehindSec)
 {
     public static readonly EngineerStatus Empty = new(-1, double.NaN, double.NaN, -1, double.NaN, -1, false, 0, double.NaN, double.NaN);
+    /// <summary>Last pit-rejoin prediction (null = not computed).</summary>
+    public PitRejoinPrediction? Rejoin { get; init; }
 }
 
 /// <summary>Pure fuel / race-distance arithmetic (kept apart so the numbers can be unit-tested exactly).</summary>
@@ -89,6 +93,12 @@ public sealed class RaceEngineer
     public const double TrackTempChangeC = 4.0;
     public const double MinPitStaySec = 3.0;
     public static readonly int[] LapMilestones = { 10, 5, 3, 2 };
+    /// <summary>Rejoin calls: pit window "close" = fuel short and at most this many laps of fuel left (leaves above
+    /// RejoinWindowExitLaps); repeated every RejoinEveryLaps laps, at least RejoinCooldownSec apart.</summary>
+    public const double RejoinWindowLaps = 3.5, RejoinWindowExitLaps = 4.5, RejoinCooldownSec = 60, RejoinEventCooldownSec = 15;
+    public const int RejoinEveryLaps = 2;
+    /// <summary>Other-class cars are mentioned only within this many seconds of the exit.</summary>
+    public const double RejoinTrafficSec = 10;
 
     private const int FlagCheckered = 0x1, FlagWhite = 0x2, FlagYellow = 0x8, FlagRed = 0x10, FlagBlue = 0x20,
         FlagYellowWaving = 0x100, FlagCaution = 0x4000, FlagCautionWaving = 0x8000,
@@ -119,6 +129,8 @@ public sealed class RaceEngineer
     private bool _prevPit;
     private double _pitEnterTime, _pitEnterFuel = -1;
     private double _limiterCheckAt = double.NaN;
+    private bool _rejoinWindow;
+    private int _rejoinLap = -1;
 
     // flags / race state
     private int _prevFlags, _prevState;
@@ -151,7 +163,7 @@ public sealed class RaceEngineer
         _primed = false; _t = double.NegativeInfinity; _status = EngineerStatus.Empty;
         _lap = -1; _lapStartFuel = -1; _lapClean = false;
         _fuelStage = 0; _finishState = 0; _finishAdd = 0; _boxLap = -1;
-        _prevPit = false; _pitEnterFuel = -1; _limiterCheckAt = double.NaN;
+        _prevPit = false; _pitEnterFuel = -1; _limiterCheckAt = double.NaN; _rejoinWindow = false; _rejoinLap = -1;
         _prevFlags = 0; _prevState = 0; _startSpoken = false; _racingSince = double.NegativeInfinity;
         _milestones.Clear();
         _stablePos = 0; _candPos = 0; _aheadArmed = _behindArmed = true; _aheadSince = _behindSince = double.NaN;
@@ -197,7 +209,8 @@ public sealed class RaceEngineer
         RaceStart(ctx);
         Flags(ctx);
         FuelCalls(ctx);
-        PitCalls(ctx);
+        bool boxCalled = PitCalls(ctx);
+        RejoinCalls(ctx, boxCalled);
         RaceCalls(ctx);
         CarCalls(ctx);
         WeatherCalls(ctx);
@@ -259,7 +272,7 @@ public sealed class RaceEngineer
         bool box = !double.IsNaN(lapsLeft) && lapsLeft - (1.0 - Math.Clamp(s.LapDistPct, 0, 1)) < 1.0 + BoxMarginLaps
             && (dist == null || shortL > 0);
         int pos = e.ClassPosition > 0 ? e.ClassPosition : e.Position;
-        return new EngineerStatus(fuel, avg, lapsLeft, toGo, shortL, add, box, pos, e.GapAheadSec, e.GapBehindSec);
+        return new EngineerStatus(fuel, avg, lapsLeft, toGo, shortL, add, box, pos, e.GapAheadSec, e.GapBehindSec) { Rejoin = e.Rejoin };
     }
 
     // ------------------------------------------------------------------ rules
@@ -362,7 +375,8 @@ public sealed class RaceEngineer
         }
     }
 
-    private void PitCalls(Ctx c)
+    /// <summary>Returns true when "box this lap" was called in this sample.</summary>
+    private bool PitCalls(Ctx c)
     {
         var s = c.S; var e = c.E;
         // Entering / leaving the pit road is tracked even with PitCalls off (fuel re-arm); calls are gated.
@@ -388,7 +402,7 @@ public sealed class RaceEngineer
                 else Emit(c, "pit.exit.nofuel", null, 5, stopped: true, ttl: 15, rule: "pit.exit", cooldown: 20);
             }
         }
-        if (!Options.Pit) return;
+        if (!Options.Pit) return false;
 
         if (!double.IsNaN(_limiterCheckAt) && c.Now >= _limiterCheckAt)
         {
@@ -401,7 +415,72 @@ public sealed class RaceEngineer
         {
             _boxLap = s.Lap;
             Emit(c, "pit.box", null, 5, stopped: true, ttl: 10, rule: "pit.box", cooldown: 0, force: true);
+            return true;
         }
+        return false;
+    }
+
+    /// <summary>"If you pit now, you rejoin P9, behind car 12, 1.8 seconds": right after "box this lap", on pit
+    /// entry and every <see cref="RejoinEveryLaps"/> laps while the pit window is close. Races only, green only
+    /// for the periodic call.</summary>
+    private void RejoinCalls(Ctx c, bool boxCalled)
+    {
+        double ll = _status.LapsLeft;
+        bool shortFuel = _status.ShortL > 0 || _status.BoxNow;
+        if (double.IsNaN(ll) || !shortFuel || ll > RejoinWindowExitLaps) _rejoinWindow = false;
+        else if (ll <= RejoinWindowLaps) _rejoinWindow = true;
+
+        if (!Options.Rejoin || !c.Race || c.E.SessionState != StateRacing) return;
+        var r = c.E.Rejoin;
+        if (r is not { Available: true, RaceOrder: true } || r.PredictedPosition <= 0) return;
+
+        bool entered = c.S.OnPitRoad && !_prevPit;
+        bool periodic = _rejoinWindow && !c.S.OnPitRoad && !c.Yellow && (_rejoinLap < 0 || c.S.Lap >= _rejoinLap + RejoinEveryLaps);
+        if (boxCalled || entered)
+        {
+            if (!Allow("pit.rejoin", c.Now, RejoinEventCooldownSec)) return;
+        }
+        else if (!periodic || !Allow("pit.rejoin", c.Now, RejoinCooldownSec)) return;
+
+        var (key, args) = RejoinPhrase(r, c.Lang);
+        _rejoinLap = c.S.Lap;
+        Emit(c, key, args, 5, stopped: true, ttl: boxCalled || entered ? 12 : 20, rule: "pit.rejoin", cooldown: 0, force: true);
+    }
+
+    /// <summary>Phrase key + arguments for a prediction (shared by the proactive call and the voice answer).</summary>
+    public static (string Key, Dictionary<string, string> Args) RejoinPhrase(PitRejoinPrediction r, string language)
+    {
+        string lang = CoachPhrases.Normalize(language);
+        var args = new Dictionary<string, string>
+        {
+            ["lead"] = CoachPhrases.Render(lang, r.InPit ? "pit.rejoin.lead.pit" : "pit.rejoin.lead.now", null),
+        };
+        string N(double v) => CoachPhrases.Number(lang, v, 1);
+        static string Car(RejoinNeighbour n) => (n.ClassName.Trim() + " " + n.Number.Trim()).Trim();
+
+        if (!r.RaceOrder)
+        {
+            if (r.Ahead == null) return ("pit.rejoin.track.clear", args);
+            args["num"] = r.Ahead.Number; args["gap"] = N(r.Ahead.GapSec);
+            return ("pit.rejoin.track", args);
+        }
+        args["pos"] = r.PredictedPosition.ToString(CultureInfo.InvariantCulture);
+        if (r.MultiClass)
+        {
+            var fb = r.FasterBehind is { } f && f.GapSec <= RejoinTrafficSec ? f : null;
+            var sa = r.SlowerAhead is { } sl && sl.GapSec <= RejoinTrafficSec ? sl : null;
+            if (fb != null) { args["fcar"] = Car(fb); args["fgap"] = N(fb.GapSec); }
+            if (sa != null) { args["scar"] = Car(sa); args["sgap"] = N(sa.GapSec); }
+            if (fb != null && sa != null) return ("pit.rejoin.mc", args);
+            if (fb != null) return ("pit.rejoin.mc.faster", args);
+            if (sa != null) return ("pit.rejoin.mc.slower", args);
+            if (r.Ahead == null) return ("pit.rejoin.class.clear", args);
+            args["num"] = r.Ahead.Number; args["gap"] = N(r.Ahead.GapSec);
+            return ("pit.rejoin.class", args);
+        }
+        if (r.Ahead == null) return ("pit.rejoin.clear", args);
+        args["num"] = r.Ahead.Number; args["gap"] = N(r.Ahead.GapSec);
+        return ("pit.rejoin", args);
     }
 
     private void RaceCalls(Ctx c)

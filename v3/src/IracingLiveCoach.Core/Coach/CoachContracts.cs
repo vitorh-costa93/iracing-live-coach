@@ -34,6 +34,8 @@ public sealed record EngineerData
     public double Precipitation { get; init; } = -1;
     /// <summary>Replay playing or the camera is on another car: the engineer stays silent.</summary>
     public bool NotDriving { get; init; }
+    /// <summary>"If you pit now" prediction (null = not computed).</summary>
+    public PitRejoinPrediction? Rejoin { get; init; }
 }
 
 /// <summary>Track/car the coach is working on. SessionType is informational ("Practice", "Race"...).</summary>

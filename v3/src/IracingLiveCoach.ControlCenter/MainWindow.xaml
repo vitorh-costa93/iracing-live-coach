@@ -340,6 +340,7 @@
                                 <CheckBox x:Name="CoachEngineerBox" Style="{StaticResource Switch}" Content="Race engineer" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachFuelCallsBox" Style="{StaticResource Switch}" Content="Fuel calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachPitCallsBox" Style="{StaticResource Switch}" Content="Pit calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachRejoinCallsBox" Style="{StaticResource Switch}" Content="Pit rejoin calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachFlagCallsBox" Style="{StaticResource Switch}" Content="Flag and session calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachGapCallsBox" Style="{StaticResource Switch}" Content="Position, gap and lap calls" FontSize="14" Margin="24,0,0,12" Checked="CoachChanged" Unchecked="CoachChanged"/>
 

@@ -102,4 +102,28 @@ public static class SimulationData
         new(FuelLevelLiters: 38.5, FuelUsePerHourLiters: 62.0, AverageFuelPerLapLiters: 2.24,
             LapsRemaining: 17.2, TimeRemainingSeconds: 17.2 * 138, FuelNeededForFinishLiters: -2.7,
             FuelAtFinishLiters: 2.7, LastLapFuelUsedLiters: 2.21, MaxFuelPerLapLiters: 2.30, AverageLapTimeSeconds: 138);
+
+    /// <summary>Pit Rejoin preview: multiclass race, a faster GTP coming from behind and slower GTD traffic ahead.</summary>
+    public static IracingLiveCoach.Core.Coach.PitRejoinPrediction PitRejoin()
+    {
+        var others = new List<IracingLiveCoach.Core.Coach.RejoinClassTraffic>
+        {
+            new(4029, "GTP", null, 1, true,
+                new(21, "6", "M. Rossi", 18.3, 1, false, 4029, "GTP", null, 1, true),
+                new(7, "7", "K. Weber", 4.2, 0, false, 4029, "GTP", null, 1, true)),
+            new(4083, "GTD", null, 3, false,
+                new(22, "22", "J. Silva", 6.0, -1, false, 4083, "GTD", null, 3, false),
+                new(30, "30", "L. Moreau", 11.5, -1, false, 4083, "GTD", null, 3, false)),
+        };
+        return new()
+        {
+            Available = true, RaceOrder = true, CurrentPosition = 5, PredictedPosition = 9,
+            OverallCurrentPosition = 12, OverallPredictedPosition = 18,
+            Ahead = new(12, "12", "V. Costa", 1.8, 0, false, 4074, "LMP2", null, 2),
+            Behind = new(44, "44", "A. Novak", 3.1, 0, false, 4074, "LMP2", null, 2),
+            MultiClass = true, ClassId = 4074, ClassName = "LMP2", ClassRank = 2, OtherClasses = others,
+            LossSec = 31.4, LaneLossSec = 22.9, ServiceSec = 8.5, FuelToAddL = 42, Estimated = true,
+            Note = "service from other cars' stops",
+        };
+    }
 }

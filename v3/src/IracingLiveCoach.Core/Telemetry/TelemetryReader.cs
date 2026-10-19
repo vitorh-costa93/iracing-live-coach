@@ -118,7 +118,7 @@ public record RaceStartStatus(double ClutchPct, double ThrottlePct, bool ShouldS
 /// the SDK reports a live session (SessionDetected fires once, from IRSDKSharper's own OnSessionInfo
 /// event, which updates far less often than telemetry). Until that fires, no LiveCoachEngine is
 /// attached and telemetry ticks are simply ignored -- there is nothing to compare against yet.</summary>
-public class TelemetryReader : IDisposable
+public partial class TelemetryReader : IDisposable
 {
     // 13/09/2026: "não tenho a possibilidade de ver se o carro de trás está usando o botão de
     // ultrapassagem" -- how many cars behind to report. 3 covers "who might attack me soon", not
@@ -651,6 +651,7 @@ public class TelemetryReader : IDisposable
                 TrackTempC = Read(() => (double)data.GetFloat("TrackTemp"), -100),
                 Precipitation = Read(() => (double)data.GetFloat("Precipitation"), -1),
                 NotDriving = notDriving,
+                Rejoin = _lastRejoin,
             };
         }
         catch { return null; }
@@ -812,6 +813,8 @@ public class TelemetryReader : IDisposable
                 _radarTickCounter = 0;
                 if (RadarUpdated is not null) UpdateRadar();
             }
+
+            if (PitRejoinUpdated is not null || CoachSampleUpdated is not null) UpdatePitRejoin();
         }
 
         if (CoachSampleUpdated is not null) RaiseCoachSample();
@@ -983,6 +986,7 @@ public class TelemetryReader : IDisposable
         _raceLength.Reset();
         _fuelLaps.Reset();
         _fuelPanel.Reset();
+        ResetPitRejoinSession();
         // _raceRatingField is NOT reset here: it is bound to the event (RaceRatingField.Enter), so a
         // session change only clears its progress and an SDK reconnection keeps the whole field.
         _fuelLastPlayerLap = _fuelLastLeaderLap = int.MinValue;

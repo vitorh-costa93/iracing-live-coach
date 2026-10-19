@@ -22,6 +22,8 @@ public sealed class CoachSettings
     public bool FlagCalls { get; set; } = true;
     public bool GapCalls { get; set; } = true;
     public bool PitCalls { get; set; } = true;
+    /// <summary>"If you pit now, you rejoin P9..." calls (races).</summary>
+    public bool RejoinCalls { get; set; } = true;
     public int VoiceVolume { get; set; } = 80;
     public int ToneVolume { get; set; } = 60;
     public int VoiceRate { get; set; } = 0;

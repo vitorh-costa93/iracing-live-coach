@@ -45,7 +45,7 @@ public static class CoachMessages
 public static class CoachQuery
 {
     public static readonly IReadOnlyList<string> Intents = new[] { "lastlap", "worstcorner", "score", "focus", "repeat", "summary",
-        "fuel", "gapahead", "gapbehind", "position", "laps", "pit" };
+        "fuel", "gapahead", "gapbehind", "position", "laps", "pit", "rejoin" };
 
     public static string NormalizeIntent(string? intent) =>
         new string((intent ?? "").ToLowerInvariant().Where(char.IsLetter).ToArray());
@@ -142,6 +142,13 @@ public static class CoachQuery
             case "laps":
                 return st.Engineer is { LapsToGo: > 0 } el
                     ? R("answer.laps", new() { ["n"] = el.LapsToGo.ToString() }) : R("answer.laps.none");
+
+            case "rejoin":
+            {
+                if (st.Engineer?.Rejoin is not { Available: true } rj) return R("answer.rejoin.none");
+                var (key, args) = RaceEngineer.RejoinPhrase(rj, lang);
+                return R(key, args);
+            }
 
             case "pit":
             {

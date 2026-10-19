@@ -95,6 +95,7 @@ public static unsafe class Program
     private const string TraceKey = "trace";
     private const string CoachReportKey = "coach-report";
     private const string CoachStatusKey = "coach";
+    private const string PitRejoinKey = "pit-rejoin";
     private static readonly WidgetPlacementStore PlacementStore = new();
     private static readonly Dictionary<string, nint> WidgetWindows = new();
     private static readonly Dictionary<nint, string> WidgetKeysByHandle = new();
@@ -137,6 +138,8 @@ public static unsafe class Program
         PlacementStore.Set(CoachReportKey, new WidgetPlacement(0, 28, 310, PlacementAnchor.TopLeft, 520, 30, 1f, false, 6, Visible: false));
         PlacementStore.Set(TraceKey, new WidgetPlacement(0, 28, 720, PlacementAnchor.TopLeft, 560, 210, 1f, false, 7, AutoSize: false));
         PlacementStore.Set(CoachStatusKey, new WidgetPlacement(0, 28, 944, PlacementAnchor.TopLeft, 560, 84, 1f, false, 8, AutoSize: false));
+        // Pit Rejoin: right column under Fuel (collapses to one line while there is no prediction).
+        PlacementStore.Set(PitRejoinKey, new WidgetPlacement(0, 1270, 160, PlacementAnchor.TopLeft, 340, 30, 1f, false, 9));
 
         // Spec §3/§12: a saved layout from a previous session overrides the defaults above --
         // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
@@ -171,6 +174,7 @@ public static unsafe class Program
         var tracePlacement = PlacementStore.Get(TraceKey)!;
         var coachReportPlacement = PlacementStore.Get(CoachReportKey)!;
         var coachStatusPlacement = PlacementStore.Get(CoachStatusKey)!;
+        var pitRejoinPlacement = PlacementStore.Get(PitRejoinKey)!;
         nint standingsHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Standings", standingsPlacement);
         nint relativeHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Relative", relativePlacement);
         nint weatherHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Weather", weatherPlacement);
@@ -180,6 +184,8 @@ public static unsafe class Program
         nint traceHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Live Telemetry", tracePlacement);
         nint coachReportHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — AI Coach Report", coachReportPlacement);
         nint coachStatusHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Coach", coachStatusPlacement);
+        nint pitRejoinHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Pit Rejoin", pitRejoinPlacement);
+        OverlayWindows.Add(pitRejoinHwnd);
         OverlayWindows.Add(traceHwnd); OverlayWindows.Add(coachReportHwnd); OverlayWindows.Add(coachStatusHwnd);
         OverlayWindows.Add(standingsHwnd);
         OverlayWindows.Add(relativeHwnd);
@@ -195,6 +201,7 @@ public static unsafe class Program
         WidgetWindows[TraceKey] = traceHwnd;
         WidgetWindows[CoachReportKey] = coachReportHwnd;
         WidgetWindows[CoachStatusKey] = coachStatusHwnd;
+        WidgetWindows[PitRejoinKey] = pitRejoinHwnd;
         foreach (var (key, handle) in WidgetWindows) WidgetKeysByHandle[handle] = key;
 
         // Phase 5: the Control Center talks to this process only through this typed, versioned
@@ -250,15 +257,18 @@ public static unsafe class Program
         using var traceResources = DeviceResources.Create(traceHwnd, (int)tracePlacement.WidthDip, (int)tracePlacement.HeightDip);
         using var coachReportResources = DeviceResources.Create(coachReportHwnd, (int)coachReportPlacement.WidthDip, (int)coachReportPlacement.HeightDip);
         using var coachStatusResources = DeviceResources.Create(coachStatusHwnd, (int)coachStatusPlacement.WidthDip, (int)coachStatusPlacement.HeightDip);
+        using var pitRejoinResources = DeviceResources.Create(pitRejoinHwnd, (int)pitRejoinPlacement.WidthDip, (int)pitRejoinPlacement.HeightDip);
         var resourcesByKey = new Dictionary<string, DeviceResources>
         {
             [StandingsKey] = standingsResources, [RelativeKey] = relativeResources, [WeatherKey] = weatherResources,
             [FuelKey] = fuelResources, [RadarKey] = radarResources, [StartHelperKey] = startResources,
             [TraceKey] = traceResources, [CoachReportKey] = coachReportResources, [CoachStatusKey] = coachStatusResources,
+            [PitRejoinKey] = pitRejoinResources,
         };
         traceResources.SetClickThrough(traceHwnd, EffectiveClickThrough(traceHwnd));
         coachReportResources.SetClickThrough(coachReportHwnd, EffectiveClickThrough(coachReportHwnd));
         coachStatusResources.SetClickThrough(coachStatusHwnd, EffectiveClickThrough(coachStatusHwnd));
+        pitRejoinResources.SetClickThrough(pitRejoinHwnd, EffectiveClickThrough(pitRejoinHwnd));
         standingsResources.SetClickThrough(standingsHwnd, EffectiveClickThrough(standingsHwnd));
         relativeResources.SetClickThrough(relativeHwnd, EffectiveClickThrough(relativeHwnd));
         weatherResources.SetClickThrough(weatherHwnd, EffectiveClickThrough(weatherHwnd));
@@ -277,6 +287,7 @@ public static unsafe class Program
         using var trace = new TraceWidget(traceResources.Context, traceResources.DWriteFactory, traceResources.FontCollection, coachHost);
         using var coachReport = new CoachReportWidget(coachReportResources.Context, coachReportResources.DWriteFactory, coachReportResources.FontCollection, coachHost);
         using var coachStatus = new CoachStatusWidget(coachStatusResources.Context, coachStatusResources.DWriteFactory, coachStatusResources.FontCollection, coachHost);
+        using var pitRejoin = new PitRejoinWidget(pitRejoinResources.Context, pitRejoinResources.DWriteFactory, pitRejoinResources.FontCollection);
         standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
         relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
@@ -316,6 +327,7 @@ public static unsafe class Program
                 case TraceKey: trace.SetAppearance(appearance); break;
                 case CoachReportKey: coachReport.SetAppearance(appearance); break;
                 case CoachStatusKey: coachStatus.SetAppearance(appearance); break;
+                case PitRejoinKey: pitRejoin.SetAppearance(appearance); break;
                 default: return; // unknown widget key -- ignore rather than guess
             }
         }
@@ -400,7 +412,7 @@ public static unsafe class Program
 
             standings.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(StandingsKey, out var sc) ? sc : StandingsWidget.BuildDefaultColumns());
             relative.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(RelativeKey, out var rc) ? rc : RelativeWidget.BuildDefaultColumns());
-            foreach (var widgetKey in new[] { StandingsKey, RelativeKey, WeatherKey, FuelKey, RadarKey, StartHelperKey, TraceKey, CoachReportKey, CoachStatusKey })
+            foreach (var widgetKey in new[] { StandingsKey, RelativeKey, WeatherKey, FuelKey, RadarKey, StartHelperKey, TraceKey, CoachReportKey, CoachStatusKey, PitRejoinKey })
                 ApplyAppearance(widgetKey, PlacementStore.AppearanceOverrides.TryGetValue(widgetKey, out var ap) ? ap : WidgetAppearance.Default);
             ApplyHeaderFields(StandingsKey, PlacementStore.HeaderOverrides.TryGetValue(StandingsKey, out var sh) ? sh : HeaderFields.DefaultStandings());
             ApplyHeaderFields(RelativeKey, PlacementStore.HeaderOverrides.TryGetValue(RelativeKey, out var rh) ? rh : HeaderFields.DefaultRelative());
@@ -518,6 +530,7 @@ public static unsafe class Program
                 tracePlacement = PlacementStore.Get(TraceKey)!;
                 coachReportPlacement = PlacementStore.Get(CoachReportKey)!;
                 coachStatusPlacement = PlacementStore.Get(CoachStatusKey)!;
+                pitRejoinPlacement = PlacementStore.Get(PitRejoinKey)!;
             }
 
             // Unlocked for editing: every widget shows the full simulated situation, so it can be
@@ -539,6 +552,7 @@ public static unsafe class Program
                 trace.SetSimulated(coachSim);
                 coachReport.SetSimulated(coachSim);
                 coachStatus.SetSimulated(coachSim);
+                pitRejoin.SetSimulated(SimulationData.PitRejoin());
             }
             else
             {
@@ -554,6 +568,7 @@ public static unsafe class Program
                 trace.SetSimulated(null);
                 coachReport.SetSimulated(null);
                 coachStatus.SetSimulated(null);
+                pitRejoin.SetSimulated(null);
             }
 
             AutoFit(StandingsKey, standings.LastDrawnSize);
@@ -563,6 +578,7 @@ public static unsafe class Program
             AutoFit(CoachReportKey, coachReport.LastDrawnSize);
             AutoFit(TraceKey, trace.LastDrawnSize);
             AutoFit(CoachStatusKey, coachStatus.LastDrawnSize);
+            AutoFit(PitRejoinKey, pitRejoin.LastDrawnSize);
 
             if (ShouldRender(StandingsKey))
             {
@@ -635,6 +651,13 @@ public static unsafe class Program
                 coachStatusResources.BeginFrame(); coachStatus.Draw(coachStatusResources.Context, 0, 0, coachStatusPlacement.WidthDip, coachStatusPlacement.HeightDip);
                 if (_editMode) DrawEditModeOutlines(coachStatusResources.Context, (0, 0, coachStatusPlacement.WidthDip, coachStatusPlacement.HeightDip));
                 coachStatusResources.EndFrame();
+            }
+
+            if (ShouldRender(PitRejoinKey))
+            {
+                pitRejoinResources.BeginFrame(); pitRejoin.Draw(pitRejoinResources.Context, 0, 0, pitRejoinPlacement.WidthDip, pitRejoinPlacement.HeightDip);
+                if (_editMode) DrawEditModeOutlines(pitRejoinResources.Context, (0, 0, pitRejoinPlacement.WidthDip, pitRejoinPlacement.HeightDip));
+                pitRejoinResources.EndFrame();
             }
 
             int frameDelay = RenderLoopBudget.DelayMilliseconds(sw.Elapsed.TotalMilliseconds - now, _lastAppliedVisibility.Values.Any(v => v));

@@ -70,6 +70,7 @@ public sealed class CoachEngine
     public bool FlagCallsEnabled { get => _engineer.Options.Flags; set => _engineer.Options.Flags = value; }
     public bool GapCallsEnabled { get => _engineer.Options.Gaps; set => _engineer.Options.Gaps = value; }
     public bool PitCallsEnabled { get => _engineer.Options.Pit; set => _engineer.Options.Pit = value; }
+    public bool RejoinCallsEnabled { get => _engineer.Options.Rejoin; set => _engineer.Options.Rejoin = value; }
     public EngineerStatus EngineerStatus => _engineer.Status;
 
     /// <summary>One line per engineer decision (for coach-engineer.log).</summary>
