@@ -17,6 +17,8 @@ public sealed class CoachMessageScheduler
     public const double MaxLeadM = 400.0;
     public const double TooLateM = 30.0;        // closer than this to the corner -> tip dropped
     public const double GeneralTtlSec = 30.0;
+    /// <summary>Spacing before a message that may interrupt (flag/damage).</summary>
+    public const double UrgentSpacingSec = 1.5;
 
     private sealed record Positional(CoachMessage Msg, double CornerStartPct, long Seq);
     private sealed record General(CoachMessage Msg, double? ExpiresAt, long Seq);
@@ -67,10 +69,12 @@ public sealed class CoachMessageScheduler
 
         double now = s.SessionTime;
         bool canSpeak = s.SpeedMs >= MinSpeedMs && !s.OnPitRoad && s.IsOnTrack;
+        bool canSpeakStopped = s.IsOnTrack; // pit calls: allowed in the pit lane / at low speed
         for (int i = _general.Count - 1; i >= 0; i--)
         {
             var g = _general[i];
-            if (canSpeak && g.ExpiresAt is null) _general[i] = g = g with { ExpiresAt = now + GeneralTtlSec };
+            bool ok = g.Msg.AllowStopped ? canSpeakStopped : canSpeak;
+            if (ok && g.ExpiresAt is null) _general[i] = g = g with { ExpiresAt = now + (g.Msg.TtlSec ?? GeneralTtlSec) };
             if (g.ExpiresAt < now) _general.RemoveAt(i);
         }
 
@@ -89,27 +93,23 @@ public sealed class CoachMessageScheduler
             }
         }
 
-        if (!canSpeak) return null;
-        if (now - _lastEmit < MinSpacingSec) return null;
+        if (!canSpeak) bestTip = -1;
+        if (!canSpeak && !canSpeakStopped) return null;
 
         int bestGen = -1;
         for (int i = 0; i < _general.Count; i++)
+        {
+            if (!(_general[i].Msg.AllowStopped ? canSpeakStopped : canSpeak)) continue;
             if (bestGen < 0 || Better(_general[i].Msg.Priority, _general[i].Seq, _general[bestGen].Msg.Priority, _general[bestGen].Seq))
                 bestGen = i;
+        }
 
-        CoachMessage pick;
-        if (bestTip >= 0 && (bestGen < 0 || Better(_tips[bestTip].Msg.Priority, _tips[bestTip].Seq,
-                _general[bestGen].Msg.Priority, _general[bestGen].Seq)))
-        {
-            pick = _tips[bestTip].Msg;
-            _tips.RemoveAt(bestTip);
-        }
-        else if (bestGen >= 0)
-        {
-            pick = _general[bestGen].Msg;
-            _general.RemoveAt(bestGen);
-        }
-        else return null;
+        bool useTip = bestTip >= 0 && (bestGen < 0 || Better(_tips[bestTip].Msg.Priority, _tips[bestTip].Seq,
+            _general[bestGen].Msg.Priority, _general[bestGen].Seq));
+        if (!useTip && bestGen < 0) return null;
+        var pick = useTip ? _tips[bestTip].Msg : _general[bestGen].Msg;
+        if (now - _lastEmit < (pick.Interrupt ? UrgentSpacingSec : MinSpacingSec)) return null;
+        if (useTip) _tips.RemoveAt(bestTip); else _general.RemoveAt(bestGen);
 
         _lastEmit = now;
         return pick;

@@ -562,9 +562,98 @@ public class TelemetryReader : IDisposable
                 _sdk.Data.GetDouble("SessionTime"), _sdk.Data.GetInt("Lap"), lapDistPct,
                 _sdk.Data.GetFloat("Speed"), _sdk.Data.GetFloat("Brake"), _sdk.Data.GetFloat("Throttle"),
                 _sdk.Data.GetFloat("SteeringWheelAngle"), _sdk.Data.GetInt("Gear"), _sdk.Data.GetFloat("RPM"),
-                _sdk.Data.GetBool("OnPitRoad"), _sdk.Data.GetBool("IsOnTrack")));
+                _sdk.Data.GetBool("OnPitRoad"), _sdk.Data.GetBool("IsOnTrack"), NextEngineerData()));
         }
         catch { /* skip this tick */ }
+    }
+
+    // Strategy channels for the race engineer: ~6 Hz is plenty (fuel, flags, gaps change slowly), so the
+    // 60-Hz sample reuses the last snapshot and the full-field gap scan runs only on refresh.
+    private const int EngineerRefreshTicks = 10;
+    private int _engineerTick;
+    private IracingLiveCoach.Core.Coach.EngineerData? _engineerData;
+
+    private IracingLiveCoach.Core.Coach.EngineerData? NextEngineerData()
+    {
+        if (_engineerData is null || ++_engineerTick >= EngineerRefreshTicks)
+        {
+            _engineerTick = 0;
+            _engineerData = BuildEngineerData();
+        }
+        return _engineerData;
+    }
+
+    private T Read<T>(Func<T> get, T fallback)
+    {
+        try { return get(); } catch { return fallback; }
+    }
+
+    /// <summary>Gap in seconds to the neighbour one place ahead (+1 behind) in the player's class, from the
+    /// physical lap progress x the class reference lap (same basis as the Relative). NaN when unknown, the
+    /// neighbour is in the pits or not in the world.</summary>
+    private double NeighbourGapSeconds(int myClass, int myClassPos, int delta, double myProgress, double lapTime)
+    {
+        if (myClassPos <= 0 || lapTime <= 1) return double.NaN;
+        int wanted = myClassPos + delta;
+        if (wanted < 1) return double.NaN;
+        for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+        {
+            if (idx == _playerCarIdx) continue;
+            if (_sdk.Data.GetInt("CarIdxClass", idx) != myClass || _sdk.Data.GetInt("CarIdxClassPosition", idx) != wanted) continue;
+            float pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+            if (pct < 0 || _sdk.Data.GetBool("CarIdxOnPitRoad", idx)) return double.NaN;
+            double progress = _sdk.Data.GetInt("CarIdxLapCompleted", idx) + pct;
+            double gap = (delta < 0 ? progress - myProgress : myProgress - progress) * lapTime;
+            return gap > 0 ? gap : double.NaN;
+        }
+        return double.NaN;
+    }
+
+    private IracingLiveCoach.Core.Coach.EngineerData? BuildEngineerData()
+    {
+        try
+        {
+            var data = _sdk.Data;
+            double fuel = Read(() => (double)data.GetFloat("FuelLevel"), -1);
+            double fuelPct = Read(() => (double)data.GetFloat("FuelLevelPct"), -1);
+            int pos = _playerCarIdx >= 0 ? Read(() => data.GetInt("CarIdxPosition", _playerCarIdx), 0) : 0;
+            int classPos = _playerCarIdx >= 0 ? Read(() => data.GetInt("CarIdxClassPosition", _playerCarIdx), 0) : 0;
+            bool replay = Read(() => data.GetBool("IsReplayPlaying"), false);
+            int cam = Read(() => data.GetInt("CamCarIdx"), _playerCarIdx);
+            bool notDriving = replay || (_playerCarIdx >= 0 && cam >= 0 && cam != _playerCarIdx);
+
+            double gapAhead = double.NaN, gapBehind = double.NaN;
+            if (_isRaceSession && !notDriving && _playerCarIdx >= 0 && classPos > 0)
+            {
+                int myClass = data.GetInt("CarIdxClass", _playerCarIdx);
+                double lapTime = _classLapTimeById.TryGetValue(myClass, out var cl) ? cl : _estimatedLapTime ?? 0;
+                double myProgress = data.GetInt("CarIdxLapCompleted", _playerCarIdx) + (double)data.GetFloat("CarIdxLapDistPct", _playerCarIdx);
+                gapAhead = NeighbourGapSeconds(myClass, classPos, -1, myProgress, lapTime);
+                gapBehind = NeighbourGapSeconds(myClass, classPos, +1, myProgress, lapTime);
+            }
+
+            return new IracingLiveCoach.Core.Coach.EngineerData
+            {
+                FuelLevelL = fuel,
+                FuelCapacityL = fuel >= 0 && fuelPct > 0.05 ? fuel / fuelPct : -1,
+                SessionFlags = Read(() => data.GetInt("SessionFlags"), 0),
+                SessionState = Read(() => data.GetInt("SessionState"), 0),
+                SessionLapsRemain = Read(() => data.GetInt("SessionLapsRemain"), -1),
+                SessionTimeRemainSec = Read(() => data.GetDouble("SessionTimeRemain"), -1),
+                Position = pos,
+                ClassPosition = classPos,
+                Incidents = Read(() => data.GetInt("PlayerCarMyIncidentCount"), -1),
+                GapAheadSec = gapAhead,
+                GapBehindSec = gapBehind,
+                OilTempC = Read(() => (double)data.GetFloat("OilTemp"), -1),
+                WaterTempC = Read(() => (double)data.GetFloat("WaterTemp"), -1),
+                EngineWarnings = Read(() => data.GetInt("EngineWarnings"), -1),
+                TrackTempC = Read(() => (double)data.GetFloat("TrackTemp"), -100),
+                Precipitation = Read(() => (double)data.GetFloat("Precipitation"), -1),
+                NotDriving = notDriving,
+            };
+        }
+        catch { return null; }
     }
 
     private void OnSessionInfo()

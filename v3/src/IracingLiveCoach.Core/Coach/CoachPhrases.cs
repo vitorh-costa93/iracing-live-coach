@@ -185,12 +185,13 @@ public static class CoachPhrases
         return "en";
     }
 
-    public static bool HasKey(string key) => Table["en"].ContainsKey(key);
+    public static bool HasKey(string key) => Table["en"].ContainsKey(key) || EngineerPhrases.Table["en"].ContainsKey(key);
 
     public static string Render(string lang, string key, IReadOnlyDictionary<string, string>? args = null)
     {
         var l = Normalize(lang);
-        if (!Table[l].TryGetValue(key, out var template) && !Table["en"].TryGetValue(key, out template))
+        if (!Table[l].TryGetValue(key, out var template) && !EngineerPhrases.Table[l].TryGetValue(key, out template)
+            && !Table["en"].TryGetValue(key, out template) && !EngineerPhrases.Table["en"].TryGetValue(key, out template))
             return key;
         if (args != null)
             foreach (var kv in args) template = template.Replace("{" + kv.Key + "}", kv.Value);

@@ -22,6 +22,7 @@ public sealed class CoachHost : IDisposable
     private readonly TelemetryReader _reader;
     private readonly string _settingsPath;
     private readonly CoachWriteQueue _writer = new();
+    private readonly EngineerLog _engineerLog;
     private readonly CoachEngine _engine;
     private readonly SapiCoachVoice _voice = new();
     private readonly BrakeTonePlayer _tones = new();
@@ -39,6 +40,8 @@ public sealed class CoachHost : IDisposable
         dataDir ??= CoachSettings.DefaultDirectory;
         _settingsPath = Path.Combine(dataDir, "coach-settings.json");
         _engine = new CoachEngine(dataDir, null, _writer);
+        _engineerLog = new EngineerLog(Path.Combine(dataDir, "coach-engineer.log"));
+        _engine.EngineerLogLine += _engineerLog.Append;
         _engine.MessageReady += OnMessage;
         _engine.BrakeToneCue += OnCue;
         _listener.IntentRecognized += OnIntent;
@@ -138,10 +141,14 @@ public sealed class CoachHost : IDisposable
         {
             var s = _settings;
             if (s.Enabled && s.VoiceEnabled)
-                _voice.Speak(m.Text, m.Priority, m.Priority >= InterruptPriority);
+                _voice.Speak(m.Text, m.Priority, ShouldInterrupt(m));
         }
         catch { }
     }
+
+    /// <summary>Corner tips and answers cut the current speech; engineer calls only when flagged (flags/damage).</summary>
+    internal static bool ShouldInterrupt(CoachMessage m) =>
+        m.Kind == CoachMessageKind.Engineer ? m.Interrupt : m.Priority >= InterruptPriority;
 
     private void OnCue(BrakeToneCue cue)
     {
@@ -211,6 +218,11 @@ public sealed class CoachHost : IDisposable
                 _engine.CornerTipsEnabled = s.CornerTips;
                 _engine.LapSummaryEnabled = s.LapSummary;
                 _engine.BrakeTonesEnabled = s.BrakeTones;
+                _engine.EngineerEnabled = s.EngineerEnabled;
+                _engine.FuelCallsEnabled = s.FuelCalls;
+                _engine.FlagCallsEnabled = s.FlagCalls;
+                _engine.GapCallsEnabled = s.GapCalls;
+                _engine.PitCallsEnabled = s.PitCalls;
                 // Re-enabled after being off: the context event may have been dropped meanwhile.
                 if (s.Enabled && !wasEnabled && _lastCtx != null)
                     _engine.SetContext(_lastCtx);
@@ -266,5 +278,6 @@ public sealed class CoachHost : IDisposable
         finally { if (applyIdle) Monitor.Exit(_applyGate); }
         // Flush pending reference/history writes (drains the queue, bounded wait).
         try { _writer.Dispose(); } catch { }
+        try { _engineerLog.Dispose(); } catch { }
     }
 }

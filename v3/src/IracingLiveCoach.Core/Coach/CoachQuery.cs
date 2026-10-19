@@ -7,7 +7,7 @@ namespace IracingLiveCoach.Core.Coach;
 
 /// <summary>Everything <see cref="CoachQuery.Answer"/> needs (snapshot of the engine state).</summary>
 public sealed record CoachQueryState(string Language, LapReport? LastReport, double? ReferenceLapSec,
-    int SessionScore, string? Focus, string? LastMessageText);
+    int SessionScore, string? Focus, string? LastMessageText, EngineerStatus? Engineer = null);
 
 /// <summary>Builds messages from reports (shared by the engine and the query answers).</summary>
 public static class CoachMessages
@@ -17,6 +17,11 @@ public static class CoachMessages
     public const int PrioritySummary = 2;
     public const int PriorityTip = 3;
     public const int PriorityAnswer = 5;
+    /// <summary>Engineer calls: normal (fuel info, gaps, position) and high (critical fuel, pit, contact). Flags and
+    /// damage use <see cref="PriorityEngineerUrgent"/> and may interrupt speech.</summary>
+    public const int PriorityEngineer = 4;
+    public const int PriorityEngineerHigh = 5;
+    public const int PriorityEngineerUrgent = 6;
 
     public static CoachMessage Build(string lang, CoachMessageKind kind, string key, Dictionary<string, string> args, int priority) =>
         new(kind, key, args, priority, CoachPhrases.Render(lang, key, args));
@@ -39,7 +44,8 @@ public static class CoachMessages
 /// <summary>Answers to voice/menu intents: "lastlap","worstcorner","score","focus","repeat","summary".</summary>
 public static class CoachQuery
 {
-    public static readonly IReadOnlyList<string> Intents = new[] { "lastlap", "worstcorner", "score", "focus", "repeat", "summary" };
+    public static readonly IReadOnlyList<string> Intents = new[] { "lastlap", "worstcorner", "score", "focus", "repeat", "summary",
+        "fuel", "gapahead", "gapbehind", "position", "laps", "pit" };
 
     public static string NormalizeIntent(string? intent) =>
         new string((intent ?? "").ToLowerInvariant().Where(char.IsLetter).ToArray());
@@ -107,6 +113,42 @@ public static class CoachQuery
                     }).Trim());
                 }
                 return sb.ToString();
+            }
+
+            case "fuel":
+            {
+                var e = st.Engineer;
+                if (e == null || e.FuelL < 0) return R("answer.fuel.none");
+                var a = new Dictionary<string, string> { ["fuel"] = CoachPhrases.Number(lang, e.FuelL, 1) };
+                if (double.IsNaN(e.LapsLeft)) return R("answer.fuel.liters", a);
+                a["n"] = ((int)Math.Floor(e.LapsLeft)).ToString();
+                if (!double.IsNaN(e.ShortL) && e.ShortL > 0) { a["add"] = e.AddL.ToString(); return R("answer.fuel.add", a); }
+                if (!double.IsNaN(e.ShortL)) return R("answer.fuel.enough", a);
+                return R("answer.fuel", a);
+            }
+
+            case "gapahead":
+                return st.Engineer is { } ga && !double.IsNaN(ga.GapAheadSec)
+                    ? R("answer.gap.ahead", new() { ["gap"] = CoachPhrases.Number(lang, ga.GapAheadSec, 1) }) : R("answer.gap.none");
+
+            case "gapbehind":
+                return st.Engineer is { } gb && !double.IsNaN(gb.GapBehindSec)
+                    ? R("answer.gap.behind", new() { ["gap"] = CoachPhrases.Number(lang, gb.GapBehindSec, 1) }) : R("answer.gap.none");
+
+            case "position":
+                return st.Engineer is { Position: > 0 } ep
+                    ? R("answer.position", new() { ["pos"] = ep.Position.ToString() }) : R("answer.position.none");
+
+            case "laps":
+                return st.Engineer is { LapsToGo: > 0 } el
+                    ? R("answer.laps", new() { ["n"] = el.LapsToGo.ToString() }) : R("answer.laps.none");
+
+            case "pit":
+            {
+                var e = st.Engineer;
+                if (e == null || double.IsNaN(e.LapsLeft)) return R("answer.pit.none");
+                if (e.BoxNow) return R("answer.pit.yes");
+                return R("answer.pit.no", new() { ["n"] = ((int)Math.Floor(e.LapsLeft)).ToString() });
             }
 
             default:

@@ -16,6 +16,12 @@ public sealed class CoachSettings
     public bool LapSummary { get; set; } = true;
     public bool BrakeTones { get; set; } = false;
     public bool VoiceCommands { get; set; } = false;
+    /// <summary>Race engineer master switch and its call families (fuel, flags/session, gaps/position/laps, pit).</summary>
+    public bool EngineerEnabled { get; set; } = true;
+    public bool FuelCalls { get; set; } = true;
+    public bool FlagCalls { get; set; } = true;
+    public bool GapCalls { get; set; } = true;
+    public bool PitCalls { get; set; } = true;
     public int VoiceVolume { get; set; } = 80;
     public int ToneVolume { get; set; } = 60;
     public int VoiceRate { get; set; } = 0;

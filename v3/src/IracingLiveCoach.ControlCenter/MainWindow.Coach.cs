@@ -30,6 +30,11 @@ public partial class MainWindow
         CoachLapSummaryBox.IsChecked = s.LapSummary;
         CoachBrakeTonesBox.IsChecked = s.BrakeTones;
         CoachVoiceCommandsBox.IsChecked = s.VoiceCommands;
+        CoachEngineerBox.IsChecked = s.EngineerEnabled;
+        CoachFuelCallsBox.IsChecked = s.FuelCalls;
+        CoachPitCallsBox.IsChecked = s.PitCalls;
+        CoachFlagCallsBox.IsChecked = s.FlagCalls;
+        CoachGapCallsBox.IsChecked = s.GapCalls;
         CoachSkillBox.SelectedIndex = (int)s.Skill;
         CoachLanguageBox.SelectedIndex = 0;
         for (int i = 0; i < CoachLanguageBox.Items.Count; i++)
@@ -76,6 +81,11 @@ public partial class MainWindow
         LapSummary = CoachLapSummaryBox.IsChecked == true,
         BrakeTones = CoachBrakeTonesBox.IsChecked == true,
         VoiceCommands = CoachVoiceCommandsBox.IsChecked == true,
+        EngineerEnabled = CoachEngineerBox.IsChecked == true,
+        FuelCalls = CoachFuelCallsBox.IsChecked == true,
+        PitCalls = CoachPitCallsBox.IsChecked == true,
+        FlagCalls = CoachFlagCallsBox.IsChecked == true,
+        GapCalls = CoachGapCallsBox.IsChecked == true,
         Skill = (SkillLevel)Math.Max(0, CoachSkillBox.SelectedIndex),
         Language = (CoachLanguageBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "en",
         VoiceName = CoachVoiceNameBox.SelectedItem is string name && name != CoachAutoVoice ? name : null,

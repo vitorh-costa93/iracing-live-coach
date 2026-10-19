@@ -27,6 +27,7 @@ public sealed class CoachEngine
     private readonly LapRecorder _recorder = new();
     private readonly CoachMessageScheduler _scheduler = new();
     private readonly BrakeToneScheduler _tones = new();
+    private readonly RaceEngineer _engineer = new();
     private readonly List<TracePoint> _trace = new();
     private readonly List<double> _validLapTimes = new();
     private readonly List<int> _lapScores = new();
@@ -51,6 +52,7 @@ public sealed class CoachEngine
         _writer = writer;
         _refStore = new ReferenceStore(dataDir);
         _history = new WeeklyFocusStore(dataDir, writer);
+        _engineer.Log += line => EngineerLogLine?.Invoke(line);
     }
 
     public SkillLevel Skill { get; set; } = SkillLevel.Intermediate;
@@ -61,6 +63,17 @@ public sealed class CoachEngine
     public bool CornerTipsEnabled { get; set; } = true;
     public bool LapSummaryEnabled { get; set; } = true;
     public bool BrakeTonesEnabled { get; set; } = true;
+
+    /// <summary>Race engineer (fuel, pit, flags, gaps, car, weather). Toggles apply on the next sample.</summary>
+    public bool EngineerEnabled { get => _engineer.Options.Enabled; set => _engineer.Options.Enabled = value; }
+    public bool FuelCallsEnabled { get => _engineer.Options.Fuel; set => _engineer.Options.Fuel = value; }
+    public bool FlagCallsEnabled { get => _engineer.Options.Flags; set => _engineer.Options.Flags = value; }
+    public bool GapCallsEnabled { get => _engineer.Options.Gaps; set => _engineer.Options.Gaps = value; }
+    public bool PitCallsEnabled { get => _engineer.Options.Pit; set => _engineer.Options.Pit = value; }
+    public EngineerStatus EngineerStatus => _engineer.Status;
+
+    /// <summary>One line per engineer decision (for coach-engineer.log).</summary>
+    public event Action<string>? EngineerLogLine;
 
     public event Action<CoachMessage>? MessageReady;
     public event Action<LapReport>? LapCompleted;
@@ -96,6 +109,7 @@ public sealed class CoachEngine
         SessionScore = 0;
         _lastTime = double.NegativeInfinity;
         _slowCleanStreak = 0;
+        _engineer.Reset();
 
         var loaded = _savedRefs.TryGetValue(_refStore.PathFor(ctx.TrackId, ctx.CarId), out var mem)
             ? mem : _refStore.Load(ctx.TrackId, ctx.CarId);
@@ -128,6 +142,10 @@ public sealed class CoachEngine
             foreach (var cue in _tones.Update(s, TrackLength))
                 BrakeToneCue?.Invoke(cue);
 
+        if (s.Eng != null)
+            foreach (var m in _engineer.Update(s, _ctx.SessionType, Language))
+                _scheduler.Enqueue(m);
+
         var msg = _scheduler.Tick(s, TrackLength);
         if (msg != null)
         {
@@ -138,7 +156,7 @@ public sealed class CoachEngine
 
     public string Answer(string intent) =>
         CoachQuery.Answer(intent, new CoachQueryState(Language, LastReport, _ref?.LapTimeSec, SessionScore,
-            WeeklyFocus, _lastMessage?.Text));
+            WeeklyFocus, _lastMessage?.Text, _engineer.Status));
 
     private double TrackLength => _ctx is { TrackLengthM: > 0 } ? _ctx.TrackLengthM : _ref?.TrackLengthM ?? 0;
 

@@ -3,7 +3,8 @@ using System.Speech.Recognition;
 namespace IracingLiveCoach.OverlayHost.Coach;
 
 /// <summary>
-/// Fixed multilingual (en + pt-BR) command grammar. Intents: lastlap, worstcorner, score, focus, repeat.
+/// Fixed multilingual (en + pt-BR) command grammar. Intents: lastlap, worstcorner, score, focus, repeat,
+/// summary, fuel, gapahead, gapbehind, position, laps, pit (answers come in the coach language).
 /// Tolerant to a missing microphone or recognizer (IsAvailable = false, Start returns false).
 /// </summary>
 public sealed class VoiceCommandListener : IDisposable
@@ -15,6 +16,13 @@ public sealed class VoiceCommandListener : IDisposable
         ("score", new[] { "my score", "what is my score", "minha nota", "qual minha nota" }),
         ("focus", new[] { "what should I focus on", "focus", "foco", "no que devo focar" }),
         ("repeat", new[] { "repeat", "say that again", "repetir", "repita" }),
+        ("summary", new[] { "lap summary", "summary", "give me a summary", "resumo", "resumo da volta" }),
+        ("fuel", new[] { "how much fuel", "fuel", "fuel level", "quanto combustível", "quanto combustivel", "combustível" }),
+        ("gapahead", new[] { "gap ahead", "gap to the car ahead", "gap à frente", "diferença para frente" }),
+        ("gapbehind", new[] { "gap behind", "gap to the car behind", "gap atrás", "diferença para trás" }),
+        ("position", new[] { "position", "what position am I", "posição", "qual minha posição" }),
+        ("laps", new[] { "laps remaining", "how many laps left", "quantas voltas faltam", "voltas restantes" }),
+        ("pit", new[] { "pit this lap", "box", "do I need to pit", "box nesta volta", "preciso parar" }),
     };
 
     private SpeechRecognitionEngine? _engine;

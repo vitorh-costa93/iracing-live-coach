@@ -5,19 +5,50 @@ namespace IracingLiveCoach.Core.Coach;
 
 /// <summary>One telemetry sample fed to the coach (~60 Hz). LapDistPct is 0..1.</summary>
 public sealed record CoachSample(double SessionTime, int Lap, double LapDistPct, double SpeedMs,
-    double Brake, double Throttle, double SteeringRad, int Gear, double Rpm, bool OnPitRoad, bool IsOnTrack);
+    double Brake, double Throttle, double SteeringRad, int Gear, double Rpm, bool OnPitRoad, bool IsOnTrack,
+    EngineerData? Eng = null);
+
+/// <summary>Strategy/session channels for the race engineer (refreshed ~6 Hz by the reader). Unknown values use
+/// the defaults: -1 (numbers), 0 (position) or NaN (gaps). Gaps are in seconds, always positive.</summary>
+public sealed record EngineerData
+{
+    public double FuelLevelL { get; init; } = -1;
+    /// <summary>Tank capacity in liters (FuelLevel / FuelLevelPct), -1 unknown.</summary>
+    public double FuelCapacityL { get; init; } = -1;
+    public int SessionFlags { get; init; }
+    /// <summary>iRacing SessionState: 1 get in car, 2 warmup, 3 parade, 4 racing, 5 checkered, 6 cool down.</summary>
+    public int SessionState { get; init; }
+    public int SessionLapsRemain { get; init; } = -1;
+    public double SessionTimeRemainSec { get; init; } = -1;
+    public int Position { get; init; }
+    public int ClassPosition { get; init; }
+    public int Incidents { get; init; } = -1;
+    public double GapAheadSec { get; init; } = double.NaN;
+    public double GapBehindSec { get; init; } = double.NaN;
+    public double OilTempC { get; init; } = -1;
+    public double WaterTempC { get; init; } = -1;
+    /// <summary>EngineWarnings bitmask, -1 = not published.</summary>
+    public int EngineWarnings { get; init; } = -1;
+    public double TrackTempC { get; init; } = -1;
+    /// <summary>Precipitation 0..1, -1 unknown.</summary>
+    public double Precipitation { get; init; } = -1;
+    /// <summary>Replay playing or the camera is on another car: the engineer stays silent.</summary>
+    public bool NotDriving { get; init; }
+}
 
 /// <summary>Track/car the coach is working on. SessionType is informational ("Practice", "Race"...).</summary>
 public sealed record CoachContext(string TrackId, string CarId, double TrackLengthM, string SessionType);
 
 public enum SkillLevel { Beginner, Intermediate, Advanced }
 
-public enum CoachMessageKind { Briefing, CornerTip, LapSummary, Praise, Answer }
+public enum CoachMessageKind { Briefing, CornerTip, LapSummary, Praise, Answer, Engineer }
 
 /// <summary>A spoken/displayed message. Key is the phrase key (see <see cref="CoachPhrases"/>),
-/// Args the values used to render it, Text the rendered sentence in the engine language.</summary>
+/// Args the values used to render it, Text the rendered sentence in the engine language.
+/// Interrupt = may cut the sentence being spoken (flags/damage); AllowStopped = may be spoken in the pit
+/// lane or at low speed (pit calls); TtlSec = how long it stays valid once it could be spoken.</summary>
 public sealed record CoachMessage(CoachMessageKind Kind, string Key, IReadOnlyDictionary<string, string> Args,
-    int Priority, string Text);
+    int Priority, string Text, bool Interrupt = false, bool AllowStopped = false, double? TtlSec = null);
 
 /// <summary>Corner-by-corner comparison vs reference. Index is the 1-based turn number.
 /// Deltas are lap minus reference: BrakePointDeltaM &lt; 0 = braked earlier, ThrottleOnDeltaM &gt; 0 =

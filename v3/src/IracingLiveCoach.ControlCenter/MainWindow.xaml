@@ -336,7 +336,12 @@
                                 <CheckBox x:Name="CoachCornerTipsBox" Style="{StaticResource Switch}" Content="Corner tips" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachLapSummaryBox" Style="{StaticResource Switch}" Content="Lap summary" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
                                 <CheckBox x:Name="CoachBrakeTonesBox" Style="{StaticResource Switch}" Content="Brake tones" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
-                                <CheckBox x:Name="CoachVoiceCommandsBox" Style="{StaticResource Switch}" Content="Voice commands" FontSize="14" Margin="0,0,0,12" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachVoiceCommandsBox" Style="{StaticResource Switch}" Content="Voice commands" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachEngineerBox" Style="{StaticResource Switch}" Content="Race engineer" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachFuelCallsBox" Style="{StaticResource Switch}" Content="Fuel calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachPitCallsBox" Style="{StaticResource Switch}" Content="Pit calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachFlagCallsBox" Style="{StaticResource Switch}" Content="Flag and session calls" FontSize="14" Margin="24,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachGapCallsBox" Style="{StaticResource Switch}" Content="Position, gap and lap calls" FontSize="14" Margin="24,0,0,12" Checked="CoachChanged" Unchecked="CoachChanged"/>
 
                                 <TextBlock Text="Skill level" Style="{StaticResource SmallLabel}"/>
                                 <ComboBox x:Name="CoachSkillBox" FontSize="14" MinHeight="34" SelectionChanged="CoachChanged" Margin="0,0,0,10">
