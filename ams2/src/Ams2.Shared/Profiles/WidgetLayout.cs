@@ -162,12 +162,14 @@ public static class WidgetLayout
             },
             ["f1-2004"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
+                ["lapdelta"] = (740, 112),
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490), ["inputgraph"] = (342, 132),
                 ["lapcounter"] = (132, 40), ["drivercaption"] = (334, 94), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
                 ["qualitower"] = (400, 314), ["qualilap"] = (350, 126), ["qualiresult"] = (256, 406), ["gpxsat"] = (1920, 1080), ["gpxgauges"] = (256, 200),
             },
             ["f1-2012"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
+                ["lapdelta"] = (740, 112),
                 ["standings"] = (132, 316), ["relative"] = (546, 108), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (360, 490), ["inputgraph"] = (342, 132),
                 ["lapcounter"] = (170, 40), ["drivercaption"] = (334, 70), ["pitstops"] = (716, 156), ["pittimer"] = (294, 42), ["winner"] = (448, 94), ["board"] = (592, 164), ["radar"] = (120, 190),
                 ["battle"] = (970, 130), ["ticker"] = (1600, 40),
@@ -175,6 +177,7 @@ public static class WidgetLayout
             },
             ["f1-2018"] = new Dictionary<string, (float, float)>(StringComparer.OrdinalIgnoreCase)
             {
+                ["lapdelta"] = (740, 112),
                 ["standings"] = (284, 628), ["relative"] = (820, 180), ["fuel"] = (470, 156), ["tyres"] = (290, 192), ["weather"] = (295, 128), ["inputs"] = (692, 197),
                 ["lapcounter"] = (168, 82), ["drivercaption"] = (600, 132), ["pitstops"] = (608, 156), ["pittimer"] = (300, 182), ["winner"] = (780, 90), ["board"] = (760, 210), ["radar"] = (120, 190),
                 ["livespeed"] = (300, 196), ["racestart"] = (300, 292), ["racecontrol"] = (300, 186), ["battle"] = (760, 124), ["poscaption"] = (1000, 94),

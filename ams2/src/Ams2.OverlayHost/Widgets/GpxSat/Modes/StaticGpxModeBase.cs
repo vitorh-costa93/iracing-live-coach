@@ -84,6 +84,8 @@ public abstract class StaticGpxModeBase : IGpxMode
                 _ => c.Split.Ahead is { } a && a.ActiveAt(c.Now) ? Gap(c, a) : null,
             };
         }
+        // A parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; fora da janela a tabela volta.
+        else if (c.Options.SpeedSplitQuali != "trap" && QualiSplitWindow(c) is { } liveSplit) main = liveSplit;
         else if (c.Options.QualiStandings && c.Model.Quali?.Rows.Any(r => r.HasTime) == true) main = Standings(c, "stq");
         else if (c.Options.SpeedSplitQuali == "trap") main = c.Split.Trap is { } t && t.ActiveAt(c.Now) ? Trap(c, t) : null;
         else main = QualiNow(c);
@@ -140,6 +142,15 @@ public abstract class StaticGpxModeBase : IGpxMode
         if (c.Focus is not { } f || f.InPitLane || f.InGarage) return null;
         var q = c.Model.QualiLap;
         if (q is null || q.CarIndex != f.Index || q.OutLap) return Card(c, f);
+        return QualiSplitWindow(c);
+    }
+
+    /// <summary>Parcial ou resultado da volta do carro em foco dentro da janela SplitSeconds; senao null.</summary>
+    GpxScreen? QualiSplitWindow(GpxContext c)
+    {
+        if (c.Focus is not { } f || f.InPitLane || f.InGarage) return null;
+        var q = c.Model.QualiLap;
+        if (q is null || q.CarIndex != f.Index || q.OutLap) return null;
         var sp = q.LastSplit is { } s && c.Now >= s.At && c.Now - s.At < c.Options.SplitSeconds ? s : null;
         var lr = q.LastResult is { } r && c.Now >= r.At && c.Now - r.At < c.Options.SplitSeconds ? r : null;
         if (lr is not null && (sp is null || lr.At >= sp.At)) return Split(c, f, GpxFormat.FinishLine, lr.LapTime, lr.Invalid ? null : lr.GapToFirst, lr.Position);

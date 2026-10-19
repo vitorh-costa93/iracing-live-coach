@@ -80,6 +80,8 @@ public sealed class Digital2004Mode : IGpxMode
     void OtherScreens(GpxContext c, List<GpxScreen> list)
     {
         var q = c.Model.Quali;
+        // Parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; antes a tabela retornava primeiro e a parcial nunca aparecia.
+        if (c.Options.SpeedSplitQuali != "trap" && QualiSplitNow(c) is { } live && live.Key.Contains("split:")) { list.Add(live with { Priority = 30 }); return; }
         if (c.Options.QualiStandings && q is not null && q.Rows.Count(r => r.HasTime) > 1) { list.Add(QualiStandings(c)); return; }
         if (c.Options.SpeedSplitQuali == "trap")
         {

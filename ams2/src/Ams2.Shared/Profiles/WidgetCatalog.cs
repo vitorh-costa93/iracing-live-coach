@@ -125,6 +125,8 @@ public static class WidgetCatalog
         new("qualilap", "Quali Lap", null, null, null, "", [], 660, 900, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
         new("qualiboard", "Quali Board (torre e volta)", null, null, null, "", [], 0, 780, Caps: DisplayCaps.Name | DisplayCaps.LapTime, Themes: ["f1-1993", "f1-1998", "f1-1999-digital"], DefaultSessions: [SessionIds.Qualify]),
         new("qualiresult", "Quali Result", null, null, null, "", [], 320, 200, Caps: DisplayCaps.Name | DisplayCaps.LapTime, DefaultSessions: [SessionIds.Qualify]),
+        // Lap Delta (estilo iRacing, temas 2004/2012/2018): delta ao vivo da volta vs melhor volta + parciais + ultima volta. Desligado por padrao (liga no Control Center).
+        new("lapdelta", "Lap Delta (delta, parciais e última volta)", null, null, null, "", [], 640, 20, DefaultVisible: false, DefaultScale: 0.8f, Caps: DisplayCaps.Gap | DisplayCaps.LapTime, Themes: ["f1-2004", "f1-2012", "f1-2018"]),
         new("gpxgauges", "Instrumentos GPxCInfo (Lo2k)", null, null, null, "", [], 341, 567, DefaultScale: 1.406f,
             Themes: ["f1-1998", "f1-1999-digital", "f1-2004", "f1-2012"]),
         // GPxSAT (GPxPatch do GP4): camada de tela inteira com as telas do modo do tema (Classic, Digital, Digital 2004, Digital 2010).
