@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private readonly ProfilesIpcClient _profilesClient = new();
     private readonly ClassColorsIpcClient _classColorsClient = new();
 
-    private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper"];
+    private static readonly string[] AllWidgetKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper", "trace", "coach-report", "coach"];
 
     private static readonly Dictionary<string, (string Label, string Icon)> WidgetInfo = new()
     {
@@ -48,6 +48,9 @@ public partial class MainWindow : Window
         ["fuel"] = ("Fuel Calculator", ""),
         ["radar"] = ("Radar lateral", ""),
         ["start-helper"] = ("Start Helper", ""),
+        ["trace"] = ("Live Telemetry", "geo:IconTrace"),
+        ["coach-report"] = ("AI Coach Report", "geo:IconReport"),
+        ["coach"] = ("Coach", "geo:IconCoach"),
     };
 
     private readonly Dictionary<string, WidgetUiState> _state = BuildDefaults();
@@ -156,6 +159,9 @@ public partial class MainWindow : Window
         ["fuel"] = new WidgetUiState(1270, 30, 310, 118),
         ["radar"] = new WidgetUiState(900, 640, 120, 190),
         ["start-helper"] = new WidgetUiState(820, 880, 280, 90),
+        ["trace"] = new WidgetUiState(28, 720, 560, 210, AutoSize: false),
+        ["coach-report"] = new WidgetUiState(28, 310, 520, 30, Visible: false),
+        ["coach"] = new WidgetUiState(28, 944, 560, 84, AutoSize: false),
     };
 
     private void SeedStateFromStore()
@@ -311,10 +317,10 @@ public partial class MainWindow : Window
 
     private void ShowTab(int index)
     {
-        UIElement[] panels = [Tab0, Tab1, Tab2, Tab3, Tab4, Tab5];
+        UIElement[] panels = [Tab0, Tab1, Tab2, Tab3, Tab4, Tab5, Tab6];
         for (int i = 0; i < panels.Length; i++)
             panels[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
-        var buttons = new[] { TabBtn0, TabBtn1, TabBtn2, TabBtn3, TabBtn4, TabBtn5 };
+        var buttons = new[] { TabBtn0, TabBtn1, TabBtn2, TabBtn3, TabBtn4, TabBtn5, TabBtn6 };
         if (buttons[index].IsChecked != true) buttons[index].IsChecked = true;
     }
 
@@ -563,6 +569,7 @@ public partial class MainWindow : Window
             LoadHeaderForSelectedWidget();
             LoadRulesIntoControls();
             LoadVictoryIntoControls();
+            LoadCoachIntoControls();
             LoadNumberFormatIntoControls();
             RefreshClassColorList();
             BuildRankColorRows();

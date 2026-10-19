@@ -57,7 +57,10 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private (int X, int Y, int Width, int Height) _lastRect;
     private readonly WidgetPlacementStore _placements = new();
     private WidgetPlacementStore? _profile;
-    private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper"];
+    private static readonly string[] PreviewKeys = ["standings", "relative", "weather", "fuel", "radar", "start-helper", "trace", "coach-report", "coach"];
+    private TraceWidget? _trace;
+    private CoachReportWidget? _coachReport;
+    private CoachStatusWidget? _coachStatus;
     private RadarWidget? _radar;
     private StartHelperWidget? _start;
     private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
@@ -76,6 +79,9 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _placements.Set("fuel", new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
         _placements.Set("radar", new WidgetPlacement(0, 900, 640, PlacementAnchor.TopLeft, 120, 190, 1f, false, 4));
         _placements.Set("start-helper", new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
+        _placements.Set("coach-report", new WidgetPlacement(0, 28, 310, PlacementAnchor.TopLeft, 520, 30, 1f, false, 6, Visible: false));
+        _placements.Set("trace", new WidgetPlacement(0, 28, 720, PlacementAnchor.TopLeft, 560, 210, 1f, false, 7, AutoSize: false));
+        _placements.Set("coach", new WidgetPlacement(0, 28, 944, PlacementAnchor.TopLeft, 560, 84, 1f, false, 8, AutoSize: false));
         PlacementPersistence.Load(_placements);
 
         _width = Math.Max(1, width);
@@ -102,6 +108,13 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _fuel = new FuelWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
         _radar = new RadarWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
         _start = new StartHelperWidget(_device.Context, _device.DWriteFactory, _device.FontCollection, startTelemetry: false);
+        _trace = new TraceWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _coachReport = new CoachReportWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        _coachStatus = new CoachStatusWidget(_device.Context, _device.DWriteFactory, _device.FontCollection);
+        var coachSim = CoachSimulationData.Snapshot(0);
+        _trace.SetSimulated(coachSim);
+        _coachReport.SetSimulated(coachSim);
+        _coachStatus.SetSimulated(coachSim);
         var black = new Color4(0, 0, 0, 1);
         ComPtr<ID2D1SolidColorBrush> backdrop = default;
         if (_device.Context->CreateSolidColorBrush(&black, null, backdrop.GetAddressOf()).Success) _backdropBrush = backdrop;
@@ -123,7 +136,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _profile = store;
         foreach (var key in PreviewKeys)
             if (store.Get(key) is { } placement) _placements.Set(key, placement);
-        if (_standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null) return;
+        if (_standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null
+            || _trace is null || _coachReport is null || _coachStatus is null) return;
 
         WidgetAppearance Appearance(string key) => store.AppearanceOverrides.TryGetValue(key, out var a) ? a : WidgetAppearance.Default;
         _standings.SetColumns(store.ColumnOverrides.TryGetValue("standings", out var sc) ? sc.ToList() : StandingsWidget.BuildDefaultColumns());
@@ -134,6 +148,9 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         _fuel.SetAppearance(Appearance("fuel"));
         _radar.SetAppearance(Appearance("radar"));
         _start.SetAppearance(Appearance("start-helper"));
+        _trace.SetAppearance(Appearance("trace"));
+        _coachReport.SetAppearance(Appearance("coach-report"));
+        _coachStatus.SetAppearance(Appearance("coach"));
 
         var format = store.NumberFormat ?? NumberFormatConfig.Default;
         _standings.SetNumberFormat(format);
@@ -148,6 +165,9 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     private void DisposeDeviceChain()
     {
         _backdropBrush.Dispose();
+        _coachStatus?.Dispose(); _coachStatus = null;
+        _coachReport?.Dispose(); _coachReport = null;
+        _trace?.Dispose(); _trace = null;
         _start?.Dispose(); _start = null;
         _radar?.Dispose(); _radar = null;
         _fuel?.Dispose(); _fuel = null;
@@ -184,7 +204,8 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
     /// decides the cadence -- this class has no timer of its own.</summary>
     public void RenderFrame()
     {
-        if (_device is null || _standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null) return;
+        if (_device is null || _standings is null || _relative is null || _weather is null || _fuel is null || _radar is null || _start is null
+            || _trace is null || _coachReport is null || _coachStatus is null) return;
 
         // 1920x1080-relative preview scaled into whatever size the panel actually granted this
         // surface (spec §12/§17: "Preview inclui modo 1920×1080 em escala real").
@@ -197,6 +218,10 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         double t = _clock.Elapsed.TotalSeconds;
         _radar.SetSimulatedStatus(SimulationData.Radar(t));
         _start.SetSimulatedStatus(SimulationData.StartHelper(t));
+        var coachSim = CoachSimulationData.Snapshot(t);
+        _trace.SetSimulated(coachSim);
+        _coachReport.SetSimulated(coachSim);
+        _coachStatus.SetSimulated(coachSim);
         _fuel.SetSimulatedStatus(SimulationData.Fuel(t));
         var standingsPlacement = _placements.Get("standings");
         var relativePlacement = _placements.Get("relative");
@@ -211,6 +236,11 @@ public sealed unsafe class OverlayPreviewHost : IDisposable
         DrawWidget(fuelPlacement, scale, (x, y) => _fuel.Draw(_device.Context, x, y));
         DrawWidget(_placements.Get("radar"), scale, (x, y) => _radar.Draw(_device.Context, x, y));
         DrawWidget(_placements.Get("start-helper"), scale, (x, y) => _start.Draw(_device.Context, x, y));
+        var tracePlacement = _placements.Get("trace");
+        var coachStatusPlacement = _placements.Get("coach");
+        DrawWidget(tracePlacement, scale, (x, y) => _trace.Draw(_device.Context, x, y, tracePlacement?.WidthDip ?? 560f, tracePlacement?.HeightDip ?? 210f));
+        DrawWidget(_placements.Get("coach-report"), scale, (x, y) => _coachReport.Draw(_device.Context, x, y));
+        DrawWidget(coachStatusPlacement, scale, (x, y) => _coachStatus.Draw(_device.Context, x, y, coachStatusPlacement?.WidthDip ?? 560f, coachStatusPlacement?.HeightDip ?? 84f));
         var identity = System.Numerics.Matrix3x2.Identity;
         _device.Context->SetTransform(&identity);
         _device.EndFrame();

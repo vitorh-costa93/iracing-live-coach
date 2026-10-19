@@ -517,8 +517,59 @@ public class TelemetryReader : IDisposable
         catch { /* YAML momentarily incomplete -- keep what we had */ }
     }
 
+    /// <summary>Raised every telemetry tick (~60 Hz) with the player's driving inputs, for the driving coach.
+    /// Only read while someone is subscribed.</summary>
+    public event Action<IracingLiveCoach.Core.Coach.CoachSample>? CoachSampleUpdated;
+
+    /// <summary>Raised when track / player car / session type from SessionInfo change.</summary>
+    public event Action<IracingLiveCoach.Core.Coach.CoachContext>? CoachContextChanged;
+
+    private volatile IracingLiveCoach.Core.Coach.CoachContext? _lastCoachContext;
+
+    /// <summary>Last coach context seen in SessionInfo (null until the first one), so a coach that
+    /// subscribes late can apply it without waiting for the next change.</summary>
+    public IracingLiveCoach.Core.Coach.CoachContext? CurrentCoachContext => _lastCoachContext;
+
+    private void RaiseCoachContext()
+    {
+        // Always tracked (cheap, SessionInfo only), even without subscribers: see CurrentCoachContext.
+        try
+        {
+            var info = _sdk.Data.SessionInfo;
+            var driverCarIdx = info?.DriverInfo?.DriverCarIdx ?? -1;
+            var driver = info?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == driverCarIdx);
+            var num = LiveSessionNum(info?.SessionInfo?.CurrentSessionNum ?? -1);
+            var session = info?.SessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == num);
+            var ctx = IracingLiveCoach.Core.Coach.CoachContextMapper.FromSession(
+                info?.WeekendInfo?.TrackID ?? 0, info?.WeekendInfo?.TrackName, info?.WeekendInfo?.TrackLength,
+                driver?.CarPath, driver?.CarScreenName, session?.SessionType);
+            if (ctx is null || ctx == _lastCoachContext) return;
+            _lastCoachContext = ctx;
+            CoachContextChanged?.Invoke(ctx);
+        }
+        catch { /* coach must never break the session path */ }
+    }
+
+    private void RaiseCoachSample()
+    {
+        try
+        {
+            // LapDistPct is -1 when the car is not in the world (garage/replay transitions); garbage
+            // values would land in the wrong distance bins, so the sample is dropped.
+            double lapDistPct = _sdk.Data.GetFloat("LapDistPct");
+            if (double.IsNaN(lapDistPct) || lapDistPct < 0 || lapDistPct > 1.5) return;
+            CoachSampleUpdated?.Invoke(new IracingLiveCoach.Core.Coach.CoachSample(
+                _sdk.Data.GetDouble("SessionTime"), _sdk.Data.GetInt("Lap"), lapDistPct,
+                _sdk.Data.GetFloat("Speed"), _sdk.Data.GetFloat("Brake"), _sdk.Data.GetFloat("Throttle"),
+                _sdk.Data.GetFloat("SteeringWheelAngle"), _sdk.Data.GetInt("Gear"), _sdk.Data.GetFloat("RPM"),
+                _sdk.Data.GetBool("OnPitRoad"), _sdk.Data.GetBool("IsOnTrack")));
+        }
+        catch { /* skip this tick */ }
+    }
+
     private void OnSessionInfo()
     {
+        RaiseCoachContext();
         RefreshClassRanks();
         // SessionInfo arrives on session transitions as well as initial attachment.  Refresh the
         // cached race flag here, never in the 60-Hz pedal path.
@@ -673,6 +724,8 @@ public class TelemetryReader : IDisposable
                 if (RadarUpdated is not null) UpdateRadar();
             }
         }
+
+        if (CoachSampleUpdated is not null) RaiseCoachSample();
 
         if (_engine is null) return; // no baseline attached yet -- nothing to compare corners against.
 

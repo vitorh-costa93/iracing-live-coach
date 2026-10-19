@@ -92,6 +92,9 @@ public static unsafe class Program
     private const string FuelKey = "fuel";
     private const string RadarKey = "radar";
     private const string StartHelperKey = "start-helper";
+    private const string TraceKey = "trace";
+    private const string CoachReportKey = "coach-report";
+    private const string CoachStatusKey = "coach";
     private static readonly WidgetPlacementStore PlacementStore = new();
     private static readonly Dictionary<string, nint> WidgetWindows = new();
     private static readonly Dictionary<nint, string> WidgetKeysByHandle = new();
@@ -130,6 +133,10 @@ public static unsafe class Program
         PlacementStore.Set(FuelKey, new WidgetPlacement(0, 1270, 30, PlacementAnchor.TopLeft, 310, 118, 1f, false, 3));
         PlacementStore.Set(RadarKey, new WidgetPlacement(0, 900, 640, PlacementAnchor.TopLeft, 120, 190, 1f, false, 4));
         PlacementStore.Set(StartHelperKey, new WidgetPlacement(0, 820, 880, PlacementAnchor.TopLeft, 280, 90, 1f, false, 5));
+        // Coach widgets (left column, below Standings; clear of every widget above). Report is off by default.
+        PlacementStore.Set(CoachReportKey, new WidgetPlacement(0, 28, 310, PlacementAnchor.TopLeft, 520, 30, 1f, false, 6, Visible: false));
+        PlacementStore.Set(TraceKey, new WidgetPlacement(0, 28, 720, PlacementAnchor.TopLeft, 560, 210, 1f, false, 7, AutoSize: false));
+        PlacementStore.Set(CoachStatusKey, new WidgetPlacement(0, 28, 944, PlacementAnchor.TopLeft, 560, 84, 1f, false, 8, AutoSize: false));
 
         // Spec §3/§12: a saved layout from a previous session overrides the defaults above --
         // loaded AFTER the defaults are set, so a first-ever launch (no file yet) still has sane
@@ -161,12 +168,19 @@ public static unsafe class Program
         var fuelPlacement = PlacementStore.Get(FuelKey)!;
         var radarPlacement = PlacementStore.Get(RadarKey)!;
         var startPlacement = PlacementStore.Get(StartHelperKey)!;
+        var tracePlacement = PlacementStore.Get(TraceKey)!;
+        var coachReportPlacement = PlacementStore.Get(CoachReportKey)!;
+        var coachStatusPlacement = PlacementStore.Get(CoachStatusKey)!;
         nint standingsHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Standings", standingsPlacement);
         nint relativeHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Relative", relativePlacement);
         nint weatherHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Weather", weatherPlacement);
         nint fuelHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Fuel", fuelPlacement);
         nint radarHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Radar", radarPlacement);
         nint startHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Start Helper", startPlacement);
+        nint traceHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Live Telemetry", tracePlacement);
+        nint coachReportHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — AI Coach Report", coachReportPlacement);
+        nint coachStatusHwnd = CreateOverlayWindow(wc.lpszClassName, hInstance, "Live Coach — Coach", coachStatusPlacement);
+        OverlayWindows.Add(traceHwnd); OverlayWindows.Add(coachReportHwnd); OverlayWindows.Add(coachStatusHwnd);
         OverlayWindows.Add(standingsHwnd);
         OverlayWindows.Add(relativeHwnd);
         OverlayWindows.Add(weatherHwnd);
@@ -178,6 +192,9 @@ public static unsafe class Program
         WidgetWindows[FuelKey] = fuelHwnd;
         WidgetWindows[RadarKey] = radarHwnd;
         WidgetWindows[StartHelperKey] = startHwnd;
+        WidgetWindows[TraceKey] = traceHwnd;
+        WidgetWindows[CoachReportKey] = coachReportHwnd;
+        WidgetWindows[CoachStatusKey] = coachStatusHwnd;
         foreach (var (key, handle) in WidgetWindows) WidgetKeysByHandle[handle] = key;
 
         // Phase 5: the Control Center talks to this process only through this typed, versioned
@@ -219,6 +236,9 @@ public static unsafe class Program
             if (win) victoryPlayer.Play(victory!.FilePath, victory.VolumePct);
         };
         trackStateTelemetry.PlayerFinishedRace += _raceFinishHandler;
+        // Driving coach (voice/tones/engine). Created before Start so it sees the first SessionInfo;
+        // a failure here must never take the overlay down.
+        using var coachHost = TryCreateCoachHost(trackStateTelemetry);
         trackStateTelemetry.Start();
 
         using var standingsResources = DeviceResources.Create(standingsHwnd, (int)standingsPlacement.WidthDip, (int)standingsPlacement.HeightDip);
@@ -227,11 +247,18 @@ public static unsafe class Program
         using var fuelResources = DeviceResources.Create(fuelHwnd, (int)fuelPlacement.WidthDip, (int)fuelPlacement.HeightDip);
         using var radarResources = DeviceResources.Create(radarHwnd, (int)radarPlacement.WidthDip, (int)radarPlacement.HeightDip);
         using var startResources = DeviceResources.Create(startHwnd, (int)startPlacement.WidthDip, (int)startPlacement.HeightDip);
+        using var traceResources = DeviceResources.Create(traceHwnd, (int)tracePlacement.WidthDip, (int)tracePlacement.HeightDip);
+        using var coachReportResources = DeviceResources.Create(coachReportHwnd, (int)coachReportPlacement.WidthDip, (int)coachReportPlacement.HeightDip);
+        using var coachStatusResources = DeviceResources.Create(coachStatusHwnd, (int)coachStatusPlacement.WidthDip, (int)coachStatusPlacement.HeightDip);
         var resourcesByKey = new Dictionary<string, DeviceResources>
         {
             [StandingsKey] = standingsResources, [RelativeKey] = relativeResources, [WeatherKey] = weatherResources,
             [FuelKey] = fuelResources, [RadarKey] = radarResources, [StartHelperKey] = startResources,
+            [TraceKey] = traceResources, [CoachReportKey] = coachReportResources, [CoachStatusKey] = coachStatusResources,
         };
+        traceResources.SetClickThrough(traceHwnd, EffectiveClickThrough(traceHwnd));
+        coachReportResources.SetClickThrough(coachReportHwnd, EffectiveClickThrough(coachReportHwnd));
+        coachStatusResources.SetClickThrough(coachStatusHwnd, EffectiveClickThrough(coachStatusHwnd));
         standingsResources.SetClickThrough(standingsHwnd, EffectiveClickThrough(standingsHwnd));
         relativeResources.SetClickThrough(relativeHwnd, EffectiveClickThrough(relativeHwnd));
         weatherResources.SetClickThrough(weatherHwnd, EffectiveClickThrough(weatherHwnd));
@@ -246,6 +273,10 @@ public static unsafe class Program
         using var fuel = new FuelWidget(fuelResources.Context, fuelResources.DWriteFactory, fuelResources.FontCollection);
         using var radar = new RadarWidget(radarResources.Context, radarResources.DWriteFactory, radarResources.FontCollection);
         using var start = new StartHelperWidget(startResources.Context, startResources.DWriteFactory, startResources.FontCollection);
+        // Coach widgets read snapshots of the CoachHost (null host = coach failed to start: they show empty).
+        using var trace = new TraceWidget(traceResources.Context, traceResources.DWriteFactory, traceResources.FontCollection, coachHost);
+        using var coachReport = new CoachReportWidget(coachReportResources.Context, coachReportResources.DWriteFactory, coachReportResources.FontCollection, coachHost);
+        using var coachStatus = new CoachStatusWidget(coachStatusResources.Context, coachStatusResources.DWriteFactory, coachStatusResources.FontCollection, coachHost);
         standingsResources.DeviceRecovered += () => standingsFlags.Recreate(standingsResources.Context);
         relativeResources.DeviceRecovered += () => relativeFlags.Recreate(relativeResources.Context);
 
@@ -282,6 +313,9 @@ public static unsafe class Program
                 case FuelKey: fuel.SetAppearance(appearance); break;
                 case RadarKey: radar.SetAppearance(appearance); break;
                 case StartHelperKey: start.SetAppearance(appearance); break;
+                case TraceKey: trace.SetAppearance(appearance); break;
+                case CoachReportKey: coachReport.SetAppearance(appearance); break;
+                case CoachStatusKey: coachStatus.SetAppearance(appearance); break;
                 default: return; // unknown widget key -- ignore rather than guess
             }
         }
@@ -366,7 +400,7 @@ public static unsafe class Program
 
             standings.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(StandingsKey, out var sc) ? sc : StandingsWidget.BuildDefaultColumns());
             relative.SetColumns(PlacementStore.ColumnOverrides.TryGetValue(RelativeKey, out var rc) ? rc : RelativeWidget.BuildDefaultColumns());
-            foreach (var widgetKey in new[] { StandingsKey, RelativeKey, WeatherKey, FuelKey, RadarKey, StartHelperKey })
+            foreach (var widgetKey in new[] { StandingsKey, RelativeKey, WeatherKey, FuelKey, RadarKey, StartHelperKey, TraceKey, CoachReportKey, CoachStatusKey })
                 ApplyAppearance(widgetKey, PlacementStore.AppearanceOverrides.TryGetValue(widgetKey, out var ap) ? ap : WidgetAppearance.Default);
             ApplyHeaderFields(StandingsKey, PlacementStore.HeaderOverrides.TryGetValue(StandingsKey, out var sh) ? sh : HeaderFields.DefaultStandings());
             ApplyHeaderFields(RelativeKey, PlacementStore.HeaderOverrides.TryGetValue(RelativeKey, out var rh) ? rh : HeaderFields.DefaultRelative());
@@ -481,6 +515,9 @@ public static unsafe class Program
                 fuelPlacement = PlacementStore.Get(FuelKey)!;
                 radarPlacement = PlacementStore.Get(RadarKey)!;
                 startPlacement = PlacementStore.Get(StartHelperKey)!;
+                tracePlacement = PlacementStore.Get(TraceKey)!;
+                coachReportPlacement = PlacementStore.Get(CoachReportKey)!;
+                coachStatusPlacement = PlacementStore.Get(CoachStatusKey)!;
             }
 
             // Unlocked for editing: every widget shows the full simulated situation, so it can be
@@ -498,6 +535,10 @@ public static unsafe class Program
                 fuel.SetSimulatedSession(simSession);
                 radar.SetSimulatedStatus(SimulationData.Radar(simTime));
                 start.SetSimulatedStatus(SimulationData.StartHelper(simTime));
+                var coachSim = CoachSimulationData.Snapshot(simTime);
+                trace.SetSimulated(coachSim);
+                coachReport.SetSimulated(coachSim);
+                coachStatus.SetSimulated(coachSim);
             }
             else
             {
@@ -510,12 +551,18 @@ public static unsafe class Program
                 fuel.SetSimulatedSession(null);
                 radar.SetSimulatedStatus(null);
                 start.SetSimulatedStatus(null);
+                trace.SetSimulated(null);
+                coachReport.SetSimulated(null);
+                coachStatus.SetSimulated(null);
             }
 
             AutoFit(StandingsKey, standings.LastDrawnSize);
             AutoFit(RelativeKey, relative.LastDrawnSize);
             AutoFit(RadarKey, radar.LastDrawnSize);
             AutoFit(FuelKey, fuel.LastDrawnSize);
+            AutoFit(CoachReportKey, coachReport.LastDrawnSize);
+            AutoFit(TraceKey, trace.LastDrawnSize);
+            AutoFit(CoachStatusKey, coachStatus.LastDrawnSize);
 
             if (ShouldRender(StandingsKey))
             {
@@ -567,6 +614,27 @@ public static unsafe class Program
                 startResources.BeginFrame(); start.Draw(startResources.Context, 0, 0, startPlacement.WidthDip);
                 if (_editMode) DrawEditModeOutlines(startResources.Context, (0, 0, startPlacement.WidthDip, startPlacement.HeightDip));
                 startResources.EndFrame();
+            }
+
+            if (ShouldRender(TraceKey))
+            {
+                traceResources.BeginFrame(); trace.Draw(traceResources.Context, 0, 0, tracePlacement.WidthDip, tracePlacement.HeightDip);
+                if (_editMode) DrawEditModeOutlines(traceResources.Context, (0, 0, tracePlacement.WidthDip, tracePlacement.HeightDip));
+                traceResources.EndFrame();
+            }
+
+            if (ShouldRender(CoachReportKey))
+            {
+                coachReportResources.BeginFrame(); coachReport.Draw(coachReportResources.Context, 0, 0, coachReportPlacement.WidthDip);
+                if (_editMode) DrawEditModeOutlines(coachReportResources.Context, (0, 0, coachReportPlacement.WidthDip, coachReportPlacement.HeightDip));
+                coachReportResources.EndFrame();
+            }
+
+            if (ShouldRender(CoachStatusKey))
+            {
+                coachStatusResources.BeginFrame(); coachStatus.Draw(coachStatusResources.Context, 0, 0, coachStatusPlacement.WidthDip, coachStatusPlacement.HeightDip);
+                if (_editMode) DrawEditModeOutlines(coachStatusResources.Context, (0, 0, coachStatusPlacement.WidthDip, coachStatusPlacement.HeightDip));
+                coachStatusResources.EndFrame();
             }
 
             int frameDelay = RenderLoopBudget.DelayMilliseconds(sw.Elapsed.TotalMilliseconds - now, _lastAppliedVisibility.Values.Any(v => v));
@@ -703,6 +771,23 @@ public static unsafe class Program
     /// <summary>Applies a saved column-config profile (if any) to Standings/Relative at startup --
     /// only these two widgets have a column engine wired in; a persisted override for any other key
     /// is silently ignored rather than crashing.</summary>
+    private static IracingLiveCoach.OverlayHost.Coach.CoachHost? TryCreateCoachHost(TelemetryReader reader)
+    {
+        IracingLiveCoach.OverlayHost.Coach.CoachHost? host = null;
+        try
+        {
+            host = new IracingLiveCoach.OverlayHost.Coach.CoachHost(reader);
+            host.Start();
+            return host;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Coach] disabled: {ex.Message}");
+            try { host?.Dispose(); } catch { } // unsubscribe from the reader and release audio/mic
+            return null;
+        }
+    }
+
     private static void ApplyPersistedColumnConfig(StandingsWidget standings, RelativeWidget relative)
     {
         if (PlacementStore.ColumnOverrides.TryGetValue(StandingsKey, out var standingsColumns))

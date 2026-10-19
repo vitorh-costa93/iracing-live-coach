@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Speech" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Same asset files OverlayHost.csproj copies; this process needs its own copy on disk next
          to ITS exe for FlagBitmapCache/LoadPrivateFonts to find them (spec 18: reuse, don't fork). -->
     <Content Include="..\IracingLiveCoach.OverlayHost\Assets\Flags\*.png" LinkBase="Assets\Flags">

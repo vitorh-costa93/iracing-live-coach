@@ -141,6 +141,7 @@
                     <RadioButton x:Name="TabBtn3" Content="Aparência" Style="{StaticResource TabButton}" GroupName="tabs" Tag="3" Checked="TabChecked"/>
                     <RadioButton x:Name="TabBtn4" Content="Classes" Style="{StaticResource TabButton}" GroupName="tabs" Tag="4" Checked="TabChecked"/>
                     <RadioButton x:Name="TabBtn5" Content="Regras" Style="{StaticResource TabButton}" GroupName="tabs" Tag="5" Checked="TabChecked"/>
+                    <RadioButton x:Name="TabBtn6" Content="Coach" Style="{StaticResource TabButton}" GroupName="tabs" Tag="6" Checked="TabChecked"/>
                 </StackPanel>
 
                 <!-- Live preview -->
@@ -324,6 +325,59 @@
                                 <ItemsControl x:Name="SessionVisibilityList"/>
                                 <TextBlock x:Name="SessionVisibilityStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                 <TextBlock x:Name="RulesStatus" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+
+                            <!-- 6 · Coach -->
+                            <StackPanel x:Name="Tab6" Visibility="Collapsed">
+                                <TextBlock Text="Coach" Style="{StaticResource CardTitle}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Voice coach settings. Changes are saved automatically and picked up by the overlay." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                <CheckBox x:Name="CoachEnabledBox" Style="{StaticResource Switch}" Content="Coach enabled" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachVoiceBox" Style="{StaticResource Switch}" Content="Voice" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachCornerTipsBox" Style="{StaticResource Switch}" Content="Corner tips" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachLapSummaryBox" Style="{StaticResource Switch}" Content="Lap summary" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachBrakeTonesBox" Style="{StaticResource Switch}" Content="Brake tones" FontSize="14" Margin="0,0,0,8" Checked="CoachChanged" Unchecked="CoachChanged"/>
+                                <CheckBox x:Name="CoachVoiceCommandsBox" Style="{StaticResource Switch}" Content="Voice commands" FontSize="14" Margin="0,0,0,12" Checked="CoachChanged" Unchecked="CoachChanged"/>
+
+                                <TextBlock Text="Skill level" Style="{StaticResource SmallLabel}"/>
+                                <ComboBox x:Name="CoachSkillBox" FontSize="14" MinHeight="34" SelectionChanged="CoachChanged" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="Beginner"/>
+                                    <ComboBoxItem Content="Intermediate"/>
+                                    <ComboBoxItem Content="Advanced"/>
+                                </ComboBox>
+                                <TextBlock Text="Language" Style="{StaticResource SmallLabel}"/>
+                                <ComboBox x:Name="CoachLanguageBox" FontSize="14" MinHeight="34" SelectionChanged="CoachChanged" Margin="0,0,0,10">
+                                    <ComboBoxItem Content="English" Tag="en"/>
+                                    <ComboBoxItem Content="Português (Brasil)" Tag="pt-BR"/>
+                                    <ComboBoxItem Content="Español" Tag="es"/>
+                                    <ComboBoxItem Content="Deutsch" Tag="de"/>
+                                    <ComboBoxItem Content="Français" Tag="fr"/>
+                                </ComboBox>
+                                <TextBlock Text="Voice" Style="{StaticResource SmallLabel}"/>
+                                <ComboBox x:Name="CoachVoiceNameBox" FontSize="14" MinHeight="34" SelectionChanged="CoachChanged" Margin="0,0,0,10"/>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Voice volume" Style="{StaticResource SmallLabel}" VerticalAlignment="Center"/>
+                                    <Slider x:Name="CoachVoiceVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="CoachSliderChanged"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=CoachVoiceVolumeSlider, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Tone volume" Style="{StaticResource SmallLabel}" VerticalAlignment="Center"/>
+                                    <Slider x:Name="CoachToneVolumeSlider" Grid.Column="1" Minimum="0" Maximum="100" ValueChanged="CoachSliderChanged"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=CoachToneVolumeSlider, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Voice rate" Style="{StaticResource SmallLabel}" VerticalAlignment="Center"/>
+                                    <Slider x:Name="CoachVoiceRateSlider" Grid.Column="1" Minimum="-10" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="CoachSliderChanged"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=CoachVoiceRateSlider, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <Button Content="Test voice" Click="CoachTestVoice" HorizontalAlignment="Left" Padding="16,6" Margin="0,0,0,18"/>
+
+                                <TextBlock Text="Weekly Focus" Style="{StaticResource SectionLabel}" Margin="0,0,0,4"/>
+                                <TextBlock x:Name="CoachFocusText" Style="{StaticResource Muted}" TextWrapping="Wrap" FontSize="12"/>
                             </StackPanel>
                         </Grid>
                     </ScrollViewer>
