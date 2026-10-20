@@ -1,0 +1,93 @@
+# Prompt completo: converter uma pista do Assetto Corsa para o AMS2 (passo a passo)
+
+Documento escrito em 19/10/2026 a partir do que foi feito para gerar `bahrain_ac`. Serve como prompt reutilizável: cole em uma sessão nova e substitua os caminhos.
+Os formatos de arquivo estão em [ams2-track-format-spec.md](ams2-track-format-spec.md). Os scripts estão em [../tools/track-converter/](../tools/track-converter/).
+
+Legenda: **[V]** verificado por byte/parse; **[H]** hipótese, só o jogo confirma.
+
+## 0. Objetivo e restrições
+
+Gerar um mod de pista para o Automobilista 2 (engine Madness) a partir de uma pista do AC (`.kn5` + `ai\fast_lane.ai`), no formato que o **AMS2CM** instala (`.7z` com raiz `Automobilista 2\`).
+
+- Não existe ferramenta oficial. Os formatos `.bff`, `.meb`, `.bmt`, `.csm`, `.gcl` e `.aiw` foram descobertos por engenharia reversa **somente leitura** em um mod comunitário já funcional (Sochi, feito com Open Madness Track Tools 0.1.0) e em paks oficiais. Nada do jogo foi modificado.
+- Python 3 com numpy e Pillow. Rodar sempre com `python -I`.
+- Nunca testar com iRacing aberto. O teste no jogo só acontece quando o usuário avisar.
+
+## 1. Entradas
+
+| Entrada | Caminho usado | Para quê |
+|---|---|---|
+| Pista AC | `C:\Users\Vitor\Downloads\bahrain_10_osrw_24pit\bahrain` (`bahrain.kn5`, `ai\fast_lane.ai`, `ai\pit_lane.ai`, `data\cameras.ini`, `data\surfaces.ini`, `ui\outline.png`, `ui\preview.png`) | geometria, texturas, linha de IA, pits, câmeras, superfícies, GUI |
+| Mod de referência Sochi | `C:\Users\Vitor\Downloads\Sochi Autodrom\Automobilista 2` | modelo de estrutura; templates de trd, enx, cameras, triggers e os 5 paks sazonais |
+| Sochi extraído | pasta `x_sochi` (conteúdo dos paks do Sochi extraído com `bff.py`: `tracks\sochi_ams\*`, `cameras\*`, `physics\*`) | templates lidos por `convert.py` |
+| AMS2AVX.exe | instalação do AMS2 | só para achar o hash dos uids (ver passo 2) |
+
+## 2. Passo a passo (o que foi feito, em ordem)
+
+### Passo 1 — Entender o contêiner BFF (`bff.py`, `bff_write.py`)
+1. Ler o Sochi: cabeçalho `' KAP'` (0x130 bytes), TOC de 42 bytes por entrada, bloco EXT (nomes), bloco DHSA (grupos) e dados alinhados em 16.
+2. Descobrir o **uid**: Bob Jenkins lookup8 (64 bits) sobre o nome normalizado (minúsculo, `/` vira `\`). Achado no `AMS2AVX.exe` (hash em 0x140c5ebe0). Conferido em 2737/2737 nomes do Sochi (`uidhash.py`).
+3. Descobrir o **CRC** da entrada (`~crc32` dos bytes armazenados) e a ordenação do TOC (byte a byte, sensível a maiúsculas).
+4. Validar o leitor e o escritor: `validate.py` (4299/4299 CRCs) e `bff_write.py repack` reproduz os paks do Sochi **byte a byte** [V].
+
+### Passo 2 — Formatos de conteúdo
+- **MEB** (malha, `meb.py`): todos os 2227 arquivos do Sochi parseiam com tamanho exato; o escritor reproduz 2205/2207 [V].
+- **BMT** (material binário 'BLMY', `bmt.py`, `bmtdump.py`): compilado a partir do `.mtx` (XML). 289/297 idênticos ao Sochi [V]. Hash de nomes `h = rotl(h,5)*31 + c`.
+- **CSM** (colisão, `csm.py`, `csm_write.py`): PhysX 3.2 cooked triangle mesh com R-tree. Os 1493 meshes do Sochi parseiam exato; o cooker próprio foi validado com raios verticais contra força bruta (0 divergências) [V]. Que o PhysX do jogo carregue a árvore própria é **[H]**.
+- **GCL** (limites de pista e velocidade do pit, `gcl.py`): re-codifica o Sochi byte a byte [V].
+- **AIW** (linha de IA, `aiw_pit.py`): estrutura de `[Waypoint]`, `WP_PTRS`, ramo de pit com bifurcação, junção e ramais por box [V no Sochi].
+- Triggers de largada e setores (`trig_roles.py`, `trigcrc.py`): papéis dos CRCs inferidos pela posição [H, forte].
+
+### Passo 3 — Ler o KN5 do AC (`kn5.py`)
+Lê o `bahrain.kn5` v5 até o fim: 141 texturas DDS, 143 materiais, 1215 meshes, 169 dummies [V].
+
+### Passo 4 — Converter (`convert.py`)
+Comando:
+
+```
+python -I convert.py <ac_track_dir> bahrain_ac <out_dir> <sochi_ref_dir> <x_sochi_dir>
+```
+
+Dentro do script, na ordem:
+1. **Espelho em Z**: `(x,y,z)_AMS2 = (x,y,-z)_AC`. Evidência [H, forte]: a área XZ assinada do loop da IA tem sinal oposto entre o Bahrain do AC e o Sochi do AMS2, embora as duas pistas reais corram no sentido horário. A ordem dos índices de cada triângulo é invertida para manter `cross(b-a, c-a)·n > 0`.
+2. **Materiais**: um `.mtx` + `.bmt` `rz_basic` por material do kn5 (só `txDiffuse`). Shaders AT/Tree/Grass viram `USE_ALPHATEST` sem culling; blends viram alpha blending sem z-write. DDS copiados como estão. Materiais `groove`, `skidmark_01/02` e `bah_skid_decals_a` (camadas alpha pretas de borracha) não são exportados: viravam uma faixa cinza escura larga no asfalto. `ksMultilayer` (tarmac!1, textura 1024x4096 de faixas) usa o tile `tarmac_diff_a_07_d` com UV x1,5/x3,5, para o asfalto ficar uniforme.
+3. **Meshes**: um `.meb` por mesh visível e renderizável (ignora `AC_*`): 1001 meshes, 994 mil triângulos. Tangentes recalculadas, bounds em float32.
+4. **Cena**: `bahrain_ac.sgx` (um `OBJ_ID` por mesh e uma partição com AABB), `.enx` e `trackproperties.bin` copiados do Sochi [H], `cameraconfig.xml` do Sochi.
+5. **AIW**: de `fast_lane.ai` (v7, 18 floats extras por ponto; sideLeft/Right em [5]/[6]), reamostrada a cada 5 m (1071 waypoints, volta de 5357 m). Girada para o wp0 cair na linha `AC_TIME_0`; setores de `AC_TIME_1/2`. Layout igual ao do Sochi [V]: `wp_pos` = centro da pista, `wp_width` = metade da largura útil (esq+dir)/2 (cada lado limitado a 14 m, suavizado), `wp_path` = deslocamento da linha de corrida (linha = pos + path·perp; a fast_lane vai em `path`, não em `pos`). Antes (path=0, largura = min(esq,dir)) os carros andavam no meio; grid de `AC_START_n`; boxes de `AC_PIT_n`. Ramo de pit de `pit_lane.ai`: trecho fora da linha rápida, reamostrado a 5 m, bifurcação no wp 1020, junção no 148, 196 waypoints (978 m) e 24 ramais, um por box.
+6. **Câmeras de TV**: de `data\cameras.ini`. Uma `CTrackingCamData` por câmera do AC (20) e uma `CSphereArea` por waypoint (1071, raio máx(6.5, meia largura + 2)); cada waypoint pertence à câmera cujo [in,out) o contém. FOV/DOF do AC não são carregados.
+7. **Triggers**: caixas de largada/chegada e fim dos setores 1 e 2 entre os dummies `AC_TIME_n_L/R`, usando os CRCs do Sochi.
+8. **Paks**: `bahrain_ac.bff` (meshes, materiais, texturas, sgx/enx/trd, câmeras), `bahrain_ac_Physics.bff` (aiw, csm, triggers, gcl, object_properties) e `AUT/SNO/SPR/SUM/WIN_bahrain_ac.bff` copiados dos sazonais do Sochi, renomeados.
+9. **CSM**: meshes do kn5 com nome `<dígitos><CHAVE>` e CHAVE em `surfaces.ini`; espelhados, com vértices duplicados fundidos. Ids [H]: TARMAC/PITLANE 0, KERB 10, CARPET/OFFTRACK/SAND/GRASS 7 (não há id de cascalho), WALL 13 (12 se pneu, 14 se armco/rail/barrier). 158 meshes, 197 mil triângulos.
+10. **GCL**: faixa flag 1 (pista dirigível, 0,5–30 m dos lados da linha) a cada 5 m; faixa flag 2 (±5 m) sobre a zona do limitador do pit, e quadrados flag 10 e 4 no início e no fim dela [H]. 2300 triângulos.
+11. **Soltos e GUI**: `.mtx`/`.bmt`/`.trd` em `Tracks\bahrain_ac\`; DDS DXT5 em `GUI\tracklogos` (512, outline), `trackmaps` e `trackmaps3d` (1000, outline) e `trackphotos` (1920x1080, preview).
+12. `debug_aiw.txt` é só diagnóstico e **não** vai no pacote.
+
+### Passo 5 — Verificar (`check_out.py`)
+`python -I check_out.py <out_dir>\bahrain_ac bahrain_ac` relê tudo com leitores independentes. Resultado do Bahrain:
+- 0 erros de CRC/uid; todo meb parseia; 141 materiais, 131 texturas e todos os recursos do sgx presentes.
+- Loop da AIW com a mesma orientação do Sochi; erro de rumo do grid < 1°; linha de IA 0,26 m (mediana) acima do vértice da pista.
+- Ramo de pit: topologia de ponteiros igual à do Sochi, score monotônico.
+- CSM: 158 meshes, 0 erros de árvore; 148/148 raios verticais acertam o id 0.
+- GCL idêntico no re-encode; 100% dos waypoints principais dentro da flag 1.
+- Câmeras: 1071 referências, únicas e em faixa; 100% dos waypoints cobertos.
+
+### Passo 6 — Empacotar
+```
+cd <out_dir>\bahrain_ac
+"C:\Program Files\7-Zip\7z.exe" a -t7z -mx=5 "C:\Users\Vitor\Downloads\Bahrain AC (AMS2).7z" "Automobilista 2"
+```
+Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2CM.
+
+## 3. O que só o jogo confirma (checklist do teste)
+1. A pista aparece **sem espelhamento** (se estiver espelhada, trocar o sinal do espelho em `MIRROR` no `convert.py` e regerar).
+2. O jogo carrega o `.csm` (R-tree próprio) e o carro dirige em cima dele; grip e som por superfície (cascalho não tem id).
+3. A IA usa o ramo de pit (entra no 1020, para nos boxes, volta no 148).
+4. Limites de pista e limitador do pit (`.gcl`); disparo de volta e setores (triggers).
+5. As câmeras de TV trocam ao longo da volta.
+6. Itens ainda copiados do Sochi como placeholder: `trackproperties.bin`, `cameraconfig.xml`, `enx`, seasonal paks, campos do trd.
+
+## 4. Pegadinhas
+- Os scripts `hashtest*.py`, `keytest.py`, `l2test.py` e `exe_re.py` são exploratórios e têm caminhos fixos do scratchpad; o fluxo de geração usa só `kn5`, `meb`, `bmt`, `bff`, `bff_write`, `csm`, `csm_write`, `gcl` e `convert`.
+- Em `convert.py`, os templates do Sochi são lidos de `x_sochi\tracks\sochi_ams`, `x_sochi\cameras` e `x_sochi\physics`.
+- Os paks oficiais têm EXT criptografado e TOC RC4 (chave índice 2); o formato comunitário não usa isso.
+- Textura sem DDS no kn5 cai em `WHITE.DDS`.
