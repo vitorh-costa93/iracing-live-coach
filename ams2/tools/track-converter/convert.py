@@ -21,8 +21,9 @@ BS = chr(92)
 # opposite sign in AC Bahrain and AMS2 Sochi).  Winding is then reversed to keep cross(b-a,c-a).n > 0 (Sochi).
 MIRROR = np.array([1.0, 1.0, -1.0])
 LINE_MARGIN = 1.0         # min distance of the AI racing line to the asphalt edge (AMS2 originals: 5th percentile 1.4 m)
-OPT_REG = 0.02            # weight pulling the optimised line toward the AC line (keeps the problem well posed)
-KERB_USE = 0.7          # the AI line may sit this much closer to the asphalt edge where a kerb follows it
+OPT_REG = 0.02
+WALL_CLEAR = 1.8        # min distance of the AI racing line to a wall (Azure original p1 1.4 m, p5 1.6 m)            # weight pulling the optimised line toward the AC line (keeps the problem well posed)
+KERB_USE = 0.3          # the AI line may sit this much closer to the asphalt edge where a kerb follows it
 EDGE_CAP = 14.0          # AI side distances include run-off; cap per side
 
 
@@ -174,8 +175,7 @@ def line_curvature(L):
     return k, ds
 
 
-def est_laptime(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
-    """Point-mass speed profile lap time; calibrated (median ratio ~1) against `times` of the original AMS2 AIWs."""
+def speed_profile(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
     k, ds = line_curvature(L)
     v = np.minimum(vmax, np.sqrt(alat / np.maximum(np.abs(k), 1e-4)))
     n = len(L)
@@ -184,6 +184,12 @@ def est_laptime(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
             j = (i + 1) % n; v[j] = min(v[j], math.sqrt(v[i] ** 2 + 2 * acc * ds[i]))
         for i in list(range(n - 1, -1, -1)) * 2:
             j = (i + 1) % n; v[i] = min(v[i], math.sqrt(v[j] ** 2 + 2 * brk * ds[i]))
+    return v, ds
+
+
+def est_laptime(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
+    """Point-mass speed profile lap time; calibrated (median ratio ~1) against `times` of the original AMS2 AIWs."""
+    v, ds = speed_profile(L, alat, vmax, acc, brk)
     return float((ds / v).sum())
 
 
@@ -234,13 +240,15 @@ def corner_marks(L, thr_r=150.0):
 STREET = '--street' in sys.argv
 
 
-def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30):
+def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None):
     """Lateral offsets d (within [lo, hi]) of the closed polyline W + d*pw that minimise the sum of squared second differences
     (minimum-curvature line), via a sparse active-set solve; a small `reg` pulls d toward d0."""
     import scipy.sparse as sp, scipy.sparse.linalg as sla
     n = len(W)
     I = sp.identity(n, format='csr'); D2 = sp.diags([1, -2, 1], [-1, 0, 1], shape=(n, n), format='lil'); D2[0, n - 1] = 1; D2[n - 1, 0] = 1
     D2 = D2.tocsr()
+    if w is not None:
+        D2 = sp.diags(np.sqrt(w)) @ D2                      # weight the curvature penalty per point
     Ax = D2 @ sp.diags(pw[:, 0]); Az = D2 @ sp.diags(pw[:, 2])
     H = (Ax.T @ Ax + Az.T @ Az + reg ** 2 * I).tocsc(); g = Ax.T @ (-D2 @ W[:, 0]) + Az.T @ (-D2 @ W[:, 2]) + reg ** 2 * d0
     fixed = np.zeros(n, bool); d = d0.copy()
@@ -259,7 +267,7 @@ def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30):
     return d
 
 
-def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
+def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
     if pit is not None:
         pit = pit * MIRROR
@@ -293,6 +301,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
         wl_ = np.roll(wide[:, 5], -k0); wr_ = np.roll(wide[:, 6], -k0)
         wide_l = smooth(np.clip(np.interp(s, cum, np.r_[wl_, wl_[:1]]), 1.5, EDGE_CAP))
         wide_r = smooth(np.clip(np.interp(s, cum, np.r_[wr_, wr_[:1]]), 1.5, EDGE_CAP))
+    wall_l = wall_r = None
+    if wallf is not None:
+        wl_ = np.roll(wallf[:, 0], -k0); wr_ = np.roll(wallf[:, 1], -k0)
+        wall_l = np.interp(s, cum, np.r_[wl_, wl_[:1]]); wall_r = np.interp(s, cum, np.r_[wr_, wr_[:1]])
     # low (smoothed, <= 6.5 cm) kerbs beside the asphalt: the line may use their inner part like the AMS2 AI does at apexes
     mg_l = np.full(nw, LINE_MARGIN); mg_r = np.full(nw, LINE_MARGIN)
     if wide_l is not None:
@@ -304,9 +316,18 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     tt = np.roll(W, -1, 0) - np.roll(W, 1, 0); tt[:, 1] = 0; tt /= np.linalg.norm(tt, axis=1)[:, None] + 1e-9
     pw = np.c_[tt[:, 2], np.zeros(nw), -tt[:, 0]]
     lo = -(ex_l - mg_l); hi = ex_r - mg_r
+    if wall_l is not None:                       # walls: keep the line WALL_CLEAR off them (AMS2 street tracks p1 1.4 m)
+        lo = np.maximum(lo, -(wall_l - WALL_CLEAR)); hi = np.minimum(hi, wall_r - WALL_CLEAR)
     mid = 0.5 * (lo + hi); lo, hi = np.minimum(lo, mid), np.maximum(hi, mid)
-    d = min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi))
-    d = np.clip(smooth(d, 5), lo, hi)
+    d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5), lo, hi)
+    # later apex / fuller exit: penalise curvature where the car brakes and turns in (weight on the braking zones), keep the best lap
+    v0, _ = speed_profile(W + d[:, None] * pw)
+    bf = smooth((np.roll(v0, -1) < v0 - 1e-3).astype(float), 9)
+    best = est_laptime(W + d[:, None] * pw)
+    for beta in (2.0, 4.0, 8.0):
+        d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * bf), 5), lo, hi)
+        t2 = est_laptime(W + d2[:, None] * pw)
+        if t2 < best - 0.02: best, d = t2, d2
     t_ac, t_opt = est_laptime(W + sh[:, None] * pw), est_laptime(W + d[:, None] * pw)
     print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
     if t_opt < t_ac:
@@ -930,6 +951,36 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True):
     return out
 
 
+def wall_free(k, fast, reach=30.0):
+    from scipy.spatial import cKDTree
+    """Free lateral distance from each fast_lane point to the nearest collision wall on the col-5 (+perp) and col-6 (-perp) sides
+    (AC coords).  Walls = meshes whose surface key is WALL; vertices, edge midpoints and centroids are sampled."""
+    pts = []
+    for m in k['meshes']:
+        g = re.match(r'^\d+([A-Za-z]+)', m['name'])
+        if not g or not len(m['idx']) or not g.group(1).upper().startswith('WALL'):
+            continue
+        P = m['pos']; T = m['idx'].reshape(-1, 3)
+        pts += [P, P[T].mean(1), 0.5 * (P[T[:, 0]] + P[T[:, 1]]), 0.5 * (P[T[:, 1]] + P[T[:, 2]]), 0.5 * (P[T[:, 2]] + P[T[:, 0]])]
+    n = len(fast); out = np.full((n, 2), reach)
+    if not pts:
+        return out
+    Wp = np.vstack(pts); tr = cKDTree(Wp[:, [0, 2]])
+    for i in range(n):
+        t = fast[(i + 1) % n] - fast[i - 1]; t[1] = 0; t /= (np.linalg.norm(t) or 1)
+        perp = np.array([t[2], 0.0, -t[0]])
+        idx = tr.query_ball_point(fast[i][[0, 2]], reach)
+        if not idx:
+            continue
+        d = Wp[idx][:, [0, 2]] - fast[i][[0, 2]]
+        lat = d @ perp[[0, 2]]; lon = d @ t[[0, 2]]
+        near = np.abs(lon) < 4.0
+        pos = lat[near & (lat > 0)]; neg = -lat[near & (lat < 0)]
+        if len(pos): out[i, 0] = min(reach, pos.min())
+        if len(neg): out[i, 1] = min(reach, neg.min())
+    return out
+
+
 def main():
     src, tid, out, sref, sx = sys.argv[1:6]
     maxm = int(sys.argv[sys.argv.index('--max-meshes') + 1]) if '--max-meshes' in sys.argv else None
@@ -1058,7 +1109,8 @@ def main():
             aextra[ok, 5 + c] = np.minimum(extra[ok, 5 + c], ta[ok, c] + 0.2)
     else:
         wide = None
-    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide)
+    wallf = wall_free(k, fast) if extra is not None else None
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf)
     if '--dump-aiw' in sys.argv: open(sys.argv[sys.argv.index('--dump-aiw') + 1], 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()
