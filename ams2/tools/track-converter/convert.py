@@ -21,6 +21,7 @@ BS = chr(92)
 # opposite sign in AC Bahrain and AMS2 Sochi).  Winding is then reversed to keep cross(b-a,c-a).n > 0 (Sochi).
 MIRROR = np.array([1.0, 1.0, -1.0])
 LINE_MARGIN = 1.0         # min distance of the AI racing line to the asphalt edge (AMS2 originals: 5th percentile 1.4 m)
+KERB_USE = 0.7          # the AI line may sit this much closer to the asphalt edge where a kerb follows it
 EDGE_CAP = 14.0          # AI side distances include run-off; cap per side
 
 
@@ -266,7 +267,11 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
         wl_ = np.roll(wide[:, 5], -k0); wr_ = np.roll(wide[:, 6], -k0)
         wide_l = smooth(np.clip(np.interp(s, cum, np.r_[wl_, wl_[:1]]), 3.0, EDGE_CAP))
         wide_r = smooth(np.clip(np.interp(s, cum, np.r_[wr_, wr_[:1]]), 3.0, EDGE_CAP))
-    sh = smooth(np.maximum(0.0, LINE_MARGIN - ex_l) - np.maximum(0.0, LINE_MARGIN - ex_r), 9)
+    # low (smoothed, <= 6.5 cm) kerbs beside the asphalt: the line may use their inner part like the AMS2 AI does at apexes
+    mg_l = np.full(nw, LINE_MARGIN); mg_r = np.full(nw, LINE_MARGIN)
+    if wide_l is not None:
+        mg_l -= KERB_USE * ((wide_l - ex_l) > 0.6); mg_r -= KERB_USE * ((wide_r - ex_r) > 0.6)
+    sh = smooth(np.maximum(0.0, mg_l - ex_l) - np.maximum(0.0, mg_r - ex_r), 9)
 
     def lapdist(name):
         c = (dummies[name + '_L'][3, :3] + dummies[name + '_R'][3, :3]) * 0.5 * MIRROR
@@ -441,6 +446,58 @@ def surf_id(key, bad):
     return 7 if key in bad else 0
 
 
+def smooth_kerbs(items, radius=0.8, cap=0.065):
+    """AC kerb collision meshes are modelled ridge by ridge (median triangle 0.01-0.03 m2, 2-3% steep faces); AMS2's own kerbs are
+    smooth ramps (0.3 m2, no steep faces).  The ridges shake the car, launch it and roll it over at the kerbs the AI uses.
+    Smooth the kerb heights over `radius` and keep them at most `cap` above the neighbouring asphalt."""
+    from scipy.spatial import cKDTree
+    kv = [i for i, it in enumerate(items) if it[2] == 10]
+    rv = [it[0] for it in items if it[2] in (0,)]
+    if not rv:
+        return items
+    if not kv:
+        return smooth_road(items)
+    allk = np.vstack([items[i][0] for i in kv]).astype(np.float64)
+    road = np.vstack(rv).astype(np.float64)
+    tk = cKDTree(allk[:, [0, 2]]); tr = cKDTree(road[:, [0, 2]])
+    nb = tk.query_ball_point(allk[:, [0, 2]], radius)
+    zs = np.array([allk[j, 1].mean() for j in nb])
+    d, ir = tr.query(allk[:, [0, 2]], distance_upper_bound=2.0)
+    ok = np.isfinite(d)
+    zr = np.where(ok, road[np.minimum(ir, len(road) - 1), 1], zs)
+    zn = np.where(ok, np.clip(zs, zr - 0.01, zr + cap), zs)
+    print('  kerbs smoothed: %d vertices, mean |dz| %.3f m, max %.3f m' % (len(allk), np.abs(zn - allk[:, 1]).mean(), np.abs(zn - allk[:, 1]).max()))
+    out = smooth_road(items, tr)
+    o = 0
+    for i in kv:
+        U, T, sid = items[i]
+        U2 = U.copy(); U2[:, 1] = zn[o:o + len(U)].astype(np.float32); o += len(U)
+        out[i] = (U2, T, sid)
+    return out
+
+
+def smooth_road(items, tr=None, radius=1.0, maxcorr=0.05):
+    """Some AC tracks carry centimetre-scale noise in the asphalt collision (Magny-Cours: 2.4 cm at p90, AMS2 originals 0.4 cm), which
+    makes AMS2 cars bounce.  Pull asphalt vertices toward the local mean by at most `maxcorr` (real crests/slopes are far larger)."""
+    from scipy.spatial import cKDTree
+    out = list(items)
+    ri = [i for i, it in enumerate(items) if it[2] == 0]
+    if not ri:
+        return out
+    allr = np.vstack([items[i][0] for i in ri]).astype(np.float64)
+    t = cKDTree(allr[:, [0, 2]])
+    nb = t.query_ball_point(allr[:, [0, 2]], radius)
+    zm = np.array([allr[j, 1].mean() for j in nb])
+    corr = np.clip(zm - allr[:, 1], -maxcorr, maxcorr)
+    print('  asphalt smoothed: mean |dz| %.4f m, max %.3f m' % (np.abs(corr).mean(), np.abs(corr).max()))
+    o = 0
+    for i in ri:
+        U, T, sid = items[i]
+        U2 = U.copy(); U2[:, 1] = (U[:, 1] + corr[o:o + len(U)]).astype(np.float32); o += len(U)
+        out[i] = (U2, T, sid)
+    return out
+
+
 def build_csm(k, ini_path):
     from csm_write import write_csm
     keys = surface_keys(ini_path) | {'SAND', 'GRASS'}
@@ -464,6 +521,7 @@ def build_csm(k, ini_path):
         U, inv = np.unique(P, axis=0, return_inverse=True)          # weld split (uv-seam) vertices
         T = inv.reshape(-1)[T]
         items.append((U, T, sid)); stats[(key, sid)] += len(T)
+    items = smooth_kerbs(items)
     data, n = write_csm(items)
     return data, n, stats
 
