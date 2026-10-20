@@ -279,6 +279,9 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     line = W + sh[:, None] * np.c_[_t[:, 2], np.zeros(nw), -_t[:, 0]]       # racing line = pos + path*perp
     tdry = est_laptime(line)
     cty, cst = corner_marks(line)
+    # [V from 224 original AIWs] wp_galpha = 0.45 in corners (R < ~200 m), 0 on straights; wp_groove_lat ~ -0.27 * wp_path
+    _k, _ = line_curvature(line)
+    galpha = 0.45 * (np.convolve(np.r_[(np.abs(_k) > 1 / 200.0)[-6:], np.abs(_k) > 1 / 200.0, (np.abs(_k) > 1 / 200.0)[:6]].astype(float), np.ones(13), 'valid') > 0)
     out = ['[Features]', 'waypointspan=%.2f' % (lap / nw), 'pitlanes=%d' % (pit is not None), 'startinggrid=%d' % len(starts),
            'pitspots=%d' % len(pits), 'garagespots=2', 'clippingpoints=0', 'driftversion=0', 'cornermarkerversion=1',
            'AI Late Braking Fraction=1.000000', 'Track Difficulty=1.000000', 'Oval=0', 'RallyCross=0', 'IceTrack=0',
@@ -348,7 +351,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
         hw = (ex_l[i] + ex_r[i]) / 2.0
         dw = max(hw + 1.0, (wide_l[i] + wide_r[i]) / 2.0 + 1.0) if wide_l is not None else hw + 1.0
         wps.append(dict(pos=W[i] + shift * pp, perp=pp, width=(hw, hw),
-                        dwidth=(dw, dw), path=sh[i] - shift, galpha=0.0, score=(sector(s[i]), s[i]), branch=0, bits=0,
+                        dwidth=(dw, dw), path=sh[i] - shift, galpha=float(galpha[i]), score=(sector(s[i]), s[i]), branch=0, bits=0,
                         ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0), cty=int(cty[i]), cst=int(cst[i])))
     wps += pitw
     out = [x.replace('number_waypoints=%d' % nw, 'number_waypoints=%d' % len(wps)) for x in out]
@@ -357,7 +360,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
                 'wp_pos=(%.4f,%.4f,%.4f)' % tuple(w['pos']), 'wp_perp=(%.4f,0.0000,%.4f)' % (w['perp'][0], w['perp'][2]),
                 'wp_width=(%.3f,%.3f)' % w['width'], 'wp_dwidth=(%.3f,%.3f)' % w['dwidth'],
                 'wp_path=(%.4f,0.0000)' % w['path'], 'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
-                'wp_groove_lat=(0.000000)', 'wp_event=(1.000,0,0.000000)', 'wp_branchID=(%d)' % w['branch'],
+                'wp_groove_lat=(%.6f)' % (-0.27 * w['path']), 'wp_event=(1.000,0,0.000000)', 'wp_branchID=(%d)' % w['branch'],
                 'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(%d)' % w.get('cty', 0), 'wpd_CornerState=(%d)' % w.get('cst', 0), 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
     info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half, npit=len(pitw) - (len(pits) if pit is not None else 0))
     return '\n'.join(out) + '\n', info

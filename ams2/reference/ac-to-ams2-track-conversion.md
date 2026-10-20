@@ -110,3 +110,8 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 - Linha da IA: margem >= ~1 m da borda do asfalto (original p5 = 1,4 m); `wp_width` usa só asfalto, `wp_dwidth` inclui zebra.
 - Asfalto original ~RGB 75 neutro; texturas do AC (~90-140, amareladas) são escurecidas por `tone_asphalt()`.
 - `--dump-aiw <arquivo>` grava o AIW em texto para diagnóstico.
+
+## Pesquisa de IA (20/10)
+**AIWs originais (224 pistas):** cabeçalho quase sempre igual ao nosso (Late Braking 1.0 em 226/230, Anticipation 40/80/160, GrooveWidth 6-7.5, UseLineBlendSpeed 1); só Montreal 1.15, Kyalami 1.05 e Nordschleife 1.02 diferem. Os valores que realmente variam são por waypoint: `wp_galpha` = 0.45 em curvas (R < ~200 m) e 0 nas retas; `wp_groove_lat` ~ -0.27*`wp_path`; `wp_event=(1,2,1.05-1.2)` em ~12% dos waypoints (multiplicador, função não confirmada). Implementado galpha/groove no conversor.
+**AMS2, por piloto/carro** (UserData\CustomAIDrivers\<classe>.xml, fórum Reiza): `race_skill` (faixa estreita por carro), `line_skill` (aderência à fastline, v1.6.9.95+), `avoidance_of_mistakes`, `weight/power/drag_scalar` 0.9-1.1 etc. Não existe parâmetro de frenagem: a frenagem vem da fastline + marcadores + física do carro. `Vehicles\physics\aeroreductiontableai.mrdf` = tabela de redução de arrasto/aero p/ IA (draft).
+**iRacing:** sem documentação técnica de treino; patch notes citam "lições" da IA (ovais, velocidade ideal por posição, recuperar ao trocar de linha, só levantar o pé em ovais) e rosters com Skill, Aggression, Optimism, Smoothness por piloto; skill ~60-120% varia por carro/pista. Conclusão: ambos separam *linha por pista* de *perfil de piloto por carro*; o nosso conversor só controla o primeiro.
