@@ -719,6 +719,34 @@ def tone_asphalt(data, target=75.0, keep_sat=0.3):
     return bytes(out + body)
 
 
+def opaque_alpha(data):
+    """AC keeps masks (detail strength, gloss) in the diffuse alpha of opaque ground; AMS2 rz_basic reads it as something else
+    (Shanghai asphalt/runoff rendered white with dark smears), so force alpha to 255 on textures no material blends or tests."""
+    import io, struct, math
+    from PIL import Image
+    if data[:4] != b'DDS ' or data[84:88] != b'DXT5':
+        return data
+    im = Image.open(io.BytesIO(data)).convert('RGBA')
+    a = np.asarray(im).copy()
+    if a[..., 3].min() >= 250:
+        return data
+    a[..., 3] = 255
+    im = Image.fromarray(a, 'RGBA')
+    h, w = struct.unpack_from('<II', data, 12)
+    need = int(math.log2(max(w, h))) + 1
+    out = bytearray(data[:128]); body = bytearray()
+    for lv in range(need):
+        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
+        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
+        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format='DXT5')
+        body += b.getvalue()[128:]
+    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
+    struct.pack_into('<I', out, 28, need)
+    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
+    print('  alpha stripped', w, h)
+    return bytes(out + body)
+
+
 def is_asphalt(mt):
     n = mt['name'].upper()
     return (detail_kind(mt) == 'road' or (mt['shader'] == 'ksMultilayer' and not n.startswith('KERB'))
@@ -843,16 +871,22 @@ def main():
         bm = bmt_encode(ET.fromstring(mtx))
         loose[nm + '.bmt'] = bm
         main_items.append(dict(name=TD + nm + '.bmt', data=bm))
-    texs = {}; road_tex = set()
+    texs = {}; road_tex = set(); alpha_tex = set(); multi_tex = set()
     for i in used:
         mt = k['materials'][i]
         tex = tex_of(mt)
         if tex and tex in k['textures']:
             texs[mt['texname']] = k['textures'][tex]
+            if mt['shader'].startswith('ksMultilayer'):
+                multi_tex.add(mt['texname'])
+            if mt['blend'] == 1 or mt['alphaTested'] or mt['shader'] in ('ksPerPixelAT', 'ksPerPixelAT_NM', 'ksTree', 'ksGrass'):
+                alpha_tex.add(mt['texname'])
             if is_asphalt(mt):
                 road_tex.add(mt['texname'])
     for tn, data in sorted(texs.items()):
         data = full_mips(legacy_dds(data))
+        if tn not in alpha_tex and (tn in road_tex or tn in multi_tex or 'TRACKSURFACE' in tn or 'RUNOFF' in tn):
+            data = opaque_alpha(data)
         if tn in road_tex:
             data = tone_asphalt(data)
         main_items.append(dict(name='tracks' + BS + 'textures' + BS + tid + BS + tn, data=data))
