@@ -633,7 +633,12 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0):
         road = k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m['visible'] and m['renderable']
         if road or re.match(r'^\d+(tarmac|road|pit|pitlane|kerb)', m['name'], re.I):   # collision road + kerbs count: cars may use kerbs fully
             P = m['pos']
-            for a, b, c in m['idx'].reshape(-1, 3):
+            T = m['idx'].reshape(-1, 3)
+            if not road:     # collision 'road' meshes that are really ground planes (Phoenix p1g...) would hide the true edge
+                A2 = 0.5 * np.abs((P[T[:, 1], 0] - P[T[:, 0], 0]) * (P[T[:, 2], 2] - P[T[:, 0], 2]) - (P[T[:, 2], 0] - P[T[:, 0], 0]) * (P[T[:, 1], 2] - P[T[:, 0], 2]))
+                if A2.sum() > 100000:
+                    continue
+            for a, b, c in T:
                 dr.polygon([((P[j, 0] - x0) / res, (P[j, 2] - z0) / res) for j in (a, b, c)], fill=255)
     A = np.asarray(img) > 0
     n = len(fast)
@@ -646,7 +651,7 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0):
             q = fast[i][None, :] + sg * steps[:, None] * perp[None, :]
             xi = ((q[:, 0] - x0) / res).astype(int); zi = ((q[:, 2] - z0) / res).astype(int)
             ok = A[np.clip(zi, 0, h - 1), np.clip(xi, 0, w - 1)]
-            out[i, c] = steps[np.argmin(ok)] if not ok.all() and not ok[0] else (0.0 if not ok[0] else reach)
+            out[i, c] = 0.0 if not ok[0] else (reach if ok.all() else steps[np.argmin(ok)])
     return out
 
 
