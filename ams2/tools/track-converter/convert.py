@@ -415,9 +415,31 @@ def surface_keys(ini_path):
     return keys | {'WALL'}                 # WALL is an AC built-in surface
 
 
+def invalid_keys(ini_path):
+    bad = set(); cur = None
+    if os.path.exists(ini_path):
+        for line in open(ini_path, encoding='latin1'):
+            mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
+            if mm:
+                cur = mm.group(1).upper()
+            mm = re.match(r'\s*IS_VALID_TRACK\s*=\s*(\d+)', line)
+            if mm and cur and int(mm.group(1)) == 0:
+                bad.add(cur)
+    return bad
+
+
+def surf_id(key, bad):
+    if key in SURF_ID:
+        return SURF_ID[key]
+    if key.startswith(('CURB', 'KERB', 'RUMBLE')):
+        return 10
+    return 7 if key in bad else 0
+
+
 def build_csm(k, ini_path):
     from csm_write import write_csm
     keys = surface_keys(ini_path) | {'SAND', 'GRASS'}
+    bad = invalid_keys(ini_path)
     items = []; stats = collections.Counter()
     for m in k['meshes']:
         g = re.match(r'^\d+([A-Za-z]+)', m['name'])
@@ -429,7 +451,7 @@ def build_csm(k, ini_path):
         if key is None:
             continue
         low = m['name'].lower()
-        sid = SURF_ID.get(key, 0)
+        sid = surf_id(key, bad)
         if key == 'WALL':
             sid = 12 if 'tyre' in low or 'tire' in low else 14 if ('armco' in low or 'rail' in low or 'barrier' in low) else 13
         P = (m['pos'] * MIRROR).astype(np.float32)
