@@ -97,10 +97,14 @@ TARMAC_TILE = 'tarmac_diff_a_07_d.dds'
 UV_MULTILAYER = (1.5, 3.5)
 
 
+AVAIL = None    # textures present in the kn5 (set in main); ksMultilayer falls back when the tile is missing (Sepang)
+
+
 def tex_of(mt):
-    if mt['shader'] == 'ksMultilayer':
+    if mt['shader'] == 'ksMultilayer' and (AVAIL is None or TARMAC_TILE in AVAIL):
         return TARMAC_TILE
-    return mt['tex'].get('txDiffuse') or next(iter(mt['tex'].values()), None)
+    ok = [t for t in mt['tex'].values() if AVAIL is None or t in AVAIL]
+    return next((t for n, t in mt['tex'].items() if n in ('txDiffuse', 'txBase') and t in ok), None) or next(iter(ok), None)
 
 
 # ---------------------------------------------------------------- AI line
@@ -226,7 +230,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
         shift = (ex_r[i] - ex_l[i]) / 2.0            # racing line -> centre along +perp
         hw = (ex_l[i] + ex_r[i]) / 2.0
         wps.append(dict(pos=W[i] + shift * pp, perp=pp, width=(hw, hw),
-                        dwidth=(hw, hw), path=-shift, galpha=0.0, score=(sector(s[i]), s[i]), branch=0, bits=0,
+                        dwidth=(hw + 1.0, hw + 1.0), path=-shift, galpha=0.0, score=(sector(s[i]), s[i]), branch=0, bits=0,
                         ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0)))
     wps += pitw
     out = [x.replace('number_waypoints=%d' % nw, 'number_waypoints=%d' % len(wps)) for x in out]
@@ -471,13 +475,17 @@ def build_triggers(template, dummies):
 
 
 # ---------------------------------------------------------------- trd
-def build_trd(template, tid, lap):
-    vals = {'Name': tid, 'TrackName': 'Bahrain International Circuit (AC conv)', 'ShortTrackName': 'Bahrain',
-            'ScenegraphFile': tid + '.sgx', 'Year': '2004', 'Length': str(int(round(lap))), 'Location': 'Bahrain',
-            'Country': 'BH', 'Track Group': 'Bahrain (AC conversion test)',
-            'Track Description': 'Bahrain - AC kn5 conversion test', 'Is Clockwise': 'true',
-            'Track_Location': 'Sakhir', 'Track_Variation': 'Grand Prix', 'Track_Longitude': '50.512',
-            'Track_Latitude': '26.032', 'Track_Altitude': '7', 'Track_TimeZone': '3', 'Number Of Turns': '15',
+def build_trd(template, tid, lap, meta=None):
+    """meta (CLI --name/--short/--location/--country/--variation/--lat/--lon/--tz/--turns/--year/--cw); defaults = Bahrain."""
+    m = dict(name='Bahrain International Circuit (AC conv)', short='Bahrain', location='Bahrain', country='BH', city='Sakhir',
+             variation='Grand Prix', lat='26.032', lon='50.512', tz='3', turns='15', year='2004', cw='true')
+    m.update(meta or {})
+    vals = {'Name': tid, 'TrackName': m['name'], 'ShortTrackName': m['short'],
+            'ScenegraphFile': tid + '.sgx', 'Year': m['year'], 'Length': str(int(round(lap))), 'Location': m['location'],
+            'Country': m['country'], 'Track Group': '%s (AC conversion)' % m['short'],
+            'Track Description': '%s - AC kn5 conversion' % m['short'], 'Is Clockwise': m['cw'],
+            'Track_Location': m['city'], 'Track_Variation': m['variation'], 'Track_Longitude': m['lon'],
+            'Track_Latitude': m['lat'], 'Track_Altitude': '7', 'Track_TimeZone': m['tz'], 'Number Of Turns': m['turns'],
             'Track_Climate': 'desert', 'Max AI participants': '23', 'Drs Zone 1 Detection Number': '0',
             'Drs Zone 2 Detection Number': '0', 'Order Override': '1'}
     for k, v in vals.items():
@@ -543,7 +551,7 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0):
     img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
     for m in k['meshes']:
         road = k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m['visible'] and m['renderable']
-        if road or re.match(r'^\d+kerb', m['name'], re.I):      # kerbs (collision meshes) count: cars may use them fully
+        if road or re.match(r'^\d+(tarmac|road|pit|pitlane|kerb)', m['name'], re.I):   # collision road + kerbs count: cars may use kerbs fully
             P = m['pos']
             for a, b, c in m['idx'].reshape(-1, 3):
                 dr.polygon([((P[j, 0] - x0) / res, (P[j, 2] - z0) / res) for j in (a, b, c)], fill=255)
@@ -578,6 +586,8 @@ def main():
     if maxm:
         meshes.sort(key=lambda m: -len(m['idx'])); meshes = meshes[:maxm]
     used = sorted({m['mat'] for m in meshes})
+    global AVAIL
+    AVAIL = set(k['textures'])
     names = set()
     for i in used:
         mt = k['materials'][i]
@@ -618,7 +628,7 @@ def main():
         mn, mx = P.min(0), P.max(0); c = (mn + mx) * np.float32(0.5); r = float(np.linalg.norm(mx - c))
         bounds = tuple(map(float, c)) + (r,) + tuple(map(float, mn)) + tuple(map(float, mx))
         mat = 'TRACKS' + BS + tid.upper() + BS + k['materials'][m['mat']]['mname'] + '.MTX'
-        uv = m['uv'] * np.array(UV_MULTILAYER) if k['materials'][m['mat']]['shader'] == 'ksMultilayer' else m['uv']
+        uv = m['uv'] * np.array(UV_MULTILAYER) if tex_of(k['materials'][m['mat']]) == TARMAC_TILE else m['uv']
         data = write_meb(nm, P.tolist(), N.astype(np.float32).tolist(), uv.astype(np.float32).tolist(),
                          [(mat, idx.tolist())], tangents=T.astype(np.float32).tolist(),
                          binormals=B.astype(np.float32).tolist(), bounds=[bounds, bounds])
@@ -672,7 +682,8 @@ def main():
     else:
         main_items.append(dict(name='cameras' + BS + tid + '.xml', data=camtpl.encode('utf-8')))
     print('aiw lap %.1f m, sectors %.1f / %.1f, %d waypoints' % (info['lap'], info['s1'], info['s2'], info['nw']))
-    trd = build_trd(open(os.path.join(SX, 'sochi_ams.trd'), encoding='utf-8').read(), tid, info['lap']).encode('utf-8')
+    trd = build_trd(open(os.path.join(SX, 'sochi_ams.trd'), encoding='utf-8').read(), tid, info['lap'],
+                    {f: sys.argv[sys.argv.index('--' + f) + 1] for f in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw') if '--' + f in sys.argv}).encode('utf-8')
     main_items.append(dict(name=TD + tid + '.trd', data=trd))
     loose[tid + '.trd'] = trd
 
