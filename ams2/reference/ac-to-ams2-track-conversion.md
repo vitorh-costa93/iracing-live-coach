@@ -91,3 +91,9 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 - Em `convert.py`, os templates do Sochi são lidos de `x_sochi\tracks\sochi_ams`, `x_sochi\cameras` e `x_sochi\physics`.
 - Os paks oficiais têm EXT criptografado e TOC RC4 (chave índice 2); o formato comunitário não usa isso.
 - Textura sem DDS no kn5 cai em `WHITE.DDS`.
+
+## 5. Pistas com vários kn5 (Magny-Cours 2025, 20/10/2026)
+- `convert.py` agora funde todos os `.kn5` listados em `models.ini` (exceto `*groove*`); os dummies `AC_*` podem estar em `actime.kn5`. Materiais/texturas reindexados; textura homônima com bytes diferentes ganha nome único.
+- Shader `ksMultilayer_fresnel_nm` usa o `txDiffuse` direto (UV já repete); só o `ksMultilayer` puro usa o tile de asfalto.
+- Superfícies: `ROFF`/`SAND`/`GRASS` = 7, `ROAD`/`PIT` = 0; zona do limitador do pit vem de meshes `^\d+pit`.
+- Resultado `magnycours_ac`: 2829 meshes, 935 mil tris, AIW 878 wps (4391 m), pit 152 wps + 26 ramais, 22 câmeras, `check_out` sem erros. Pacote: `Downloads\Magny-Cours AC (AMS2).7z` (88 MiB). Árvores do CSP (`extension\trees`) não são convertidas.

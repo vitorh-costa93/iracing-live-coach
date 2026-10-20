@@ -277,7 +277,7 @@ def build_pit(fast, fextra, pitlane, pit_dummies, span=5.0, merge=4.0):
 # ---------------------------------------------------------------- collision (.csm)
 # AC surface KEY -> AMS2 csm surface id.  Ids taken from Sochi (OMTT) correlated with its render meshes [H]:
 # 0 asphalt/pit, 7 grass, 10 rumble/kerb, 12 tyre wall, 13 concrete wall, 14 armco.  No gravel id known -> sand = 7.
-SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 7, 'GRASS': 7, 'WALL': 13}
+SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'ROAD': 0, 'PIT': 0, 'ROFF': 7, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 7, 'GRASS': 7, 'WALL': 13}
 
 
 def surface_keys(ini_path):
@@ -292,7 +292,7 @@ def surface_keys(ini_path):
 
 def build_csm(k, ini_path):
     from csm_write import write_csm
-    keys = surface_keys(ini_path)
+    keys = surface_keys(ini_path) | {'SAND', 'GRASS'}
     items = []; stats = collections.Counter()
     for m in k['meshes']:
         g = re.match(r'^\d+([A-Za-z]+)', m['name'])
@@ -501,12 +501,44 @@ def gui_dds(png, size):
     return b.getvalue()
 
 
+def load_all_kn5(src):
+    """Merge every kn5 of the track (models.ini order, or all *.kn5 when there is none) into one kn5 dict.
+    Single-kn5 tracks behave exactly as before.  Meshes/materials are re-indexed; textures with the same name but
+    different bytes get a unique name.  Groove-only kn5s (rubber decals) are skipped (see DROP_MATS)."""
+    files = []
+    ini = os.path.join(src, 'models.ini')
+    if os.path.exists(ini):
+        files = re.findall(r'^\s*FILE\s*=\s*(\S+\.kn5)\s*$', open(ini, encoding='utf-8', errors='replace').read(), re.I | re.M)
+    files = [f for f in files if os.path.exists(os.path.join(src, f))] or sorted(f for f in os.listdir(src) if f.lower().endswith('.kn5'))
+    files = [f for f in files if 'groove' not in f.lower()]
+    out = {'version': 0, 'textures': {}, 'materials': [], 'meshes': [], 'dummies': []}
+    for f in files:
+        k = read_kn5(os.path.join(src, f))
+        print('  kn5', f, len(k['meshes']), 'meshes', len(k['materials']), 'materials')
+        ren = {}
+        for n, d in k['textures'].items():
+            have = out['textures'].get(n)
+            if have is None:
+                out['textures'][n] = d
+            elif have != d:
+                ren[n] = os.path.splitext(n)[0] + '__' + os.path.splitext(f)[0][-6:] + os.path.splitext(n)[1]
+                out['textures'][ren[n]] = d
+        base = len(out['materials'])
+        for mt in k['materials']:
+            mt['tex'] = {a: ren.get(b, b) for a, b in mt['tex'].items()}
+            out['materials'].append(mt)
+        for m in k['meshes']:
+            m['mat'] += base
+            out['meshes'].append(m)
+        out['dummies'] += [(n, M) for n, M in k['dummies'] if n.upper().startswith('AC_')]
+    return out
+
+
 def main():
     src, tid, out, sref, sx = sys.argv[1:6]
     maxm = int(sys.argv[sys.argv.index('--max-meshes') + 1]) if '--max-meshes' in sys.argv else None
     root = os.path.join(out, tid, 'Automobilista 2')
-    kn5_path = next(os.path.join(src, f) for f in os.listdir(src) if f.lower().endswith('.kn5'))
-    k = read_kn5(kn5_path)
+    k = load_all_kn5(src)
     dummies = {n: M for n, M in k['dummies']}
     print('kn5', len(k['meshes']), 'meshes', len(k['materials']), 'materials')
 
@@ -614,7 +646,7 @@ def main():
 
     csm, ncsm, cst = build_csm(k, os.path.join(src, 'data', 'surfaces.ini'))
     print('csm', ncsm, 'meshes', len(csm), 'bytes', dict(cst))
-    plt = [m['pos'][m['idx'].reshape(-1, 3)] for m in k['meshes'] if re.match(r'^\d+pitlane', m['name'], re.I) and len(m['idx'])]
+    plt = [m['pos'][m['idx'].reshape(-1, 3)] for m in k['meshes'] if re.match(r'^\d+pit(lane)?', m['name'], re.I) and len(m['idx'])]
     sf_ac = (dummies['AC_TIME_0_L'][3, :3] + dummies['AC_TIME_0_R'][3, :3]) * 0.5
     gcl, ngcl, zone = build_gcl(fast, extra, sf_ac, pitc, np.vstack(plt) if plt else None)
     print('gcl', ngcl, 'tris', len(gcl), 'bytes, pit limiter zone (pit pts)', zone)
