@@ -551,6 +551,32 @@ def gui_dds(png, size):
     return b.getvalue()
 
 
+def full_mips(data):
+    """AMS2 samples the whole mip chain: DDS files with a truncated chain (Shanghai: 4096x1024 with 1 level) render as white
+    block garbage.  Rebuild the missing levels (box-filtered) and re-encode them in the original DXT format."""
+    import io, struct, math
+    from PIL import Image
+    if data[:4] != b'DDS ' or data[84:88] not in (b'DXT1', b'DXT3', b'DXT5'):
+        return data
+    h, w, _, _, mips = struct.unpack_from('<IIIII', data, 12)
+    mips = mips or 1
+    need = int(math.log2(max(w, h))) + 1
+    if mips >= need or min(w, h) < 4:
+        return data
+    fmt = data[84:88].decode()
+    im = Image.open(io.BytesIO(data)).convert('RGBA')
+    out = bytearray(data[:128]); body = bytearray()
+    for lv in range(need):
+        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
+        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
+        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format=fmt)
+        body += b.getvalue()[128:]
+    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
+    struct.pack_into('<I', out, 28, need)
+    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
+    return bytes(out + body)
+
+
 def legacy_dds(data):
     """AMS2 only loads classic DXT/BGRA DDS: a DX10-header DDS (BC7 etc., e.g. Shanghai's jumbotron_effect) is re-encoded to DXT5."""
     if data[84:88] != b'DX10':
@@ -669,7 +695,7 @@ def main():
         if tex and tex in k['textures']:
             texs[mt['texname']] = k['textures'][tex]
     for tn, data in sorted(texs.items()):
-        data = legacy_dds(data)
+        data = full_mips(legacy_dds(data))
         main_items.append(dict(name='tracks' + BS + 'textures' + BS + tid + BS + tn, data=data))
     print('materials', len(used), 'textures', len(texs))
 
