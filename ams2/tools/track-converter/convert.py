@@ -20,6 +20,7 @@ BS = chr(92)
 # AC -> Madness: mirror Z (evidence: both real tracks run clockwise but the XZ signed area of the AI loop has
 # opposite sign in AC Bahrain and AMS2 Sochi).  Winding is then reversed to keep cross(b-a,c-a).n > 0 (Sochi).
 MIRROR = np.array([1.0, 1.0, -1.0])
+LINE_MARGIN = 1.0         # min distance of the AI racing line to the asphalt edge (AMS2 originals: 5th percentile 1.4 m)
 EDGE_CAP = 14.0          # AI side distances include run-off; cap per side
 
 
@@ -160,7 +161,74 @@ def yaw_of(fwd):
     return math.atan2(-fwd[0], -fwd[2])
 
 
-def build_aiw(fast, extra, dummies, tid, pit=None):
+def line_curvature(L):
+    """Signed curvature (1/m, <0 = left in AMS2 coords) of a closed polyline plus per-point spacing."""
+    d = np.roll(L, -1, 0) - L; d[:, 1] = 0; ds = np.linalg.norm(d, axis=1) + 1e-9
+    h = np.unwrap(np.arctan2(d[:, 0], d[:, 2]))
+    dh = np.angle(np.exp(1j * (np.roll(h, -1) - h)))
+    k = dh / ds
+    n = 3
+    k = np.convolve(np.r_[k[-n:], k, k[:n]], np.ones(n) / n, 'same')[n:-n]
+    return k, ds
+
+
+def est_laptime(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
+    """Point-mass speed profile lap time; calibrated (median ratio ~1) against `times` of the original AMS2 AIWs."""
+    k, ds = line_curvature(L)
+    v = np.minimum(vmax, np.sqrt(alat / np.maximum(np.abs(k), 1e-4)))
+    n = len(L)
+    for _ in range(2):
+        for i in list(range(n)) * 2:
+            j = (i + 1) % n; v[j] = min(v[j], math.sqrt(v[i] ** 2 + 2 * acc * ds[i]))
+        for i in list(range(n - 1, -1, -1)) * 2:
+            j = (i + 1) % n; v[i] = min(v[i], math.sqrt(v[j] ** 2 + 2 * brk * ds[i]))
+    return float((ds / v).sum())
+
+
+def corner_marks(L, thr_r=150.0):
+    """AMS2 corner markers (wpd_CornerType / wpd_CornerState) from the racing line.
+    Originals: type 3 = left (dh<0), 4 = right; state 1 = one wp at the start, state 2 (~76 m median, apex near its
+    end), state 3 = exit (~52 m).  Returns (type[], state[])."""
+    n = len(L)
+    k, ds = line_curvature(L)
+    step = float(ds.mean())
+    ak = np.abs(k)
+    ty = np.zeros(n, int); st = np.zeros(n, int)
+    hot = ak > 1.0 / 260.0
+    # merge gaps shorter than ~30 m of low curvature
+    gap = max(1, int(30 / step))
+    idx = np.where(hot)[0]
+    if len(idx) == 0:
+        return ty, st
+    groups = []; cur = [idx[0]]
+    for q in idx[1:]:
+        if q - cur[-1] <= gap: cur.append(q)
+        else: groups.append(cur); cur = [q]
+    groups.append(cur)
+    if len(groups) > 1 and groups[0][0] + n - groups[-1][-1] <= gap:   # wrap-around
+        groups[0] = groups.pop() + groups[0]
+    taken = np.zeros(n, bool)
+    for g in groups:
+        g = np.array(g); seg = g % n if g[0] <= g[-1] else g
+        if len(g) < 2: continue
+        apex = g[int(np.argmax(ak[g % n]))] % n
+        if 1.0 / max(ak[apex], 1e-4) > thr_r: continue
+        sgn = np.sign(k[g % n].sum()) or 1.0
+        n2 = int(np.clip((len(g) * step) * 0.8, 20, 130) / step)
+        n3 = int(np.clip((len(g) * step) * 0.6, 25, 110) / step)
+        a2 = [(apex - m) % n for m in range(n2, 0, -1)] + [apex]
+        a3 = [(apex + m) % n for m in range(1, n3 + 1)]
+        a1 = (apex - n2 - 1) % n
+        if any(taken[q] for q in a2 + a3): continue
+        t = 3 if sgn < 0 else 4
+        for q in a2: st[q] = 2; ty[q] = t; taken[q] = True
+        for q in a3: st[q] = 3; ty[q] = t; taken[q] = True
+        if not taken[a1]:
+            st[a1] = 1; ty[a1] = t; taken[a1] = True
+    return ty, st
+
+
+def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
     if pit is not None:
         pit = pit * MIRROR
@@ -188,6 +256,14 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
     ex_l = smooth(np.clip(np.interp(s, cum, np.r_[left, left[:1]]), 3.0, EDGE_CAP))    # AC +lat side = AMS -perp side
     ex_r = smooth(np.clip(np.interp(s, cum, np.r_[right, right[:1]]), 3.0, EDGE_CAP))  # AC -lat side = AMS +perp side
 
+    # keep the racing line off the white line / kerb: AMS2 cars run over kerbs the AI treats as road (Bahrain)
+    wide_l = wide_r = None
+    if wide is not None:
+        wl_ = np.roll(wide[:, 5], -k0); wr_ = np.roll(wide[:, 6], -k0)
+        wide_l = smooth(np.clip(np.interp(s, cum, np.r_[wl_, wl_[:1]]), 3.0, EDGE_CAP))
+        wide_r = smooth(np.clip(np.interp(s, cum, np.r_[wr_, wr_[:1]]), 3.0, EDGE_CAP))
+    sh = smooth(np.maximum(0.0, LINE_MARGIN - ex_l) - np.maximum(0.0, LINE_MARGIN - ex_r), 9)
+
     def lapdist(name):
         c = (dummies[name + '_L'][3, :3] + dummies[name + '_R'][3, :3]) * 0.5 * MIRROR
         return float(s[int(np.argmin(np.linalg.norm(W - c, axis=1)))])
@@ -199,6 +275,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
     def pos_ori(M):
         p = M[3, :3] * MIRROR; f = M[2, :3] * MIRROR
         return p, yaw_of(f)
+    _t = np.roll(W, -1, 0) - np.roll(W, 1, 0); _t[:, 1] = 0; _t /= np.linalg.norm(_t, axis=1)[:, None]
+    line = W + sh[:, None] * np.c_[_t[:, 2], np.zeros(nw), -_t[:, 0]]       # racing line = pos + path*perp
+    tdry = est_laptime(line)
+    cty, cst = corner_marks(line)
     out = ['[Features]', 'waypointspan=%.2f' % (lap / nw), 'pitlanes=%d' % (pit is not None), 'startinggrid=%d' % len(starts),
            'pitspots=%d' % len(pits), 'garagespots=2', 'clippingpoints=0', 'driftversion=0', 'cornermarkerversion=1',
            'AI Late Braking Fraction=1.000000', 'Track Difficulty=1.000000', 'Oval=0', 'RallyCross=0', 'IceTrack=0',
@@ -219,7 +299,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
         for g in (0, 1):
             out += ['GarLeftHanded=(%d,0)' % g, 'GarPos=(%d,%.6f,%.6f,%.6f)' % ((g,) + tuple(p)),
                     'GarOri=(%d,0.000000,%.6f,0.000000)' % (g, y)]
-    out += ['', '', '', '[Waypoint]', 'trackstate=467', 'times=(110.0000,115.0000)', 'number_waypoints=%d' % nw,
+    out += ['', '', '', '[Waypoint]', 'trackstate=467', 'times=(%.4f,%.4f)' % (tdry, tdry * 1.045), 'number_waypoints=%d' % nw,
             'lap_length=%.6f' % lap, 'sector_1_length=%.6f' % s1, 'sector_2_length=%.6f' % s2, 'FuelUse=0.845000',
             'GrooveWidth=7.500000', 'GrooveWidthWet=3.000000', 'IntermediateFogLevel=(0.0000)',
             'IntermediateFogPlanes=(0.0,0.0)', 'RainyFogPlanes=(0.0,0.0)', 'IntermediateFogColor=(0.0,0.0,0.0)',
@@ -266,9 +346,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
         pp = perp_of(W[i - 1], W[(i + 1) % nw])
         shift = (ex_r[i] - ex_l[i]) / 2.0            # racing line -> centre along +perp
         hw = (ex_l[i] + ex_r[i]) / 2.0
+        dw = max(hw + 1.0, (wide_l[i] + wide_r[i]) / 2.0 + 1.0) if wide_l is not None else hw + 1.0
         wps.append(dict(pos=W[i] + shift * pp, perp=pp, width=(hw, hw),
-                        dwidth=(hw + 1.0, hw + 1.0), path=-shift, galpha=0.0, score=(sector(s[i]), s[i]), branch=0, bits=0,
-                        ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0)))
+                        dwidth=(dw, dw), path=sh[i] - shift, galpha=0.0, score=(sector(s[i]), s[i]), branch=0, bits=0,
+                        ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0), cty=int(cty[i]), cst=int(cst[i])))
     wps += pitw
     out = [x.replace('number_waypoints=%d' % nw, 'number_waypoints=%d' % len(wps)) for x in out]
     for i, w in enumerate(wps):
@@ -277,8 +358,8 @@ def build_aiw(fast, extra, dummies, tid, pit=None):
                 'wp_width=(%.3f,%.3f)' % w['width'], 'wp_dwidth=(%.3f,%.3f)' % w['dwidth'],
                 'wp_path=(%.4f,0.0000)' % w['path'], 'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
                 'wp_groove_lat=(0.000000)', 'wp_event=(1.000,0,0.000000)', 'wp_branchID=(%d)' % w['branch'],
-                'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(0)', 'wpd_CornerState=(0)', 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
-    info = dict(lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half, npit=len(pitw) - (len(pits) if pit is not None else 0))
+                'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(%d)' % w.get('cty', 0), 'wpd_CornerState=(%d)' % w.get('cst', 0), 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
+    info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half, npit=len(pitw) - (len(pits) if pit is not None else 0))
     return '\n'.join(out) + '\n', info
 
 
@@ -577,6 +658,43 @@ def full_mips(data):
     return bytes(out + body)
 
 
+def tone_asphalt(data, target=75.0, keep_sat=0.3):
+    """AC asphalt textures are authored bright because AC's shader darkens them; the same texture in AMS2 (rz_basic, lit) reads as
+    pale grey.  Original AMS2 asphalt is neutral and dark (Sochi ROAD_BASE mean RGB 75/75/75): scale to that and mute the tint."""
+    import io, struct, math
+    from PIL import Image
+    if data[:4] != b'DDS ' or data[84:88] not in (b'DXT1', b'DXT3', b'DXT5'):
+        return data
+    im = Image.open(io.BytesIO(data)).convert('RGBA')
+    a = np.asarray(im).astype(np.float32)
+    lum = float((a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114).mean())
+    if lum <= target * 1.05:
+        return data
+    g = (a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114)[..., None]
+    a[..., :3] = (g + (a[..., :3] - g) * keep_sat) * (target / lum)
+    im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), 'RGBA')
+    h, w = struct.unpack_from('<II', data, 12)
+    need = int(math.log2(max(w, h))) + 1
+    fmt = data[84:88].decode()
+    out = bytearray(data[:128]); body = bytearray()
+    for lv in range(need):
+        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
+        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
+        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format=fmt)
+        body += b.getvalue()[128:]
+    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
+    struct.pack_into('<I', out, 28, need)
+    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
+    print('  asphalt texture lum %.0f -> %.0f' % (lum, target))
+    return bytes(out + body)
+
+
+def is_asphalt(mt):
+    n = mt['name'].upper()
+    return (detail_kind(mt) == 'road' or (mt['shader'] == 'ksMultilayer' and not n.startswith('KERB'))
+            or n.startswith(('ROAD', 'TARMAC', 'ASPHALT', 'PITR', 'DROAD')) and 'KERB' not in n and 'LINE' not in n)
+
+
 def legacy_dds(data):
     """AMS2 only loads classic DXT/BGRA DDS: a DX10-header DDS (BC7 etc., e.g. Shanghai's jumbotron_effect) is re-encoded to DXT5."""
     if data[84:88] != b'DX10':
@@ -622,7 +740,7 @@ def load_all_kn5(src):
     return out
 
 
-def tarmac_edges(k, fast, res=0.5, reach=30.0):
+def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True):
     """Distance from each fast_lane point to the real asphalt edge on the col-5 (+perp) and col-6 (-perp) sides, from a top-view
     raster of the tarmac* and kerb triangles.  AC side distances include kerbs and paved run-off; the AI must stay inside the white lines."""
     from PIL import Image, ImageDraw
@@ -631,7 +749,9 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0):
     img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
     for m in k['meshes']:
         road = k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m['visible'] and m['renderable']
-        if road or re.match(r'^\d+(tarmac|road|pit|pitlane|kerb)', m['name'], re.I):   # collision road + kerbs count: cars may use kerbs fully
+        if not kerbs and re.search(r'kerb|curb|rumble|sausage', m['name'] + ' ' + k['materials'][m['mat']]['name'], re.I):
+            continue
+        if road or re.match(r'^\d+(tarmac|road|pit|pitlane%s)' % ('|kerb' if kerbs else ''), m['name'], re.I):   # collision road + kerbs count: cars may use kerbs fully
             P = m['pos']
             T = m['idx'].reshape(-1, 3)
             if not road:     # collision 'road' meshes that are really ground planes (Phoenix p1g...) would hide the true edge
@@ -693,14 +813,18 @@ def main():
         bm = bmt_encode(ET.fromstring(mtx))
         loose[nm + '.bmt'] = bm
         main_items.append(dict(name=TD + nm + '.bmt', data=bm))
-    texs = {}
+    texs = {}; road_tex = set()
     for i in used:
         mt = k['materials'][i]
         tex = tex_of(mt)
         if tex and tex in k['textures']:
             texs[mt['texname']] = k['textures'][tex]
+            if is_asphalt(mt):
+                road_tex.add(mt['texname'])
     for tn, data in sorted(texs.items()):
         data = full_mips(legacy_dds(data))
+        if tn in road_tex:
+            data = tone_asphalt(data)
         main_items.append(dict(name='tracks' + BS + 'textures' + BS + tid + BS + tn, data=data))
     print('materials', len(used), 'textures', len(texs))
 
@@ -763,12 +887,18 @@ def main():
                          sorted((n, M) for n, M in dummies.items() if re.fullmatch(r'AC_PIT_\d+', n)))
     aextra = extra
     if extra is not None:                           # AI width = asphalt + kerbs (outer white line), not run-off
-        te = tarmac_edges(k, fast)
-        aextra = extra.copy()
+        te = tarmac_edges(k, fast)                    # asphalt + kerbs (collision strip)
+        ta = tarmac_edges(k, fast, kerbs=False)       # asphalt only: the white lines
+        aextra = extra.copy(); wide = extra.copy()
         for c in (0, 1):
             ok = te[:, c] > 1.0
-            aextra[ok, 5 + c] = np.minimum(extra[ok, 5 + c], te[ok, c] + 0.3)
-    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc)
+            wide[ok, 5 + c] = np.minimum(extra[ok, 5 + c], te[ok, c] + 0.3)
+            ok = ta[:, c] > 1.0
+            aextra[ok, 5 + c] = np.minimum(extra[ok, 5 + c], ta[ok, c] + 0.2)
+    else:
+        wide = None
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide)
+    if '--dump-aiw' in sys.argv: open(sys.argv[sys.argv.index('--dump-aiw') + 1], 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()
     cini = os.path.join(src, 'data', 'cameras.ini')
@@ -778,7 +908,7 @@ def main():
         main_items.append(dict(name='cameras' + BS + tid + '.xml', data=camx.encode('utf-8')))
     else:
         main_items.append(dict(name='cameras' + BS + tid + '.xml', data=camtpl.encode('utf-8')))
-    print('aiw lap %.1f m, sectors %.1f / %.1f, %d waypoints' % (info['lap'], info['s1'], info['s2'], info['nw']))
+    print('aiw lap %.1f m, sectors %.1f / %.1f, %d waypoints, est lap %.1f s, %d corners' % (info['lap'], info['s1'], info['s2'], info['nw'], info['tdry'], info['ncorners']))
     trd = build_trd(open(os.path.join(SX, 'sochi_ams.trd'), encoding='utf-8').read(), tid, info['lap'],
                     {f: sys.argv[sys.argv.index('--' + f) + 1] for f in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw') if '--' + f in sys.argv}).encode('utf-8')
     main_items.append(dict(name=TD + tid + '.trd', data=trd))
