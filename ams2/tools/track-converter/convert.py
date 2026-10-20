@@ -84,6 +84,8 @@ def make_mtx(m, tid, texname):
     spec = 0.2
     if 'ksSpecular' in m['props']:
         spec = max(0.0, min(1.0, m['props']['ksSpecular'][0]))
+    if m['shader'].startswith('ksMultilayer') and spec > 0.5:
+        spec = 0.05    # AC multilayer ground relies on its own gloss shader; spec 1.0 here mirrors the sky (blue/white streaks)
     return RZ_BASIC.format(name=m['mname'], cull='EBFCT_NONE' if (alpha_test or alpha_blend) else 'EBFCT_ANTICLOCKWISE',
                            spec=repr(float(np.float32(spec))), tex=tex, zwrite='false' if alpha_blend else 'true',
                            blend=BLEND_ON if alpha_blend else BLEND_OFF,
@@ -100,18 +102,41 @@ UV_MULTILAYER = (1.5, 3.5)
 AVAIL = None    # textures present in the kn5 (set in main); ksMultilayer falls back when the tile is missing (Sepang)
 
 
-UV_DETAIL_ROAD = (3.0, 1.5)    # ksMultilayer_fresnel_nm roads: UV 0..1 across the lane, ~6 m per V unit -> ~4 m tile
+DETAIL_TILE_M = {'road': 4.0, 'grass': 6.0}    # metres covered by one repeat of the detail texture
 
 
-def is_detail_road(mt):
-    # the diffuse is a colour-layer mask (blue/green/white), the real asphalt lives in txDetailR (Magny-Cours)
+def detail_kind(mt):
+    # ksMultilayer_fresnel ground: the diffuse is a macro colour map (satellite photo, colour-layer mask) stretched over
+    # hundreds of metres; the real surface lives in txDetailR/G, so tile that instead (Magny-Cours)
     d = mt['tex'].get('txDetailR')
-    return (mt['shader'].startswith('ksMultilayer_fresnel') and d and (AVAIL is None or d in AVAIL)
-            and mt['name'].upper().startswith('ROADA_'))
+    n = mt['name'].upper()
+    if not (mt['shader'].startswith('ksMultilayer_fresnel') and d and (AVAIL is None or d in AVAIL)):
+        return None
+    if n.startswith(('ROAD', 'PITR', 'DROAD')) and not any(x in mt['tex'].get('txDiffuse', '') for x in ('cheq', 'stgrid')):
+        return 'road'
+    if n in ('EXTERIOR', 'GRASS_MAIN'):
+        return 'grass'
+    return None
+
+
+def metric_uv_scale(P, uv, idx, tile):
+    # metres per UV unit along U and V (median over triangles) -> multiplier giving one repeat per `tile` metres
+    t = idx.reshape(-1, 3)
+    e1, e2 = P[t[:, 1]] - P[t[:, 0]], P[t[:, 2]] - P[t[:, 0]]
+    d1, d2 = uv[t[:, 1]] - uv[t[:, 0]], uv[t[:, 2]] - uv[t[:, 0]]
+    det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
+    ok = np.abs(det) > 1e-12
+    if not ok.any():
+        return np.array([1.0, 1.0])
+    e1, e2, d1, d2, det = e1[ok], e2[ok], d1[ok], d2[ok], det[ok]
+    Pu = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) / det[:, None]
+    Pv = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) / det[:, None]
+    mu, mv = np.median(np.linalg.norm(Pu, axis=1)), np.median(np.linalg.norm(Pv, axis=1))
+    return np.array([max(mu / tile, 0.05), max(mv / tile, 0.05)])
 
 
 def tex_of(mt):
-    if is_detail_road(mt):
+    if detail_kind(mt):
         return mt['tex']['txDetailR']
     if mt['shader'] == 'ksMultilayer' and (AVAIL is None or TARMAC_TILE in AVAIL):
         return TARMAC_TILE
@@ -595,6 +620,8 @@ def main():
     # materials (only those used by exported meshes)
     meshes = [m for m in k['meshes'] if m['visible'] and m['renderable'] and not m['name'].lower().startswith('ac_')
               and len(m['idx']) and k['materials'][m['mat']]['name'].lower() not in DROP_MATS]
+    if '--skip-mesh' in sys.argv:    # debug: leave out meshes whose name matches this regex
+        rx = re.compile(sys.argv[sys.argv.index('--skip-mesh') + 1], re.I); meshes = [m for m in meshes if not rx.search(m['name'])]
     if maxm:
         meshes.sort(key=lambda m: -len(m['idx'])); meshes = meshes[:maxm]
     used = sorted({m['mat'] for m in meshes})
@@ -603,7 +630,10 @@ def main():
     names = set()
     for i in used:
         mt = k['materials'][i]
-        base = san(mt['name']).upper(); nm = base; j = 1
+        base = san(mt['name']).upper()
+        if base[:1].isdigit():
+            base = 'M' + base
+        nm = base; j = 1
         while nm in names:
             j += 1; nm = '%s_%d' % (base, j)
         names.add(nm); mt['mname'] = nm
@@ -628,7 +658,10 @@ def main():
     # meshes
     sgx_nodes = []; mnames = set(); allmin = np.full(3, 1e30); allmax = np.full(3, -1e30)
     for mi, m in enumerate(meshes):
-        base = san(m['name']); nm = base; j = 1
+        base = san(m['name'])
+        if base[:1].isdigit():
+            base = 'm' + base                                          # AMS2 drops meshes whose name starts with a digit
+        nm = base; j = 1
         while nm.lower() in mnames:
             j += 1; nm = '%s_%d' % (base, j)
         mnames.add(nm.lower())
@@ -641,7 +674,8 @@ def main():
         bounds = tuple(map(float, c)) + (r,) + tuple(map(float, mn)) + tuple(map(float, mx))
         mat = 'TRACKS' + BS + tid.upper() + BS + k['materials'][m['mat']]['mname'] + '.MTX'
         mt_ = k['materials'][m['mat']]
-        uv = (m['uv'] * np.array(UV_DETAIL_ROAD) if is_detail_road(mt_)
+        dk = detail_kind(mt_)
+        uv = (m['uv'] * metric_uv_scale(m['pos'], m['uv'], m['idx'], DETAIL_TILE_M[dk]) if dk
               else m['uv'] * np.array(UV_MULTILAYER) if tex_of(mt_) == TARMAC_TILE else m['uv'])
         data = write_meb(nm, P.tolist(), N.astype(np.float32).tolist(), uv.astype(np.float32).tolist(),
                          [(mat, idx.tolist())], tangents=T.astype(np.float32).tolist(),
