@@ -228,6 +228,10 @@ def corner_marks(L, thr_r=150.0):
     return ty, st
 
 
+# --street: AI header values of the AMS2 street circuit Azure (Monaco-like): anticipation 40/60/80, groove 6.0/3.5, setup 0.48/0.52/0.50
+STREET = '--street' in sys.argv
+
+
 def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
     if pit is not None:
@@ -285,9 +289,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     out = ['[Features]', 'waypointspan=%.2f' % (lap / nw), 'pitlanes=%d' % (pit is not None), 'startinggrid=%d' % len(starts),
            'pitspots=%d' % len(pits), 'garagespots=2', 'clippingpoints=0', 'driftversion=0', 'cornermarkerversion=1',
            'AI Late Braking Fraction=1.000000', 'Track Difficulty=1.000000', 'Oval=0', 'RallyCross=0', 'IceTrack=0',
-           'IceTrackSolo=0', 'IsNarrowTrack=0', 'AnticipationDistMin=40.000000', 'AnticipationDistOffRoad=80.000000',
-           'AnticipationDistWall=160.000000', 'Race Start Disabled=0.000000', 'AI Setup Gearing=0.500000',
-           'AI Setup Downforce=0.500000', 'AI Setup Balance=0.500000', '', '[GRID]']
+           'IceTrackSolo=0', 'IsNarrowTrack=0', 'AnticipationDistMin=40.000000', 'AnticipationDistOffRoad=%.6f' % (60 if STREET else 80),
+           'AnticipationDistWall=%.6f' % (80 if STREET else 160), 'Race Start Disabled=0.000000',
+           'AI Setup Gearing=%.6f' % (0.48 if STREET else 0.5), 'AI Setup Downforce=%.6f' % (0.52 if STREET else 0.5),
+           'AI Setup Balance=0.500000', '', '[GRID]']
     grid = []
     for i, M in starts:
         p, y = pos_ori(M)
@@ -304,7 +309,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
                     'GarOri=(%d,0.000000,%.6f,0.000000)' % (g, y)]
     out += ['', '', '', '[Waypoint]', 'trackstate=467', 'times=(%.4f,%.4f)' % (tdry, tdry * 1.045), 'number_waypoints=%d' % nw,
             'lap_length=%.6f' % lap, 'sector_1_length=%.6f' % s1, 'sector_2_length=%.6f' % s2, 'FuelUse=0.845000',
-            'GrooveWidth=7.500000', 'GrooveWidthWet=3.000000', 'IntermediateFogLevel=(0.0000)',
+            'GrooveWidth=%.6f' % (6.0 if STREET else 7.5), 'GrooveWidthWet=%.6f' % (3.5 if STREET else 3.0), 'IntermediateFogLevel=(0.0000)',
             'IntermediateFogPlanes=(0.0,0.0)', 'RainyFogPlanes=(0.0,0.0)', 'IntermediateFogColor=(0.0,0.0,0.0)',
             'RainyFogColor=(0.0,0.0,0.0)', 'FogDensity=(0.00000,0.00000)', 'RainyDarkness=(0.00000,0.00000)',
             'GarageDepth=(0.0000)', 'PitStopSpaceFront=(0.5000)', 'PitStopSpaceBack=(4.0000)',
