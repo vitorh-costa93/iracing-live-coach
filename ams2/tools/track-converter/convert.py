@@ -337,9 +337,14 @@ def build_csm(k, ini_path):
     items = []; stats = collections.Counter()
     for m in k['meshes']:
         g = re.match(r'^\d+([A-Za-z]+)', m['name'])
-        if not g or g.group(1).upper() not in keys or not len(m['idx']):
+        if not g or not len(m['idx']):
             continue
-        key = g.group(1).upper(); low = m['name'].lower()
+        # AC matches the surface KEY as a prefix of the letters after the digits ('1roadtrp1g1' -> ROAD): longest key wins
+        word = g.group(1).upper()
+        key = max((x for x in keys if word.startswith(x)), key=len, default=None)
+        if key is None:
+            continue
+        low = m['name'].lower()
         sid = SURF_ID.get(key, 0)
         if key == 'WALL':
             sid = 12 if 'tyre' in low or 'tire' in low else 14 if ('armco' in low or 'rail' in low or 'barrier' in low) else 13
@@ -546,6 +551,18 @@ def gui_dds(png, size):
     return b.getvalue()
 
 
+def legacy_dds(data):
+    """AMS2 only loads classic DXT/BGRA DDS: a DX10-header DDS (BC7 etc., e.g. Shanghai's jumbotron_effect) is re-encoded to DXT5."""
+    if data[84:88] != b'DX10':
+        return data
+    import io
+    from PIL import Image
+    im = Image.open(io.BytesIO(data)).convert('RGBA')
+    b = io.BytesIO(); im.save(b, 'DDS', pixel_format='DXT5')
+    print('  re-encoded DX10 texture ->', im.size, 'DXT5')
+    return b.getvalue()
+
+
 def load_all_kn5(src):
     """Merge every kn5 of the track (models.ini order, or all *.kn5 when there is none) into one kn5 dict.
     Single-kn5 tracks behave exactly as before.  Meshes/materials are re-indexed; textures with the same name but
@@ -652,6 +669,7 @@ def main():
         if tex and tex in k['textures']:
             texs[mt['texname']] = k['textures'][tex]
     for tn, data in sorted(texs.items()):
+        data = legacy_dds(data)
         main_items.append(dict(name='tracks' + BS + 'textures' + BS + tid + BS + tn, data=data))
     print('materials', len(used), 'textures', len(texs))
 
