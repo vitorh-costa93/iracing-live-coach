@@ -103,3 +103,10 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 - Malha satelite `exterior` (kn5, 4096^2 esticada em 11 km) fica borrada: usar detalhe tileado (`grass03`, 6 m/tile).
 - Materiais `ksMultilayer_fresnel` (ROAD*/PITR*/DROAD*): a superficie real e `txDetailR`, nao `txDiffuse`; UV reescalado para metrico (4 m/tile). Spec capado a 0.05.
 - Como testar: copiar o 7z em `Mods\Enabled`, abrir AMS2 CM, Apply; abrir o jogo (`Start-Process steam://rungameid/1066890`), Corrida simples > pista > sessao de treino ligada > Iniciar. Mouse no jogo so responde com mouse_move + down + up.
+
+## Lições da IA e do asfalto (20/10, Phoenix/Bahrain)
+- Originais do AMS2 (224 AIWs analisados): `wpd_CornerState` 1 = 1 waypoint de início, 2 = curva até o ápice (~76 m mediana), 3 = saída (~52 m). `CornerType` 3 = esquerda, 4 = direita, 5/6 = chicane. Sem marcadores a IA freia mal.
+- `times` fixo em 110 s estava errado (Phoenix ~25-60 s); agora vem de `est_laptime()` (massa pontual, alat 12, vmax 80). Calibração ruidosa (dispersão ~40%).
+- Linha da IA: margem >= ~1 m da borda do asfalto (original p5 = 1,4 m); `wp_width` usa só asfalto, `wp_dwidth` inclui zebra.
+- Asfalto original ~RGB 75 neutro; texturas do AC (~90-140, amareladas) são escurecidas por `tone_asphalt()`.
+- `--dump-aiw <arquivo>` grava o AIW em texto para diagnóstico.
