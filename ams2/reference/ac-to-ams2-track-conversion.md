@@ -97,3 +97,9 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 - Shader `ksMultilayer_fresnel_nm` usa o `txDiffuse` direto (UV já repete); só o `ksMultilayer` puro usa o tile de asfalto.
 - Superfícies: `ROFF`/`SAND`/`GRASS` = 7, `ROAD`/`PIT` = 0; zona do limitador do pit vem de meshes `^\d+pit`.
 - Resultado `magnycours_ac`: 2829 meshes, 935 mil tris, AIW 878 wps (4391 m), pit 152 wps + 26 ramais, 22 câmeras, `check_out` sem erros. Pacote: `Downloads\Magny-Cours AC (AMS2).7z` (88 MiB). Árvores do CSP (`extension\trees`) não são convertidas.
+
+## Licoes do Magny-Cours (20/10)
+- **Nome de malha/material que comeca com digito (`1road_01`) = AMS2 nao renderiza a malha** (pista inteira sem asfalto). O conversor prefixa `m`/`M`.
+- Malha satelite `exterior` (kn5, 4096^2 esticada em 11 km) fica borrada: usar detalhe tileado (`grass03`, 6 m/tile).
+- Materiais `ksMultilayer_fresnel` (ROAD*/PITR*/DROAD*): a superficie real e `txDetailR`, nao `txDiffuse`; UV reescalado para metrico (4 m/tile). Spec capado a 0.05.
+- Como testar: copiar o 7z em `Mods\Enabled`, abrir AMS2 CM, Apply; abrir o jogo (`Start-Process steam://rungameid/1066890`), Corrida simples > pista > sessao de treino ligada > Iniciar. Mouse no jogo so responde com mouse_move + down + up.
