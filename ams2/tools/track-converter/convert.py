@@ -534,6 +534,33 @@ def load_all_kn5(src):
     return out
 
 
+def tarmac_edges(k, fast, res=0.5, reach=30.0):
+    """Distance from each fast_lane point to the real asphalt edge on the col-5 (+perp) and col-6 (-perp) sides, from a top-view
+    raster of the tarmac* triangles.  AC side distances include kerbs and paved run-off; the AI must stay inside the white lines."""
+    from PIL import Image, ImageDraw
+    x0 = fast[:, 0].min() - reach - 10; z0 = fast[:, 2].min() - reach - 10
+    w = int((fast[:, 0].max() + reach + 10 - x0) / res); h = int((fast[:, 2].max() + reach + 10 - z0) / res)
+    img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
+    for m in k['meshes']:
+        if k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m['visible'] and m['renderable']:
+            P = m['pos']
+            for a, b, c in m['idx'].reshape(-1, 3):
+                dr.polygon([((P[j, 0] - x0) / res, (P[j, 2] - z0) / res) for j in (a, b, c)], fill=255)
+    A = np.asarray(img) > 0
+    n = len(fast)
+    out = np.zeros((n, 2))
+    steps = np.arange(res, reach, res)
+    for i in range(n):
+        t = fast[(i + 1) % n] - fast[i - 1]; t[1] = 0; t /= (np.linalg.norm(t) or 1)
+        perp = np.array([t[2], 0.0, -t[0]])
+        for c, sg in enumerate((1, -1)):
+            q = fast[i][None, :] + sg * steps[:, None] * perp[None, :]
+            xi = ((q[:, 0] - x0) / res).astype(int); zi = ((q[:, 2] - z0) / res).astype(int)
+            ok = A[np.clip(zi, 0, h - 1), np.clip(xi, 0, w - 1)]
+            out[i, c] = steps[np.argmin(ok)] if not ok.all() and not ok[0] else (0.0 if not ok[0] else reach)
+    return out
+
+
 def main():
     src, tid, out, sref, sx = sys.argv[1:6]
     maxm = int(sys.argv[sys.argv.index('--max-meshes') + 1]) if '--max-meshes' in sys.argv else None
@@ -626,7 +653,14 @@ def main():
     if os.path.exists(pl) and extra is not None:
         pitc = build_pit(fast, extra, read_ai(pl)[0],
                          sorted((n, M) for n, M in dummies.items() if re.fullmatch(r'AC_PIT_\d+', n)))
-    aiw, info = build_aiw(fast, extra, dummies, tid, pitc)
+    aextra = extra
+    if extra is not None:                           # AI width = real asphalt (white lines) + 0.6 m, not kerb/run-off
+        te = tarmac_edges(k, fast)
+        aextra = extra.copy()
+        for c in (0, 1):
+            ok = te[:, c] > 1.0
+            aextra[ok, 5 + c] = np.minimum(extra[ok, 5 + c], te[ok, c] + 0.6)
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()
     cini = os.path.join(src, 'data', 'cameras.ini')
