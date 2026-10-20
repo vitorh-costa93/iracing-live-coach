@@ -113,7 +113,7 @@ def detail_kind(mt):
     n = mt['name'].upper()
     if not (mt['shader'].startswith('ksMultilayer_fresnel') and d and (AVAIL is None or d in AVAIL)):
         return None
-    if n.startswith(('ROAD', 'PITR', 'DROAD')) and not any(x in mt['tex'].get('txDiffuse', '') for x in ('cheq', 'stgrid')):
+    if (n.startswith(('ROAD', 'PITR', 'DROAD')) or (n.startswith('TR_TARMAC') and 'GREEN' not in n) or n == 'ASPHALT_ROAD') and not any(x in mt['tex'].get('txDiffuse', '') for x in ('cheq', 'stgrid')):
         return 'road'
     if n in ('EXTERIOR', 'GRASS_MAIN'):
         return 'grass'
@@ -365,7 +365,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
                 'wp_pos=(%.4f,%.4f,%.4f)' % tuple(w['pos']), 'wp_perp=(%.4f,0.0000,%.4f)' % (w['perp'][0], w['perp'][2]),
                 'wp_width=(%.3f,%.3f)' % w['width'], 'wp_dwidth=(%.3f,%.3f)' % w['dwidth'],
                 'wp_path=(%.4f,0.0000)' % w['path'], 'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
-                'wp_groove_lat=(%.6f)' % (-0.27 * w['path']), 'wp_event=(1.000,0,0.000000)', 'wp_branchID=(%d)' % w['branch'],
+                'wp_groove_lat=(%.6f)' % (-0.27 * w['path']), ('wp_event=(1.000,2,1.100000)' if w.get('cst', 0) in (2, 3) and w['branch'] == 0 else 'wp_event=(1.000,0,0.000000)'), 'wp_branchID=(%d)' % w['branch'],
                 'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(%d)' % w.get('cty', 0), 'wpd_CornerState=(%d)' % w.get('cst', 0), 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
     info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half, npit=len(pitw) - (len(pits) if pit is not None else 0))
     return '\n'.join(out) + '\n', info
