@@ -100,7 +100,19 @@ UV_MULTILAYER = (1.5, 3.5)
 AVAIL = None    # textures present in the kn5 (set in main); ksMultilayer falls back when the tile is missing (Sepang)
 
 
+UV_DETAIL_ROAD = (3.0, 1.5)    # ksMultilayer_fresnel_nm roads: UV 0..1 across the lane, ~6 m per V unit -> ~4 m tile
+
+
+def is_detail_road(mt):
+    # the diffuse is a colour-layer mask (blue/green/white), the real asphalt lives in txDetailR (Magny-Cours)
+    d = mt['tex'].get('txDetailR')
+    return (mt['shader'].startswith('ksMultilayer_fresnel') and d and (AVAIL is None or d in AVAIL)
+            and mt['name'].upper().startswith('ROADA_'))
+
+
 def tex_of(mt):
+    if is_detail_road(mt):
+        return mt['tex']['txDetailR']
     if mt['shader'] == 'ksMultilayer' and (AVAIL is None or TARMAC_TILE in AVAIL):
         return TARMAC_TILE
     ok = [t for t in mt['tex'].values() if AVAIL is None or t in AVAIL]
@@ -628,7 +640,9 @@ def main():
         mn, mx = P.min(0), P.max(0); c = (mn + mx) * np.float32(0.5); r = float(np.linalg.norm(mx - c))
         bounds = tuple(map(float, c)) + (r,) + tuple(map(float, mn)) + tuple(map(float, mx))
         mat = 'TRACKS' + BS + tid.upper() + BS + k['materials'][m['mat']]['mname'] + '.MTX'
-        uv = m['uv'] * np.array(UV_MULTILAYER) if tex_of(k['materials'][m['mat']]) == TARMAC_TILE else m['uv']
+        mt_ = k['materials'][m['mat']]
+        uv = (m['uv'] * np.array(UV_DETAIL_ROAD) if is_detail_road(mt_)
+              else m['uv'] * np.array(UV_MULTILAYER) if tex_of(mt_) == TARMAC_TILE else m['uv'])
         data = write_meb(nm, P.tolist(), N.astype(np.float32).tolist(), uv.astype(np.float32).tolist(),
                          [(mat, idx.tolist())], tangents=T.astype(np.float32).tolist(),
                          binormals=B.astype(np.float32).tolist(), bounds=[bounds, bounds])
