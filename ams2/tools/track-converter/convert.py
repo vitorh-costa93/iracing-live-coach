@@ -21,6 +21,7 @@ BS = chr(92)
 # opposite sign in AC Bahrain and AMS2 Sochi).  Winding is then reversed to keep cross(b-a,c-a).n > 0 (Sochi).
 MIRROR = np.array([1.0, 1.0, -1.0])
 LINE_MARGIN = 1.0         # min distance of the AI racing line to the asphalt edge (AMS2 originals: 5th percentile 1.4 m)
+OPT_REG = 0.02            # weight pulling the optimised line toward the AC line (keeps the problem well posed)
 KERB_USE = 0.7          # the AI line may sit this much closer to the asphalt edge where a kerb follows it
 EDGE_CAP = 14.0          # AI side distances include run-off; cap per side
 
@@ -233,6 +234,31 @@ def corner_marks(L, thr_r=150.0):
 STREET = '--street' in sys.argv
 
 
+def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30):
+    """Lateral offsets d (within [lo, hi]) of the closed polyline W + d*pw that minimise the sum of squared second differences
+    (minimum-curvature line), via a sparse active-set solve; a small `reg` pulls d toward d0."""
+    import scipy.sparse as sp, scipy.sparse.linalg as sla
+    n = len(W)
+    I = sp.identity(n, format='csr'); D2 = sp.diags([1, -2, 1], [-1, 0, 1], shape=(n, n), format='lil'); D2[0, n - 1] = 1; D2[n - 1, 0] = 1
+    D2 = D2.tocsr()
+    Ax = D2 @ sp.diags(pw[:, 0]); Az = D2 @ sp.diags(pw[:, 2])
+    H = (Ax.T @ Ax + Az.T @ Az + reg ** 2 * I).tocsc(); g = Ax.T @ (-D2 @ W[:, 0]) + Az.T @ (-D2 @ W[:, 2]) + reg ** 2 * d0
+    fixed = np.zeros(n, bool); d = d0.copy()
+    for _ in range(rounds):
+        free = ~fixed
+        d[free] = sla.spsolve(H[free][:, free].tocsc(), g[free] - H[free][:, fixed] @ d[fixed])
+        over = (d < lo - 1e-6) | (d > hi + 1e-6)
+        d = np.clip(d, lo, hi)
+        if over.any():
+            fixed |= over; continue
+        grad = H @ d - g
+        rel = fixed & (((d >= hi - 1e-9) & (grad > 0)) | ((d <= lo + 1e-9) & (grad < 0)))
+        if not rel.any():
+            break
+        fixed &= ~rel
+    return d
+
+
 def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
     if pit is not None:
@@ -258,20 +284,33 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None):
     # fast_lane (racing line) goes into path and wp_pos moves to the middle of the usable strip.
     def smooth(a, n=5):
         k = np.ones(n) / n; return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
-    ex_l = smooth(np.clip(np.interp(s, cum, np.r_[left, left[:1]]), 3.0, EDGE_CAP))    # AC +lat side = AMS -perp side
-    ex_r = smooth(np.clip(np.interp(s, cum, np.r_[right, right[:1]]), 3.0, EDGE_CAP))  # AC -lat side = AMS +perp side
+    ex_l = smooth(np.clip(np.interp(s, cum, np.r_[left, left[:1]]), 1.5, EDGE_CAP))    # AC +lat side = AMS -perp side
+    ex_r = smooth(np.clip(np.interp(s, cum, np.r_[right, right[:1]]), 1.5, EDGE_CAP))  # AC -lat side = AMS +perp side
 
     # keep the racing line off the white line / kerb: AMS2 cars run over kerbs the AI treats as road (Bahrain)
     wide_l = wide_r = None
     if wide is not None:
         wl_ = np.roll(wide[:, 5], -k0); wr_ = np.roll(wide[:, 6], -k0)
-        wide_l = smooth(np.clip(np.interp(s, cum, np.r_[wl_, wl_[:1]]), 3.0, EDGE_CAP))
-        wide_r = smooth(np.clip(np.interp(s, cum, np.r_[wr_, wr_[:1]]), 3.0, EDGE_CAP))
+        wide_l = smooth(np.clip(np.interp(s, cum, np.r_[wl_, wl_[:1]]), 1.5, EDGE_CAP))
+        wide_r = smooth(np.clip(np.interp(s, cum, np.r_[wr_, wr_[:1]]), 1.5, EDGE_CAP))
     # low (smoothed, <= 6.5 cm) kerbs beside the asphalt: the line may use their inner part like the AMS2 AI does at apexes
     mg_l = np.full(nw, LINE_MARGIN); mg_r = np.full(nw, LINE_MARGIN)
     if wide_l is not None:
         mg_l -= KERB_USE * ((wide_l - ex_l) > 0.6); mg_r -= KERB_USE * ((wide_r - ex_r) > 0.6)
     sh = smooth(np.maximum(0.0, mg_l - ex_l) - np.maximum(0.0, mg_r - ex_r), 9)
+    # racing line: the AC fast_lane is often timid (Bahrain/Sepang stay >3 m off the edge, AMS2 originals p5 1.1 m).  Relax the line
+    # toward the minimum-curvature path inside the corridor [-(ex_l - mg_l), ex_r - mg_r] (apexes reach the margin), keep it only if the
+    # estimated lap time improves.
+    tt = np.roll(W, -1, 0) - np.roll(W, 1, 0); tt[:, 1] = 0; tt /= np.linalg.norm(tt, axis=1)[:, None] + 1e-9
+    pw = np.c_[tt[:, 2], np.zeros(nw), -tt[:, 0]]
+    lo = -(ex_l - mg_l); hi = ex_r - mg_r
+    mid = 0.5 * (lo + hi); lo, hi = np.minimum(lo, mid), np.maximum(hi, mid)
+    d = min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi))
+    d = np.clip(smooth(d, 5), lo, hi)
+    t_ac, t_opt = est_laptime(W + sh[:, None] * pw), est_laptime(W + d[:, None] * pw)
+    print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
+    if t_opt < t_ac:
+        sh = d
 
     def lapdist(name):
         c = (dummies[name + '_L'][3, :3] + dummies[name + '_R'][3, :3]) * 0.5 * MIRROR
