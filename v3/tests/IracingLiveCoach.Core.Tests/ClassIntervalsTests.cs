@@ -37,7 +37,7 @@ public class ClassIntervalsTests
         var me = Car(1, 2, 2, 5.994, 91.8, gap: -0.5);
         var v = ClassIntervals.RaceInterval(me, ahead, 92.5);
         Assert.Null(v.Laps);
-        Assert.Equal(0.009 * 92.5, v.Seconds!.Value, 2); // distance x class lap, continuous across the line
+        Assert.Equal(1.0, v.Seconds!.Value, 6);
     }
 
     [Fact]
@@ -85,16 +85,16 @@ public class ClassIntervalsTests
     {
         var drivers = new[] { Car(7, 1, 1, 6.003, 0.3), Car(7, 2, 2, 5.994, 91.8) };
         var r = ClassIntervals.Compute(drivers, raceMode: true, new Dictionary<int, double> { [7] = 92.5 });
-        Assert.Equal(0.009 * 92.5, r[1].Seconds!.Value, 2);
+        Assert.Equal(1.0, r[1].Seconds!.Value, 6);
     }
 
     [Fact]
-    public void Same_lap_with_non_monotonic_est_time_uses_distance_not_a_whole_lap()
+    public void Small_local_est_time_inversion_does_not_fabricate_a_finish_line_wrap()
     {
         // Live start, 24/09/2026: Josh (0.429) 0.005 laps behind Jonas (0.434) but with the higher EstTime.
-        // Kapps showed 0.3; adding a class lap gave 66.9.
+        // Both cars are on the same lap: the small EstTime inversion is not a crossing of the line.
         var v = ClassIntervals.RaceInterval(Car(1, 4, 4, 0.429, 28.025), Car(1, 3, 3, 0.434, 27.879), 67.4669);
-        Assert.Equal(0.005 * 67.4669, v.Seconds!.Value, 3);
+        Assert.Equal(0.146, v.Seconds!.Value, 3);
     }
 
     [Fact]
@@ -106,13 +106,36 @@ public class ClassIntervalsTests
     }
 
     [Fact]
-    public void Race_interval_uses_the_track_time_function_when_available()
+    public void Race_interval_uses_the_same_live_est_time_as_relative_instead_of_distance_or_own_lap_trace()
     {
-        // 0.02 laps apart; the trace says that stretch takes 2.4 s (slow corner) -> 2.4, not 0.02 x 67.
-        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.50, 30), Car(1, 1, 1, 5.52, 31), 67, (rear, front) => rear == 0.5 && Math.Abs(front - 0.52) < 1e-9 ? 2.4 : null);
-        Assert.Equal(2.4, v.Seconds!.Value, 6);
-        // Across the line the fractions wrap (0.99 -> 0.01).
-        var w = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.99, 30), Car(1, 1, 1, 6.01, 1), 67, (rear, front) => rear > 0.98 && front < 0.02 ? 1.3 : null);
-        Assert.Equal(1.3, w.Seconds!.Value, 6);
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.50, 30), Car(1, 1, 1, 5.52, 33.3), 67);
+        Assert.Equal(RelativeGap.LiveSeconds(33.3, 30, 67, .02, 67), v.Seconds);
+        Assert.Equal(3.3, v.Seconds!.Value, 6); // distance fallback would give 1.34 s
+        var w = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.99, 66), Car(1, 1, 1, 6.01, 1), 67);
+        Assert.Equal(2, w.Seconds!.Value, 6);
+    }
+
+    [Fact]
+    public void Preceding_classified_car_over_half_a_lap_ahead_keeps_the_forward_interval()
+    {
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.1, 10), Car(1, 1, 1, 5.9, 90), 100);
+        Assert.Equal(80, v.Seconds);
+        Assert.Equal(20, RelativeGap.LiveSeconds(90, 10, 100, -.2, 100));
+        Assert.Equal(80, ClassIntervals.RaceInterval(Car(1, 2, 2, 5.9, 90), Car(1, 1, 1, 6.7, 70), 100).Seconds);
+    }
+
+    [Fact]
+    public void Missing_est_time_uses_forward_distance_times_class_lap()
+    {
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.1, null), Car(1, 1, 1, 5.9, 90), 100);
+        Assert.Equal(80, v.Seconds!.Value, 6);
+    }
+
+    [Fact]
+    public void Nonuniform_reference_curve_uses_forward_time_independent_of_the_spatial_half_lap()
+    {
+        var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.1, 10), Car(1, 1, 1, 5.4, 90), 100);
+        Assert.Equal(80, v.Seconds);
+        Assert.Equal(0, ClassIntervals.RaceInterval(Car(1, 2, 2, 5.1, 10), Car(1, 1, 1, 5.4, 10), 100).Seconds);
     }
 }

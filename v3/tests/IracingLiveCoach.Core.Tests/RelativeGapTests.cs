@@ -60,4 +60,32 @@ public sealed class RelativeGapTests
         Assert.Null(RelativeGapKapps.Seconds(null, 1.0, 68.5));
         Assert.Null(new EstTimeCurves().At(3, 0.4));
     }
+
+    [Fact]
+    public void Shared_live_gap_keeps_the_relatives_same_class_curve_and_nearest_distance_contract()
+    {
+        Assert.Equal(3.3, RelativeGap.LiveSeconds(33.3, 30, 67, .02, 67)!.Value, 6);
+        Assert.Equal(2, RelativeGap.LiveSeconds(1, 66, 67, .02, 67));
+        Assert.Equal(20, RelativeGap.LiveSeconds(90, 10, 100, -.2, 100));
+    }
+
+    [Fact]
+    public void Shared_live_gap_uses_multiclass_curve_then_distance_fallback()
+    {
+        Assert.Equal(RelativeGapKapps.Seconds(37.4, 35, 70), RelativeGap.LiveSeconds(37.4, 35, 70, .02, 67));
+        Assert.Equal(.02 * 67, RelativeGap.LiveSeconds(37.4, null, 70, .02, 67));
+        Assert.Null(RelativeGap.LiveSeconds(null, null, 70, .02, null));
+    }
+
+    [Fact]
+    public void Directed_gap_wraps_reference_time_while_relative_always_takes_the_nearest_time()
+    {
+        Assert.Equal(80, RelativeGap.LiveSeconds(90, 10, 100, .3, 100, forward: true));
+        Assert.Equal(20, RelativeGap.LiveSeconds(90, 10, 100, .3, 100));
+        Assert.Equal(2, RelativeGap.LiveSeconds(1, 99, 100, .02, 100, forward: true, crossedLine: true));
+        Assert.Equal(0, RelativeGap.LiveSeconds(10, 10, 100, .8, 100, forward: true));
+        Assert.Equal(0, RelativeGap.LiveSeconds(0, 0, 100, .8, 100, forward: true));
+        Assert.Equal(0, RelativeGap.LiveSeconds(0, 0, 100, .02, 100, forward: true, crossedLine: true));
+        Assert.Equal(.146, RelativeGap.LiveSeconds(27.879, 28.025, 67.4669, .005, 67.4669, forward: true)!.Value, 6);
+    }
 }

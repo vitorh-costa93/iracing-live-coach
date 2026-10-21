@@ -15,7 +15,7 @@ public static class HeaderFields
         ["class", "type", "lap", "sof", "drivers", "clock", "bb", "track", "rubber", "best", "last", "local", "incidents", "remain"];
 
     public static List<HeaderFieldConfig> DefaultStandings() =>
-        Complete([new("class", true), new("lap", true), new("sof", true), new("clock", true)]);
+        Complete([new("class", true), new("lap", true), new("sof", true), new("remain", true), new("clock", true)]);
 
     public static List<HeaderFieldConfig> DefaultRelative() =>
         Complete([new("bb", true), new("track", true), new("local", true)]);
@@ -81,7 +81,19 @@ public static class HeaderFields
 
     private static string? RemainingTimeText(SessionStatus? session)
     {
-        if (session?.TimeRemainSeconds is not double remaining || !double.IsFinite(remaining) || remaining < 0 || remaining >= 86400) return null;
+        if (session?.TimeRemainSeconds is not double remaining || !double.IsFinite(remaining) || remaining < 0 || remaining >= 86400)
+        {
+            // Lap-limited races need not publish a countdown. Show the SDK session clock,
+            // explicitly labelled elapsed, without inventing a remaining race duration.
+            if (session is { TotalLaps: > 0, TotalLapsEstimated: false, ElapsedTimeSeconds: double elapsed }
+                && string.Equals(session.SessionTypeText, "RACE", StringComparison.OrdinalIgnoreCase)
+                && double.IsFinite(elapsed) && elapsed >= 0 && elapsed < 86400)
+            {
+                int elapsedSeconds = (int)Math.Floor(elapsed);
+                return $"ELAPSED {elapsedSeconds / 60}:{elapsedSeconds % 60:00}";
+            }
+            return null;
+        }
         int seconds = (int)Math.Floor(remaining);
         string text = $"{seconds / 60}:{seconds % 60:00}";
         return session.SessionDurationSeconds is double duration && double.IsFinite(duration) && duration > 0 && duration < 86400

@@ -8,6 +8,32 @@ namespace IracingLiveCoach.Core.Tests;
 public class HeaderFieldsTests
 {
     [Theory]
+    [InlineData(null)]
+    [InlineData(604800d)]
+    [InlineData(-1d)]
+    public void Lap_race_without_countdown_shows_elapsed_sdk_session_time(double? remaining)
+        => Assert.Equal("ELAPSED 12:34", HeaderFields.Text("remain", Session with { TimeRemainSeconds = remaining, ElapsedTimeSeconds = 754.9 }, null, Now));
+
+    [Fact]
+    public void Valid_countdown_takes_precedence_over_elapsed_time_in_lap_race()
+        => Assert.Equal("40:32/45", HeaderFields.Text("remain", Session with { TimeRemainSeconds = 2432, SessionDurationSeconds = 2700, ElapsedTimeSeconds = 754 }, null, Now));
+
+    [Fact]
+    public void Elapsed_fallback_requires_a_lap_limited_race_and_valid_sdk_value()
+    {
+        var session = Session with { ElapsedTimeSeconds = 754 };
+        Assert.Null(HeaderFields.Text("remain", session with { TotalLapsEstimated = true }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", session with { TotalLaps = null }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", session with { SessionTypeText = "QUALIFY" }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", session with { ElapsedTimeSeconds = double.NaN }, null, Now));
+        Assert.Null(HeaderFields.Text("remain", session with { ElapsedTimeSeconds = -1 }, null, Now));
+    }
+
+    [Fact]
+    public void New_standings_profiles_include_session_time_in_the_header()
+        => Assert.Contains(HeaderFields.DefaultStandings(), field => field.Key == "remain" && field.Visible);
+
+    [Theory]
     [InlineData(2432.9, 2700, "40:32/45")]
     [InlineData(59.9, 2700, "0:59/45")]
     [InlineData(0, 2700, "0:00/45")]

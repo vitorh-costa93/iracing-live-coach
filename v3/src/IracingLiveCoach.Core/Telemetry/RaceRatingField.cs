@@ -43,9 +43,12 @@ public sealed class RaceRatingField
     public void Observe(IEnumerable<RatingDriver> drivers)
     {
         foreach (var driver in drivers)
-            if (!driver.PaceCar && !driver.Spectator && driver.CarIdx >= 0)
-                if (!_drivers.TryGetValue(driver.CarIdx, out var existing) || existing.IRating <= 1 && driver.IRating > 1)
-                    _drivers[driver.CarIdx] = driver;
+        {
+            if (driver.CarIdx < 0) continue;
+            if (driver.PaceCar || driver.Spectator) { _drivers.Remove(driver.CarIdx); _progress.Remove(driver.CarIdx); continue; }
+            if (!_drivers.TryGetValue(driver.CarIdx, out var existing) || existing.IRating <= 1 && driver.IRating > 1)
+                _drivers[driver.CarIdx] = driver;
+        }
     }
 
     public double? Sof => global::IracingLiveCoach.Core.Telemetry.Sof.Compute(_drivers.Values.Where(d => d.IRating > 1).Select(d => d.IRating));

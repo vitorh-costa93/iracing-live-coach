@@ -55,7 +55,7 @@ public readonly record struct ClassLapInfo(int Lap, double? Projected, int? Fina
 
 public record SessionStatus(string CarClassShortName, string SessionTypeText, int? CurrentLap, int? TotalLaps, string SessionFlagText, string SessionFlagColorHex, double? StrengthOfField, int DriverCount, string PlayerCarName = "", bool TotalLapsEstimated = false, double? TotalLapsProjected = null,
     IReadOnlyDictionary<int, ClassDriverCount>? ClassCounts = null, int PlayerClassId = -1, IReadOnlyDictionary<int, ClassLapInfo>? ClassLaps = null,
-    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null, double? SessionDurationSeconds = null)
+    IReadOnlyDictionary<int, double?>? ClassSof = null, double? TimeRemainSeconds = null, double? SessionDurationSeconds = null, double? ElapsedTimeSeconds = null)
 {
     /// <summary>Kapps' per-class count ("14", "2/14") for a class; the whole-field count only when the
     /// session's driver list was not available.</summary>
@@ -280,6 +280,7 @@ public partial class TelemetryReader : IDisposable
     {
         var sessionInfo = _sdk.Data.SessionInfo;
         var driver = sessionInfo?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == carIdx);
+        if (driver is null && _standingsRoster.TryGetDriver(carIdx, out var retained)) driver = retained.Identity;
         var flagEmoji = CountryFlags.ToEmoji(driver?.FlairName);
         var licString = driver?.LicString ?? "--";
         var licColorHex = driver?.LicColor; // "String" per the real IRSDKSharper 1.3.0 type -- parsed defensively by the view model, not here.
@@ -476,8 +477,6 @@ public partial class TelemetryReader : IDisposable
     /// <summary>Lone qualifying: no other car is really around the player (SessionKinds.IsSolo).</summary>
     private bool _soloSession;
 
-    /// <summary>The player's best-lap distance -> time trace: Kapps' Relative gap (OwnLapTrace).</summary>
-    private readonly OwnLapTrace _ownTrace = new();
     /// <summary>Per-class EstTime curves learned from every car (fallback for the Relative gap before a clean lap).</summary>
     private readonly EstTimeCurves _estCurves = new();
     /// <summary>Class id -> (class leader's lap, Kapps' projected total) from the last Standings pass.</summary>
@@ -975,6 +974,7 @@ public partial class TelemetryReader : IDisposable
         _p2pLogLines = 0;
         _pitStops.Reset();
         _lapHistory.Reset();
+        _estCurves.Clear();
         _flagBadges.Reset();
         _preGreenGrid.Clear();
         _grid = new();
@@ -1034,10 +1034,30 @@ public partial class TelemetryReader : IDisposable
 
     private LivePositions ComputePositions()
     {
+        ObserveEventRoster();
         if (RefreshFinalResults())
         {
             var (finalOverall, finalByClass) = FinalResults.Positions(_finalResults.Values);
             return new LivePositions(finalOverall, finalByClass);
+        }
+        if (IsTimedSession && _standingsRoster.Count > 0)
+        {
+            foreach (var entrant in _standingsRoster.Drivers)
+            {
+                int idx = entrant.CarIdx;
+                double? best = null, f2 = null;
+                try { best = _sdk.Data.GetFloat("CarIdxBestLapTime", idx); } catch { }
+                try { f2 = _sdk.Data.GetFloat("CarIdxF2Time", idx); } catch { }
+                _standingsRoster.ObserveTiming(idx, _sdk.Data.GetInt("CarIdxPosition", idx), f2 is > 0 ? f2 : best,
+                    _sdk.Data.GetFloat("CarIdxLastLapTime", idx), _sdk.Data.GetInt("CarIdxLap", idx));
+            }
+            // Official current-session results also cover absent entrants and revisions of deleted laps.
+            var sessionInfo = _sdk.Data.SessionInfo?.SessionInfo;
+            var results = sessionInfo?.Sessions?.FirstOrDefault(s => s.SessionNum == LiveSessionNum(sessionInfo.CurrentSessionNum))?.ResultsPositions;
+            foreach (var result in results ?? [])
+                _standingsRoster.ObserveOfficialTiming(result.CarIdx, result.Position, result.FastestTime, result.LastTime, result.LapsComplete);
+            var (timedOverall, timedByClass) = _standingsRoster.TimedPositions();
+            return new LivePositions(timedOverall, timedByClass);
         }
         bool preGreen = IsPreGreenGrid;
         if (!IsTimedSession && !preGreen) return ComputeLivePositions();
@@ -1182,13 +1202,6 @@ public partial class TelemetryReader : IDisposable
                 if (pct < 0 || IsPaceCar(idx)) continue;
                 _estCurves.Add(_sdk.Data.GetInt("CarIdxClass", idx), pct, _sdk.Data.GetFloat("CarIdxEstTime", idx));
             }
-            try
-            {
-                bool myPit = false;
-                try { myPit = _sdk.Data.GetBool("CarIdxOnPitRoad", _playerCarIdx); } catch { }
-                _ownTrace.Update(_sdk.Data.GetInt("CarIdxLapCompleted", _playerCarIdx), myPct, _sdk.Data.GetDouble("SessionTime"), myPit);
-            }
-            catch { }
             double GapTo(int idx, double delta)
             {
                 // The in-sim black box Relative: EstTime difference (smooth while the gap is steady). The player's
@@ -1196,17 +1209,11 @@ public partial class TelemetryReader : IDisposable
                 // speed profile instead of the real interval (live check 09/10/2026).
                 int cls = _sdk.Data.GetInt("CarIdxClass", idx);
                 double theirLap = _classLapTimeById.TryGetValue(cls, out var l) ? l : lapTime;
-                if (cls == _sdk.Data.GetInt("CarIdxClass", _playerCarIdx) && theirLap > 0)
-                {
-                    double mine = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx), theirs = _sdk.Data.GetFloat("CarIdxEstTime", idx);
-                    if (mine > 0 && theirs > 0)
-                    {
-                        double d = Math.Abs(theirs - mine) % theirLap;
-                        return Math.Min(d, theirLap - d);
-                    }
-                }
-                return RelativeGapKapps.Seconds(_sdk.Data.GetFloat("CarIdxEstTime", idx), _estCurves.At(cls, myPct), theirLap)
-                    ?? Math.Abs(delta) * lapTime;
+                double mine = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
+                double theirs = _sdk.Data.GetFloat("CarIdxEstTime", idx);
+                bool sameClass = cls == _sdk.Data.GetInt("CarIdxClass", _playerCarIdx);
+                double? origin = sameClass && mine > 0 && theirs > 0 && theirLap > 0 ? mine : _estCurves.At(cls, myPct);
+                return RelativeGap.LiveSeconds(theirs, origin, theirLap, delta, lapTime) ?? 0;
             }
             var ahead = around.Where(c => c.Delta > 0).OrderBy(c => c.Delta).Take(RelativeCarsMax).ToList();
             var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
@@ -1320,6 +1327,26 @@ public partial class TelemetryReader : IDisposable
 
     private const int SessionStateRacingState = 4;
     private readonly RaceRatingField _raceRatingField = new();
+    private readonly StandingsRoster<IRacingSdkSessionInfo.DriverInfoModel.DriverModel> _standingsRoster = new();
+
+    private void ObserveEventRoster()
+    {
+        var info = _sdk.Data.SessionInfo;
+        if (_sessionKey is not { } session) return;
+        var weekend = info?.WeekendInfo;
+        // Do not bind a transiently incomplete online WeekendInfo to an offline identity.
+        if (weekend is null) return;
+        var evt = RatingEventKey.From(weekend.SessionID, weekend.SubSessionID, session.UniqueId);
+        _raceRatingField.Enter(evt, session.SessionNum);
+        _standingsRoster.Enter(evt, session.SessionNum);
+        if (info?.DriverInfo?.Drivers is not { } drivers) return;
+        var valid = drivers.Where(d => d.CarIdx >= 0 && d.CarIdx < IRacingSdkConst.MaxNumCars).ToList();
+        _raceRatingField.Observe(valid.Select(d => new RatingDriver(d.CarIdx, d.CarClassID, d.IRating, d.CarIsPaceCar != 0, d.IsSpectator != 0)));
+        _standingsRoster.Observe(valid.Select(d => new RosterDriver<IRacingSdkSessionInfo.DriverInfoModel.DriverModel>(d.CarIdx, d.CarClassID, d, d.CarIsPaceCar != 0, d.IsSpectator != 0)));
+    }
+
+    private string StandingsDriverCode(int idx) => _driverCodesByCarIdx.TryGetValue(idx, out var code) ? code
+        : _standingsRoster.TryGetDriver(idx, out var driver) ? FormatFullDriverName(driver.Identity.UserName, driver.Identity.CarNumber) : "?";
 
     private void UpdateStandings(LivePositions positions)
     {
@@ -1342,10 +1369,11 @@ public partial class TelemetryReader : IDisposable
             foreach (var (idx, position) in positions.Overall)
             {
                 if (IsPaceCar(idx)) continue;
+                if (_standingsRoster.Count > 0 && !_standingsRoster.TryGetDriver(idx, out _)) continue;
                 var lapsCompleted = _sdk.Data.GetInt("CarIdxLap", idx);
                 var lastLap = _sdk.Data.GetFloat("CarIdxLastLapTime", idx);
                 var tireCompound = _sdk.Data.GetInt("CarIdxTireCompound", idx);
-                var code = _driverCodesByCarIdx.TryGetValue(idx, out var driverCode) ? driverCode : "?";
+                var code = StandingsDriverCode(idx);
                 var identity = GetIdentity(idx);
 
                 // CarIdxF2Time: "race time behind leader or fastest lap time otherwise" -- verified live
@@ -1357,6 +1385,13 @@ public partial class TelemetryReader : IDisposable
                 try { var b = _sdk.Data.GetFloat("CarIdxBestLapTime", idx); if (b > 0) best = b; } catch { }
                 if (timed && f2 is > 0) best = f2;
                 if (preGreenGrid) best = _gridBestLap.TryGetValue(idx, out var qualifyLap) ? qualifyLap : null;
+                if (IsTimedSession && _standingsRoster.TryGetDriver(idx, out _))
+                {
+                    var retained = _standingsRoster.Timing(idx);
+                    best = retained.BestLap;
+                    if (lastLap <= 0 && retained.LastLap is double retainedLast) lastLap = (float)retainedLast;
+                    lapsCompleted = Math.Max(lapsCompleted, retained.Laps);
+                }
 
                 double? estTime = null;
                 try { var e = _sdk.Data.GetFloat("CarIdxEstTime", idx); if (e >= 0) estTime = e; } catch { }
@@ -1375,7 +1410,8 @@ public partial class TelemetryReader : IDisposable
                 var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
                 // "Valid lap" (qualifying gate): iRacing only classifies (CarIdxPosition > 0) a car that has
                 // a timed lap.
-                bool hasValidLap = _sdk.Data.GetInt("CarIdxPosition", idx) > 0 && (best is not null || f2 is > 0);
+                bool hasValidLap = IsTimedSession ? _standingsRoster.Timing(idx).HasValidLap
+                    : _sdk.Data.GetInt("CarIdxPosition", idx) > 0 && (best is not null || f2 is > 0);
 
                 // After the flag: the official classification (finished cars have left the world).
                 if (_finalResults.TryGetValue(idx, out var final))
@@ -1415,16 +1451,7 @@ public partial class TelemetryReader : IDisposable
             // just the cars with live positions: observed in every session of the event, never pruned when a
             // driver leaves the world or the YAML driver list, cleared only when the event changes.
             Dictionary<int, double?>? classSof = null;
-            var ratingInfo = _sdk.Data.SessionInfo;
-            if (ratingInfo?.DriverInfo?.Drivers is { } ratingDrivers && _sessionKey is { } ratingSession)
-            {
-                var weekend = ratingInfo.WeekendInfo;
-                _raceRatingField.Enter(RatingEventKey.From(weekend?.SessionID ?? 0, weekend?.SubSessionID ?? 0, ratingSession.UniqueId), ratingSession.SessionNum);
-                _raceRatingField.Observe(ratingDrivers
-                    .Where(d => d.CarIdx >= 0 && d.CarIdx < IRacingSdkConst.MaxNumCars)
-                    .Select(d => new RatingDriver(d.CarIdx, d.CarClassID, d.IRating, d.CarIsPaceCar != 0, d.IsSpectator != 0)));
-            }
-            if (_isRaceSession && _raceRatingField.Count > 0)
+            if (_raceRatingField.Count > 0)
             {
                 sof = _raceRatingField.Sof;
                 classSof = _raceRatingField.ClassSof;
@@ -1460,7 +1487,7 @@ public partial class TelemetryReader : IDisposable
 
             var intervals = ClassIntervals.Compute(
                 ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Progress, o.EstTime, o.Gap, o.BestLap)).ToList(),
-                raceMode: !timed, _classLapTimeById, (rear, front) => _ownTrace.Seconds(rear, front));
+                raceMode: !timed, _classLapTimeById);
 
             // Practice/qualifying gap: best lap minus the class's best lap.
             var classBest = ordered.Where(r => r.BestLap is not null).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => g.Min(r => r.BestLap!.Value));
@@ -1527,13 +1554,7 @@ public partial class TelemetryReader : IDisposable
 
             // Per-class driver counts (Kapps: the class total, or "2/14" in practice/qualifying while only some
             // have a time). Entrants = the session's driver list minus pace car/spectators.
-            var entrants = new List<(int CarIdx, int ClassId)>();
-            try
-            {
-                foreach (var d in _sdk.Data.SessionInfo?.DriverInfo?.Drivers ?? [])
-                    if (d.CarIsPaceCar == 0 && d.IsSpectator == 0) entrants.Add((d.CarIdx, d.CarClassID));
-            }
-            catch { entrants.Clear(); }
+            var entrants = _standingsRoster.Drivers.Select(d => (d.CarIdx, d.ClassId)).ToList();
             // Race: Kapps shows the plain class total the whole race (live 24/09/2026: "14"/"13"/"13" on the grid
             // and mid-race with a towed player who had no lap time), so only practice/qualifying count times.
             var withTime = timed && !preGreenGrid ? ordered.Where(r => r.BestLap is > 0).Select(r => r.Idx).ToList() : new List<int>();
@@ -1542,7 +1563,7 @@ public partial class TelemetryReader : IDisposable
             if (!ordered.Any(r => r.IsPlayer)) playerClassId = -1;
 
             StandingsUpdated?.Invoke(rows);
-            var status = BuildSessionStatus(ordered.Count, sof) with { ClassSof = classSof, ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null };
+            var status = BuildSessionStatus(_standingsRoster.Count > 0 ? _standingsRoster.Count : ordered.Count, sof) with { ClassSof = classSof, ClassCounts = classCounts, PlayerClassId = playerClassId, ClassLaps = classLaps.Count > 0 ? classLaps : null };
             // The overall header shows the overall leader's class estimate (stable between that leader's crossings).
             if (_finalResults.Count == 0 && ordered.Count > 0 && classLaps.TryGetValue(ordered[0].ClassId, out var overallInfo))
             {
@@ -1599,7 +1620,9 @@ public partial class TelemetryReader : IDisposable
         // SessionTimeRemain is a huge sentinel (or negative) in lap-limited / unlimited sessions: no minutes then.
         double? timeRemain = null;
         try { var t = _sdk.Data.GetDouble("SessionTimeRemain"); if (t is >= 0 and < 86400) timeRemain = t; } catch { }
-        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain, SessionDurationSeconds: sessionDuration);
+        double? elapsed = null;
+        try { var t = _sdk.Data.GetDouble("SessionTime"); if (double.IsFinite(t) && t is >= 0 and < 86400) elapsed = t; } catch { }
+        return new SessionStatus(carClassShortName, sessionTypeText, currentLap, totalLaps, flagText, flagColorHex, sof, driverCount, playerCarName, totalEstimated, TotalLapsProjected: totalProjected, TimeRemainSeconds: timeRemain, SessionDurationSeconds: sessionDuration, ElapsedTimeSeconds: elapsed);
     }
 
     // SessionFlags bitmask -- confirmed real (sajax.github.io/irsdkdocs/telemetry/sessionflags.html),

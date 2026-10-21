@@ -1,15 +1,35 @@
 namespace IracingLiveCoach.Core.Telemetry;
 
 /// <summary>
-/// Relative gap = how long the PLAYER would take to cover the physical distance to the other car right
-/// now: the lap fraction between the two (wrapped to -0.5..0.5) x the player's own class reference lap.
-/// One base for every car, any class. CarIdxEstTime is not used: each car's EstTime runs on ITS class's
-/// reference curve, so between classes the difference mixes two curves and drifts while a faster class
-/// passes (the user saw the Relative show an interval-like number where Kapps showed the real distance),
-/// and even inside one class it is not monotonic along the lap (live start 24/09/2026). Pure, unit-tested.
+/// Live reference-curve gap calculation and the linear distance fallback used when a curve is unknown.
+/// Relative uses the nearest gap on the other car's class curve; standings retain the forward interval.
 /// </summary>
 public static class RelativeGap
 {
+    /// <summary>Live reference-curve gap shared by Relative and race intervals. Relative asks for the
+    /// nearest physical gap; a standings interval supplies the forward race distance so a car 0.8 laps
+    /// ahead is measured along those 0.8 laps, rather than the nearest 0.2 laps behind.</summary>
+    public static double? LiveSeconds(double? curveAtOther, double? curveAtOrigin, double? classLapSeconds,
+        double lapDelta, double? fallbackLapSeconds, bool forward = false, bool crossedLine = false)
+    {
+        if (curveAtOther is double a && double.IsFinite(a) && curveAtOrigin is double b && double.IsFinite(b))
+        {
+            if (classLapSeconds is > 0 and double lap && double.IsFinite(lap))
+            {
+                double delta = Math.Abs(a - b) % lap;
+                if (!forward) return Math.Min(delta, lap - delta);
+                // Progress identifies a real finish-line wrap; the sign alone cannot distinguish it
+                // from a small local EstTime inversion. Spatial half-laps cannot split a nonuniform curve.
+                if (!crossedLine) return delta;
+                double wrapped = (a - b) % lap;
+                return wrapped < 0 ? wrapped + lap : wrapped;
+            }
+            if (forward && a >= b) return a - b;
+        }
+        return fallbackLapSeconds is > 0 and double fallback && double.IsFinite(fallback) && double.IsFinite(lapDelta)
+            ? Math.Abs(lapDelta) * fallback : null;
+    }
+
     /// <summary>Lap fraction from the player to the other car, wrapped to (-0.5, 0.5]; &gt; 0 = ahead.</summary>
     public static double WrappedDelta(double otherPct, double myPct)
     {
