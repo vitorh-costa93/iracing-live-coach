@@ -155,4 +155,6 @@ Adaptação da fonte Hungaroring 1988 deste lote: a tabela original declara `KEY
 
 ### Instalação sem interface
 
+Destino final de **toda pista nova aprovada**: `C:\Program Files (x86)\Steam\steamapps\common\Automobilista 2\Mods\Enabled`. Copiar o `.7z` aprovado para essa pasta, conferir seu SHA256 e aplicar pelo backend do AMS2CM. Extrações, pacotes temporários e arquivos reprovados permanecem fora de `Enabled`.
+
 O [CLI oficial do AMS2CM 0.3.0](https://github.com/OpenSimTools/AMS2CM/blob/v0.3.0/src/CLI/Program.cs) chama `Config.Load(args)`, `Init.CreateModManager(config)` e `InstallEnabledMods()`. Esse mesmo fluxo pode ser executado por um pequeno console sem janela usando `AMS2CM.Core.dll` e as dependências da **mesma versão instalada**. Não automatize a GUI quando o usuário estiver jogando. Registre logs, mantenha backup prévio de `Mods/state.json` e confira depois os IDs instalados, arquivos no jogo e hashes dos pacotes. O retorno do backend não substitui essas verificações nem o teste ao vivo.
