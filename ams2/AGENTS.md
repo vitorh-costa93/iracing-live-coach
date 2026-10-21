@@ -4,6 +4,7 @@
 - Mudanças ficam em `ams2/` e `../scripts/publish-ams2.ps1`. Preserve V2/V3.
 - Preserve os contratos PlayerDriving, pausa/menu/replay, nomes por carro e configurações próprias dos temas; confirme código/testes antes de assumir dados do SDK.
 - Não abrir overlay real sobre o jogo nem controlar o jogo sem autorização específica; use prévia/fake quando possível.
+- Enquanto o usuário estiver jogando iRacing, não controlar a interface, mudar foco ou fechar seus aplicativos. Instalações e verificações devem ocorrer somente pelo backend; teste ao vivo do AMS2 fica para quando o usuário estiver disponível.
 - Um widget por etapa. Imagens/telemetria coletadas por script com condição de parada; confira recorte e composição quando necessário.
 - Para código: `dotnet build` dos csproj afetados e `dotnet test` dos csproj em `ams2/tests/`; revisão integrada antes da entrega.
 - Entrega executável: na raiz, publicar via `scripts/publish-ams2.ps1`; conferir espelho Desktop e reportar se exe aberto impedir atualização.

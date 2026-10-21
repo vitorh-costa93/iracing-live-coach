@@ -6,7 +6,7 @@ usage: python -I convert.py <ac_track_dir> <track_id> <out_dir> <sochi_ref_dir> 
 Writes <out_dir>\\<track_id>\\Automobilista 2\\{Pakfiles\\Tracks, Tracks\\<id>, GUI\\...}.  Nothing is installed.
 See SPEC.md for what is verified and what is a hypothesis (coordinate mirror, AIW fields, triggers, CSM).
 """
-import collections, math, os, re, struct, sys
+import argparse, collections, json, math, os, re, struct, sys
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kn5 import read_kn5
@@ -150,18 +150,65 @@ def tex_of(mt):
 
 # ---------------------------------------------------------------- AI line
 def read_ai(path):
-    d = open(path, 'rb').read()
+    with open(path, 'rb') as stream:
+        d = stream.read()
+    if len(d) < 20:
+        raise ValueError('Truncated AI file: ' + str(path))
     ver, n, _, _ = struct.unpack_from('<4i', d, 0)
+    if ver != 7 or n < 3 or len(d) < 20 + 20 * n:
+        raise ValueError('Unsupported/truncated AI file (need v7, >=3 points): ' + str(path))
     pts = np.array([struct.unpack_from('<4f', d, 16 + 20 * i) for i in range(n)])
     o = 16 + 20 * n
     ec = struct.unpack_from('<i', d, o)[0]
-    extra = np.frombuffer(d, '<f4', ec * 18, o + 4).reshape(ec, 18) if ec == n else None
+    extra = np.frombuffer(d, '<f4', ec * 18, o + 4).reshape(ec, 18) if ec == n and len(d) >= o + 4 + ec * 72 else None
+    if not np.isfinite(pts).all() or (extra is not None and not np.isfinite(extra).all()):
+        raise ValueError('Non-finite AI coordinates/extras: ' + str(path))
     return pts[:, :3], extra
+
+
+def validate_ai_inputs(fast, extra, dummies, pitlane=None, require_complete=False):
+    """Fail before writing a package when source AI cannot support its advertised features."""
+    missing = ['AC_TIME_%d_%s' % (i, side) for i in range(3) for side in ('L', 'R')
+               if 'AC_TIME_%d_%s' % (i, side) not in dummies]
+    if missing:
+        raise ValueError('Missing timing dummies: ' + ', '.join(missing))
+    for prefix in ('AC_START_', 'AC_PIT_'):
+        slots = sorted(int(n[len(prefix):]) for n in dummies if re.fullmatch(prefix + r'\d+', n))
+        if not slots or slots != list(range(len(slots))):
+            raise ValueError('Missing/non-contiguous %s dummies (need indices from 0)' % prefix)
+    if len(fast) < 12 or np.asarray(fast).shape != (len(fast), 3) or not np.isfinite(fast).all():
+        raise ValueError('Fast lane needs >=12 finite 3D points')
+    if np.any(np.linalg.norm(np.diff(fast, axis=0), axis=1) < 1e-5):
+        raise ValueError('Fast lane contains duplicate adjacent points')
+    for name, matrix in dummies.items():
+        if name.startswith(('AC_TIME_', 'AC_START_', 'AC_PIT_')) and (np.asarray(matrix).shape != (4, 4) or not np.isfinite(matrix).all()):
+            raise ValueError('Invalid dummy transform: ' + name)
+    if extra is not None and (extra.shape != (len(fast), 18) or not np.isfinite(extra).all() or np.any(extra[:, 5:7] <= 0)):
+        raise ValueError('Fast lane extras need finite positive left/right widths for every point')
+    if pitlane is not None and (len(pitlane) < 3 or not np.isfinite(pitlane).all()):
+        raise ValueError('Pit lane needs >=3 finite points')
+    if require_complete and (extra is None or pitlane is None):
+        raise ValueError('Complete AI requires fast_lane.ai extras and a layout-specific pit_lane.ai')
 
 
 def yaw_of(fwd):
     """Madness Ori yaw: car faces (-sin y, 0, -cos y)  (derived from Sochi grid vs AI direction)."""
     return math.atan2(-fwd[0], -fwd[2])
+
+
+def order_timing_sectors(fast, dummies):
+    """Keep source timing gates, assigning sector numbers in actual driving order."""
+    centres = [(dummies['AC_TIME_%d_L' % n][3,:3] + dummies['AC_TIME_%d_R' % n][3,:3]) * .5 for n in range(3)]
+    indices = [int(np.argmin(np.linalg.norm(fast-point,axis=1))) for point in centres]
+    order = [(index-indices[0]) % len(fast) for index in indices[1:]]
+    if 0 in order or order[0] == order[1]:
+        raise ValueError('Timing gates do not define three distinct sectors')
+    if order[0] < order[1]: return dummies
+    result = dict(dummies)
+    for side in ('L','R'):
+        result['AC_TIME_1_'+side],result['AC_TIME_2_'+side] = dummies['AC_TIME_2_'+side],dummies['AC_TIME_1_'+side]
+    print('  source timing: relabelled TIME_2 then TIME_1 into sector driving order')
+    return result
 
 
 def line_curvature(L):
@@ -240,21 +287,39 @@ def corner_marks(L, thr_r=150.0):
 STREET = '--street' in sys.argv
 
 
-def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None):
+def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None, fallback_maxiter=20000):
     """Lateral offsets d (within [lo, hi]) of the closed polyline W + d*pw that minimise the sum of squared second differences
-    (minimum-curvature line), via a sparse active-set solve; a small `reg` pulls d toward d0."""
+    (minimum-curvature line), with a sparse active-set solve and bounded L-BFGS-B fallback.
+    Both methods must pass the same projected-gradient KKT and feasibility checks."""
     import scipy.sparse as sp, scipy.sparse.linalg as sla
+    import warnings
+    if rounds < 1 or fallback_maxiter < 1:
+        raise ValueError('Racing-line solver requires at least one round')
+    if not all(np.isfinite(a).all() for a in (W, pw, lo, hi, d0)) or np.any(lo > hi):
+        raise ValueError('Invalid/non-finite racing-line solver inputs or infeasible corridor')
     n = len(W)
-    I = sp.identity(n, format='csr'); D2 = sp.diags([1, -2, 1], [-1, 0, 1], shape=(n, n), format='lil'); D2[0, n - 1] = 1; D2[n - 1, 0] = 1
+    I = sp.identity(n, format='csr'); D2 = sp.diags([1., -2., 1.], [-1, 0, 1], shape=(n, n), format='lil'); D2[0, n - 1] = 1; D2[n - 1, 0] = 1
     D2 = D2.tocsr()
     if w is not None:
         D2 = sp.diags(np.sqrt(w)) @ D2                      # weight the curvature penalty per point
     Ax = D2 @ sp.diags(pw[:, 0]); Az = D2 @ sp.diags(pw[:, 2])
     H = (Ax.T @ Ax + Az.T @ Az + reg ** 2 * I).tocsc(); g = Ax.T @ (-D2 @ W[:, 0]) + Az.T @ (-D2 @ W[:, 2]) + reg ** 2 * d0
+    def residual(offsets):
+        gradient = H @ offsets - g
+        # Projected-gradient residual is zero exactly at the box-constrained quadratic's KKT solution.
+        return float(np.max(np.abs(offsets - np.clip(offsets - gradient, lo, hi))))
+
+    kkt_tolerance = 1e-5
     fixed = np.zeros(n, bool); d = d0.copy()
-    for _ in range(rounds):
+    converged = False
+    for iteration in range(rounds):
         free = ~fixed
-        d[free] = sla.spsolve(H[free][:, free].tocsc(), g[free] - H[free][:, fixed] @ d[fixed])
+        if free.any():
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', sla.MatrixRankWarning)
+                d[free] = sla.spsolve(H[free][:, free].tocsc(), g[free] - H[free][:, fixed] @ d[fixed])
+        if not np.isfinite(d).all():
+            raise ValueError('Racing-line solver returned non-finite offsets')
         over = (d < lo - 1e-6) | (d > hi + 1e-6)
         d = np.clip(d, lo, hi)
         if over.any():
@@ -262,8 +327,34 @@ def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None):
         grad = H @ d - g
         rel = fixed & (((d >= hi - 1e-9) & (grad > 0)) | ((d <= lo + 1e-9) & (grad < 0)))
         if not rel.any():
+            converged = True
             break
         fixed &= ~rel
+    method, fallback_iterations, solver_message = 'active-set', 0, ''
+    kkt = residual(d)
+    if not converged or kkt > kkt_tolerance:
+        from scipy.optimize import minimize
+
+        def objective(offsets):
+            hd = H @ offsets
+            return float(0.5 * offsets @ hd - g @ offsets), hd - g
+
+        result = minimize(objective, np.clip(d, lo, hi), method='L-BFGS-B', jac=True,
+                          bounds=list(zip(lo, hi)),
+                          options=dict(maxiter=fallback_maxiter, maxfun=3 * fallback_maxiter,
+                                       maxcor=30, maxls=50, ftol=1e-15, gtol=1e-8))
+        d = np.asarray(result.x)
+        method, fallback_iterations, solver_message = 'L-BFGS-B', int(result.nit), str(result.message)
+        if not np.isfinite(d).all():
+            raise ValueError('Racing-line solver returned non-finite offsets')
+        kkt = residual(d)
+        converged = bool(result.success) and kkt <= kkt_tolerance
+    bound_violation = max(float(np.max(lo - d)), float(np.max(d - hi)), 0.0)
+    print('  AI solver: method=%s iterations=%d fallback_iterations=%d converged=%s finite=%s bound_violation=%.6g kkt_residual=%.6g' %
+          (method, iteration + 1, fallback_iterations, converged, np.isfinite(d).all(), bound_violation, kkt))
+    if not converged or kkt > kkt_tolerance or bound_violation > 1e-7:
+        raise ValueError('Racing-line solver did not converge: KKT %.6g (limit %.6g); %s' %
+                         (kkt, kkt_tolerance, solver_message))
     return d
 
 
@@ -292,8 +383,11 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     # fast_lane (racing line) goes into path and wp_pos moves to the middle of the usable strip.
     def smooth(a, n=5):
         k = np.ones(n) / n; return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
-    ex_l = smooth(np.clip(np.interp(s, cum, np.r_[left, left[:1]]), 1.5, EDGE_CAP))    # AC +lat side = AMS -perp side
-    ex_r = smooth(np.clip(np.interp(s, cum, np.r_[right, right[:1]]), 1.5, EDGE_CAP))  # AC -lat side = AMS +perp side
+    # Smoothing must never widen a local bottleneck; it can move the racing line outside the source/GCL corridor.
+    raw_l = np.clip(np.interp(s, cum, np.r_[left, left[:1]]), 0.5, EDGE_CAP)
+    raw_r = np.clip(np.interp(s, cum, np.r_[right, right[:1]]), 0.5, EDGE_CAP)
+    ex_l = np.minimum(smooth(raw_l), raw_l)    # AC +lat side = AMS -perp side
+    ex_r = np.minimum(smooth(raw_r), raw_r)    # AC -lat side = AMS +perp side
 
     # keep the racing line off the white line / kerb: AMS2 cars run over kerbs the AI treats as road (Bahrain)
     wide_l = wide_r = None
@@ -318,7 +412,8 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     lo = -(ex_l - mg_l); hi = ex_r - mg_r
     if wall_l is not None:                       # walls: keep the line WALL_CLEAR off them (AMS2 street tracks p1 1.4 m)
         lo = np.maximum(lo, -(wall_l - WALL_CLEAR)); hi = np.minimum(hi, wall_r - WALL_CLEAR)
-    mid = 0.5 * (lo + hi); lo, hi = np.minimum(lo, mid), np.maximum(hi, mid)
+    if np.any(lo > hi):
+        raise ValueError('Infeasible AI clearance corridor at %d waypoints' % np.count_nonzero(lo > hi))
     d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5), lo, hi)
     # later apex / fuller exit: penalise curvature where the car brakes and turns in (weight on the braking zones), keep the best lap
     v0, _ = speed_profile(W + d[:, None] * pw)
@@ -332,11 +427,19 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
     if t_opt < t_ac:
         sh = d
+    if not np.isfinite([t_ac, t_opt]).all() or not np.isfinite(sh).all():
+        raise ValueError('Non-finite racing line/lap estimate')
+    margin_l, margin_r = ex_l + sh, ex_r - sh
+    print('  AI margins: left min=%.3f right min=%.3f finite=True' % (margin_l.min(), margin_r.min()))
+    if np.any(sh < lo - 1e-6) or np.any(sh > hi + 1e-6):
+        raise ValueError('Selected racing line violates asphalt/wall safety margins')
 
     def lapdist(name):
         c = (dummies[name + '_L'][3, :3] + dummies[name + '_R'][3, :3]) * 0.5 * MIRROR
         return float(s[int(np.argmin(np.linalg.norm(W - c, axis=1)))])
     s1, s2 = lapdist('AC_TIME_1'), lapdist('AC_TIME_2')
+    if not 0 < s1 < s2 < lap:
+        raise ValueError('Timing sectors must follow 0 < S1 < S2 < lap')
 
     starts = sorted((int(n.split('_')[2]), M) for n, M in dummies.items() if re.fullmatch(r'AC_START_\d+', n))
     pits = sorted((int(n.split('_')[2]), M) for n, M in dummies.items() if re.fullmatch(r'AC_PIT_\d+', n))
@@ -432,7 +535,11 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
                 'wp_path=(%.4f,0.0000)' % w['path'], 'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
                 'wp_groove_lat=(%.6f)' % (-0.27 * w['path']), ('wp_event=(1.000,2,1.100000)' if w.get('cst', 0) in (2, 3) and w['branch'] == 0 else 'wp_event=(1.000,0,0.000000)'), 'wp_branchID=(%d)' % w['branch'],
                 'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(%d)' % w.get('cty', 0), 'wpd_CornerState=(%d)' % w.get('cst', 0), 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
-    info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half, npit=len(pitw) - (len(pits) if pit is not None else 0))
+    info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half,
+                camera_centres=np.array([w['pos'] for w in wps[:nw]]),
+                camera_half=np.array([w['width'][0] for w in wps[:nw]]),
+                starts=len(starts), pits=len(pits), margin_left=float(margin_l.min()), margin_right=float(margin_r.min()),
+                npit=len(pitw) - (len(pits) if pit is not None else 0))
     return '\n'.join(out) + '\n', info
 
 
@@ -445,7 +552,8 @@ def pit_section(fast, fextra, pitlane, span=5.0, merge=4.0):
     tng = np.roll(fast, -1, 0) - np.roll(fast, 1, 0); tng[:, 1] = 0; tng /= np.linalg.norm(tng, axis=1)[:, None]
     rel = pitlane - fast[j]
     lat = rel[:, 0] * tng[j, 2] - rel[:, 2] * tng[j, 0]
-    outside = (lat > fextra[j, 6] + 0.5) | (-lat > fextra[j, 5] + 0.5)
+    # AC +perp is col 5 (left), -perp is col 6 (right), as in build_gcl/tarmac_edges.
+    outside = (lat > fextra[j, 5] + 0.5) | (-lat > fextra[j, 6] + 0.5)
     return d, outside
 
 
@@ -453,8 +561,14 @@ def build_pit(fast, fextra, pitlane, pit_dummies, span=5.0, merge=4.0):
     from scipy.spatial import cKDTree
     d, outside = pit_section(fast, fextra, pitlane)
     stalls = np.array([M[3, :3] for _, M in pit_dummies])
-    c = int(np.median(cKDTree(pitlane).query(stalls)[1]))
-    if not outside[c]:
+    stall_distance, stall_indices = cKDTree(pitlane).query(stalls)
+    c = int(np.median(stall_indices))
+    # Some AC widths include the entire pit apron (Albert Park). An explicit pit lane anchored
+    # at AC_PIT still identifies a distinct branch if it is farther than the merge distance
+    # from the fast lane, even when the broad AI corridor calls it "inside".
+    print('  pit source: anchor=%d distance_to_fast=%.3f outside_width=%s stall_to_lane_max=%.3f' %
+          (c, d[c], outside[c], float(stall_distance.max())))
+    if not outside[c] and d[c] <= merge:
         return None
     a = c
     while a > 0 and (outside[a - 1] or d[a - 1] > merge):
@@ -472,38 +586,57 @@ def build_pit(fast, fextra, pitlane, pit_dummies, span=5.0, merge=4.0):
 # ---------------------------------------------------------------- collision (.csm)
 # AC surface KEY -> AMS2 csm surface id.  Ids taken from Sochi (OMTT) correlated with its render meshes [H]:
 # 0 asphalt/pit, 7 grass, 10 rumble/kerb, 12 tyre wall, 13 concrete wall, 14 armco.  No gravel id known -> sand = 7.
-SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'ROAD': 0, 'PIT': 0, 'ROFF': 7, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 7, 'GRASS': 7, 'WALL': 13}
+SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'ROAD': 0, 'PIT': 0, 'PAVEMENT': 0, 'ROFF': 7, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 7, 'GRASS': 7, 'WALL': 13}
 
 
 def surface_keys(ini_path):
     keys = set()
     if os.path.exists(ini_path):
-        for line in open(ini_path, encoding='latin1'):
-            mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
-            if mm:
-                keys.add(mm.group(1).upper())
+        with open(ini_path, encoding='latin1') as stream:
+            for line in stream:
+                mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
+                if mm:
+                    keys.add(mm.group(1).upper())
     return keys | {'WALL'}                 # WALL is an AC built-in surface
 
 
 def invalid_keys(ini_path):
     bad = set(); cur = None
     if os.path.exists(ini_path):
-        for line in open(ini_path, encoding='latin1'):
-            mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
-            if mm:
-                cur = mm.group(1).upper()
-            mm = re.match(r'\s*IS_VALID_TRACK\s*=\s*(\d+)', line)
-            if mm and cur and int(mm.group(1)) == 0:
-                bad.add(cur)
+        with open(ini_path, encoding='latin1') as stream:
+            for line in stream:
+                mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
+                if mm:
+                    cur = mm.group(1).upper()
+                mm = re.match(r'\s*IS_VALID_TRACK\s*=\s*(\d+)', line)
+                if mm and cur and int(mm.group(1)) == 0:
+                    bad.add(cur)
     return bad
 
 
 def surf_id(key, bad):
-    if key in SURF_ID:
-        return SURF_ID[key]
-    if key.startswith(('CURB', 'KERB', 'RUMBLE')):
+    semantic = surface_kind(key)
+    if semantic in SURF_ID:
+        return SURF_ID[semantic]
+    if semantic in ('CURB', 'RUMBLE'):
         return 10
     return 7 if key in bad else 0
+
+
+def surface_kind(key):
+    """Semantic category only; preserve the original full key for validity lookups/statistics."""
+    name = re.sub(r'^\d+', '', key or '').upper()
+    return max((kind for kind in (*SURF_ID, 'CURB', 'RUMBLE') if name.startswith(kind)), key=len, default=name)
+
+
+def match_surface(name, keys):
+    """AC collision names start with digits; match full keys or the legacy prefix after those digits."""
+    if not re.match(r'^\d', name):
+        return None
+    full = name.upper()
+    unnumbered = re.sub(r'^\d+', '', full)
+    return max((key.upper() for key in keys if full.startswith(key.upper()) or unnumbered.startswith(key.upper())),
+               key=lambda key: (len(key), key), default=None)
 
 
 def smooth_kerbs(items, radius=0.8, cap=0.065):
@@ -519,10 +652,10 @@ def smooth_kerbs(items, radius=0.8, cap=0.065):
         return smooth_road(items)
     allk = np.vstack([items[i][0] for i in kv]).astype(np.float64)
     road = np.vstack(rv).astype(np.float64)
-    tk = cKDTree(allk[:, [0, 2]]); tr = cKDTree(road[:, [0, 2]])
-    nb = tk.query_ball_point(allk[:, [0, 2]], radius)
+    tk = cKDTree(allk); tr = cKDTree(road)
+    nb = tk.query_ball_point(allk, radius)
     zs = np.array([allk[j, 1].mean() for j in nb])
-    d, ir = tr.query(allk[:, [0, 2]], distance_upper_bound=2.0)
+    d, ir = tr.query(allk, distance_upper_bound=2.0)
     ok = np.isfinite(d)
     zr = np.where(ok, road[np.minimum(ir, len(road) - 1), 1], zs)
     zn = np.where(ok, np.clip(zs, zr - 0.01, zr + cap), zs)
@@ -545,8 +678,8 @@ def smooth_road(items, tr=None, radius=1.0, maxcorr=0.05):
     if not ri:
         return out
     allr = np.vstack([items[i][0] for i in ri]).astype(np.float64)
-    t = cKDTree(allr[:, [0, 2]])
-    nb = t.query_ball_point(allr[:, [0, 2]], radius)
+    t = cKDTree(allr)
+    nb = t.query_ball_point(allr, radius)
     zm = np.array([allr[j, 1].mean() for j in nb])
     corr = np.clip(zm - allr[:, 1], -maxcorr, maxcorr)
     print('  asphalt smoothed: mean |dz| %.4f m, max %.3f m' % (np.abs(corr).mean(), np.abs(corr).max()))
@@ -564,17 +697,12 @@ def build_csm(k, ini_path):
     bad = invalid_keys(ini_path)
     items = []; stats = collections.Counter()
     for m in k['meshes']:
-        g = re.match(r'^\d+([A-Za-z]+)', m['name'])
-        if not g or not len(m['idx']):
-            continue
-        # AC matches the surface KEY as a prefix of the letters after the digits ('1roadtrp1g1' -> ROAD): longest key wins
-        word = g.group(1).upper()
-        key = max((x for x in keys if word.startswith(x)), key=len, default=None)
-        if key is None:
+        key = match_surface(m['name'], keys)
+        if key is None or not len(m['idx']):
             continue
         low = m['name'].lower()
         sid = surf_id(key, bad)
-        if key == 'WALL':
+        if surface_kind(key) == 'WALL':
             sid = 12 if 'tyre' in low or 'tire' in low else 14 if ('armco' in low or 'rail' in low or 'barrier' in low) else 13
         P = (m['pos'] * MIRROR).astype(np.float32)
         T = m['idx'].reshape(-1, 3)[:, [0, 2, 1]]                  # mirrored -> reverse winding (same as render)
@@ -596,7 +724,57 @@ def _strip(C, left, right, nrm):
     return np.array(tris)
 
 
-def build_gcl(fast, fextra, sf, pitc, pitlane_tris, span=5.0):
+def pit_light_zone(pitc, meshes, lane_halfwidth=5.0):
+    """Explicit pitlightin/out mesh clusters may delimit a limiter zone when PITLANE meshes are absent.
+    Both clusters must project onto the pit strip, each at one station, in entry-to-exit order.
+    """
+    groups = {'in': [], 'out': []}
+    for mesh in meshes:
+        match = re.fullmatch(r'pitlight(in|out)(?:_sub\d+)?', mesh['name'], re.I)
+        if match and len(mesh['pos']):
+            groups[match.group(1).lower()].append((mesh['name'], (mesh['pos'].min(0) + mesh['pos'].max(0)) * 0.5))
+    if not any(groups.values()):
+        return None
+    if not all(groups.values()):
+        raise ValueError('Pit limiter anchors need both pitlightin and pitlightout clusters')
+    points = np.asarray(pitc)[:, [0, 2]]
+    delta = np.diff(points, axis=0)
+    lengths = np.linalg.norm(delta, axis=1)
+    if not np.isfinite(points).all() or np.any(lengths < 1e-6):
+        raise ValueError('Invalid pit lane for limiter anchor projection')
+    cum = np.r_[0., np.cumsum(lengths)]
+    stations = {}
+    for role, members in groups.items():
+        role_stations, distances = [], []
+        for name, position in members:
+            position = position[[0, 2]]
+            fraction = np.clip(np.sum((position - points[:-1]) * delta, axis=1) / lengths ** 2, 0, 1)
+            projections = points[:-1] + fraction[:, None] * delta
+            ds = np.linalg.norm(projections - position, axis=1)
+            segment = int(np.argmin(ds))
+            if not np.isfinite(ds[segment]) or ds[segment] > lane_halfwidth:
+                raise ValueError('Pit limiter anchor outside pit strip: %s (%.3f m)' % (name, ds[segment]))
+            # A similarly close, distant station indicates a self-overlap/ambiguous projection.
+            station = cum[:-1] + fraction * lengths
+            ambiguous = (ds <= ds[segment] + 0.25) & (np.abs(station - station[segment]) > 2 * lane_halfwidth)
+            if ambiguous.any():
+                raise ValueError('Ambiguous pit limiter anchor projection: ' + name)
+            role_stations.append(station[segment]); distances.append(ds[segment])
+        if np.ptp(role_stations) > 2 * lane_halfwidth:
+            raise ValueError('Ambiguous pit limiter %s anchors at multiple stations' % role)
+        stations[role] = float(np.median(role_stations))
+        print('  pit limiter anchor: role=%s source=%s station=%.3f max_distance=%.3f' %
+              (role, ','.join(name for name, _ in members), stations[role], max(distances)))
+    if stations['out'] <= stations['in']:
+        raise ValueError('Pit limiter anchors reversed: pitlightout must follow pitlightin')
+    a, b = (int(np.argmin(np.abs(cum - stations[role]))) for role in ('in', 'out'))
+    if b - a < 2:
+        raise ValueError('Pit limiter anchor zone is too short for two segments')
+    print('  pit limiter zone: source=pitlightin/out indices=%d:%d length=%.3f' % (a, b, cum[b] - cum[a]))
+    return a, b
+
+
+def build_gcl(fast, fextra, sf, pitc, pitlane_tris, span=5.0, limiter_zone=None):
     """Sochi .gcl [V]: flag 1 = drivable strip along the racing line out to the track edges (|lat| <= 30),
     flag 2 = pit-lane strip (+-5 m) over the speed-limited part, flag 10 / 4 = 2-tri quads at the start / end of
     that part.  Here: AC fast_lane sideLeft/sideRight (col 5 = +lat side, col 6 = -lat side [V vs tarmac meshes])
@@ -620,19 +798,25 @@ def build_gcl(fast, fextra, sf, pitc, pitlane_tris, span=5.0):
         PT = pitlane_tris[:, :, [0, 2]].astype(np.float64)
         on = np.array([len(sat_xz(PT, np.arange(len(PT)), q[0] - 0.05, q[2] - 0.05, 0.1)) > 0 for q in pitc])
         if on.any():
-            a = int(np.argmax(on)); b = len(on) - 1 - int(np.argmax(on[::-1]))
-            Q = pitc[a:b + 1]
-            tq = np.gradient(Q, axis=0); tq[:, 1] = 0; tq /= np.linalg.norm(tq, axis=1)[:, None]
-            nq = np.c_[tq[:, 2], np.zeros(len(tq)), -tq[:, 0]]
-            five = np.full(len(Q), 5.0)
-            ps = _strip(Q, five, five, nq); tris.append(ps); flags.append(np.full(len(ps), 2))
-            for idx, fl, sgn in ((0, 10, 1), (len(Q) - 1, 4, -1)):
-                c2 = np.array([Q[idx], Q[idx] + tq[idx] * 2.0 * sgn])
-                if sgn < 0:
-                    c2 = c2[::-1]
-                qd = _strip(c2, np.full(2, 5.0), np.full(2, 5.0), np.array([nq[idx]] * 2))
-                tris.append(qd); flags.append(np.full(2, fl))
-            zone = (a, b)
+            zone = (int(np.argmax(on)), len(on) - 1 - int(np.argmax(on[::-1])))
+            print('  pit limiter zone: source=PITLANE collision triangles indices=%d:%d' % zone)
+    if zone is None and limiter_zone is not None:
+        zone = limiter_zone
+    if pitc is not None and zone is not None:
+        a, b = zone
+        if not 0 <= a < b < len(pitc):
+            raise ValueError('Pit limiter zone indices outside pit lane')
+        Q = pitc[a:b + 1]
+        tq = np.gradient(Q, axis=0); tq[:, 1] = 0; tq /= np.linalg.norm(tq, axis=1)[:, None]
+        nq = np.c_[tq[:, 2], np.zeros(len(tq)), -tq[:, 0]]
+        five = np.full(len(Q), 5.0)
+        ps = _strip(Q, five, five, nq); tris.append(ps); flags.append(np.full(len(ps), 2))
+        for idx, fl, sgn in ((0, 10, 1), (len(Q) - 1, 4, -1)):
+            c2 = np.array([Q[idx], Q[idx] + tq[idx] * 2.0 * sgn])
+            if sgn < 0:
+                c2 = c2[::-1]
+            qd = _strip(c2, np.full(2, 5.0), np.full(2, 5.0), np.array([nq[idx]] * 2))
+            tris.append(qd); flags.append(np.full(2, fl))
     T = np.vstack(tris) * MIRROR
     nY = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])[:, 1]
     T[nY < 0] = T[nY < 0][:, [0, 2, 1]]                     # Sochi: every gcl triangle has +y normal [V]
@@ -746,22 +930,35 @@ def build_triggers(template, dummies):
 
 
 # ---------------------------------------------------------------- trd
-def build_trd(template, tid, lap, meta=None):
-    """meta (CLI --name/--short/--location/--country/--variation/--lat/--lon/--tz/--turns/--year/--cw); defaults = Bahrain."""
-    m = dict(name='Bahrain International Circuit (AC conv)', short='Bahrain', location='Bahrain', country='BH', city='Sakhir',
-             variation='Grand Prix', lat='26.032', lon='50.512', tz='3', turns='15', year='2004', cw='true')
+def build_trd(template, tid, lap, meta=None, starts=0, pits=0):
+    """UI/CLI metadata; unknown coordinates use neutral zero placeholders, never Bahrain's location."""
+    m = dict(name=tid, short=tid, location='', country='', city='', variation='',
+             lat='0', lon='0', tz='0', turns='0', year='0', cw='false', altitude='0', climate='')
     m.update(meta or {})
+    capacity = min(starts, pits)
+    if m.get('pitboxes'):
+        capacity = min(capacity, int(m['pitboxes']))
+    description = '%s - AC kn5 conversion' % m['short']
+    if m.get('version'):
+        description += ' (source version %s)' % m['version']
     vals = {'Name': tid, 'TrackName': m['name'], 'ShortTrackName': m['short'],
             'ScenegraphFile': tid + '.sgx', 'Year': m['year'], 'Length': str(int(round(lap))), 'Location': m['location'],
             'Country': m['country'], 'Track Group': '%s (AC conversion)' % m['short'],
-            'Track Description': '%s - AC kn5 conversion' % m['short'], 'Is Clockwise': m['cw'],
+            'Track Description': description, 'Is Clockwise': m['cw'],
             'Track_Location': m['city'], 'Track_Variation': m['variation'], 'Track_Longitude': m['lon'],
-            'Track_Latitude': m['lat'], 'Track_Altitude': '7', 'Track_TimeZone': m['tz'], 'Number Of Turns': m['turns'],
-            'Track_Climate': 'desert', 'Max AI participants': '23', 'Drs Zone 1 Detection Number': '0',
+            'Track_Latitude': m['lat'], 'Track_Altitude': m['altitude'], 'Track_TimeZone': m['tz'], 'Number Of Turns': m['turns'],
+            'Max AI participants': str(max(0, capacity - 1)), 'Drs Zone 1 Detection Number': '0',
             'Drs Zone 2 Detection Number': '0', 'Order Override': '1'}
+    if m['climate']:
+        vals['Track_Climate'] = m['climate']
+    from xml.sax.saxutils import escape
     for k, v in vals.items():
+        v = escape(str(v), {'"': '&quot;'})
         template, n = re.subn(r'(name="%s" data=")[^"]*(")' % re.escape(k), lambda m: m.group(1) + v + m.group(2), template)
         assert n == 1, k
+    if m.get('version'):
+        template = re.sub(r'(name="(?:Version|Track Version)" data=")[^"]*(")',
+                          lambda match: match.group(1) + escape(str(m['version']), {'"': '&quot;'}) + match.group(2), template)
     return template
 
 
@@ -883,51 +1080,211 @@ def legacy_dds(data):
     return b.getvalue()
 
 
-def load_all_kn5(src):
+def source_path(src, relative):
+    """Resolve source-controlled paths, rejecting absolute paths and traversal/symlink escape."""
+    from pathlib import Path, PureWindowsPath
+    root = Path(src).resolve()
+    if Path(relative).is_absolute() or PureWindowsPath(relative).is_absolute() or PureWindowsPath(relative).drive:
+        raise ValueError('Absolute source path is forbidden: ' + str(relative))
+    candidate = (root / str(relative).replace('\\', '/')).resolve()
+    if not candidate.is_relative_to(root):
+        raise ValueError('Source path escapes track root: ' + str(relative))
+    return str(candidate)
+
+
+def source_locations(src, layout=None):
+    """Layouts share geometry only; AI/cameras/UI belong to the selected layout."""
+    if layout and (layout in ('.', '..') or not re.fullmatch(r'[^/\\:]+', layout)):
+        raise ValueError('--layout must be one directory name')
+    local = source_path(src, layout) if layout else os.path.abspath(src)
+    if not os.path.isdir(local):
+        raise ValueError('Layout/source directory does not exist: ' + local)
+    ui = source_path(src, os.path.join('ui', layout)) if layout else source_path(src, 'ui')
+    # surfaces describe the shared root geometry and may legitimately be shared by layouts.
+    surfaces = os.path.join(local, 'data', 'surfaces.ini')
+    if layout and not os.path.isfile(surfaces):
+        surfaces = source_path(src, 'data/surfaces.ini')
+    return dict(ai=os.path.join(local, 'ai'), cameras=os.path.join(local, 'data', 'cameras.ini'),
+                surfaces=surfaces, ui=ui)
+
+
+def source_metadata(ui, tid, layout=None):
+    path = os.path.join(ui, 'ui_track.json')
+    meta = dict(name=tid, short=tid, variation=layout or '')
+    if not os.path.isfile(path):
+        return meta
+    with open(path, encoding='utf-8-sig') as stream:
+        # AC UI files occasionally contain literal newlines inside descriptions (not executable data).
+        data = json.load(stream, strict=False)
+    for key in ('name', 'city', 'country', 'version'):
+        if data.get(key) is not None:
+            meta[key] = str(data[key])
+    meta['short'] = meta['name']
+    meta['location'] = meta.get('city', '')
+    if data.get('pitboxes') not in (None, ''):
+        count = int(data['pitboxes'])
+        if count <= 0:
+            raise ValueError('ui_track.json pitboxes must be positive')
+        meta['pitboxes'] = count
+    return meta
+
+
+def model_files(src, layout=None, with_transforms=False):
+    import configparser
+    ini = source_path(src, 'models_%s.ini' % layout) if layout else source_path(src, 'models.ini')
+    if layout and not os.path.isfile(ini):
+        ini = source_path(src, 'models.ini')
+    if os.path.isfile(ini):
+        with open(ini, encoding='utf-8-sig', errors='replace') as stream:
+            parser = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
+            try:
+                parser.read_file(stream)
+            except configparser.Error as error:
+                raise ValueError('Invalid models INI: %s: %s' % (ini, error)) from error
+        instances = []
+        for section in parser.sections():
+            if not re.fullmatch(r'MODEL_\d+', section, re.I):
+                continue
+            values = parser[section]
+            filename = values.get('FILE', '').strip().strip('"')
+            vectors = []
+            for field in ('POSITION', 'ROTATION'):
+                try:
+                    vector = np.array([float(part) for part in values.get(field, '0,0,0').split(',')])
+                except ValueError as error:
+                    raise ValueError('Invalid %s in %s/%s' % (field, ini, section)) from error
+                if vector.shape != (3,) or not np.isfinite(vector).all():
+                    raise ValueError('Invalid %s in %s/%s' % (field, ini, section))
+                vectors.append(vector)
+            position, rotation = vectors
+            # AC models use heading first (Content Manager TrackMapRenderer.LoadModels).
+            # Received nonzero rotations are yaw in degrees; reject unverified mixed Euler conventions.
+            if np.any(np.abs(rotation[1:]) > 1e-9):
+                raise ValueError('Unsupported model pitch/roll in %s/%s; only yaw degrees verified' % (ini, section))
+            yaw = math.radians(float(rotation[0])); c, s = math.cos(yaw), math.sin(yaw)
+            transform = np.array([[c, 0., -s, 0.], [0., 1., 0., 0.], [s, 0., c, 0.], [*position, 1.]])
+            instances.append(dict(file=filename, transform=transform, section=section))
+        files = [instance['file'] for instance in instances]
+        if not files or any(not f.lower().endswith('.kn5') for f in files):
+            raise ValueError('Missing/invalid FILE entries in ' + ini)
+        # Validate every declared file, including ignored groove layers: a partial model is never silently exported.
+        for name in files:
+            path = source_path(src, name)
+            if not os.path.isfile(path):
+                raise ValueError('Missing KN5 declared in %s: %s' % (ini, name))
+    else:
+        files = sorted(f for f in os.listdir(src) if f.lower().endswith('.kn5'))
+        instances = [dict(file=f, transform=np.eye(4), section='discovered') for f in files]
+    instances = [instance for instance in instances if 'groove' not in instance['file'].lower()]
+    if not instances:
+        raise ValueError('No renderable KN5 files in ' + str(src))
+    return instances if with_transforms else [instance['file'] for instance in instances]
+
+
+def load_all_kn5(src, layout=None):
     """Merge every kn5 of the track (models.ini order, or all *.kn5 when there is none) into one kn5 dict.
     Single-kn5 tracks behave exactly as before.  Meshes/materials are re-indexed; textures with the same name but
     different bytes get a unique name.  Groove-only kn5s (rubber decals) are skipped (see DROP_MATS)."""
-    files = []
-    ini = os.path.join(src, 'models.ini')
-    if os.path.exists(ini):
-        files = re.findall(r'^\s*FILE\s*=\s*(\S+\.kn5)\s*$', open(ini, encoding='utf-8', errors='replace').read(), re.I | re.M)
-    files = [f for f in files if os.path.exists(os.path.join(src, f))] or sorted(f for f in os.listdir(src) if f.lower().endswith('.kn5'))
-    files = [f for f in files if 'groove' not in f.lower()]
+    import copy, hashlib
+    instances = model_files(src, layout, with_transforms=True)
     out = {'version': 0, 'textures': {}, 'materials': [], 'meshes': [], 'dummies': []}
-    for f in files:
-        k = read_kn5(os.path.join(src, f))
-        print('  kn5', f, len(k['meshes']), 'meshes', len(k['materials']), 'materials')
+    cache = {}
+    occurrences = collections.Counter(instance['file'] for instance in instances)
+    for instance in instances:
+        f, transform = instance['file'], instance['transform']
+        source = source_path(src, f)
+        if source in cache:
+            k = cache[source]
+        else:
+            k = read_kn5(source)
+            if occurrences[f] > 1:
+                cache[source] = k
+        print('  kn5', f, instance['section'], len(k['meshes']), 'meshes', len(k['materials']), 'materials')
         ren = {}
         for n, d in k['textures'].items():
             have = out['textures'].get(n)
             if have is None:
                 out['textures'][n] = d
             elif have != d:
-                ren[n] = os.path.splitext(n)[0] + '__' + os.path.splitext(f)[0][-6:] + os.path.splitext(n)[1]
+                # Content-derived prefix stays unique after main's filename sanitisation/truncation.
+                ren[n] = 'tex_' + hashlib.sha256(d).hexdigest()[:16] + '_' + os.path.basename(n)
+                if ren[n] in out['textures'] and out['textures'][ren[n]] != d:
+                    raise ValueError('Texture content alias collision: ' + n)
                 out['textures'][ren[n]] = d
         base = len(out['materials'])
-        for mt in k['materials']:
+        for source_material in k['materials']:
+            mt = copy.deepcopy(source_material)
             mt['tex'] = {a: ren.get(b, b) for a, b in mt['tex'].items()}
             out['materials'].append(mt)
-        for m in k['meshes']:
+        for source_mesh in k['meshes']:
+            m = dict(source_mesh)
+            m['pos'] = m['pos'] @ transform[:3, :3] + transform[3, :3]
+            m['nrm'] = m['nrm'] @ transform[:3, :3]
+            m['tan'] = m['tan'] @ transform[:3, :3]
             m['mat'] += base
             out['meshes'].append(m)
-        out['dummies'] += [(n, M) for n, M in k['dummies'] if n.upper().startswith('AC_')]
+        out['dummies'] += [(n, M @ transform) for n, M in k['dummies'] if n.upper().startswith('AC_')]
     return out
 
 
-def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True):
+def ground_pit_dummies(k, dummies, ini_path, clearance=0.3, max_correction=3.0):
+    """Explicitly ground every AC_PIT on source asphalt collision; refuse absent/stacked floors.
+    Only Y is corrected. Source XZ and every orientation component remain unchanged.
+    """
+    keys, bad = surface_keys(ini_path), invalid_keys(ini_path)
+    triangles = []
+    for mesh in k['meshes']:
+        key = match_surface(mesh['name'], keys)
+        if key is not None and surf_id(key, bad) == 0 and len(mesh['idx']):
+            triangles.append(mesh['pos'][mesh['idx'].reshape(-1, 3)])
+    if not triangles:
+        raise ValueError('--ground-pits: source has no asphalt collision triangles')
+    triangles = np.vstack(triangles).astype(float)
+    a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]
+    v0, v1 = b - a, c - a
+    determinant = v0[:, 0] * v1[:, 2] - v1[:, 0] * v0[:, 2]
+    flat_valid = np.abs(determinant) > 1e-10
+    result = dict(dummies)
+    for name, matrix in dummies.items():
+        if not re.fullmatch(r'AC_PIT_\d+', name):
+            continue
+        position = matrix[3, :3]
+        q = position - a
+        u = np.divide(q[:, 0] * v1[:, 2] - v1[:, 0] * q[:, 2], determinant,
+                      out=np.zeros(len(a)), where=flat_valid)
+        v = np.divide(v0[:, 0] * q[:, 2] - q[:, 0] * v0[:, 2], determinant,
+                      out=np.zeros(len(a)), where=flat_valid)
+        inside = flat_valid & (u >= -1e-7) & (v >= -1e-7) & (u + v <= 1 + 1e-7)
+        heights = (a[:, 1] + u * v0[:, 1] + v * v1[:, 1])[inside]
+        if not len(heights) or not np.isfinite(heights).all():
+            raise ValueError('--ground-pits: no finite asphalt floor below XZ of ' + name)
+        if np.ptp(heights) > 0.1:
+            raise ValueError('--ground-pits: ambiguous stacked asphalt floors for %s (%.3f m spread)' % (name, np.ptp(heights)))
+        target = float(np.median(heights)) + clearance
+        correction = target - float(position[1])
+        if abs(correction) > max_correction:
+            raise ValueError('--ground-pits: excessive correction for %s: %.3f m (limit %.3f)' % (name, correction, max_correction))
+        adjusted = matrix.copy(); adjusted[3, 1] = target
+        result[name] = adjusted
+        print('  ground pit: %s source_Y=%.3f floor_Y=%.3f target_Y=%.3f correction=%.3f' %
+              (name, position[1], target - clearance, target, correction))
+    return result
+
+
+def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True, keys=None):
     """Distance from each fast_lane point to the real asphalt edge on the col-5 (+perp) and col-6 (-perp) sides, from a top-view
     raster of the tarmac* and kerb triangles.  AC side distances include kerbs and paved run-off; the AI must stay inside the white lines."""
     from PIL import Image, ImageDraw
     x0 = fast[:, 0].min() - reach - 10; z0 = fast[:, 2].min() - reach - 10
     w = int((fast[:, 0].max() + reach + 10 - x0) / res); h = int((fast[:, 2].max() + reach + 10 - z0) / res)
     img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
+    keys = set(SURF_ID) | {'CURB', 'RUMBLE'} if keys is None else keys
     for m in k['meshes']:
         road = k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m['visible'] and m['renderable']
         if not kerbs and re.search(r'kerb|curb|rumble|sausage', m['name'] + ' ' + k['materials'][m['mat']]['name'], re.I):
             continue
-        if road or re.match(r'^\d+(tarmac|road|pit|pitlane%s)' % ('|kerb' if kerbs else ''), m['name'], re.I):   # collision road + kerbs count: cars may use kerbs fully
+        kind = surface_kind(match_surface(m['name'], keys))
+        if road or kind in (('TARMAC', 'ROAD', 'PIT', 'PITLANE', 'KERB', 'CURB', 'RUMBLE') if kerbs else ('TARMAC', 'ROAD', 'PIT', 'PITLANE')):
             P = m['pos']
             T = m['idx'].reshape(-1, 3)
             if not road:     # collision 'road' meshes that are really ground planes (Phoenix p1g...) would hide the true edge
@@ -951,21 +1308,27 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True):
     return out
 
 
-def wall_free(k, fast, reach=30.0):
+def wall_free(k, fast, reach=30.0, keys=None):
     from scipy.spatial import cKDTree
     """Free lateral distance from each fast_lane point to the nearest collision wall on the col-5 (+perp) and col-6 (-perp) sides
     (AC coords).  Walls = meshes whose surface key is WALL; vertices, edge midpoints and centroids are sampled."""
-    pts = []
+    pts = []; height_ranges = []
+    keys = {'WALL'} if keys is None else keys
     for m in k['meshes']:
-        g = re.match(r'^\d+([A-Za-z]+)', m['name'])
-        if not g or not len(m['idx']) or not g.group(1).upper().startswith('WALL'):
+        if not len(m['idx']) or surface_kind(match_surface(m['name'], keys)) != 'WALL':
             continue
-        P = m['pos']; T = m['idx'].reshape(-1, 3)
-        pts += [P, P[T].mean(1), 0.5 * (P[T[:, 0]] + P[T[:, 1]]), 0.5 * (P[T[:, 1]] + P[T[:, 2]]), 0.5 * (P[T[:, 2]] + P[T[:, 0]])]
+        P = m['pos']; T = m['idx'].reshape(-1, 3); triangles = P[T]
+        # Associate every sample with its triangle's vertical span. A wall under a
+        # bridge must not constrain the upper road; tall walls still count even
+        # when none of their sampled vertices is at the car's height.
+        samples = [triangles[:, j] for j in range(3)] + [triangles.mean(1)]
+        samples += [0.5 * (triangles[:, j] + triangles[:, (j+1)%3]) for j in range(3)]
+        heights = np.c_[triangles[:,:,1].min(1), triangles[:,:,1].max(1)]
+        pts.extend(samples); height_ranges.extend([heights] * len(samples))
     n = len(fast); out = np.full((n, 2), reach)
     if not pts:
         return out
-    Wp = np.vstack(pts); tr = cKDTree(Wp[:, [0, 2]])
+    Wp = np.vstack(pts); vertical = np.vstack(height_ranges); tr = cKDTree(Wp[:, [0, 2]])
     for i in range(n):
         t = fast[(i + 1) % n] - fast[i - 1]; t[1] = 0; t /= (np.linalg.norm(t) or 1)
         perp = np.array([t[2], 0.0, -t[0]])
@@ -974,28 +1337,65 @@ def wall_free(k, fast, reach=30.0):
             continue
         d = Wp[idx][:, [0, 2]] - fast[i][[0, 2]]
         lat = d @ perp[[0, 2]]; lon = d @ t[[0, 2]]
-        near = np.abs(lon) < 4.0
+        near = (np.abs(lon) < 4.0) & (vertical[idx,0] <= fast[i,1] + 1.8) & (vertical[idx,1] >= fast[i,1] - 0.5)
         pos = lat[near & (lat > 0)]; neg = -lat[near & (lat < 0)]
         if len(pos): out[i, 0] = min(reach, pos.min())
         if len(neg): out[i, 1] = min(reach, neg.min())
     return out
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ('src', 'tid', 'out', 'sref', 'sx'):
+        parser.add_argument(name)
+    parser.add_argument('--layout', help='AC layout folder; geometry uses root models_<layout>.ini (fallback models.ini)')
+    parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
+    parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
+    parser.add_argument('--street', action='store_true')
+    parser.add_argument('--max-meshes', type=int)
+    parser.add_argument('--skip-mesh')
+    parser.add_argument('--dump-aiw')
+    for name in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw'):
+        parser.add_argument('--' + name)
+    return parser.parse_args(argv)
+
+
 def main():
-    src, tid, out, sref, sx = sys.argv[1:6]
-    maxm = int(sys.argv[sys.argv.index('--max-meshes') + 1]) if '--max-meshes' in sys.argv else None
+    args = parse_args()
+    src, tid, out, sref, sx = args.src, args.tid, args.out, args.sref, args.sx
+    locations = source_locations(src, args.layout)
+    keys = surface_keys(locations['surfaces']) | {'SAND', 'GRASS'}
+    meta = source_metadata(locations['ui'], tid, args.layout)
+    meta.update({key: getattr(args, key) for key in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw')
+                 if getattr(args, key) is not None})
+    maxm = args.max_meshes
     root = os.path.join(out, tid, 'Automobilista 2')
-    k = load_all_kn5(src)
+    k = load_all_kn5(src, args.layout)
     dummies = {n: M for n, M in k['dummies']}
+    if args.ground_pits:
+        dummies = ground_pit_dummies(k, dummies, locations['surfaces'])
     print('kn5', len(k['meshes']), 'meshes', len(k['materials']), 'materials')
+    fast, extra = read_ai(os.path.join(locations['ai'], 'fast_lane.ai'))
+    pl = os.path.join(locations['ai'], 'pit_lane.ai')
+    pitlane = read_ai(pl)[0] if os.path.isfile(pl) else None
+    validate_ai_inputs(fast, extra, dummies, pitlane, args.require_complete_ai)
+    dummies = order_timing_sectors(fast, dummies)
+    pitc = None
+    if pitlane is not None and extra is not None:
+        pitc = build_pit(fast, extra, pitlane,
+                         sorted((n, M) for n, M in dummies.items() if re.fullmatch(r'AC_PIT_\d+', n)))
+    if args.require_complete_ai and pitc is None:
+        raise ValueError('Complete AI requires a usable pit branch outside the fast lane')
+    print('source metadata', json.dumps(meta, ensure_ascii=True, sort_keys=True))
+    print('AI source: finite=True extras=%s pit_branch=%s' % (extra is not None, pitc is not None))
 
     main_items, loose = [], {}
     TD = 'tracks' + BS + tid + BS
     # materials (only those used by exported meshes)
     meshes = [m for m in k['meshes'] if m['visible'] and m['renderable'] and not m['name'].lower().startswith('ac_')
               and len(m['idx']) and k['materials'][m['mat']]['name'].lower() not in DROP_MATS]
-    if '--skip-mesh' in sys.argv:    # debug: leave out meshes whose name matches this regex
-        rx = re.compile(sys.argv[sys.argv.index('--skip-mesh') + 1], re.I); meshes = [m for m in meshes if not rx.search(m['name'])]
+    if args.skip_mesh:    # debug: leave out meshes whose name matches this regex
+        rx = re.compile(args.skip_mesh, re.I); meshes = [m for m in meshes if not rx.search(m['name'])]
     if maxm:
         meshes.sort(key=lambda m: -len(m['idx'])); meshes = meshes[:maxm]
     used = sorted({m['mat'] for m in meshes})
@@ -1091,16 +1491,10 @@ def main():
     main_items.append(dict(name=TD + 'trackproperties.bin', data=open(os.path.join(SX, 'trackproperties.bin'), 'rb').read()))
     main_items.append(dict(name='cameras' + BS + 'cameraconfig.xml', data=open(os.path.join(sx, 'cameras', 'cameraconfig.xml'), 'rb').read()))
 
-    fast, extra = read_ai(os.path.join(src, 'ai', 'fast_lane.ai'))
-    pl = os.path.join(src, 'ai', 'pit_lane.ai')
-    pitc = None
-    if os.path.exists(pl) and extra is not None:
-        pitc = build_pit(fast, extra, read_ai(pl)[0],
-                         sorted((n, M) for n, M in dummies.items() if re.fullmatch(r'AC_PIT_\d+', n)))
     aextra = extra
     if extra is not None:                           # AI width = asphalt + kerbs (outer white line), not run-off
-        te = tarmac_edges(k, fast)                    # asphalt + kerbs (collision strip)
-        ta = tarmac_edges(k, fast, kerbs=False)       # asphalt only: the white lines
+        te = tarmac_edges(k, fast, keys=keys)                    # asphalt + kerbs (collision strip)
+        ta = tarmac_edges(k, fast, kerbs=False, keys=keys)       # asphalt only: the white lines
         aextra = extra.copy(); wide = extra.copy()
         for c in (0, 1):
             ok = te[:, c] > 1.0
@@ -1109,32 +1503,36 @@ def main():
             aextra[ok, 5 + c] = np.minimum(extra[ok, 5 + c], ta[ok, c] + 0.2)
     else:
         wide = None
-    wallf = wall_free(k, fast) if extra is not None else None
+    wallf = wall_free(k, fast, keys=keys) if extra is not None else None
     aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf)
-    if '--dump-aiw' in sys.argv: open(sys.argv[sys.argv.index('--dump-aiw') + 1], 'w', encoding='latin1', newline='').write(aiw)
+    if args.dump_aiw: open(args.dump_aiw, 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()
-    cini = os.path.join(src, 'data', 'cameras.ini')
+    cini = locations['cameras']
     if os.path.exists(cini) and read_ac_cameras(cini):
-        camx, ncam, narea = build_cameras(camtpl, read_ac_cameras(cini), fast, info['W'], info['half'], tid)
+        camx, ncam, narea = build_cameras(camtpl, read_ac_cameras(cini), fast, info['camera_centres'], info['camera_half'], tid)
         print('cameras', ncam, 'areas', narea)
         main_items.append(dict(name='cameras' + BS + tid + '.xml', data=camx.encode('utf-8')))
     else:
         main_items.append(dict(name='cameras' + BS + tid + '.xml', data=camtpl.encode('utf-8')))
     print('aiw lap %.1f m, sectors %.1f / %.1f, %d waypoints, est lap %.1f s, %d corners' % (info['lap'], info['s1'], info['s2'], info['nw'], info['tdry'], info['ncorners']))
     trd = build_trd(open(os.path.join(SX, 'sochi_ams.trd'), encoding='utf-8').read(), tid, info['lap'],
-                    {f: sys.argv[sys.argv.index('--' + f) + 1] for f in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw') if '--' + f in sys.argv}).encode('utf-8')
+                    meta, info['starts'], info['pits']).encode('utf-8')
     main_items.append(dict(name=TD + tid + '.trd', data=trd))
     loose[tid + '.trd'] = trd
 
     pak = os.path.join(root, 'Pakfiles', 'Tracks'); os.makedirs(pak, exist_ok=True)
     print('main pak bytes', write_bff(os.path.join(pak, tid + '.bff'), tid, main_items))
 
-    csm, ncsm, cst = build_csm(k, os.path.join(src, 'data', 'surfaces.ini'))
+    csm, ncsm, cst = build_csm(k, locations['surfaces'])
     print('csm', ncsm, 'meshes', len(csm), 'bytes', dict(cst))
-    plt = [m['pos'][m['idx'].reshape(-1, 3)] for m in k['meshes'] if re.match(r'^\d+pit(lane)?', m['name'], re.I) and len(m['idx'])]
+    plt = [m['pos'][m['idx'].reshape(-1, 3)] for m in k['meshes']
+           if surface_kind(match_surface(m['name'], keys)) in ('PIT', 'PITLANE') and len(m['idx'])]
     sf_ac = (dummies['AC_TIME_0_L'][3, :3] + dummies['AC_TIME_0_R'][3, :3]) * 0.5
-    gcl, ngcl, zone = build_gcl(fast, extra, sf_ac, pitc, np.vstack(plt) if plt else None)
+    limiter_zone = pit_light_zone(pitc, k['meshes']) if pitc is not None and not plt else None
+    gcl, ngcl, zone = build_gcl(fast, extra, sf_ac, pitc, np.vstack(plt) if plt else None, limiter_zone=limiter_zone)
+    if args.require_complete_ai and zone is None:
+        raise ValueError('Complete AI requires a limiter zone from PITLANE geometry or explicit pitlightin/out anchors')
     print('gcl', ngcl, 'tris', len(gcl), 'bytes, pit limiter zone (pit pts)', zone)
     trig = build_triggers(open(os.path.join(SX, 'physics', 'triggers.xml'), encoding='utf-8').read(), dummies)
     phys = [dict(name='tracks' + BS + '_data' + BS + 'aiw' + BS + tid + '.aiw', data=aiw.encode('latin1')),
@@ -1151,7 +1549,7 @@ def main():
     tdir = os.path.join(root, 'Tracks', tid); os.makedirs(tdir, exist_ok=True)
     for n, d in loose.items():
         open(os.path.join(tdir, n), 'wb').write(d)
-    ui = os.path.join(src, 'ui')
+    ui = locations['ui']
     for sub, png, size in (('tracklogos', 'outline.png', (512, 512)), ('trackmaps', 'outline.png', (1000, 1000)),
                            ('trackmaps3d', 'outline.png', (1000, 1000)), ('trackphotos', 'preview.png', (1920, 1080))):
         g = os.path.join(root, 'GUI', sub); os.makedirs(g, exist_ok=True)

@@ -129,7 +129,7 @@ def write_csm(meshes):
 
 
 # ------------------------------------------------------------------ verification helpers
-def ray_down_tree(m, x, z):
+def ray_down_tree(m, x, z, max_y=float("inf")):
     """highest hit of a vertical ray using the R-tree (exercises the same data the engine traverses)."""
     best = None
     stack = list(range(m.nroot))
@@ -143,18 +143,18 @@ def ray_down_tree(m, x, z):
                 st = ptrs[j] >> 5; nb = ((ptrs[j] >> 1) & 15) + 1
                 for t in range(st, st + nb):
                     y = _hit(P[m.tris[t]], x, z)
-                    if y is not None and (best is None or y > best):
+                    if y is not None and y <= max_y and (best is None or y > best):
                         best = y
             else:
                 stack.append(ptrs[j] // PAGE_BYTES)
     return best
 
 
-def ray_down_brute(P, T, x, z):
+def ray_down_brute(P, T, x, z, max_y=float("inf")):
     best = None
     for t in T:
         y = _hit(P[t], x, z)
-        if y is not None and (best is None or y > best):
+        if y is not None and y <= max_y and (best is None or y > best):
             best = y
     return best
 

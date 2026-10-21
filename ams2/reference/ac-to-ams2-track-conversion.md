@@ -10,8 +10,9 @@ Legenda: **[V]** verificado por byte/parse; **[H]** hipótese, só o jogo confir
 Gerar um mod de pista para o Automobilista 2 (engine Madness) a partir de uma pista do AC (`.kn5` + `ai\fast_lane.ai`), no formato que o **AMS2CM** instala (`.7z` com raiz `Automobilista 2\`).
 
 - Não existe ferramenta oficial. Os formatos `.bff`, `.meb`, `.bmt`, `.csm`, `.gcl` e `.aiw` foram descobertos por engenharia reversa **somente leitura** em um mod comunitário já funcional (Sochi, feito com Open Madness Track Tools 0.1.0) e em paks oficiais. Nada do jogo foi modificado.
-- Python 3 com numpy e Pillow. Rodar sempre com `python -I`.
+- Python 3 com numpy, scipy e Pillow. Rodar sempre com `python -I`.
 - Nunca testar com iRacing aberto. O teste no jogo só acontece quando o usuário avisar.
+- Enquanto o usuário joga iRacing, não usar automação de interface nem alterar foco. Instale pelo backend do AMS2CM, preservando sua sessão.
 
 ## 1. Entradas
 
@@ -115,3 +116,43 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 **AIWs originais (224 pistas):** cabeçalho quase sempre igual ao nosso (Late Braking 1.0 em 226/230, Anticipation 40/80/160, GrooveWidth 6-7.5, UseLineBlendSpeed 1); só Montreal 1.15, Kyalami 1.05 e Nordschleife 1.02 diferem. Os valores que realmente variam são por waypoint: `wp_galpha` = 0.45 em curvas (R < ~200 m) e 0 nas retas; `wp_groove_lat` ~ -0.27*`wp_path`; `wp_event=(1,2,1.05-1.2)` em ~12% dos waypoints (multiplicador, função não confirmada). Implementado galpha/groove no conversor.
 **AMS2, por piloto/carro** (UserData\CustomAIDrivers\<classe>.xml, fórum Reiza): `race_skill` (faixa estreita por carro), `line_skill` (aderência à fastline, v1.6.9.95+), `avoidance_of_mistakes`, `weight/power/drag_scalar` 0.9-1.1 etc. Não existe parâmetro de frenagem: a frenagem vem da fastline + marcadores + física do carro. `Vehicles\physics\aeroreductiontableai.mrdf` = tabela de redução de arrasto/aero p/ IA (draft).
 **iRacing:** sem documentação técnica de treino; patch notes citam "lições" da IA (ovais, velocidade ideal por posição, recuperar ao trocar de linha, só levantar o pé em ovais) e rosters com Skill, Aggression, Optimism, Smoothness por piloto; skill ~60-120% varia por carro/pista. Conclusão: ambos separam *linha por pista* de *perfil de piloto por carro*; o nosso conversor só controla o primeiro.
+
+## Lote e layouts (21/10/2026)
+
+Leia o guia inteiro e confira no AMS2CM o que já está instalado antes de gerar novos IDs. Preserve os pacotes existentes; entradas AC, extrações, saídas, logs e arquivos `.7z` ficam fora do Git.
+
+```
+python -I convert.py <source> <id> <output> <sochi_ref> <x_sochi> --layout <layout> --require-complete-ai --dump-aiw <diagnostic.aiw>
+python -I check_out.py "<output>/<id>/Automobilista 2" <id> --require-pits --json <validation.json>
+python -I batch_convert.py <manifest.json> [--only <id>] [--force]
+python -I tests_track_conversion.py
+python -I tests_validation.py
+python -I tests_wall_clearance.py
+```
+
+No Windows, passe caminhos com espaços entre aspas. `--layout` seleciona `models_<layout>.ini`, AI e câmeras daquele layout e `ui/<layout>`; apenas `surfaces.ini` pode ser compartilhado com a raiz. Nenhum KN5 declarado pode faltar. Os metadados e a capacidade vêm da fonte e dos dummies reais, com overrides explícitos quando necessários.
+
+O manifesto JSON de `batch_convert.py` contém `work`, `packages`, `reference`, `extracted` e `tracks` (cada entrada: `id`, `name`, `source`, `layout` opcional, `meta` opcional e `street` opcional). A execução sequencial registra fases em `status.json`, logs separados e um relatório JSON independente por layout. O cache inclui scripts, entradas e templates; `--force` regenera a conversão. Somente uma validação explicitamente aprovada permite criar o pacote. Cada arquivo é criado do zero, testado com `7z t` e substituído atomicamente no volume de destino.
+
+Use `--ground-pits` (ou `ground_pits: true` na entrada do manifesto) somente quando os dummies de boxes precisarem de ajuste vertical. Reprojeta todos os `AC_PIT` no asfalto da fonte + 0,3 m, preservando XZ e orientação, e recusa piso ausente/ambíguo ou correção acima de 3 m. Foi necessário nos layouts Magny-Cours 1992/National; conferir a colisão gerada depois continua obrigatório.
+
+Correções do pipeline nesta etapa:
+- Chaves de superfícies completas, incluindo dígitos e `_`, com correspondência pelo maior prefixo; a mesma regra serve a colisão, limites laterais, paredes e pits.
+- Cada seção MODEL conserva sua própria instância, posição e yaw em graus, inclusive quando repete o mesmo KN5. A ordem yaw/posição foi conferida com o [TrackMapRenderer do Content Manager](https://github.com/gro-ove/actools/blob/master/AcTools.Render/Kn5SpecificSpecial/TrackMapRenderer.cs); pitch/roll não zero é recusado até confirmar a convenção completa.
+- Suavização da largura nunca alarga um gargalo local. O otimizador exige convergência, valores finitos, limites respeitados e resíduo KKT pequeno; usa L-BFGS-B quando o método inicial não converge.
+- Distância lateral de paredes considera a faixa vertical do triângulo: paredes de um piso inferior/superior não fecham artificialmente a linha sobre/sob uma ponte. Paredes altas que atravessam a altura do carro continuam contando.
+- Suavização da colisão usa vizinhança 3D, conservando os níveis de pontes/túneis. `PAVEMENT` recebe física de asfalto mesmo quando `IS_VALID_TRACK=0`: validade da volta e material físico são conceitos distintos; os limites continuam definidos no GCL.
+- Áreas das câmeras usam o centro e a largura efetivamente escritos na AIW, cobrindo também corredores assimétricos; a checagem exige cobertura do centro e da linha de corrida.
+- Portais TIME_1/TIME_2 invertidos na fonte são renumerados pela ordem ao longo da fast lane, conservando as posições. Portais coincidentes são recusados; AIW e verificador exigem os três setores na ordem de circulação. Abu Dhabi 2021 precisou dessa renumeração.
+- Detecção do ramo dos boxes usa o lado correto das larguras AC. Quando a largura da fonte inclui o apron inteiro, o `pit_lane.ai` explícito, ancorado nos `AC_PIT`, pode identificar o ramo pela distância à linha principal. A fonte e as distâncias aparecem no log.
+- Zona do limitador usa geometria PIT/PITLANE; sem ela, aceita somente pares explícitos `pitlightin`/`pitlightout` cuja projeção no ramo seja próxima, não ambígua e ordenada. Baku usa essa segunda origem. A posição exata do acionamento ainda deve ser confirmada no jogo.
+- KN5 classe 3 é lido respeitando os vértices de 76 bytes e a tabela de bones. Decorações ficam estáticas na pose da fonte, sem portar animações do AC. Formato conferido no [Kn5Writer do AcTools](https://github.com/gro-ove/actools/blob/master/AcTools/Kn5File/Kn5Writer.cs).
+- `check_out.py` retorna código diferente de zero diante de falha. Confere a linha real (`wp_pos + wp_path * wp_perp`), inclusive ramo de pit e posições dos boxes, contra colisão; exige superfície dirigível, continuidade, limites/GCL, topologia dos boxes e cobertura por câmeras efetivamente referenciadas. Raios respeitam a altura do carro para não confundir pontes com o piso inferior.
+
+Um pacote aprovado por esses leitores continua exigindo o checklist no jogo da seção 3: carregamento, condução, IA entrando/parando/saindo dos boxes, limitador, setores e câmeras. A aprovação estrutural não comprova esses comportamentos ao vivo.
+
+Adaptação da fonte Hungaroring 1988 deste lote: a tabela original declara `KEY=1ASPHALT`, sem qualquer mesh correspondente; as malhas físicas são `1roadtrack*`, com materiais ROAD/ROADX/ROAD2X. Na cópia extraída foi corrigida apenas essa chave para `ROAD`, conservando os parâmetros físicos. O `.7z` original permanece intacto; hashes e alteração ficam no registro privado `source-repairs.json` junto do lote.
+
+### Instalação sem interface
+
+O [CLI oficial do AMS2CM 0.3.0](https://github.com/OpenSimTools/AMS2CM/blob/v0.3.0/src/CLI/Program.cs) chama `Config.Load(args)`, `Init.CreateModManager(config)` e `InstallEnabledMods()`. Esse mesmo fluxo pode ser executado por um pequeno console sem janela usando `AMS2CM.Core.dll` e as dependências da **mesma versão instalada**. Não automatize a GUI quando o usuário estiver jogando. Registre logs, mantenha backup prévio de `Mods/state.json` e confira depois os IDs instalados, arquivos no jogo e hashes dos pacotes. O retorno do backend não substitui essas verificações nem o teste ao vivo.
