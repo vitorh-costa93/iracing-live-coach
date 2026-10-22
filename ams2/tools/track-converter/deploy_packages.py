@@ -37,3 +37,23 @@ assert 'HEADLESS_INSTALL_COMPLETED' in log.read_text(errors='replace'), 'backend
 after = json.loads(state.read_text(encoding='utf-8-sig'))['Install']['Mods']
 missing = [p.name for p in pkgs if p.name not in after]
 print('installed', len(pkgs), 'archives; not registered:', missing)
+
+# AMS2CM appends every mod .trd to tracklist.lst even when the base game already lists it (DLC tracks unlocked by files),
+# which shows each of them twice in the menu: drop the AMS2CM-block lines already present in the base part (case-insensitive).
+tl = game / 'Tracks/_data/tracklist.lst'
+lines = tl.read_text(encoding='utf-8-sig').splitlines()
+try:
+    b, e = lines.index('### BEGIN AMS2CM'), lines.index('### END AMS2CM')
+except ValueError:
+    b = e = None
+if b is not None:
+    base = {l.strip().lower() for l in lines[:b] + lines[e + 1:]}
+    seen, kept = set(), []
+    for l in lines[b + 1:e]:
+        k = l.strip().lower()
+        if k in base or k in seen:
+            continue
+        seen.add(k); kept.append(l)
+    out = lines[:b + 1] + kept + lines[e:]
+    tl.write_text('\r\n'.join(out) + '\r\n', encoding='utf-8')
+    print('tracklist: removed', len(lines) - len(out), 'duplicate entries')

@@ -1498,7 +1498,7 @@ def main():
     locations = source_locations(src, args.layout)
     keys = surface_keys(locations['surfaces']) | {'SAND', 'GRASS'}
     meta = source_metadata(locations['ui'], tid, args.layout)
-    meta.update({key: getattr(args, key) for key in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw')
+    meta.update({key: getattr(args, key) for key in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw', 'group')
                  if getattr(args, key) is not None})
     maxm = args.max_meshes
     root = os.path.join(out, tid, 'Automobilista 2')
