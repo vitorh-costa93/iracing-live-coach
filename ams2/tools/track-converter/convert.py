@@ -255,6 +255,47 @@ def line_curvature(L):
     return k, ds
 
 
+def corner_runs(L, radius=250.0, gap=8):
+    """Index runs [a, b] (inclusive) of a closed line where it turns tighter than `radius`; same-direction runs closer than `gap`
+    points are merged.  Returns (runs, curvature)."""
+    k, _ = line_curvature(L)
+    big = np.abs(k) > 1.0 / radius
+    runs, i, n = [], 0, len(k)
+    while i < n:
+        if big[i]:
+            j = i
+            while j + 1 < n and big[j + 1]:
+                j += 1
+            if runs and i - runs[-1][1] < gap and np.sign(k[i]) == np.sign(k[runs[-1][1]]):
+                runs[-1][1] = j
+            else:
+                runs.append([i, j])
+            i = j + 1
+        else:
+            i += 1
+    return runs, k
+
+
+def apex_stats(L):
+    """Length-weighted mean position of the tightest point inside each corner (0 = turn-in, 1 = exit); real drivers sit near 0.6."""
+    runs, k = corner_runs(L)
+    runs = [r for r in runs if r[1] - r[0] >= 6]
+    if not runs:
+        return 0.6
+    fr = [(int(np.argmax(np.abs(k[a:b + 1]))) / max(b - a, 1), b - a) for a, b in runs]
+    return float(sum(f * w for f, w in fr) / sum(w for _, w in fr))
+
+
+def entry_mask(L, lead=12):
+    """1 on the approach and first half of every corner (the part a late apex has to keep straight), smoothed."""
+    runs, _ = corner_runs(L)
+    m = np.zeros(len(L))
+    for a, b in runs:
+        for i in range(a - lead, a + (b - a) // 2 + 1):
+            m[i % len(L)] = 1.0
+    return m
+
+
 def speed_profile(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
     k, ds = line_curvature(L)
     v = np.minimum(vmax, np.sqrt(alat / np.maximum(np.abs(k), 1e-4)))
@@ -448,17 +489,28 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     if np.any(lo > hi):
         raise ValueError('Infeasible AI clearance corridor at %d waypoints' % np.count_nonzero(lo > hi))
     d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5), lo, hi)
-    # later apex / fuller exit: penalise curvature where the car brakes and turns in (weight on the braking zones), keep the best lap
+    # later apex / fuller exit: penalise curvature on the approach and first half of each corner (and where the car brakes) so the
+    # line opens up, touches the kerb later and carries more speed; accept the later apex while the lap estimate stays within 1.5 %.
     v0, _ = speed_profile(W + d[:, None] * pw)
     bf = smooth((np.roll(v0, -1) < v0 - 1e-3).astype(float), 9)
     best = est_laptime(W + d[:, None] * pw)
-    for beta in (2.0, 4.0, 8.0):
-        d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * bf), 5), lo, hi)
-        t2 = est_laptime(W + d2[:, None] * pw)
-        if t2 < best - 0.02: best, d = t2, d2
+    limit = best * 1.015
+    apex = apex_stats(W + d[:, None] * pw)
+    for beta in (2.0, 4.0, 8.0, 16.0, 32.0, 64.0):
+        em = smooth(entry_mask(W + d[:, None] * pw), 9)
+        try:
+            d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * np.maximum(bf, em)), 5), lo, hi)
+        except ValueError as e:                  # optional bias only: a trial that does not converge is skipped
+            print('    beta %g skipped: %s' % (beta, str(e)[:60]))
+            continue
+        t2, a2 = est_laptime(W + d2[:, None] * pw), apex_stats(W + d2[:, None] * pw)
+        print('    beta %g: lap %.2f apex %.2f' % (beta, t2, a2))
+        if t2 < best - 0.02 or (t2 < limit and a2 > apex + 0.01):
+            best, d, apex = min(best, t2), d2, max(apex, a2)
+    print('  racing line: mean apex position %.2f' % apex)
     t_ac, t_opt = est_laptime(W + sh[:, None] * pw), est_laptime(W + d[:, None] * pw)
     print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
-    if t_opt < t_ac:
+    if t_opt < t_ac * 1.015:
         sh = d
     if not np.isfinite([t_ac, t_opt]).all() or not np.isfinite(sh).all():
         raise ValueError('Non-finite racing line/lap estimate')
@@ -697,7 +749,8 @@ def surf_id(key, bad, props=None):
     if 'turf' in wav:
         return ASTROTURF_ID
     if (p['FRICTION'] or 0) >= 0.9 and (p['DIRT_ADDITIVE'] or 0) <= 0.05:
-        return RUNOFF_ROAD_ID
+        # painted/paved run-off: id 46 drives like gravel in AMS2, so it takes road grip (off-track stays the .gcl strip)
+        return 0
     return GRASS_ID
 
 
@@ -1014,14 +1067,14 @@ def build_trd(template, tid, lap, meta=None, starts=0, pits=0):
     capacity = min(starts, pits)
     if m.get('pitboxes'):
         capacity = min(capacity, int(m['pitboxes']))
-    description = '%s - AC kn5 conversion' % m['short']
+    description = '%s - converted from Assetto Corsa' % m['short']
     if m.get('version'):
         description += ' (source version %s)' % m['version']
     vals = {'Name': tid, 'TrackName': m['name'], 'ShortTrackName': m['short'],
             'ScenegraphFile': tid + '.sgx', 'Year': m['year'], 'Length': str(int(round(lap))), 'Location': m['location'],
-            'Country': m['country'], 'Track Group': '%s (AC conversion)' % m['short'],
+            'Country': m['country'], 'Track Group': m.get('group') or m['short'],
             'Track Description': description, 'Is Clockwise': m['cw'],
-            'Track_Location': m['city'], 'Track_Variation': m['variation'], 'Track_Longitude': m['lon'],
+            'Track_Location': m.get('group') or m['city'], 'Track_Variation': m['variation'] or m['short'].replace(' ', '_'), 'Track_Longitude': m['lon'],
             'Track_Latitude': m['lat'], 'Track_Altitude': m['altitude'], 'Track_TimeZone': m['tz'], 'Number Of Turns': m['turns'],
             'Max AI participants': str(max(0, capacity - 1)), 'Drs Zone 1 Detection Number': '0',
             'Drs Zone 2 Detection Number': '0', 'Order Override': '1'}
@@ -1039,10 +1092,13 @@ def build_trd(template, tid, lap, meta=None, starts=0, pits=0):
 
 
 # ---------------------------------------------------------------- GUI dds
-def gui_dds(png, size):
-    from PIL import Image
+def gui_dds(png, size, cover=False):
+    from PIL import Image, ImageOps
     import io
     im = Image.open(png).convert('RGBA')
+    if cover:
+        # photos fill the frame (upscaled and centre-cropped) instead of staying a small thumbnail
+        im = ImageOps.fit(im, size, Image.LANCZOS)
     im.thumbnail(size)
     canvas = Image.new('RGBA', size, (0, 0, 0, 0)); canvas.paste(im, ((size[0] - im.width) // 2, (size[1] - im.height) // 2))
     b = io.BytesIO()
@@ -1431,7 +1487,7 @@ def parse_args(argv=None):
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
-    for name in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw'):
+    for name in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw', 'group'):
         parser.add_argument('--' + name)
     return parser.parse_args(argv)
 
@@ -1490,6 +1546,8 @@ def main():
         names.add(nm); mt['mname'] = nm
         tex = tex_of(mt)
         texname = (san(os.path.splitext(tex)[0]) + '.DDS') if tex else 'WHITE.DDS'
+        if texname[:1].isdigit():
+            texname = 'T' + texname            # like meshes/materials, AMS2 drops resources whose name starts with a digit
         mt['texname'] = texname
         mtx = make_mtx(mt, tid, texname)
         loose[nm + '.mtx'] = mtx.encode('utf-8')
@@ -1630,7 +1688,7 @@ def main():
     for sub, png, size in (('tracklogos', 'outline.png', (512, 512)), ('trackmaps', 'outline.png', (1000, 1000)),
                            ('trackmaps3d', 'outline.png', (1000, 1000)), ('trackphotos', 'preview.png', (1920, 1080))):
         g = os.path.join(root, 'GUI', sub); os.makedirs(g, exist_ok=True)
-        open(os.path.join(g, tid + '.dds'), 'wb').write(gui_dds(os.path.join(ui, png), size))
+        open(os.path.join(g, tid + '.dds'), 'wb').write(gui_dds(os.path.join(ui, png), size, cover=(sub == 'trackphotos')))
     open(os.path.join(out, tid, 'debug_aiw.txt'), 'w').write(aiw[:4000])
     print('done ->', root)
 

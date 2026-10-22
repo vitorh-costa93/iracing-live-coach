@@ -148,7 +148,7 @@ class SurfaceMatchingTests(unittest.TestCase):
                            '[SURFACE_5]\nKEY=PITLANE\nFRICTION=0.95\nIS_VALID_TRACK=0\n')
             bad, props = convert.invalid_keys(str(ini)), convert.surface_props(str(ini))
         self.assertEqual(props['SAND']['WAV'], 'sand.wav')
-        expected = {'OFFTRACK': 46, 'PEN-GRS-A': 7, 'CARPET': 32, 'SAND': 8, 'OUT': 7, 'PITLANE': 0, '1GRAVEL': 8, 'GRASS': 7}
+        expected = {'OFFTRACK': 0, 'PEN-GRS-A': 7, 'CARPET': 32, 'SAND': 8, 'OUT': 7, 'PITLANE': 0, '1GRAVEL': 8, 'GRASS': 7}
         for key, sid in expected.items():
             self.assertEqual(convert.surf_id(key, bad, props), sid, key)
         self.assertEqual(convert.surf_id('OFFTRACK', {'OFFTRACK'}), 7)      # no physics known: previous default
