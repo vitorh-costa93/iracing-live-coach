@@ -590,9 +590,12 @@ def build_pit(fast, fextra, pitlane, pit_dummies, span=5.0, merge=4.0):
 
 
 # ---------------------------------------------------------------- collision (.csm)
-# AC surface KEY -> AMS2 csm surface id.  Ids taken from Sochi (OMTT) correlated with its render meshes [H]:
-# 0 asphalt/pit, 7 grass, 10 rumble/kerb, 12 tyre wall, 13 concrete wall, 14 armco.  No gravel id known -> sand = 7.
-SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'ROAD': 0, 'PIT': 0, 'PAVEMENT': 0, 'ROFF': 7, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 7, 'GRASS': 7, 'WALL': 13}
+# AC surface KEY -> AMS2 csm surface id.  The csm id is the shared-memory terrain enum (Type#11 in the game's
+# Support/SharedMemory/.../SharedMemory.h): 0 ROAD, 7 GRASS, 8 GRAVEL, 10 RUMBLE_STRIPS, 12 TYREWALLS, 13 CEMENTWALLS,
+# 14 GUARDRAILS, 32 ASTROTURF, 46 RUNOFF_ROAD [V: Sochi render materials + official track geometry, see the format spec].
+# AC "SAND" is the gravel trap of circuit tracks (sand.wav), so it maps to GRAVEL.
+SURF_ID = {'TARMAC': 0, 'PITLANE': 0, 'ROAD': 0, 'PIT': 0, 'PAVEMENT': 0, 'ROFF': 7, 'KERB': 10, 'CARPET': 7, 'OFFTRACK': 7, 'SAND': 8, 'GRAVEL': 8, 'GRASS': 7, 'WALL': 13}
+GRASS_ID, GRAVEL_ID, ASTROTURF_ID, RUNOFF_ROAD_ID = 7, 8, 32, 46
 
 
 def surface_keys(ini_path):
@@ -600,10 +603,10 @@ def surface_keys(ini_path):
     if os.path.exists(ini_path):
         with open(ini_path, encoding='latin1') as stream:
             for line in stream:
-                mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
+                mm = re.match(r'\s*KEY\s*=\s*((\w+)[\w-]*)', line)
                 if mm:
-                    keys.add(mm.group(1).upper())
-    return keys | {'WALL'}                 # WALL is an AC built-in surface
+                    keys.update((mm.group(1).upper(), mm.group(2).upper()))   # full key (PEN-CNC-A) + legacy word prefix
+    return keys | {'WALL', 'ROAD'}         # WALL and ROAD are AC built-in surfaces (Monaco declares only 1ASPHALT but names meshes 1ROAD_phy*)
 
 
 def invalid_keys(ini_path):
@@ -611,22 +614,64 @@ def invalid_keys(ini_path):
     if os.path.exists(ini_path):
         with open(ini_path, encoding='latin1') as stream:
             for line in stream:
-                mm = re.match(r'\s*KEY\s*=\s*(\w+)', line)
+                mm = re.match(r'\s*KEY\s*=\s*((\w+)[\w-]*)', line)
                 if mm:
-                    cur = mm.group(1).upper()
+                    cur = (mm.group(1).upper(), mm.group(2).upper())
                 mm = re.match(r'\s*IS_VALID_TRACK\s*=\s*(\d+)', line)
                 if mm and cur and int(mm.group(1)) == 0:
-                    bad.add(cur)
+                    bad.update(cur)
     return bad
 
 
-def surf_id(key, bad):
+def surface_props(ini_path):
+    """KEY -> {FRICTION, DIRT_ADDITIVE, WAV} from surfaces.ini (missing numbers -> None)."""
+    props = {}; cur = None
+    if os.path.exists(ini_path):
+        with open(ini_path, encoding='latin1') as stream:
+            for line in stream:
+                line = line.split(';')[0].strip()
+                if line.startswith('['):
+                    cur = None
+                    continue
+                mm = re.match(r'(\w+)\s*=\s*(.*)', line)
+                if not mm:
+                    continue
+                name, value = mm.group(1).upper(), mm.group(2).strip()
+                if name == 'KEY':
+                    cur = props.setdefault(value.upper(), {'FRICTION': None, 'DIRT_ADDITIVE': None, 'WAV': ''})
+                elif cur is not None and name in ('FRICTION', 'DIRT_ADDITIVE'):
+                    try:
+                        cur[name] = float(value)
+                    except ValueError:
+                        pass
+                elif cur is not None and name == 'WAV':
+                    cur['WAV'] = value.lower()
+    return props
+
+
+def surf_id(key, bad, props=None):
     semantic = surface_kind(key)
     if semantic in SURF_ID:
-        return SURF_ID[semantic]
-    if semantic in ('CURB', 'RUMBLE'):
+        sid = SURF_ID[semantic]
+    elif semantic in ('CURB', 'RUMBLE'):
         return 10
-    return 7 if key in bad else 0
+    else:
+        sid = GRASS_ID if key in bad else 0
+    p = (props or {}).get(key)
+    if sid != GRASS_ID or semantic == 'GRASS' or not p:
+        return sid
+    # off-track surface: the AC physics say what it is (grass.wav / sand.wav / extraturf.wav, or a paved runoff
+    # with asphalt-like friction and no dirt) instead of defaulting everything to grass.
+    wav = p['WAV']
+    if 'grass' in wav:
+        return GRASS_ID
+    if 'sand' in wav or 'gravel' in wav:
+        return GRAVEL_ID
+    if 'turf' in wav:
+        return ASTROTURF_ID
+    if (p['FRICTION'] or 0) >= 0.9 and (p['DIRT_ADDITIVE'] or 0) <= 0.05:
+        return RUNOFF_ROAD_ID
+    return GRASS_ID
 
 
 def surface_kind(key):
@@ -698,13 +743,14 @@ def build_csm(k, ini_path):
     from csm_write import write_csm
     keys = surface_keys(ini_path) | {'SAND', 'GRASS'}
     bad = invalid_keys(ini_path)
+    props = surface_props(ini_path)
     items = []; stats = collections.Counter()
     for m in k['meshes']:
         key = match_surface(m['name'], keys)
         if key is None or not len(m['idx']):
             continue
         low = m['name'].lower()
-        sid = surf_id(key, bad)
+        sid = surf_id(key, bad, props)
         if surface_kind(key) == 'WALL':
             sid = 12 if 'tyre' in low or 'tire' in low else 14 if ('armco' in low or 'rail' in low or 'barrier' in low) else 13
         P = (m['pos'] * MIRROR).astype(np.float32)
@@ -1230,7 +1276,7 @@ def load_all_kn5(src, layout=None):
     return out
 
 
-def ground_pit_dummies(k, dummies, ini_path, clearance=0.3, max_correction=3.0):
+def ground_pit_dummies(k, dummies, ini_path, clearance=0.3, max_correction=3.5):
     """Explicitly ground every AC_PIT on source asphalt collision; refuse absent/stacked floors.
     Only Y is corrected. Source XZ and every orientation component remain unchanged.
     """
