@@ -51,7 +51,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
     public void Configure(WidgetSettings settings)
     {
         _cfg = settings;
-        _opt = GpxOptions.From(settings, _mode.Id == "classic");
+        _opt = GpxOptions.From(settings, _mode.Id == "classic") with { MixedCaseNames = _mode.Id is "digital2004" or "digital2010" };
         _sky.HoldSeconds = _opt.SkySeconds;
         _split.HoldSeconds = _opt.SplitSeconds;
     }

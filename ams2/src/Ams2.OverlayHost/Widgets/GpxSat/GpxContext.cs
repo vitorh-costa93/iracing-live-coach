@@ -32,6 +32,8 @@ public sealed record GpxOptions
     public double PageSeconds { get; init; } = 6;
     public bool OriginalFonts { get; init; } = true;
     public bool Stretch { get; init; }
+    /// <summary>Digital 2004/2010: nomes em caixa mista ("V. Costa") como nas transmissoes; Classic/Digital mantem "V. COSTA".</summary>
+    public bool MixedCaseNames { get; init; }
     /// <summary>Previa (--png): forca uma tela pelo nome ("time", "fl", "stR"...). Fora do catalogo.</summary>
     public string? PreviewScreen { get; init; }
     /// <summary>Previa: ms desde o inicio da animacao (negativo = assentada).</summary>
@@ -89,7 +91,7 @@ public sealed class GpxContext
     public bool ShowAll => Options.ShowMode == "all";
     public bool ShowSky => Options.ShowMode is "all" or "sky";
 
-    public string Name(CarSnapshot car) => Settings.Name(car, GpxFormat.DriverName(car.Name));
+    public string Name(CarSnapshot car) => Settings.Name(car, GpxFormat.DriverName(car.Name, Options.MixedCaseNames));
     public static string Team(CarSnapshot car) => BroadcastUi.Team(car);
 
     /// <summary>Posicao exibida: corrida = posicao do jogo; fora dela = posicao na tabela de melhores voltas.</summary>

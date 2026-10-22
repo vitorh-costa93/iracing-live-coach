@@ -73,7 +73,9 @@ public sealed unsafe class FontLibrary : IDisposable
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in OriginalDirectories)
             foreach (var f in System.IO.Directory.GetFiles(dir, "*.ttf"))
-                if (seen.Add(Path.GetFileName(f))) files.Add(f);
+                // ATL2004.ttf (monoespacada, 1200/2048) traz o MESMO nome "Digital"/"Standard"/700 de digital2004.ttf: no DirectWrite as duas
+                // faces colidem e a monoespacada vence (letras largas). Nenhum modo usa a ATLDigital, entao fica de fora.
+                if (!Path.GetFileName(f).Equals("ATL2004.ttf", StringComparison.OrdinalIgnoreCase) && seen.Add(Path.GetFileName(f))) files.Add(f);
         if (files.Count == 0) return;
 
         ComPtr<IDWriteFactory3> factory3 = default;

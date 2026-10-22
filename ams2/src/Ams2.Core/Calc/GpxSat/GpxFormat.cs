@@ -72,12 +72,13 @@ public static class GpxFormat
     public static string Intermediate(int n) => string.Create(Inv, $"Intermediate {n}");
 
     /// <summary>Nome do piloto como no GPx ("A. SENNA"): inicial do primeiro nome + sobrenome em maiusculas.</summary>
-    public static string DriverName(string name)
+    public static string DriverName(string name, bool mixedCase = false)
     {
         var parts = (name ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return "";
-        if (parts.Length == 1) return parts[0].ToUpperInvariant();
-        return (char.ToUpperInvariant(parts[0][0]) + ". " + string.Join(' ', parts[1..])).ToUpperInvariant();
+        if (parts.Length == 1) return mixedCase ? parts[0] : parts[0].ToUpperInvariant();
+        string s = char.ToUpperInvariant(parts[0][0]) + ". " + string.Join(' ', parts[1..]);
+        return mixedCase ? s : s.ToUpperInvariant();
     }
 
     /// <summary>Nome curto da sessao na caixa preta do time left.</summary>

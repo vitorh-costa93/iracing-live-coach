@@ -49,6 +49,13 @@ public class GpxSatTests
         Assert.Equal(0, GpxAnimator.Tri(0)); Assert.Equal(50, GpxAnimator.Tri(50)); Assert.Equal(10, GpxAnimator.Tri(90));
     }
 
+    [Fact]
+    public void DriverName_mixed_case_for_2004_and_2012_only()
+    {
+        Assert.Equal("V. COSTA", GpxFormat.DriverName("Vitor Costa"));
+        Assert.Equal("V. Costa", GpxFormat.DriverName("vitor Costa", true));
+    }
+
     [Theory]
     [InlineData(83.456, "1:23.456")]
     [InlineData(9.5, "9.500")]
