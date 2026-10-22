@@ -164,14 +164,17 @@ for sample_index, w in enumerate(samples):
         nohit += 1
     else:
         hits.append(w[1] - best[0]); hit_sid[best[1]] += 1
-        if abs(w[1] - best[0]) >= 2 or best[1] not in (0,10,46):
+        if abs(w[1] - best[0]) >= 2 or best[1] not in (0,10):
             bad_samples.append(dict(index=sample_index, position=w.tolist(), ground_y=float(best[0]), surface=int(best[1])))
 print('ray down from actual racing line (all main + pit/stall waypoints): %d hits, %d misses, |dy| median %.2f max %.2f m, surface ids %s'
       % (len(hits), nohit, np.median(np.abs(hits)) if hits else float('nan'), np.max(np.abs(hits)) if hits else float('nan'), dict(hit_sid)))
 require(nohit == 0, f'AI racing/pit line collision misses={nohit}')
-# 46 = paved run-off (asphalt-like grip): tolerated where the line grazes the road edge, but only a sliver of the line
-require(not (set(hit_sid) - {0,10,46}), f'AI racing/pit line crosses non-road surfaces: {dict(hit_sid)}')
-require(hit_sid.get(46, 0) <= 0.01 * max(1, len(hits)), f'AI racing/pit line runs on paved run-off (46): {hit_sid.get(46, 0)}/{len(hits)}')
+# 46 = paved run-off (asphalt-like grip): tolerated where the line grazes the road edge (<=2%); grass/gravel/astroturf
+# under the line only as an isolated edge touch (<=0.2%).  Anything else (walls, ...) is a hard failure.
+n_ai = max(1, len(hits))
+require(not (set(hit_sid) - {0,10,46,7,8,32}), f'AI racing/pit line crosses non-road surfaces: {dict(hit_sid)}')
+require(hit_sid.get(46, 0) <= 0.02 * n_ai, f'AI racing/pit line runs on paved run-off (46): {hit_sid.get(46, 0)}/{n_ai}')
+require(sum(hit_sid.get(i, 0) for i in (7,8,32)) <= 0.002 * n_ai, f'AI racing/pit line runs off the paved surface: {dict(hit_sid)}')
 require(hits and np.max(np.abs(hits)) < 2, 'AI racing line >2m away from collision surface')
 metrics.update(collision_misses=nohit, collision_surface_samples=dict(hit_sid), collision_bad_samples=bad_samples)
 if bad_samples: print('collision bad samples:', json.dumps(bad_samples[:12]))

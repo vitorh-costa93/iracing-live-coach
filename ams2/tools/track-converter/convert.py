@@ -172,6 +172,33 @@ def read_ai(path):
     return pts[:, :3], extra
 
 
+def heal_side_widths(extra, max_gap=12):
+    """Some AC fast_lane.ai have a short run of zero/NaN side widths (Bahrain 24pit: 6 points, right side).  Interpolate runs of
+    at most `max_gap` points (circular) between valid neighbours; longer gaps are left for validate_ai_inputs to reject."""
+    if extra is None:
+        return extra
+    extra = extra.copy(); n = len(extra)
+    for col in (5, 6):
+        v = extra[:, col]; bad = ~np.isfinite(v) | (v <= 0)
+        if not bad.any() or bad.all():
+            continue
+        good = np.where(~bad)[0]; idx = np.where(bad)[0]
+        runs = np.split(idx, np.where(np.diff(idx) > 1)[0] + 1)
+        if len(runs) > 1 and runs[0][0] == 0 and runs[-1][-1] == n - 1:
+            runs = [np.concatenate((runs[-1], runs[0]))] + runs[1:-1]
+        for run in runs:
+            if len(run) > max_gap:
+                continue
+            a = good[good < run[0]]; b = good[good > run[-1]]
+            lo = a[-1] if len(a) else good[-1] - n; hi = b[0] if len(b) else good[0] + n
+            for k in run:
+                kk = k if k >= lo else k + n
+                t = (kk - lo) / (hi - lo)
+                extra[k, col] = v[lo % n] * (1 - t) + v[hi % n] * t
+            print('  AI widths healed: col %d, %d points around index %d' % (col, len(run), run[0]))
+    return extra
+
+
 def validate_ai_inputs(fast, extra, dummies, pitlane=None, require_complete=False):
     """Fail before writing a package when source AI cannot support its advertised features."""
     missing = ['AC_TIME_%d_%s' % (i, side) for i in range(3) for side in ('L', 'R')
@@ -1425,6 +1452,7 @@ def main():
         dummies = ground_pit_dummies(k, dummies, locations['surfaces'])
     print('kn5', len(k['meshes']), 'meshes', len(k['materials']), 'materials')
     fast, extra = read_ai(os.path.join(locations['ai'], 'fast_lane.ai'))
+    extra = heal_side_widths(extra)
     pl = os.path.join(locations['ai'], 'pit_lane.ai')
     pitlane = read_ai(pl)[0] if os.path.isfile(pl) else None
     validate_ai_inputs(fast, extra, dummies, pitlane, args.require_complete_ai)
