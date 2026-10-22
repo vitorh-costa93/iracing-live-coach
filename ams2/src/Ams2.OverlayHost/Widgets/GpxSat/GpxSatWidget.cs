@@ -20,7 +20,11 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
 {
     public string Id => "gpxsat";
     public (float Width, float Height) DesignSize => (1920, 1080);
-    public bool HighFrequency => true;   // animacao a 20 ms por passo
+    // Janela de tela inteira (1920x1080): a animacao anda a 20 ms por passo (50/s), entao o ritmo de 60 Hz basta. Como HF ela disputava
+    // o vblank e a composicao do DWM com Inputs/Radar o tempo todo (as telas ficam minutos paradas) e deixava o grafico/radar lentos.
+    public bool HighFrequency => false;
+    bool _animating;
+    public double LowRateHz => _animating ? 60 : 30;
 
     IGpxMode _mode = GpxModeRegistry.Create(null);
     WidgetSettings _cfg = new() { Id = "gpxsat" };
@@ -86,8 +90,9 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         var bySlot = screens.GroupBy(x => x.Slot).Select(g => g.OrderByDescending(x => x.Priority).First()).ToList();
         foreach (var gone in _anims.Keys.Where(k => bySlot.All(x => x.Slot != k)).ToList()) _anims.Remove(gone);
         bool mapVisible = !ctx.Previewing && _map.Ready && (_cfg.Option("trackMap") == "always" || (_cfg.Option("trackMap") is null or "auto") && s.FlagColour is 6 or 7);
-        if (bySlot.Count == 0 && !mapVisible) return;
+        if (bySlot.Count == 0 && !mapVisible) { _animating = false; return; }
 
+        _animating = false;
         _surface.Begin(canvas, DesignSize.Width, DesignSize.Height, _mode.Spec, _opt.Stretch, _opt.OriginalFonts, _cfg.TextScale ?? 1f);
         try
         {
@@ -100,6 +105,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
                 a.Update(sc.Key, sc.Page, sc.Groups, sc.Anim, m.Now);
                 if (ctx.Previewing) a.StartAt(m.Now - (_opt.PreviewMs >= 0 ? _opt.PreviewMs / 1000 : a.SettleSeconds + 0.001));
                 DrawScreen(sc, a, ctx.G, m.Now);
+                if (!a.AllSettled(m.Now) || a.Logo(m.Now, _opt.ShowLogo).Phase == GpxLogoPhase.Flip) _animating = true;
             }
         }
         finally { _surface.End(canvas); }

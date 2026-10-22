@@ -14,6 +14,8 @@ public interface IWidget
     void UseTheme(Theme.Theme theme) { }
     /// <summary>true = o host redesenha este widget na taxa do monitor (sincronizado ao vblank) em vez de 60 Hz fixos.</summary>
     bool HighFrequency => false;
+    /// <summary>Taxa maxima (Hz) no ritmo de 60 Hz (widgets nao HighFrequency): conteudo estatico pode pedir menos para poupar GPU/DWM do jogo.</summary>
+    double LowRateHz => 60;
     /// <summary>true = nada a desenhar agora (p.ex. radar sem carro por perto): o host nao precisa do ritmo de vblank para este widget (60 Hz basta para limpar a janela).</summary>
     bool IsIdle(OverlayModel model) => false;
     /// <summary>true = a janela fica aberta mesmo com a regra de visibilidade fechada (jogador fora do carro), p.ex. opcao "always" do Live Speed.</summary>

@@ -57,6 +57,14 @@ internal sealed class WidgetWindow : IDisposable
     public bool HighFrequency => Visible && _widget.HighFrequency;
     /// <summary>Widget de alta frequencia sem nada para desenhar neste quadro (volta ao ritmo de 60 Hz).</summary>
     public bool IsIdle(OverlayModel model) => _widget.IsIdle(model);
+    double _lastLow = double.NegativeInfinity;
+    /// <summary>Ritmo de 60 Hz: o widget pode pedir menos (<see cref="IWidget.LowRateHz"/>); 2 ms de folga como o acumulador do host.</summary>
+    public bool LowDue(double now)
+    {
+        double rate = _widget.LowRateHz;
+        if (rate >= 59.5 || now - _lastLow + 0.002 >= 1.0 / rate) { _lastLow = now; return true; }
+        return false;
+    }
 
     /// <summary>Disparado quando o usuário termina de arrastar ou muda a escala no modo de edição (já com as novas Settings).</summary>
     public event Action<WidgetWindow>? UserChanged;

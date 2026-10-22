@@ -400,7 +400,7 @@ internal sealed class HostController : IDisposable
                 if (!w.Visible) continue;
                 anyVisible = true;
                 if (w.HighFrequency && !w.IsIdle(model)) _hfWindows.Add(w);
-                else if (lowDue) w.Render(model);
+                else if (lowDue && w.LowDue(now)) w.Render(model);
             }
             if (_hfWindows.Count > 0)
             {
