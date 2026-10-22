@@ -432,6 +432,185 @@ def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None, fal
     return d
 
 
+def racing_line_mincurv(W, pw, lo, hi, sh):
+    """Previous (22/10) racing line: minimum curvature + entry/braking curvature weights.  Kept for comparison."""
+    def smooth(a, n=5):
+        k = np.ones(n) / n; return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
+    d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5), lo, hi)
+    # later apex / fuller exit: penalise curvature on the approach and first half of each corner (and where the car brakes) so the
+    # line opens up, touches the kerb later and carries more speed; accept the later apex while the lap estimate stays within 1.5 %.
+    v0, _ = speed_profile(W + d[:, None] * pw)
+    bf = smooth((np.roll(v0, -1) < v0 - 1e-3).astype(float), 9)
+    best = est_laptime(W + d[:, None] * pw)
+    limit = best * 1.015
+    apex = apex_stats(W + d[:, None] * pw)
+    for beta in (2.0, 4.0, 8.0, 16.0, 32.0, 64.0):
+        em = smooth(entry_mask(W + d[:, None] * pw), 9)
+        try:
+            d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * np.maximum(bf, em)), 5), lo, hi)
+        except ValueError as e:                  # optional bias only: a trial that does not converge is skipped
+            print('    beta %g skipped: %s' % (beta, str(e)[:60]))
+            continue
+        t2, a2 = est_laptime(W + d2[:, None] * pw), apex_stats(W + d2[:, None] * pw)
+        print('    beta %g: lap %.2f apex %.2f' % (beta, t2, a2))
+        if t2 < best - 0.02 or (t2 < limit and a2 > apex + 0.01):
+            best, d, apex = min(best, t2), d2, max(apex, a2)
+    print('  racing line: mean apex position %.2f' % apex)
+    t_ac, t_opt = est_laptime(W + sh[:, None] * pw), est_laptime(W + d[:, None] * pw)
+    print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
+    if t_opt < t_ac * 1.015:
+        sh = d
+    if not np.isfinite([t_ac, t_opt]).all() or not np.isfinite(sh).all():
+        raise ValueError('Non-finite racing line/lap estimate')
+    return sh
+
+
+def split_compound(runs, k, dip=0.88, min_sep=5, tight_r=60.0):
+    """Split a same-direction corner run at its curvature valley when it holds two peaks and one of them is tighter than
+    `tight_r` (Bahrain T9 sweeper -> T10 hairpin); fast double-apex corners (T12, R ~120 both peaks) stay whole."""
+    ak, n, out = np.abs(k), len(k), []
+    for a, b in runs:
+        stack = [(a, b)]
+        while stack:
+            a_, b_ = stack.pop()
+            v = ak[np.arange(a_, b_ + 1) % n]; best = None
+            for m in range(min_sep, len(v) - min_sep):
+                pl, pr = v[:m].max(), v[m + 1:].max()
+                if v[m] < dip * min(pl, pr) and max(pl, pr) > 1.0 / tight_r and (best is None or v[m] < v[best]):
+                    best = m
+            if best is None:
+                out.append((a_, b_))
+            else:
+                stack += [(a_, a_ + best - 1), (a_ + best + 1, b_)]
+    return sorted(out)
+
+
+def racing_line_oio(W, pw, lo, hi, d0, apex_frac=0.6, tol_in=0.3, tol_out=0.4, min_turn=20.0):
+    """Classic out-in-out line: for every corner of the reference line (heading change >= `min_turn` deg, compound corners
+    split) pin the car to the outer edge just before turn-in, to the inner edge (kerb) at a late apex (`apex_frac` of the
+    heading change) and to the outer edge again on the exit, then solve minimum curvature between the pins.  Pins sit within
+    `tol_*` metres of the corridor bound (which already keeps LINE_MARGIN/KERB_USE/WALL_CLEAR), never outside it."""
+    n = len(W)
+    base = min_curvature_offsets(W, pw, lo, hi, np.clip(d0, lo, hi))
+    Ws = np.c_[[np.convolve(np.r_[W[-3:, j], W[:, j], W[:3, j]], np.ones(7) / 7, 'valid') for j in range(3)]].T
+    runs, k = corner_runs(Ws, radius=250.0, gap=2)
+    _, ds = line_curvature(Ws)
+    t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t[:, 1] = 0; t /= np.linalg.norm(t, axis=1)[:, None] + 1e-12
+    dturn = ((np.roll(t, -1, 0) - np.roll(t, 1, 0)) * pw).sum(1)         # > 0: corner turns toward +pw
+    info = []
+    for a, b in split_compound(runs, k):
+        idx = np.arange(a, b + 1)
+        turn = np.cumsum(np.abs(k[idx % n] * ds[idx % n]))
+        if np.degrees(turn[-1]) < min_turn:
+            continue
+        info.append((a, b, 1.0 if dturn[idx % n].sum() > 0 else -1.0, int(idx[np.searchsorted(turn, apex_frac * turn[-1])])))
+    if not info:
+        return base
+    req, pri = np.zeros(n), np.zeros(n)        # side +-1 (9 = conflict), priority 2 apex / 1 entry-exit
+
+    def ask(i, side, p):
+        i %= n
+        if p > pri[i]:
+            req[i], pri[i] = side, p
+        elif p == pri[i] and req[i] != side:
+            req[i] = 9
+    outer = lambda i, s: (base[i % n] - lo[i % n]) if s > 0 else (hi[i % n] - base[i % n])
+    for c, (a, b, s, ia) in enumerate(info):
+        pa, ps = (info[c - 1][3] - (n if c == 0 else 0)), info[c - 1][2]
+        na = info[c + 1][3] if c + 1 < len(info) else info[0][3] + n
+        for j in (ia - 1, ia, ia + 1):
+            ask(j, s, 2)
+        # entry: outer edge in the 30 m before turn-in (the point the free line already gets closest), >= 30 m after the
+        # previous apex; skipped in a short S-bend where the previous apex is the set-up
+        lo_e, hi_e = max(a - 6, pa + 6), min(a + max(1, (ia - a) // 4), ia - 6)
+        if not (ps != s and ia - pa < 30) and lo_e <= hi_e:
+            je = min(range(lo_e, hi_e + 1), key=lambda i: outer(i, s))
+            ask(je - 1, -s, 1); ask(je, -s, 1)
+        lo_x, hi_x = ia + max(1, (b - ia) // 2), min(b + 12, na - 6)
+        if lo_x <= hi_x:
+            jx = min(range(lo_x, hi_x + 1), key=lambda i: outer(i, s))
+            ask(jx, -s, 1); ask(jx + 1, -s, 1)
+    req[req == 9] = 0
+    tol = np.where(pri == 2, tol_in, tol_out)
+    hi_s = np.minimum.reduce([np.roll(hi, q) for q in (-2, -1, 0, 1, 2)])   # conservative edge: no zig-zag on raster noise
+    lo_s = np.maximum.reduce([np.roll(lo, q) for q in (-2, -1, 0, 1, 2)])
+    lo2, hi2 = lo.copy(), hi.copy()
+    p_, m_ = req > 0, req < 0
+    lo2[p_] = np.maximum(lo[p_], np.minimum(hi_s[p_], hi[p_]) - tol[p_])
+    hi2[m_] = np.minimum(hi[m_], np.maximum(lo_s[m_], lo[m_]) + tol[m_])
+    lo2 = np.minimum(lo2, hi2)
+    print('  racing line: out-in-out over %d corners, %d pinned waypoints' % (len(info), int((req != 0).sum())))
+    return min_curvature_offsets(W, pw, lo2, hi2, np.clip(base, lo2, hi2))
+
+
+def racing_line_fastest(W, pw, lo, hi, sh):
+    """21/10 racing line (Hermanos Rodriguez / Istanbul, good AI in game): minimum curvature anchored to the AC fast_lane inside
+    the safety corridor, braking-zone curvature weights tried but kept only when the lap estimate improves, and the result kept
+    only when it beats the AC line.  No apex/width bias: a slower-but-later apex lets the AI brake later and hit kerbs.
+    Fallback: if the base solve fails, the AC line clipped to the corridor."""
+    def smooth(a, n=5):
+        k = np.ones(n) / n; return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
+    ac = np.clip(sh, lo, hi)
+    try:
+        d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, ac), 5), lo, hi)
+    except ValueError as e:
+        print('  racing line: optimisation failed (%s), keeping the AC line' % str(e)[:60])
+        return ac
+    v0, _ = speed_profile(W + d[:, None] * pw)
+    bf = smooth((np.roll(v0, -1) < v0 - 1e-3).astype(float), 9)
+    best = est_laptime(W + d[:, None] * pw)
+    for beta in (2.0, 4.0, 8.0):
+        try:
+            d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * bf), 5), lo, hi)
+        except ValueError as e:
+            print('    beta %g skipped: %s' % (beta, str(e)[:60]))
+            continue
+        t2 = est_laptime(W + d2[:, None] * pw)
+        print('    beta %g: lap %.2f' % (beta, t2))
+        if t2 < best - 0.02:
+            best, d = t2, d2
+    t_ac = est_laptime(W + ac[:, None] * pw)
+    print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' %
+          (t_ac, best, np.abs(d - ac).mean(), np.abs(d - ac).max()))
+    if not np.isfinite([t_ac, best]).all() or not np.isfinite(d).all():
+        raise ValueError('Non-finite racing line/lap estimate')
+    return d if best < t_ac else ac
+
+
+# Racing-line strategy: 'fastest' (default, 21/10 logic), 'late_apex' (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio'
+# (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain, rejected 22/10).  Opt in with --racing-line NAME.
+RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'fastest')
+
+
+def racing_line(W, pw, lo, hi, sh, mode=None):
+    mode = mode or RACING_LINE
+    if mode == 'fastest':
+        return racing_line_fastest(W, pw, lo, hi, sh)
+    if mode == 'late_apex':
+        return racing_line_mincurv(W, pw, lo, hi, sh)
+    if mode != 'oio':
+        raise ValueError('Unknown racing-line mode: %s' % mode)
+    return racing_line_oio_checked(W, pw, lo, hi, sh)
+
+
+def racing_line_oio_checked(W, pw, lo, hi, sh):
+    """Out-in-out line (outer edge -> inner kerb at a late apex -> outer edge) when its lap estimate stays within 2 % of the
+    22/10 minimum-curvature line; otherwise (or if its solve fails) the 22/10 line."""
+    old = racing_line_mincurv(W, pw, lo, hi, sh)
+    try:
+        d = racing_line_oio(W, pw, lo, hi, sh)
+    except ValueError as e:
+        print('  racing line: out-in-out skipped: %s' % str(e)[:80])
+        return old
+    t_old, t_new = est_laptime(W + old[:, None] * pw), est_laptime(W + d[:, None] * pw)
+    print('  racing line: est lap %.2f s (min curvature) -> %.2f s (out-in-out), apex %.2f -> %.2f' %
+          (t_old, t_new, apex_stats(W + old[:, None] * pw), apex_stats(W + d[:, None] * pw)))
+    if not np.isfinite(d).all() or not np.isfinite(t_new) or t_new > t_old * 1.02:
+        print('  racing line: out-in-out rejected, keeping minimum curvature')
+        return old
+    return d
+
+
 def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
     if pit is not None:
@@ -488,32 +667,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
         lo = np.maximum(lo, -(wall_l - WALL_CLEAR)); hi = np.minimum(hi, wall_r - WALL_CLEAR)
     if np.any(lo > hi):
         raise ValueError('Infeasible AI clearance corridor at %d waypoints' % np.count_nonzero(lo > hi))
-    d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5), lo, hi)
-    # later apex / fuller exit: penalise curvature on the approach and first half of each corner (and where the car brakes) so the
-    # line opens up, touches the kerb later and carries more speed; accept the later apex while the lap estimate stays within 1.5 %.
-    v0, _ = speed_profile(W + d[:, None] * pw)
-    bf = smooth((np.roll(v0, -1) < v0 - 1e-3).astype(float), 9)
-    best = est_laptime(W + d[:, None] * pw)
-    limit = best * 1.015
-    apex = apex_stats(W + d[:, None] * pw)
-    for beta in (2.0, 4.0, 8.0, 16.0, 32.0, 64.0):
-        em = smooth(entry_mask(W + d[:, None] * pw), 9)
-        try:
-            d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * np.maximum(bf, em)), 5), lo, hi)
-        except ValueError as e:                  # optional bias only: a trial that does not converge is skipped
-            print('    beta %g skipped: %s' % (beta, str(e)[:60]))
-            continue
-        t2, a2 = est_laptime(W + d2[:, None] * pw), apex_stats(W + d2[:, None] * pw)
-        print('    beta %g: lap %.2f apex %.2f' % (beta, t2, a2))
-        if t2 < best - 0.02 or (t2 < limit and a2 > apex + 0.01):
-            best, d, apex = min(best, t2), d2, max(apex, a2)
-    print('  racing line: mean apex position %.2f' % apex)
-    t_ac, t_opt = est_laptime(W + sh[:, None] * pw), est_laptime(W + d[:, None] * pw)
-    print('  racing line: est lap %.2f s (AC line) -> %.2f s (optimised), mean |shift| %.2f m, max %.2f m' % (t_ac, t_opt, np.abs(d - sh).mean(), np.abs(d - sh).max()))
-    if t_opt < t_ac * 1.015:
-        sh = d
-    if not np.isfinite([t_ac, t_opt]).all() or not np.isfinite(sh).all():
-        raise ValueError('Non-finite racing line/lap estimate')
+    sh = racing_line(W, pw, lo, hi, sh)
     margin_l, margin_r = ex_l + sh, ex_r - sh
     print('  AI margins: left min=%.3f right min=%.3f finite=True' % (margin_l.min(), margin_r.min()))
     if np.any(sh < lo - 1e-6) or np.any(sh > hi + 1e-6):
@@ -1194,6 +1348,12 @@ def opaque_alpha(data):
     return bytes(out + body)
 
 
+def compact_vertices(idx):
+    """Return (kept original vertex ids in ascending order, indices remapped onto them); order of triangles is kept."""
+    keep, remap = np.unique(np.asarray(idx), return_inverse=True)
+    return keep, remap.ravel().astype(np.int64)
+
+
 def is_asphalt(mt):
     n = mt['name'].upper()
     return (detail_kind(mt) == 'road' or (mt['shader'] == 'ksMultilayer' and not n.startswith('KERB'))
@@ -1440,6 +1600,35 @@ def tarmac_edges(k, fast, res=0.5, reach=30.0, kerbs=True, keys=None):
     return out
 
 
+def kerb_start(k, fast, res=0.25, reach=30.0, keys=None):
+    """Distance from each fast_lane point to the first kerb collision triangle (CSM id 10: KERB/CURB/RUMBLE keys) on the col-5
+    (+perp) and col-6 (-perp) sides; `reach` if none.  AC road meshes often run on under the kerbs (Bahrain T1/T2/T9-10/T14:
+    the asphalt raster put the line centre 0.1-0.5 m onto the kerb collision), so the AI corridor must stop where the kerb starts."""
+    from PIL import Image, ImageDraw
+    keys = set(SURF_ID) | {'CURB', 'RUMBLE'} if keys is None else keys
+    x0 = fast[:, 0].min() - reach - 10; z0 = fast[:, 2].min() - reach - 10
+    w = int((fast[:, 0].max() + reach + 10 - x0) / res); h = int((fast[:, 2].max() + reach + 10 - z0) / res)
+    img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
+    for m in k['meshes']:
+        if surface_kind(match_surface(m['name'], keys)) not in ('KERB', 'CURB', 'RUMBLE') or not len(m['idx']):
+            continue
+        P = m['pos']
+        for a, b, c in m['idx'].reshape(-1, 3):
+            dr.polygon([((P[j, 0] - x0) / res, (P[j, 2] - z0) / res) for j in (a, b, c)], fill=255)
+    A = np.asarray(img) > 0
+    out = np.full((len(fast), 2), reach)
+    steps = np.arange(0.0, reach, res)
+    for i in range(len(fast)):
+        t = fast[(i + 1) % len(fast)] - fast[i - 1]; t[1] = 0; t /= (np.linalg.norm(t) or 1)
+        perp = np.array([t[2], 0.0, -t[0]])
+        for c, sg in enumerate((1, -1)):
+            q = fast[i][None, :] + sg * steps[:, None] * perp[None, :]
+            hit = A[np.clip(((q[:, 2] - z0) / res).astype(int), 0, h - 1), np.clip(((q[:, 0] - x0) / res).astype(int), 0, w - 1)]
+            if hit.any():
+                out[i, c] = max(steps[np.argmax(hit)] - res, 0.0)       # conservative: one raster cell before the kerb
+    return out
+
+
 def wall_free(k, fast, reach=30.0, keys=None):
     from scipy.spatial import cKDTree
     """Free lateral distance from each fast_lane point to the nearest collision wall on the col-5 (+perp) and col-6 (-perp) sides
@@ -1484,6 +1673,7 @@ def parse_args(argv=None):
     parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
     parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
     parser.add_argument('--street', action='store_true')
+    parser.add_argument('--racing-line', choices=('fastest', 'late_apex', 'oio'), default='fastest')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
@@ -1590,13 +1780,18 @@ def main():
         T = (m['tan'] * MIRROR); T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-9)
         B = np.cross(N, T)
         idx = m['idx'].reshape(-1, 3)[:, [0, 2, 1]].ravel()        # mirrored -> reverse winding
-        mn, mx = P.min(0), P.max(0); c = (mn + mx) * np.float32(0.5); r = float(np.linalg.norm(mx - c))
-        bounds = tuple(map(float, c)) + (r,) + tuple(map(float, mn)) + tuple(map(float, mx))
         mat = 'TRACKS' + BS + tid.upper() + BS + k['materials'][m['mat']]['mname'] + '.MTX'
         mt_ = k['materials'][m['mat']]
         dk = detail_kind(mt_)
         uv = (m['uv'] * metric_uv_scale(m['pos'], m['uv'], m['idx'], DETAIL_TILE_M[dk]) if dk
               else m['uv'] * np.array(UV_MULTILAYER) if tex_of(mt_) == TARMAC_TILE else m['uv'])
+        # kn5 meshes can carry vertices no triangle references (Shanghai: 2.7M of 13M); AMS2 loads every
+        # vertex, and an oversized track exhausts the load budget so later textures fall back to the white
+        # placeholder. Keep only referenced vertices (lossless).
+        keep, idx = compact_vertices(idx)
+        P, N, T, B, uv = P[keep], N[keep], T[keep], B[keep], uv[keep]
+        mn, mx = P.min(0), P.max(0); c = (mn + mx) * np.float32(0.5); r = float(np.linalg.norm(mx - c))
+        bounds = tuple(map(float, c)) + (r,) + tuple(map(float, mn)) + tuple(map(float, mx))
         data = write_meb(nm, P.tolist(), N.astype(np.float32).tolist(), uv.astype(np.float32).tolist(),
                          [(mat, idx.tolist())], tangents=T.astype(np.float32).tolist(),
                          binormals=B.astype(np.float32).tolist(), bounds=[bounds, bounds])
@@ -1630,6 +1825,9 @@ def main():
     if extra is not None:                           # AI width = asphalt + kerbs (outer white line), not run-off
         te = tarmac_edges(k, fast, keys=keys)                    # asphalt + kerbs (collision strip)
         ta = tarmac_edges(k, fast, kerbs=False, keys=keys)       # asphalt only: the white lines
+        kb = kerb_start(k, fast, keys=keys)                      # ... ending where a kerb collision starts on top of it
+        print('  AI edges: kerb collision inside the asphalt raster at %d/%d side samples' % (int(((kb > 1.0) & (kb < ta)).sum()), kb.size))
+        ta = np.where((kb > 1.0) & (kb < ta), kb, ta)
         aextra = extra.copy(); wide = extra.copy()
         for c in (0, 1):
             ok = te[:, c] > 1.0

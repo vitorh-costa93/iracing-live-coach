@@ -104,6 +104,16 @@ TRD_KEYS = ('Name', 'TrackName', 'ShortTrackName', 'ScenegraphFile', 'Year', 'Le
             'Max AI participants', 'Drs Zone 1 Detection Number', 'Drs Zone 2 Detection Number', 'Order Override', 'Version')
 
 
+class VertexCompactionTests(unittest.TestCase):
+    def test_drops_unreferenced_vertices_and_keeps_triangles(self):
+        pos = np.arange(30, dtype=np.float32).reshape(10, 3)
+        idx = np.array([7, 2, 9, 9, 2, 4])
+        keep, remap = convert.compact_vertices(idx)
+        self.assertEqual(keep.tolist(), [2, 4, 7, 9])
+        np.testing.assert_array_equal(pos[keep][remap], pos[idx])
+        self.assertLess(int(remap.max()), len(keep))
+
+
 class MetadataTests(unittest.TestCase):
     def test_trd_capacity_metadata_escape_and_no_bahrain_defaults(self):
         template = '<root>' + ''.join('<p name="%s" data="old" />' % key for key in TRD_KEYS) + '</root>'
@@ -452,6 +462,67 @@ class AIValidationTests(unittest.TestCase):
         self.assertLessEqual(np.max(np.abs(projected)), 1e-5)
         original_d2 = np.roll(points, 1, axis=0) - 2 * points + np.roll(points, -1, axis=0)
         self.assertLess(np.sum(d2_line ** 2) + convert.OPT_REG ** 2 * np.sum(offsets ** 2), np.sum(original_d2 ** 2))
+
+    def test_out_in_out_line_uses_full_width_in_every_corner(self):
+        # rounded square, 200 m straights, R 30 m corners, 5 m spacing, corridor +-6 m
+        pts, R, S = [], 30.0, 200.0
+        centres = [(S / 2, S / 2), (-S / 2, S / 2), (-S / 2, -S / 2), (S / 2, -S / 2)]
+        for q, (cx, cz) in enumerate(centres):
+            a0 = q * np.pi / 2
+            p0 = np.array([cx + R * np.cos(a0), cz + R * np.sin(a0)]); d = np.array([-np.sin(a0), np.cos(a0)])
+            pts += [p0 - d * (S - t) for t in np.arange(0, S, 5.0)]
+            pts += [np.array([cx + R * np.cos(a0 + u / R), cz + R * np.sin(a0 + u / R)]) for u in np.arange(0, R * np.pi / 2, 5.0)]
+        W = np.array([[p[0], 0.0, p[1]] for p in pts])
+        t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t /= np.linalg.norm(t, axis=1)[:, None]
+        pw = np.c_[t[:, 2], np.zeros(len(W)), -t[:, 0]]
+        lo, hi = -6.0 * np.ones(len(W)), 6.0 * np.ones(len(W))
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = convert.racing_line_oio(W, pw, lo, hi, np.zeros(len(W)))
+        self.assertTrue(np.all((d >= lo - 1e-9) & (d <= hi + 1e-9)))
+        inner = np.sign(np.sum(pw * -W, axis=1))                 # toward the centre of the square
+        n_arc, n_str = int(np.ceil(R * np.pi / 2 / 5.0)), int(S / 5.0)
+        for q in range(4):
+            a = q * (n_str + n_arc) + n_str; b = a + n_arc - 1
+            din = lambda i: 6.0 - inner[i % len(W)] * d[i % len(W)]
+            dout = lambda i: 6.0 + inner[i % len(W)] * d[i % len(W)]
+            self.assertLessEqual(min(din(i) for i in range(a, b + 1)), 0.31)          # inner kerb at the apex
+            self.assertLessEqual(min(dout(i) for i in range(a - 12, a + 1)), 0.41)    # outer edge before turn-in
+            self.assertLessEqual(min(dout(i) for i in range(b, b + 13)), 0.41)        # outer edge on the exit
+            apex = min(range(a, b + 1), key=din)
+            self.assertGreaterEqual((apex - a) / max(b - a, 1), 0.4)                    # late apex
+
+    def test_kerb_start_stops_the_corridor_where_kerb_collision_begins(self):
+        fast = np.array([[0.0, 0.0, z] for z in np.arange(0.0, 100.0, 5.0)])
+        quad = lambda x0, x1: dict(pos=np.array([[x0, 0, -10], [x1, 0, -10], [x1, 0, 110], [x0, 0, 110]], float),
+                                   idx=np.array([0, 1, 2, 0, 2, 3]))
+        k = dict(meshes=[dict(name='1KERB_IN', **quad(-4.0, -3.0)), dict(name='1ROAD', **quad(-8.0, 8.0))])
+        kb = convert.kerb_start(k, fast, keys={'KERB', 'ROAD'})[1:-1]      # open test line: end tangents wrap around
+        # perp of a +z line is (+1, 0, 0) for col 5 and -x for col 6: kerb at 3 m on the -x side only, conservative by one cell
+        self.assertTrue(np.all(kb[:, 0] == 30.0))
+        self.assertTrue(np.all((kb[:, 1] >= 2.5) & (kb[:, 1] <= 3.0)))
+
+    def test_default_racing_line_is_fastest_and_never_slower_than_source(self):
+        pts, R, S = [], 30.0, 200.0
+        centres = [(S / 2, S / 2), (-S / 2, S / 2), (-S / 2, -S / 2), (S / 2, -S / 2)]
+        for q, (cx, cz) in enumerate(centres):
+            a0 = q * np.pi / 2
+            p0 = np.array([cx + R * np.cos(a0), cz + R * np.sin(a0)]); d = np.array([-np.sin(a0), np.cos(a0)])
+            pts += [p0 - d * (S - t) for t in np.arange(0, S, 5.0)]
+            pts += [np.array([cx + R * np.cos(a0 + u / R), cz + R * np.sin(a0 + u / R)]) for u in np.arange(0, R * np.pi / 2, 5.0)]
+        W = np.array([[p[0], 0.0, p[1]] for p in pts])
+        t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t /= np.linalg.norm(t, axis=1)[:, None]
+        pw = np.c_[t[:, 2], np.zeros(len(W)), -t[:, 0]]
+        lo, hi, ac = -6.0 * np.ones(len(W)), 6.0 * np.ones(len(W)), np.zeros(len(W))
+        self.assertEqual(convert.RACING_LINE, 'fastest')
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = convert.racing_line(W, pw, lo, hi, ac)
+            late = convert.racing_line(W, pw, lo, hi, ac, mode='late_apex')
+        self.assertTrue(np.all((d >= lo - 1e-9) & (d <= hi + 1e-9)))
+        lap = lambda x: convert.est_laptime(W + x[:, None] * pw)
+        self.assertLessEqual(lap(d), lap(ac) + 1e-9)      # optimised line only kept when it beats the source line
+        self.assertLessEqual(lap(d), lap(late) + 1e-6)
+        with self.assertRaisesRegex(ValueError, 'Unknown racing-line mode'):
+            convert.racing_line(W, pw, lo, hi, ac, mode='bogus')
 
     def test_real_fallback_iteration_limit_remains_an_error(self):
         with contextlib.redirect_stdout(io.StringIO()):
