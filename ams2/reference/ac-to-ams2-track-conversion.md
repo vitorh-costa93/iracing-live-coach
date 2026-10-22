@@ -58,7 +58,7 @@ Dentro do script, na ordem:
 6. **Câmeras de TV**: de `data\cameras.ini`. Uma `CTrackingCamData` por câmera do AC (20) e uma `CSphereArea` por waypoint (1071, raio máx(6.5, meia largura + 2)); cada waypoint pertence à câmera cujo [in,out) o contém. FOV/DOF do AC não são carregados.
 7. **Triggers**: caixas de largada/chegada e fim dos setores 1 e 2 entre os dummies `AC_TIME_n_L/R`, usando os CRCs do Sochi.
 8. **Paks**: `bahrain_ac.bff` (meshes, materiais, texturas, sgx/enx/trd, câmeras), `bahrain_ac_Physics.bff` (aiw, csm, triggers, gcl, object_properties) e `AUT/SNO/SPR/SUM/WIN_bahrain_ac.bff` copiados dos sazonais do Sochi, renomeados.
-9. **CSM**: meshes do kn5 com nome `<dígitos><CHAVE>` e CHAVE em `surfaces.ini`; espelhados, com vértices duplicados fundidos. Ids [H]: TARMAC/PITLANE 0, KERB 10, CARPET/OFFTRACK/SAND/GRASS 7 (não há id de cascalho), WALL 13 (12 se pneu, 14 se armco/rail/barrier). 158 meshes, 197 mil triângulos.
+9. **CSM**: meshes do kn5 com nome `<dígitos><CHAVE>` e CHAVE em `surfaces.ini`; espelhados, com vértices duplicados fundidos. Ids [H]: TARMAC/PITLANE 0, KERB 10, WALL 13 (12 se pneu, 14 se armco/rail/barrier). Fora de pista: o id vem da física do `surfaces.ini` (WAV/FRICTION/DIRT_ADDITIVE) e é o enum TERRAIN do shared memory: grama 7, cascalho/areia 8 (`sand.wav`), gramado sintético 32 (`extraturf.wav`), run-off pavimentado 46 (FRICTION>=0.9 sem sujeira). `ROAD` é chave padrão do AC (Monaco só declara `1ASPHALT`). Linha da IA pode tocar 46 em até 1% dos pontos. 158 meshes, 197 mil triângulos.
 10. **GCL**: faixa flag 1 (pista dirigível, 0,5–30 m dos lados da linha) a cada 5 m; faixa flag 2 (±5 m) sobre a zona do limitador do pit, e quadrados flag 10 e 4 no início e no fim dela [H]. 2300 triângulos.
 11. **Soltos e GUI**: `.mtx`/`.bmt`/`.trd` em `Tracks\bahrain_ac\`; DDS DXT5 em `GUI\tracklogos` (512, outline), `trackmaps` e `trackmaps3d` (1000, outline) e `trackphotos` (1920x1080, preview).
 12. `debug_aiw.txt` é só diagnóstico e **não** vai no pacote.
@@ -96,7 +96,7 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 ## 5. Pistas com vários kn5 (Magny-Cours 2025, 20/10/2026)
 - `convert.py` agora funde todos os `.kn5` listados em `models.ini` (exceto `*groove*`); os dummies `AC_*` podem estar em `actime.kn5`. Materiais/texturas reindexados; textura homônima com bytes diferentes ganha nome único.
 - Shader `ksMultilayer_fresnel_nm` usa o `txDiffuse` direto (UV já repete); só o `ksMultilayer` puro usa o tile de asfalto.
-- Superfícies: `ROFF`/`SAND`/`GRASS` = 7, `ROAD`/`PIT` = 0; zona do limitador do pit vem de meshes `^\d+pit`.
+- Superfícies: `ROFF`/`GRASS` = 7, `SAND`/`GRAVEL` = 8, `ROAD`/`PIT` = 0 (fora de pista refinado por `surfaces.ini`, ver item 9); zona do limitador do pit vem de meshes `^\d+pit`.
 - Resultado `magnycours_ac`: 2829 meshes, 935 mil tris, AIW 878 wps (4391 m), pit 152 wps + 26 ramais, 22 câmeras, `check_out` sem erros. Pacote: `Downloads\Magny-Cours AC (AMS2).7z` (88 MiB). Árvores do CSP (`extension\trees`) não são convertidas.
 
 ## Licoes do Magny-Cours (20/10)
