@@ -31,6 +31,8 @@ public sealed record GpxOptions
     public double SplitSeconds { get; init; } = 8;
     public double PageSeconds { get; init; } = 6;
     public bool OriginalFonts { get; init; } = true;
+    /// <summary>Rotacao do slot main (standings, pit stops, gaps, trap) a cada PageSeconds quando nenhuma tela de prioridade alta o ocupa.</summary>
+    public bool Rotation { get; init; } = true;
     public bool Stretch { get; init; }
     /// <summary>Digital 2004/2010: nomes em caixa mista ("V. Costa") como nas transmissoes; Classic/Digital mantem "V. COSTA".</summary>
     public bool MixedCaseNames { get; init; }
@@ -62,6 +64,7 @@ public sealed record GpxOptions
             SplitSeconds = Math.Clamp(Num(s, "splitSeconds", 8), 2, 30),
             PageSeconds = Math.Clamp(Num(s, "pageSeconds", 6), 2, 30),
             OriginalFonts = Flag(s, "originalFonts", true),
+            Rotation = Flag(s, "rotation", true),
             Stretch = Pick(s, "aspect", "pillarbox") == "stretch",
             PreviewScreen = s.Option("previewScreen") ?? (s.Option("layoutPreview") == "true" ? "str" : null),   // editor de layout: standings
             PreviewMs = Num(s, "previewMs", -1),
@@ -107,6 +110,9 @@ public sealed class GpxContext
         int pages = Math.Max(1, (count + perPage - 1) / perPage);
         return pages == 1 ? 0 : (int)(Math.Floor(Math.Max(0, Now) / Options.PageSeconds) % pages);
     }
+
+    /// <summary>Janela de gap com dado para a rotacao: aberta, ou ja resolvida (gap/voltas); o cronometro do gap atras sem resultado nao entra.</summary>
+    public bool GapReady(GpxGapWindow? w) => w is not null && (w.Gap is not null || w.Laps > 0 || w.ActiveAt(Now));
 
     public bool Preview(string screen) => string.Equals(Options.PreviewScreen, screen, StringComparison.OrdinalIgnoreCase);
     public bool Previewing => !string.IsNullOrWhiteSpace(Options.PreviewScreen);

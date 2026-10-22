@@ -62,18 +62,56 @@ public sealed class Digital2004Mode : IGpxMode
     {
         if (c.Focus is { InPitLane: true } f) { list.Add(PitTimer(c, f, PitSeconds(c)) with { Priority = 90 }); return; }
         if (c.Options.DirectorsCut && DirectorsCut(c) is { } dc) { list.Add(dc with { Priority = 50 }); return; }
-        if (c.Options.RaceStandings is "standings" or "pitstops")
-        {
-            list.Add(c.Options.RaceStandings == "pitstops" ? PitStopsStandings(c) : RaceStandings(c));
-            return;
-        }
         var split = c.Options.SpeedSplitRace switch
         {
             "behind" => c.Split.Behind is { } gb && gb.ActiveAt(c.Now) ? GapBehind(c, gb) : null,
             "trap" => c.Split.Trap is { } tw && tw.ActiveAt(c.Now) ? SpeedTrap(c, tw) : null,
             _ => c.Split.Ahead is { } ga && ga.ActiveAt(c.Now) ? GapAhead(c, ga) : null,
         };
+        if (c.Options.Rotation)
+        {
+            if (split is not null) list.Add(split with { Priority = 30 });
+            else if (RaceRotation(c) is { } page) list.Add(page);
+            return;
+        }
+        if (c.Options.RaceStandings is "standings" or "pitstops")
+        {
+            list.Add(c.Options.RaceStandings == "pitstops" ? PitStopsStandings(c) : RaceStandings(c));
+            return;
+        }
         if (split is not null) list.Add(split with { Priority = 30 });
+    }
+
+    /// <summary>Rotacao da corrida: standings, pit stops (se houve parada), gap a frente/atras e speed trap, so as paginas com dado.</summary>
+    GpxScreen? RaceRotation(GpxContext c)
+    {
+        var s = c.Split;
+        int slides = GpxRotation.PagesOf(RaceRows(c).Count, CarsPerPage);
+        var pages = new List<GpxRotationPage>
+        {
+            new("str", slides), new("stp", c.Broadcast.Stops.Any(x => x.Value > 0) ? slides : 0),
+            new("ahead", c.GapReady(s.Ahead) ? 1 : 0), new("behind", c.GapReady(s.Behind) ? 1 : 0), new("trap", s.Trap is null ? 0 : 1),
+        };
+        if (GpxRotation.Current(pages, c.Now, c.Options.PageSeconds) is not { } cur) return null;
+        return cur.Id switch
+        {
+            "str" => RaceStandings(c, cur.Slide),
+            "stp" => PitStopsStandings(c, cur.Slide),
+            "ahead" => GapAhead(c, s.Ahead!),
+            "behind" => GapBehind(c, s.Behind!),
+            _ => SpeedTrap(c, s.Trap!),
+        };
+    }
+
+    /// <summary>Rotacao fora da corrida: classificacao, split (cartao/parcial) e speed trap, so as paginas com dado.</summary>
+    GpxScreen? QualiRotation(GpxContext c)
+    {
+        var split = QualiSplitNow(c);
+        int timed = c.Model.Quali?.Rows.Count(r => r.HasTime) ?? 0;
+        int slides = c.Options.QualiStandings && timed > 1 ? GpxRotation.PagesOf(Math.Min(22, c.Model.Quali!.Rows.Count), CarsPerPage) : 0;
+        var pages = new List<GpxRotationPage> { new("stq", slides), new("split", split is null ? 0 : 1), new("trap", c.Split.Trap is null ? 0 : 1) };
+        if (GpxRotation.Current(pages, c.Now, c.Options.PageSeconds) is not { } cur) return null;
+        return cur.Id switch { "stq" => QualiStandings(c, cur.Slide), "split" => split, _ => SpeedTrap(c, c.Split.Trap!) };
     }
 
     /// <summary>Fora da corrida (0x9c0dffc): standings de classificacao (se ligado e houver mais de um tempo), senao o SpeedSplit.</summary>
@@ -82,6 +120,7 @@ public sealed class Digital2004Mode : IGpxMode
         var q = c.Model.Quali;
         // Parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; antes a tabela retornava primeiro e a parcial nunca aparecia.
         if (c.Options.SpeedSplitQuali != "trap" && QualiSplitNow(c) is { } live && live.Key.Contains("split:")) { list.Add(live with { Priority = 30 }); return; }
+        if (c.Options.Rotation) { if (QualiRotation(c) is { } page) list.Add(page); return; }
         if (c.Options.QualiStandings && q is not null && q.Rows.Count(r => r.HasTime) > 1) { list.Add(QualiStandings(c)); return; }
         if (c.Options.SpeedSplitQuali == "trap")
         {
@@ -361,10 +400,10 @@ public sealed class Digital2004Mode : IGpxMode
     /// 4.11 Standings 2 x 4 por pagina: linha i em y = 768 - 6FH + (i%4)FH, x = L0 + (i/4)(6FH + W/5); colunas animadas
     /// 0 posicao (FH, azul / vermelha P1), 1 nome (W/5 branco), 2 gap (4FH preto, a direita). Logo em (FH + W/5, 768 - 7FH).
     /// </summary>
-    GpxScreen Standings(GpxContext c, string kind, IReadOnlyList<StandRow> rows)
+    GpxScreen Standings(GpxContext c, string kind, IReadOnlyList<StandRow> rows, int? fixedPage = null)
     {
         var g = c.G; float fh = g.FH;
-        int per = CarsPerPage, page = c.PageOf(rows.Count, per);
+        int per = CarsPerPage, page = fixedPage ?? c.PageOf(rows.Count, per);
         var boxes = new List<GpxBox>();
         var slice = rows.Skip(page * per).Take(per).ToList();
         for (int i = 0; i < slice.Count; i++)
@@ -382,19 +421,19 @@ public sealed class Digital2004Mode : IGpxMode
     static bool Out(CarSnapshot car) => car.RaceState is RaceState.Retired or RaceState.Dnf or RaceState.Disqualified;
 
     /// <summary>Corrida: lider "Lap n", demais "+ n Lap(s)" ou o gap em tempo sem "+" (spec 4.11); fora da corrida "  Out" sem caixa de posicao.</summary>
-    GpxScreen RaceStandings(GpxContext c)
+    GpxScreen RaceStandings(GpxContext c, int? page = null)
     {
         var rows = RaceRows(c).Select(x => Out(x.Car) ? new StandRow(x.Car, null, GpxFormat.Out)
             : x.Car.Position == 1 ? new StandRow(x.Car, 1, GpxFormat.Lap(Math.Max(1, x.Car.CurrentLap)))
             : new StandRow(x.Car, x.Car.Position, x.LapsBehind > 0 ? GpxFormat.LapsBehind(x.LapsBehind) : x.GapToLeader is { } gp ? GpxFormat.LapTime(gp) : "")).ToList();
-        return Standings(c, "stR", rows);
+        return Standings(c, "stR", rows, page);
     }
 
-    GpxScreen PitStopsStandings(GpxContext c)
+    GpxScreen PitStopsStandings(GpxContext c, int? page = null)
     {
         var b = c.Broadcast;
         var rows = RaceRows(c).Select(x => new StandRow(x.Car, Out(x.Car) ? null : x.Car.Position, GpxFormat.Stops(b.StopsOf(x.Car.Index)))).ToList();
-        return Standings(c, "stP", rows);
+        return Standings(c, "stP", rows, page);
     }
 
     static IReadOnlyList<StandingRow> RaceRows(GpxContext c)
@@ -404,13 +443,13 @@ public sealed class Digital2004Mode : IGpxMode
     }
 
     /// <summary>Classificacao: 1o com o melhor tempo, demais "+ gap"; sem tempo = sem caixa de posicao. Ate 22 carros.</summary>
-    GpxScreen QualiStandings(GpxContext c)
+    GpxScreen QualiStandings(GpxContext c, int? page = null)
     {
         var q = c.Model.Quali ?? QualiTableState.Empty;
         var rows = q.Rows.Take(22).Select(r => !r.HasTime ? new StandRow(r.Car, null, "")
             : r.Rank == 1 ? new StandRow(r.Car, 1, GpxFormat.LapTime(r.BestLap))
             : new StandRow(r.Car, r.Rank, GpxFormat.SignedGap(r.GapToFirst ?? 0))).ToList();
-        return Standings(c, "stQ", rows);
+        return Standings(c, "stQ", rows, page);
     }
 
     // ---------- previa (--png): forca uma tela com os dados do modelo e exemplos onde o evento nao aconteceu ----------

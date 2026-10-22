@@ -81,7 +81,7 @@ public sealed class Digital2010ModeTests
     [Fact]
     public void Unsupported_speed_trap_never_generates_a_fake_screen()
     {
-        var screens=new Digital2010Mode().Dispatch(Context(new GpxOptions { SpeedSplitRace="trap" },new(){["raceProgression"]="false"}));
+        var screens=new Digital2010Mode().Dispatch(Context(new GpxOptions { SpeedSplitRace="trap", Rotation=false },new(){["raceProgression"]="false"}));
         Assert.DoesNotContain(screens,s=>s.Slot is "main" or "gap");
     }
 }

@@ -92,4 +92,24 @@ public class GpxSatTests
         var st = GpxGeometry.Fit(1920, 1080, stretch: true);
         Assert.Equal(1.875f, st.Sx, 4); Assert.Equal(0f, st.Ox);
     }
+
+    [Fact]
+    public void Rotation_cycles_pages_and_slides_every_page_seconds()
+    {
+        GpxRotationPage[] pages = [new("str", 2), new("ahead"), new("trap")];
+        var seq = Enumerable.Range(0, 5).Select(i => GpxRotation.Current(pages, i * 6 + 1, 6)).ToList();
+        Assert.Equal([("str", 0), ("str", 1), ("ahead", 0), ("trap", 0), ("str", 0)], seq.Select(s => (s!.Value.Id, s.Value.Slide)));
+        Assert.Equal("str", GpxRotation.Current(pages, -5, 6)!.Value.Id);
+    }
+
+    [Fact]
+    public void Rotation_skips_empty_pages_and_returns_null_without_data()
+    {
+        GpxRotationPage[] pages = [new("str", 0), new("stp", 0), new("ahead"), new("trap", 0)];
+        foreach (double now in new[] { 0.0, 7, 13, 100 }) Assert.Equal("ahead", GpxRotation.Current(pages, now, 6)!.Value.Id);
+        Assert.Null(GpxRotation.Current([new("str", 0), new("trap", 0)], 10, 6));
+        Assert.Null(GpxRotation.Current([], 10, 6));
+        Assert.Equal(0, GpxRotation.PagesOf(0, 8));
+        Assert.Equal(3, GpxRotation.PagesOf(17, 8));
+    }
 }

@@ -116,6 +116,7 @@ public sealed class Digital2010Mode : IGpxMode
             {
                 if(c.Focus is { InPitLane:true } focus) list.Add(PitInfo(c,focus,true) with { Priority=90 });
                 else if(dc) AddDirector(c,list);
+                else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(RaceRotation(c) is { } page) list.Add(page); }
                 else if(c.Options.RaceStandings is "standings" or "pitstops" or "interval") list.Add(Standings(c,c.Options.RaceStandings));
                 else if(GapNow(c,c.Options.SpeedSplitRace) is { } gap) list.Add(gap);
             }
@@ -254,10 +255,28 @@ public sealed class Digital2010Mode : IGpxMode
         }
         return (r.LapsBehind>0?GpxFormat.LapsBehind(r.LapsBehind):r.GapToLeader is { } g?GpxFormat.SignedGap(g):"",Light);
     }
-    GpxScreen Standings(GpxContext c,string mode)
+    int StandingsPerPage(GpxContext c) { int n=Count(c,"carsPerPage",8); return n==5?8:n; }
+    /// <summary>Rotacao da corrida: standings, pit stops (se houve parada), gap a frente e atras, so as paginas com dado (progressao e torres ja tem slot proprio).</summary>
+    GpxScreen? RaceRotation(GpxContext c)
     {
-        var rows=Rows(c); int n=Count(c,"carsPerPage",8); if(n==5)n=8;
-        int page=c.PageOf(rows.Count,n), lines=(n+1)/2; float width=W(320), y=Base-lines*Rh;
+        var s=c.Split; int slides=GpxRotation.PagesOf(Rows(c).Count,StandingsPerPage(c));
+        var pages=new List<GpxRotationPage>
+        {
+            new("standings",slides), new("pitstops",c.Broadcast.Stops.Any(x=>x.Value>0)?slides:0),
+            new("ahead",c.GapReady(s.Ahead)?1:0), new("behind",c.GapReady(s.Behind)?1:0),
+        };
+        if(GpxRotation.Current(pages,c.Now,c.Options.PageSeconds) is not { } cur) return null;
+        return cur.Id switch
+        {
+            "ahead" => Gap(c,s.Ahead!) with { Slot="main" },
+            "behind" => Gap(c,s.Behind!) with { Slot="main" },
+            _ => Standings(c,cur.Id,cur.Slide),
+        };
+    }
+    GpxScreen Standings(GpxContext c,string mode,int? fixedPage=null)
+    {
+        var rows=Rows(c); int n=StandingsPerPage(c);
+        int page=fixedPage??c.PageOf(rows.Count,n), lines=(n+1)/2; float width=W(320), y=Base-lines*Rh;
         var boxes=new List<GpxBox>();
         for(int i=0;i<n && page*n+i<rows.Count;i++)
         {
