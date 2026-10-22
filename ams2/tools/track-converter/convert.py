@@ -124,18 +124,24 @@ def detail_kind(mt):
 
 
 def metric_uv_scale(P, uv, idx, tile):
-    # metres per UV unit along U and V (median over triangles) -> multiplier giving one repeat per `tile` metres
+    # Area-weighted metres per UV unit: tiny densely tessellated patches must not
+    # dictate the texture scale over an otherwise large road mesh (Shanghai).
     t = idx.reshape(-1, 3)
     e1, e2 = P[t[:, 1]] - P[t[:, 0]], P[t[:, 2]] - P[t[:, 0]]
     d1, d2 = uv[t[:, 1]] - uv[t[:, 0]], uv[t[:, 2]] - uv[t[:, 0]]
     det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
-    ok = np.abs(det) > 1e-12
+    area = np.linalg.norm(np.cross(e1, e2), axis=1)
+    ok = (np.abs(det) > 1e-12) & (area > 1e-12)
     if not ok.any():
         return np.array([1.0, 1.0])
     e1, e2, d1, d2, det = e1[ok], e2[ok], d1[ok], d2[ok], det[ok]
     Pu = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) / det[:, None]
     Pv = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) / det[:, None]
-    mu, mv = np.median(np.linalg.norm(Pu, axis=1)), np.median(np.linalg.norm(Pv, axis=1))
+    def median(values):
+        order = np.argsort(values)
+        weights = area[ok][order]
+        return values[order[np.searchsorted(np.cumsum(weights), weights.sum() * .5)]]
+    mu, mv = median(np.linalg.norm(Pu, axis=1)), median(np.linalg.norm(Pv, axis=1))
     return np.array([max(mu / tile, 0.05), max(mv / tile, 0.05)])
 
 
@@ -670,18 +676,15 @@ def smooth_kerbs(items, radius=0.8, cap=0.065):
 
 
 def smooth_road(items, tr=None, radius=1.0, maxcorr=0.05):
-    """Some AC tracks carry centimetre-scale noise in the asphalt collision (Magny-Cours: 2.4 cm at p90, AMS2 originals 0.4 cm), which
-    makes AMS2 cars bounce.  Pull asphalt vertices toward the local mean by at most `maxcorr` (real crests/slopes are far larger)."""
-    from scipy.spatial import cKDTree
+    """Remove short-wave asphalt noise with a local plane, preserving banked/sloping roads.
+    A height mean on irregular sampling itself introduces ripples; corrections stay bounded by `maxcorr`."""
+    from road_surface import smooth_heights
     out = list(items)
     ri = [i for i, it in enumerate(items) if it[2] == 0]
     if not ri:
         return out
     allr = np.vstack([items[i][0] for i in ri]).astype(np.float64)
-    t = cKDTree(allr)
-    nb = t.query_ball_point(allr, radius)
-    zm = np.array([allr[j, 1].mean() for j in nb])
-    corr = np.clip(zm - allr[:, 1], -maxcorr, maxcorr)
+    corr = smooth_heights(allr, radius, maxcorr) - allr[:, 1]
     print('  asphalt smoothed: mean |dz| %.4f m, max %.3f m' % (np.abs(corr).mean(), np.abs(corr).max()))
     o = 0
     for i in ri:
