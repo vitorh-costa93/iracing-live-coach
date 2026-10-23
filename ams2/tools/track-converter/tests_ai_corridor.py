@@ -1,4 +1,4 @@
-"""--ai-width / --ai-dry2 / --ai-wet-line (anti-"trenzinho", default OFF). Run: python -I tests_ai_corridor.py."""
+"""--ai-width / --ai-dry2 (anti-"trenzinho", default OFF). Run: python -I tests_ai_corridor.py."""
 import contextlib
 import importlib.util
 import io
@@ -54,9 +54,10 @@ def build(*args, **kw):
 class AiCorridorTests(unittest.TestCase):
     def test_flags_default_off(self):
         args = convert.parse_args(['s', 'id', 'o', 'r', 'x'])
-        self.assertEqual((args.ai_width, args.ai_dry2, args.ai_wet_line), (False, False, False))
-        args = convert.parse_args(['s', 'id', 'o', 'r', 'x', '--ai-width', '--ai-dry2', '--ai-wet-line'])
-        self.assertEqual((args.ai_width, args.ai_dry2, args.ai_wet_line), (True, True, True))
+        self.assertEqual((args.ai_width, args.ai_dry2), (False, False))
+        args = convert.parse_args(['s', 'id', 'o', 'r', 'x', '--ai-width', '--ai-dry2'])
+        self.assertEqual((args.ai_width, args.ai_dry2), (True, True))
+        self.assertFalse(hasattr(args, 'ai_wet_line'))
         fast, extra, dummies = sample_ai()
         aiw, info = build(fast, extra, dummies, 't')
         self.assertNotIn('dry2', aiw.lower())
@@ -107,14 +108,6 @@ class AiCorridorTests(unittest.TestCase):
         narrow = convert.secondary_line(W, pw, sh, -0.5 * np.ones(n), 0.5 * np.ones(n))
         self.assertLessEqual(np.max(np.abs(narrow)), 0.5 + 1e-9)                            # never outside the corridor
 
-    def test_wet_line_off_groove_inside_corridor(self):
-        n = 200; x = np.arange(n) * 2 * np.pi / n
-        sh = 4.0 * np.sin(3 * x); lo, hi = -6.0 * np.ones(n), 6.0 * np.ones(n)
-        wet = convert.wet_line(sh, lo, hi)
-        self.assertTrue(np.all((wet >= lo - 1e-9) & (wet <= hi + 1e-9)))
-        self.assertGreaterEqual(np.median(np.abs(wet - sh)), 2.0)
-        self.assertLess(np.max(np.abs(np.diff(np.r_[wet, wet[:1]]))), 1.0)
-
     def test_all_flags_emit_fields_and_keep_pit_intact(self):
         from validation_contracts import pit_endpoint_errors
         fast, extra, dummies = sample_ai()
@@ -124,7 +117,7 @@ class AiCorridorTests(unittest.TestCase):
         dummies['AC_PIT_0'], dummies['AC_PIT_1'] = m1, m2
         branch = convert.build_pit(fast, extra, pitlane, [('AC_PIT_0', m1), ('AC_PIT_1', m2)])
         base, _ = build(fast, extra, dummies, 'p', pit=branch)
-        aiw, info = build(fast, extra, dummies, 'p', pit=branch, reach=np.full((len(fast), 2), 30.0), dry2=True, wet=True)
+        aiw, info = build(fast, extra, dummies, 'p', pit=branch, reach=np.full((len(fast), 2), 30.0), dry2=True)
         head = aiw.split('[Waypoint]')[1].splitlines()
         self.assertTrue(head[2].startswith('times=') and head[3].startswith('timesDry2=('))
         wb, wa = waypoints(base), waypoints(aiw)
@@ -133,15 +126,13 @@ class AiCorridorTests(unittest.TestCase):
         for b, a in zip(wb, wa):
             for key in ('wp_pos', 'wp_perp', 'wp_width', 'wp_branchID', 'WP_PTRS', 'wp_score'):
                 self.assertEqual(a[key], b[key])
-            self.assertEqual(tup(a['wp_path'])[0], tup(b['wp_path'])[0])
-            if tup(a['wp_branchID'])[0] != 0:                         # pit: same line, dwidth, wet 0, dry2 = its own path
+            self.assertEqual(a['wp_path'], b['wp_path'])                # dry and wet (wp_path[1]) unchanged
+            if tup(a['wp_branchID'])[0] != 0:                         # pit: same dwidth, dry2 = its own path
                 self.assertEqual(a['wp_dwidth'], b['wp_dwidth'])
-                self.assertEqual(tup(a['wp_path'])[1], 0.0)
                 self.assertEqual(tup(a['wp_dry2'])[0], tup(a['wp_path'])[0])
-            else:                                                     # main: both lines inside the road width
+            else:                                                     # main: dry2 inside the road width
                 wl, wr = tup(a['wp_width'])
-                for v in (tup(a['wp_path'])[1], tup(a['wp_dry2'])[0]):
-                    self.assertTrue(-wl < v < wr)
+                self.assertTrue(-wl < tup(a['wp_dry2'])[0] < wr)
         branches = np.array([int(tup(w['wp_branchID'])[0]) for w in wa])
         self.assertEqual(pit_endpoint_errors(branches, np.array([tup(w['WP_PTRS']) for w in wa], dtype=int)), [])
         self.assertGreaterEqual(info['ai']['tdry2'], info['tdry'])
