@@ -80,6 +80,31 @@ class AiCorridorTests(unittest.TestCase):
         for w in waypoints(aiw):
             self.assertAlmostEqual(tup(w['wp_dwidth'])[0] - tup(w['wp_width'])[0], convert.AI_DW_MAX, delta=0.01)
 
+    def test_ai_width_rule_f1_track_limit_kerb_wall_and_floor(self):
+        args = convert.parse_args(['s', 'id', 'o', 'r', 'x', '--ai-width', '--ai-width-rule', 'f1', '--f1-limits', 'l.csv'])
+        self.assertEqual((args.ai_width_rule, args.f1_limits), ('f1', 'l.csv'))
+        fast, extra, dummies = sample_ai()
+        n = len(fast)
+        wide = extra.copy(); wide[:, 5:7] = 8.0                       # asphalt 6 m + 2 m kerb per side
+        W = fast * convert.MIRROR
+        t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t[:, 1] = 0; t /= np.linalg.norm(t, axis=1)[:, None]
+        pw = np.c_[t[:, 2], np.zeros(n), -t[:, 0]]
+        lim = {'line': W, 'left_track_limit': W - 7.0 * pw, 'right_track_limit': W + 9.5 * pw,
+               'left_racing_limit': W - 5.0 * pw, 'right_racing_limit': W + 5.0 * pw}
+        wallf = np.c_[np.full(n, 30.0), np.full(n, 9.0)]              # AC col 1 = right/+perp side wall 9 m away
+        aiw, _ = build(fast, extra, dummies, 't', wide=wide, wallf=wallf, f1lim=lim)
+        for w in waypoints(aiw):
+            wl, wr = tup(w['wp_width']); dl, dr = tup(w['wp_dwidth'])
+            self.assertAlmostEqual(dl - wl, 1.0, delta=0.1)           # F1 track limit 7 m < kerb 8 m
+            self.assertAlmostEqual(dr - wr, 9.0 - convert.WALL_CLEAR - 6.0, delta=0.1)    # kerb 8, F1 9.5 -> wall wins
+        aiw, _ = build(fast, extra, dummies, 't', wide=wide, f1lim={})  # no F1 data: AC asphalt+kerb edge
+        for w in waypoints(aiw):
+            self.assertAlmostEqual(tup(w['wp_dwidth'])[0] - tup(w['wp_width'])[0], 2.0 + convert.F1_TL_VS_KERB, delta=0.05)
+        lim['left_track_limit'] = W - 4.0 * pw                        # F1 limit inside the asphalt: dwidth = width, never less
+        aiw, _ = build(fast, extra, dummies, 't', wide=wide, f1lim=lim)
+        for w in waypoints(aiw):
+            self.assertAlmostEqual(tup(w['wp_dwidth'])[0], tup(w['wp_width'])[0], delta=1e-3)
+
     def test_ai_reach_grass_budget_and_gravel(self):
         fast = np.array([[0.0, 0.0, z] for z in np.arange(0.0, 100.0, 5.0)])
         quad = lambda x0, x1: dict(pos=np.array([[x0, 0, -10], [x1, 0, -10], [x1, 0, 110], [x0, 0, 110]], float),

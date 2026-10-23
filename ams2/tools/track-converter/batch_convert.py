@@ -102,6 +102,8 @@ def main():
             if item.get('f1_line'): cmd += ['--f1-line', item['f1_line']]
             for flag in ('ai_width', 'ai_dry2'):
                 if item.get(flag): cmd += ['--' + flag.replace('_', '-')]
+            if item.get('ai_width_rule'): cmd += ['--ai-width-rule', item['ai_width_rule']]
+            if item.get('f1_limits'): cmd += ['--f1-limits', item['f1_limits']]
             if args.force or old.get('fingerprint') != stamp or not old.get('converted'):
                 record['phase'] = 'converting'; save()
                 if run(cmd, logs / (tid + '-convert.log')): raise RuntimeError('Conversion failed; see convert log')

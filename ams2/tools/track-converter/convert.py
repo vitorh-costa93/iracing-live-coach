@@ -801,6 +801,37 @@ def f1_lateral(W, pts):
     return cum[j] + tj * L[j], ((X - q) * nrm).sum(1), float(L.sum())
 
 
+F1_LIMITS = ('left_racing_limit', 'right_racing_limit', 'left_track_limit', 'right_track_limit')
+
+
+def load_f1_limits(path):
+    """F1 2020 aispline gate points in AIW coordinates (f1_limits.py CSV): racing line ('line') and F1_LIMITS, each (n, 3)."""
+    import csv
+    with open(path, newline='') as f:
+        rows = list(csv.DictReader(f))
+    out = {'line': np.array([[float(r[a]) for a in 'xyz'] for r in rows])}
+    for k in F1_LIMITS:
+        out[k] = np.array([[float(r[k + '_' + a]) for a in 'xyz'] for r in rows])
+    if len(rows) < 8 or not all(np.isfinite(v).all() for v in out.values()):
+        raise ValueError('F1 limits need >= 8 finite gates: %s' % path)
+    return out
+
+
+def f1_side_lat(W, line, pts, max_ds=30.0, max_lat=30.0):
+    """Signed lateral (along the AIW perp, wp_path convention) of F1 limit points at every waypoint of W: each gate's limit point
+    is projected on W and kept only if it lands within `max_ds` m (lap distance) of that gate's racing-line point (no snapping to
+    a neighbouring part of the circuit) and within `max_lat` m; linear periodic interpolation in lap distance between gates."""
+    s_l, _, lap = f1_lateral(W, line)
+    s_p, lat, _ = f1_lateral(W, pts)
+    ds = np.abs(np.mod(s_p - s_l + lap / 2, lap) - lap / 2)
+    ok = (ds < max_ds) & (np.abs(lat) < max_lat)
+    if ok.sum() < 0.8 * len(ok):
+        raise ValueError('F1 limits: only %d/%d gates project consistently on the AIW centreline' % (ok.sum(), len(ok)))
+    cw = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(W[:, [0, 2]], axis=0), axis=1))]
+    o = np.argsort(s_p[ok])
+    return np.interp(cw, s_p[ok][o], lat[ok][o], period=lap), int((~ok).sum())
+
+
 def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3):
     """Racing line from the F1 2020 AI line: lateral offset of each (sparse, ~10 m; up to ~140 m on straights) F1 point projected
     on the AIW centreline, periodic cubic spline in lap distance (closed lap; overshoot across the long straight gaps measured
@@ -884,6 +915,10 @@ def racing_line_oio_checked(W, pw, lo, hi, sh):
 #     wp_path[1] (wet line) is deliberately left as before (0.0): user decision 23/10, no rain-line option.
 AI_DW_FLOOR, AI_DW_MAX = 1.0, 12.0   # --ai-width: dwidth - width per side (floor = previous converter value, cap = original median)
 AI_GRASS = 2.0          # [H] metres of grass/astroturf past the paved surface the corridor may include (two wheels off, recoverable)
+# --ai-width-rule f1 without F1 data: track limit = AC asphalt+kerb edge + this.  [C] 23/10, F1 track_limit - AC kerb edge medians
+# (L/R) Bahrain -0.17/-0.13, Albert Park ACU 0.06/0.02, Baku 0.42/0.33, COTA GP 0.95/0.75, COTA Nat 1.40/0.81, Shanghai 0.46/0.45,
+# Zandvoort 0.65/1.34 (overall ~+0.4 m): the F1 limit sits at/past the AC kerb edge, which caps it anyway -> 0.
+F1_TL_VS_KERB = 0.0
 AI_DRY2_OFF = 3.0       # --ai-dry2: inside offset in braking zones (2-4 m asked; original |dry2 - dry| p90 3.6 m)
 
 
@@ -1009,7 +1044,7 @@ def runs_over(mask, s):
     return out
 
 
-def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=None, dry2=False):
+def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=None, dry2=False, f1lim=None):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch.
     reach (--ai-width): ai_reach() per fast point -> per-side wp_dwidth; dry2 (--ai-dry2): wp_dry2 + timesDry2.
     Both None/False = previous output byte for byte; wp_path[1] (wet) is always 0.0 as before."""
@@ -1114,6 +1149,37 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
         q = lambda a: '%.1f/%.1f/%.1f' % (a.min(), np.median(a), a.max())
         print('  AI width: dwidth - width min/median/max left %s right %s m, floor %.1f m used at %d side samples (wall/edge)' %
               (q(add_l), q(add_r), AI_DW_FLOOR, ai['dw_floor']))
+    if f1lim is not None:
+        # --ai-width-rule f1: corridor up to the F1 2020 track limit (F1 data when given, else the AC asphalt+kerb edge plus the
+        # median F1-vs-AC offset measured on the tracks with F1 data), never past the AC asphalt+kerb edge (wide) nor closer
+        # than WALL_CLEAR to a wall, never below wp_width (dwidth < width is never seen in AMS2 originals).
+        q = lambda a: '%.2f/%.2f/%.2f' % (a.min(), np.median(a), a.max())
+        kerb_l = wide_l if wide_l is not None else ex_l; kerb_r = wide_r if wide_r is not None else ex_r
+        if f1lim:
+            tl_l, nl = f1_side_lat(W, f1lim['line'], f1lim['left_track_limit']); tl_r, nr = f1_side_lat(W, f1lim['line'], f1lim['right_track_limit'])
+            rl_l, _ = f1_side_lat(W, f1lim['line'], f1lim['left_racing_limit']); rl_r, _ = f1_side_lat(W, f1lim['line'], f1lim['right_racing_limit'])
+            tl_l = -tl_l; rl_l = -rl_l                   # left = -perp side: distances from W, positive outward
+            print('  AI width F1: gates dropped (projection) left %d right %d' % (nl, nr))
+            print('  AI width F1: track_limit - asphalt edge left %s right %s m; track_limit - AC kerb edge left %s right %s m' %
+                  (q(tl_l - ex_l), q(tl_r - ex_r), q(tl_l - kerb_l), q(tl_r - kerb_r)))
+            print('  AI width F1: racing_limit - asphalt edge left %s right %s m (F1 racing-line corridor, inside the asphalt)' %
+                  (q(rl_l - ex_l), q(rl_r - ex_r)))
+            src = 'F1 track_limit'
+        else:
+            tl_l = kerb_l + F1_TL_VS_KERB; tl_r = kerb_r + F1_TL_VS_KERB
+            src = 'AC asphalt+kerb %+.2f m (F1 median)' % F1_TL_VS_KERB
+        lim_l = np.minimum(tl_l, kerb_l); lim_r = np.minimum(tl_r, kerb_r)
+        cap_l = lim_l.copy(); cap_r = lim_r.copy()
+        if wall_l is not None:
+            lim_l = np.minimum(lim_l, wall_l - WALL_CLEAR); lim_r = np.minimum(lim_r, wall_r - WALL_CLEAR)
+        wall_hits = int((lim_l < cap_l - 1e-6).sum() + (lim_r < cap_r - 1e-6).sum())
+        lim_l = np.minimum(smooth(lim_l), lim_l); lim_r = np.minimum(smooth(lim_r), lim_r)
+        add_l = np.clip(lim_l - ex_l, 0.0, AI_DW_MAX); add_r = np.clip(lim_r - ex_r, 0.0, AI_DW_MAX)
+        ai['dw_add'] = (add_l, add_r)
+        at0 = int((add_l <= 1e-6).sum() + (add_r <= 1e-6).sum())
+        print('  AI width (rule f1, %s): dwidth - width min/median/max left %s right %s m; dwidth = width at %d/%d side samples '
+              '(%.1f%%); wall-limited (WALL_CLEAR %.1f m) at %d side samples' %
+              (src, q(add_l), q(add_r), at0, 2 * nw, 100.0 * at0 / (2 * nw), WALL_CLEAR, wall_hits))
     if dry2:
         d2 = secondary_line(line, pw, sh, lo, hi)
         line2 = W + d2[:, None] * pw
@@ -2128,6 +2194,10 @@ def parse_args(argv=None):
     parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio', 'f1'), default='fastest')
     parser.add_argument('--f1-line', help="racing-line mode 'f1': F1 2020 AI line CSV (x,y,z) already in AIW coordinates")
     parser.add_argument('--ai-width', action='store_true', help='wp_dwidth per side up to paved run-off (+AI_GRASS of grass, no gravel), WALL_CLEAR off walls, 1-12 m past the asphalt')
+    parser.add_argument('--ai-width-rule', choices=('reach', 'f1'), default='reach',
+                        help="with --ai-width: 'reach' = ai_reach heuristic above; 'f1' = F1 2020 rule: dwidth up to the track limit "
+                             "(F1 track_limit from --f1-limits, else AC asphalt+kerb), never past the AC kerb edge or WALL_CLEAR, never below wp_width")
+    parser.add_argument('--f1-limits', help="--ai-width-rule f1: F1 2020 aispline limits CSV in AIW coordinates (f1_limits.py: <type>_x/_y/_z columns)")
     parser.add_argument('--ai-dry2', action='store_true', help='emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones (hypothesis)')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
@@ -2295,10 +2365,12 @@ def main():
     else:
         wide = None
     wallf = wall_free(k, fast, keys=keys) if extra is not None else None
-    reach = None
-    if args.ai_width and extra is not None:
+    reach = None; f1lim = None
+    if args.ai_width and extra is not None and args.ai_width_rule == 'f1':
+        f1lim = load_f1_limits(args.f1_limits) if args.f1_limits else {}
+    elif args.ai_width and extra is not None:
         reach = ai_reach(k, fast, keys, invalid_keys(locations['surfaces']), surface_props(locations['surfaces']))
-    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf, reach=reach, dry2=args.ai_dry2)
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf, reach=reach, dry2=args.ai_dry2, f1lim=f1lim)
     if args.dump_aiw: open(args.dump_aiw, 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()
