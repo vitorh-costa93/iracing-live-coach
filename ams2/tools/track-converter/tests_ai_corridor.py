@@ -100,10 +100,12 @@ class AiCorridorTests(unittest.TestCase):
         aiw, _ = build(fast, extra, dummies, 't', wide=wide, f1lim={})  # no F1 data: AC asphalt+kerb edge
         for w in waypoints(aiw):
             self.assertAlmostEqual(tup(w['wp_dwidth'])[0] - tup(w['wp_width'])[0], 2.0 + convert.F1_TL_VS_KERB, delta=0.05)
-        lim['left_track_limit'] = W - 4.0 * pw                        # F1 limit inside the asphalt: dwidth = width, never less
-        aiw, _ = build(fast, extra, dummies, 't', wide=wide, f1lim=lim)
+        lim['left_track_limit'] = W - 4.0 * pw                        # F1 limit inside the asphalt: floor AI_DW_FLOOR
+        wallf = np.c_[np.full(n, 30.0), np.full(n, 7.0)]              # right wall 7 m: 7 - WALL_CLEAR < asphalt -> width, never less
+        aiw, _ = build(fast, extra, dummies, 't', wide=wide, wallf=wallf, f1lim=lim)
         for w in waypoints(aiw):
-            self.assertAlmostEqual(tup(w['wp_dwidth'])[0], tup(w['wp_width'])[0], delta=1e-3)
+            self.assertAlmostEqual(tup(w['wp_dwidth'])[0] - tup(w['wp_width'])[0], convert.AI_DW_FLOOR, delta=0.1)
+            self.assertAlmostEqual(tup(w['wp_dwidth'])[1], tup(w['wp_width'])[1], delta=1e-3)
 
     def test_ai_reach_grass_budget_and_gravel(self):
         fast = np.array([[0.0, 0.0, z] for z in np.arange(0.0, 100.0, 5.0)])

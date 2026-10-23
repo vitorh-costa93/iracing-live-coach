@@ -1151,8 +1151,8 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
               (q(add_l), q(add_r), AI_DW_FLOOR, ai['dw_floor']))
     if f1lim is not None:
         # --ai-width-rule f1: corridor up to the F1 2020 track limit (F1 data when given, else the AC asphalt+kerb edge plus the
-        # median F1-vs-AC offset measured on the tracks with F1 data), never past the AC asphalt+kerb edge (wide) nor closer
-        # than WALL_CLEAR to a wall, never below wp_width (dwidth < width is never seen in AMS2 originals).
+        # median F1-vs-AC offset measured on the tracks with F1 data), not past the AC asphalt+kerb edge (wide) unless the
+        # AI_DW_FLOOR floor needs it, never closer than WALL_CLEAR to a wall, never below wp_width (not seen in AMS2 originals).
         q = lambda a: '%.2f/%.2f/%.2f' % (a.min(), np.median(a), a.max())
         kerb_l = wide_l if wide_l is not None else ex_l; kerb_r = wide_r if wide_r is not None else ex_r
         if f1lim:
@@ -1169,6 +1169,9 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
             tl_l = kerb_l + F1_TL_VS_KERB; tl_r = kerb_r + F1_TL_VS_KERB
             src = 'AC asphalt+kerb %+.2f m (F1 median)' % F1_TL_VS_KERB
         lim_l = np.minimum(tl_l, kerb_l); lim_r = np.minimum(tl_r, kerb_r)
+        # user decision 23/10: at least AI_DW_FLOOR (1 m, previous converter value) past the asphalt per side; only the wall
+        # (WALL_CLEAR) can take it below that, and never below wp_width
+        lim_l = np.maximum(lim_l, ex_l + AI_DW_FLOOR); lim_r = np.maximum(lim_r, ex_r + AI_DW_FLOOR)
         cap_l = lim_l.copy(); cap_r = lim_r.copy()
         if wall_l is not None:
             lim_l = np.minimum(lim_l, wall_l - WALL_CLEAR); lim_r = np.minimum(lim_r, wall_r - WALL_CLEAR)
@@ -1177,9 +1180,11 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
         add_l = np.clip(lim_l - ex_l, 0.0, AI_DW_MAX); add_r = np.clip(lim_r - ex_r, 0.0, AI_DW_MAX)
         ai['dw_add'] = (add_l, add_r)
         at0 = int((add_l <= 1e-6).sum() + (add_r <= 1e-6).sum())
+        atf = int((np.abs(add_l - AI_DW_FLOOR) < 1e-3).sum() + (np.abs(add_r - AI_DW_FLOOR) < 1e-3).sum())
         print('  AI width (rule f1, %s): dwidth - width min/median/max left %s right %s m; dwidth = width at %d/%d side samples '
-              '(%.1f%%); wall-limited (WALL_CLEAR %.1f m) at %d side samples' %
-              (src, q(add_l), q(add_r), at0, 2 * nw, 100.0 * at0 / (2 * nw), WALL_CLEAR, wall_hits))
+              '(%.1f%%); at floor %.1f m at %d (%.1f%%); wall-limited (WALL_CLEAR %.1f m) at %d side samples' %
+              (src, q(add_l), q(add_r), at0, 2 * nw, 100.0 * at0 / (2 * nw), AI_DW_FLOOR, atf, 100.0 * atf / (2 * nw),
+               WALL_CLEAR, wall_hits))
     if dry2:
         d2 = secondary_line(line, pw, sh, lo, hi)
         line2 = W + d2[:, None] * pw
@@ -2196,7 +2201,8 @@ def parse_args(argv=None):
     parser.add_argument('--ai-width', action='store_true', help='wp_dwidth per side up to paved run-off (+AI_GRASS of grass, no gravel), WALL_CLEAR off walls, 1-12 m past the asphalt')
     parser.add_argument('--ai-width-rule', choices=('reach', 'f1'), default='reach',
                         help="with --ai-width: 'reach' = ai_reach heuristic above; 'f1' = F1 2020 rule: dwidth up to the track limit "
-                             "(F1 track_limit from --f1-limits, else AC asphalt+kerb), never past the AC kerb edge or WALL_CLEAR, never below wp_width")
+                             "(F1 track_limit from --f1-limits, else AC asphalt+kerb), not past the AC kerb edge, at least AI_DW_FLOOR past the asphalt; "
+                             "WALL_CLEAR always wins; never below wp_width")
     parser.add_argument('--f1-limits', help="--ai-width-rule f1: F1 2020 aispline limits CSV in AIW coordinates (f1_limits.py: <type>_x/_y/_z columns)")
     parser.add_argument('--ai-dry2', action='store_true', help='emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones (hypothesis)')
     parser.add_argument('--max-meshes', type=int)
