@@ -875,8 +875,155 @@ def racing_line_oio_checked(W, pw, lo, hi, sh):
     return d
 
 
-def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
-    """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch."""
+# ---- anti-"trenzinho" AI options (23/10, D:\_ffds_temp\f1_2020_ai\relatorio.md part C), all default OFF.
+# [C] measured on the original Interlagos AIW (36b5a10c848518a2.aiw, main branch): wp_dwidth - wp_width per side p10 1.1/2.2 m,
+#     median 8.8/15.6 m, dwidth capped at 30 m; wp_path[1] (wet) != dry everywhere, |wet - dry| p90 ~3.6 m, never outside wp_width;
+#     wp_dry2 on every waypoint (pit = 0), |dry2 - dry| > 2 m in 28 % of wps, max 6-7 m, never outside wp_width; timesDry2 one value.
+# [H] what the game does with them is not verified: dwidth = corridor the AI may use to avoid/run side by side, dry2 = second
+#     dry line the AI blends to when attacking (AIAltFastPathInterpolation / AIPrimaryDryPath in the exe), wet = rain line.
+AI_DW_FLOOR, AI_DW_MAX = 1.0, 12.0   # --ai-width: dwidth - width per side (floor = previous converter value, cap = original median)
+AI_GRASS = 2.0          # [H] metres of grass/astroturf past the paved surface the corridor may include (two wheels off, recoverable)
+AI_DRY2_OFF = 3.0       # --ai-dry2: inside offset in braking zones (2-4 m asked; original |dry2 - dry| p90 3.6 m)
+AI_WET_OFF = 3.0        # --ai-wet-line: distance of the wet line from the dry groove (GrooveWidthWet 3.0 -> outside the wet groove)
+
+
+def ai_reach(k, fast, keys, bad=frozenset(), props=None, res=0.5, reach=30.0, grass_max=AI_GRASS):
+    """--ai-width: free distance from each fast_lane point, per side (col 0 = +perp = extra col 5, col 1 = -perp = col 6), over
+    the surfaces the CSM gives the game (same surf_id): road/pit/paved run-off/kerbs without limit, then at most `grass_max` m of
+    grass/astroturf; stops at gravel/sand, at the first cell without a collision surface and at `reach`.  Walls are applied by
+    build_aiw (wall_free - WALL_CLEAR), so this never needs to see them."""
+    from PIL import Image, ImageDraw
+    x0 = fast[:, 0].min() - reach - 10; z0 = fast[:, 2].min() - reach - 10
+    w = int((fast[:, 0].max() + reach + 10 - x0) / res); h = int((fast[:, 2].max() + reach + 10 - z0) / res)
+    img = Image.new('L', (w, h), 0); dr = ImageDraw.Draw(img)
+    GRASS, GRAVEL, ROAD = 1, 2, 3
+    layers = {GRASS: [], GRAVEL: [], ROAD: []}
+    for m in k['meshes']:
+        if not len(m['idx']):
+            continue
+        key = match_surface(m['name'], keys)
+        tarmac = k['materials'][m['mat']]['name'].lower().startswith('tarmac') and m.get('visible', True) and m.get('renderable', True)
+        sid = surf_id(key, bad, props) if key is not None else None
+        cls = ROAD if tarmac or sid in (0, 10) else GRASS if sid in (GRASS_ID, ASTROTURF_ID) else GRAVEL if sid == GRAVEL_ID else None
+        if cls is None:
+            continue
+        P = m['pos']; T = m['idx'].reshape(-1, 3)
+        if cls == ROAD and not tarmac:     # collision 'road' ground planes would hide the true edge (same filter as tarmac_edges)
+            A2 = 0.5 * np.abs((P[T[:, 1], 0] - P[T[:, 0], 0]) * (P[T[:, 2], 2] - P[T[:, 0], 2]) - (P[T[:, 2], 0] - P[T[:, 0], 0]) * (P[T[:, 1], 2] - P[T[:, 0], 2]))
+            if A2.sum() > 100000:
+                continue
+        layers[cls].append((P, T))
+    for cls in (GRASS, GRAVEL, ROAD):      # paint order: gravel over grass (traps sit on grass planes), road over both
+        for P, T in layers[cls]:
+            for a, b, c in T:
+                dr.polygon([((P[j, 0] - x0) / res, (P[j, 2] - z0) / res) for j in (a, b, c)], fill=cls)
+    A = np.asarray(img)
+    n = len(fast)
+    out = np.zeros((n, 2))
+    steps = np.arange(res, reach, res)
+    for i in range(n):
+        t = fast[(i + 1) % n] - fast[i - 1]; t[1] = 0; t /= (np.linalg.norm(t) or 1)
+        perp = np.array([t[2], 0.0, -t[0]])
+        for c, sg in enumerate((1, -1)):
+            q = fast[i][None, :] + sg * steps[:, None] * perp[None, :]
+            cl = A[np.clip(((q[:, 2] - z0) / res).astype(int), 0, h - 1), np.clip(((q[:, 0] - x0) / res).astype(int), 0, w - 1)]
+            grass, d = 0.0, 0.0
+            for j, v in enumerate(cl):
+                if v == GRASS:
+                    grass += res
+                    if grass > grass_max:
+                        break
+                elif v != ROAD:
+                    break
+                d = steps[j]
+            out[i, c] = d
+    return out
+
+
+def braking_zones(line, min_drop=3.0, min_len=3):
+    """Braking runs of the point-mass speed profile: list of (start index, length in wps); start + length = minimum speed."""
+    v, _ = speed_profile(line)
+    n = len(v)
+    dec = np.roll(v, -1) < v - 1e-3
+    if dec.all() or not dec.any():
+        return []
+    s0 = int(np.argmin(dec))                         # a non-braking waypoint: runs never wrap the scan
+    zones, j = [], 0
+    while j < n:
+        if dec[(s0 + j) % n]:
+            a = j
+            while j < n and dec[(s0 + j) % n]:
+                j += 1
+            ia, ib = (s0 + a) % n, (s0 + j) % n
+            if j - a >= min_len and v[ia] - v[ib] >= min_drop:
+                zones.append((ia, j - a))
+        else:
+            j += 1
+    return zones
+
+
+def _smooth_closed(a, n):
+    k = np.ones(n) / n
+    return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
+
+
+def secondary_line(line, pw, sh, lo, hi, off=AI_DRY2_OFF, ramp=8, back=2):
+    """--ai-dry2 [H]: second dry line = main line moved `off` m to the inside of the coming corner in every braking zone (the
+    'dive-bomb' side), ramped in over `ramp` wps before braking starts, back on the main line `back` wps before the minimum-speed
+    point (apex side); raised-cosine ramps, clipped to the racing-line corridor [lo, hi] (asphalt margin, kerb, WALL_CLEAR)."""
+    n = len(sh)
+    o = np.zeros(n)
+    acc = np.roll(line, -1, 0) - 2 * line + np.roll(line, 1, 0)
+    inward = np.sum(acc * pw, axis=1)                # > 0: the line curves toward +perp
+    for a, L in braking_zones(line):
+        b = a + L
+        side = np.sign(sum(inward[(b + j) % n] for j in range(-3, 4)))
+        if side == 0:
+            continue
+        for j in range(a - ramp, b - back + 1):
+            up = min(max((j - (a - ramp)) / ramp, 0.0), 1.0); dn = min(max(((b - back) - j) / ramp, 0.0), 1.0)
+            v = side * off * (0.5 - 0.5 * math.cos(math.pi * min(up, dn)))
+            if abs(v) > abs(o[j % n]):
+                o[j % n] = v
+    d2 = np.clip(sh + o, lo, hi)
+    return np.clip(_smooth_closed(d2, 5), lo, hi)
+
+
+def wet_line(sh, lo, hi, off=AI_WET_OFF, n=15):
+    """--ai-wet-line [H]: rain line `off` m off the dry groove toward the side with more room, smoothed over `n` wps (75 m) and
+    clipped to the racing-line corridor [lo, hi]; it crosses the dry line only where the roomier side changes."""
+    side = np.where(hi - sh >= sh - lo, 1.0, -1.0)
+    d = np.clip(sh + side * off, lo, hi)
+    d = np.clip(_smooth_closed(d, n), lo, hi)
+    for _ in range(4):                               # repeated smooth + clip: softens the kinks where the corridor narrows
+        d = np.clip(_smooth_closed(d, 5), lo, hi)
+    return d
+
+
+def runs_over(mask, s):
+    """Contiguous True runs of a closed-lap mask as (lap distance start, end, indices)."""
+    n = len(mask)
+    if not mask.any():
+        return []
+    if mask.all():
+        return [(float(s[0]), float(s[-1]), np.arange(n))]
+    s0 = int(np.argmin(mask)); out = []; j = 0
+    while j < n:
+        if mask[(s0 + j) % n]:
+            a = j
+            while j < n and mask[(s0 + j) % n]:
+                j += 1
+            idx = (s0 + np.arange(a, j)) % n
+            out.append((float(s[idx[0]]), float(s[idx[-1]]), idx))
+        else:
+            j += 1
+    return out
+
+
+def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=None, dry2=False, wet=False):
+    """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch.
+    reach (--ai-width): ai_reach() per fast point -> per-side wp_dwidth; dry2 (--ai-dry2): wp_dry2 + timesDry2;
+    wet (--ai-wet-line): wp_path[1] off the dry groove.  All None/False = previous output byte for byte."""
     if pit is not None:
         pit = pit * MIRROR
     P = fast * MIRROR
@@ -916,6 +1063,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     if wallf is not None:
         wl_ = np.roll(wallf[:, 0], -k0); wr_ = np.roll(wallf[:, 1], -k0)
         wall_l = np.interp(s, cum, np.r_[wl_, wl_[:1]]); wall_r = np.interp(s, cum, np.r_[wr_, wr_[:1]])
+    reach_l = reach_r = None
+    if reach is not None:
+        rl_ = np.roll(reach[:, 0], -k0); rr_ = np.roll(reach[:, 1], -k0)
+        reach_l = np.interp(s, cum, np.r_[rl_, rl_[:1]]); reach_r = np.interp(s, cum, np.r_[rr_, rr_[:1]])
     # low (smoothed, <= 6.5 cm) kerbs beside the asphalt: the line may use their inner part like the AMS2 AI does at apexes
     mg_l = np.full(nw, LINE_MARGIN); mg_r = np.full(nw, LINE_MARGIN)
     if wide_l is not None:
@@ -959,6 +1110,37 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     line = W + sh[:, None] * np.c_[_t[:, 2], np.zeros(nw), -_t[:, 0]]       # racing line = pos + path*perp
     tdry = est_laptime(line)
     cty, cst = corner_marks(line)
+    ai = {}
+    shift_a = (ex_r - ex_l) / 2.0; hw_a = (ex_l + ex_r) / 2.0
+    if reach_l is not None:
+        # --ai-width: per side, usable limit = paved surface (+ AI_GRASS of grass, never into gravel) and never closer than
+        # WALL_CLEAR to a wall (same wall_free distances as the racing-line corridor); smoothing never widens a bottleneck.
+        lim_l = np.maximum(reach_l, ex_l); lim_r = np.maximum(reach_r, ex_r)
+        if wall_l is not None:
+            lim_l = np.minimum(lim_l, wall_l - WALL_CLEAR); lim_r = np.minimum(lim_r, wall_r - WALL_CLEAR)
+        lim_l = np.minimum(smooth(lim_l), lim_l); lim_r = np.minimum(smooth(lim_r), lim_r)
+        add_l = np.clip(lim_l - ex_l, AI_DW_FLOOR, AI_DW_MAX); add_r = np.clip(lim_r - ex_r, AI_DW_FLOOR, AI_DW_MAX)
+        ai['dw_add'] = (add_l, add_r)
+        ai['dw_floor'] = int(((lim_l - ex_l) < AI_DW_FLOOR).sum() + ((lim_r - ex_r) < AI_DW_FLOOR).sum())
+        q = lambda a: '%.1f/%.1f/%.1f' % (a.min(), np.median(a), a.max())
+        print('  AI width: dwidth - width min/median/max left %s right %s m, floor %.1f m used at %d side samples (wall/edge)' %
+              (q(add_l), q(add_r), AI_DW_FLOOR, ai['dw_floor']))
+    if dry2:
+        d2 = secondary_line(line, pw, sh, lo, hi)
+        line2 = W + d2[:, None] * pw
+        ai['dry2'] = d2; ai['tdry2'] = max(est_laptime(line2), tdry)   # [H] value only, never a selection criterion
+        far = runs_over(np.abs(d2 - sh) > 1.0, s)
+        ai['dry2_runs'] = [(a, b, float(np.abs(d2 - sh)[idx].max())) for a, b, idx in far]
+        print('  AI dry2: |dry2 - dry| > 1 m in %d runs, %.1f%% of wps, max %.2f m' %
+              (len(far), 100.0 * (np.abs(d2 - sh) > 1.0).mean(), np.abs(d2 - sh).max()))
+    if wet:
+        dw_ = wet_line(sh, lo, hi)
+        ai['wet'] = dw_
+        print('  AI wet line: |wet - dry| min/median/max %.2f/%.2f/%.2f m' %
+              (np.abs(dw_ - sh).min(), np.median(np.abs(dw_ - sh)), np.abs(dw_ - sh).max()))
+    for key in ('dry2', 'wet'):
+        if key in ai and (np.any(ai[key] < lo - 1e-6) or np.any(ai[key] > hi + 1e-6)):
+            raise ValueError('AI %s line violates asphalt/wall safety margins' % key)
     # [V from 224 original AIWs] wp_galpha = 0.45 in corners (R < ~200 m), 0 on straights; wp_groove_lat ~ -0.27 * wp_path
     _k, _ = line_curvature(line)
     galpha = 0.45 * (np.convolve(np.r_[(np.abs(_k) > 1 / 200.0)[-6:], np.abs(_k) > 1 / 200.0, (np.abs(_k) > 1 / 200.0)[:6]].astype(float), np.ones(13), 'valid') > 0)
@@ -983,7 +1165,10 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
         for g in (0, 1):
             out += ['GarLeftHanded=(%d,0)' % g, 'GarPos=(%d,%.6f,%.6f,%.6f)' % ((g,) + tuple(p)),
                     'GarOri=(%d,0.000000,%.6f,0.000000)' % (g, y)]
-    out += ['', '', '', '[Waypoint]', 'trackstate=467', 'times=(%.4f,%.4f)' % (tdry, tdry * 1.045), 'number_waypoints=%d' % nw,
+    out += ['', '', '', '[Waypoint]', 'trackstate=467', 'times=(%.4f,%.4f)' % (tdry, tdry * 1.045)]
+    if dry2:                                        # [C] original: 'timesDry2=(74.2200)' right after times
+        out += ['timesDry2=(%.4f)' % ai['tdry2']]
+    out += ['number_waypoints=%d' % nw,
             'lap_length=%.6f' % lap, 'sector_1_length=%.6f' % s1, 'sector_2_length=%.6f' % s2, 'FuelUse=0.845000',
             'GrooveWidth=%.6f' % (6.0 if STREET else 7.5), 'GrooveWidthWet=%.6f' % (3.5 if STREET else 3.0), 'IntermediateFogLevel=(0.0000)',
             'IntermediateFogPlanes=(0.0,0.0)', 'RainyFogPlanes=(0.0,0.0)', 'IntermediateFogColor=(0.0,0.0,0.0)',
@@ -1031,23 +1216,29 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
         shift = (ex_r[i] - ex_l[i]) / 2.0            # racing line -> centre along +perp
         hw = (ex_l[i] + ex_r[i]) / 2.0
         dw = max(hw + 1.0, (wide_l[i] + wide_r[i]) / 2.0 + 1.0) if wide_l is not None else hw + 1.0
+        dwp = (hw + ai['dw_add'][0][i], hw + ai['dw_add'][1][i]) if 'dw_add' in ai else (dw, dw)
         wps.append(dict(pos=W[i] + shift * pp, perp=pp, width=(hw, hw),
-                        dwidth=(dw, dw), path=sh[i] - shift, galpha=float(galpha[i]), score=(sector(s[i]), s[i]), branch=0, bits=0,
-                        ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0), cty=int(cty[i]), cst=int(cst[i])))
+                        dwidth=dwp, path=sh[i] - shift, galpha=float(galpha[i]), score=(sector(s[i]), s[i]), branch=0, bits=0,
+                        ptrs=((i - 1) % nw, (i + 1) % nw, third.get(i, -1), 0), cty=int(cty[i]), cst=int(cst[i]),
+                        wet=float(ai['wet'][i] - shift) if 'wet' in ai else 0.0,
+                        dry2=float(ai['dry2'][i] - shift) if 'dry2' in ai else None))
+    for w in pitw:                                  # pit branch untouched: wet stays 0, dry2 = its own line (no second line)
+        w['wet'] = 0.0; w['dry2'] = w['path'] if dry2 else None
     wps += pitw
     out = [x.replace('number_waypoints=%d' % nw, 'number_waypoints=%d' % len(wps)) for x in out]
     for i, w in enumerate(wps):
         out += [BS + BS + str(i),
                 'wp_pos=(%.4f,%.4f,%.4f)' % tuple(w['pos']), 'wp_perp=(%.4f,0.0000,%.4f)' % (w['perp'][0], w['perp'][2]),
                 'wp_width=(%.3f,%.3f)' % w['width'], 'wp_dwidth=(%.3f,%.3f)' % w['dwidth'],
-                'wp_path=(%.4f,0.0000)' % w['path'], 'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
+                'wp_path=(%.4f,%.4f)' % (w['path'], w['wet'])] + (['wp_dry2=(%.4f)' % w['dry2']] if w['dry2'] is not None else []) + [
+                'wp_galpha=(%.4f)' % w['galpha'], 'wp_score=(%d,%.3f)' % w['score'],
                 'wp_groove_lat=(%.6f)' % (-0.27 * w['path']), ('wp_event=(1.000,2,1.100000)' if w.get('cst', 0) in (2, 3) and w['branch'] == 0 else 'wp_event=(1.000,0,0.000000)'), 'wp_branchID=(%d)' % w['branch'],
                 'wp_bitfields=(%d)' % w['bits'], 'wpd_CornerType=(%d)' % w.get('cty', 0), 'wpd_CornerState=(%d)' % w.get('cst', 0), 'WP_PTRS=(%d,%d,%d,%d)' % w['ptrs']]
     info = dict(tdry=tdry, ncorners=int((cst == 1).sum()), lap=lap, s1=s1, s2=s2, nw=nw, W=W, half=half,
                 camera_centres=np.array([w['pos'] for w in wps[:nw]]),
                 camera_half=np.array([w['width'][0] for w in wps[:nw]]),
                 starts=len(starts), pits=len(pits), margin_left=float(margin_l.min()), margin_right=float(margin_r.min()),
-                npit=len(pitw) - (len(pits) if pit is not None else 0))
+                npit=len(pitw) - (len(pits) if pit is not None else 0), ai=ai)
     return '\n'.join(out) + '\n', info
 
 
@@ -1954,6 +2145,9 @@ def parse_args(argv=None):
     parser.add_argument('--street', action='store_true')
     parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio', 'f1'), default='fastest')
     parser.add_argument('--f1-line', help="racing-line mode 'f1': F1 2020 AI line CSV (x,y,z) already in AIW coordinates")
+    parser.add_argument('--ai-width', action='store_true', help='wp_dwidth per side up to paved run-off (+AI_GRASS of grass, no gravel), WALL_CLEAR off walls, 1-12 m past the asphalt')
+    parser.add_argument('--ai-dry2', action='store_true', help='emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones (hypothesis)')
+    parser.add_argument('--ai-wet-line', action='store_true', help='wp_path[1] (wet line) 3 m off the dry groove inside the corridor (hypothesis)')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
@@ -2120,7 +2314,10 @@ def main():
     else:
         wide = None
     wallf = wall_free(k, fast, keys=keys) if extra is not None else None
-    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf)
+    reach = None
+    if args.ai_width and extra is not None:
+        reach = ai_reach(k, fast, keys, invalid_keys(locations['surfaces']), surface_props(locations['surfaces']))
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf, reach=reach, dry2=args.ai_dry2, wet=args.ai_wet_line)
     if args.dump_aiw: open(args.dump_aiw, 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()

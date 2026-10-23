@@ -100,6 +100,8 @@ def main():
             if item.get('ground_pits'): cmd += ['--ground-pits']
             if item.get('racing_line'): cmd += ['--racing-line', item['racing_line']]
             if item.get('f1_line'): cmd += ['--f1-line', item['f1_line']]
+            for flag in ('ai_width', 'ai_dry2', 'ai_wet_line'):
+                if item.get(flag): cmd += ['--' + flag.replace('_', '-')]
             if args.force or old.get('fingerprint') != stamp or not old.get('converted'):
                 record['phase'] = 'converting'; save()
                 if run(cmd, logs / (tid + '-convert.log')): raise RuntimeError('Conversion failed; see convert log')
