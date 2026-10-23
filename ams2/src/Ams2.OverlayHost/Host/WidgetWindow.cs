@@ -43,6 +43,9 @@ internal sealed class WidgetWindow : IDisposable
     /// <summary>Ticks que o laco esperou pelo vblank antes deste quadro (telemetria [FPS]); definido pelo host.</summary>
     public long WaitTicks;
     long _drawCount;
+    long? _lastSig;
+    bool _fullNext = true;
+    readonly List<Ams2.Core.Calc.PixelRect> _dirty = [];
     double _drawSeconds, _presentSeconds;
     public string RenderTiming => _drawCount == 0 ? "" : $"draw={_drawSeconds / _drawCount * 1000:F2}ms present={_presentSeconds / _drawCount * 1000:F2}ms";
     public WidgetSettings Settings { get; private set; }
@@ -55,6 +58,8 @@ internal sealed class WidgetWindow : IDisposable
     public bool Editing => _win.EditMode;
     /// <summary>Visível e marcado como alta frequência: o host o desenha a cada vblank.</summary>
     public bool HighFrequency => Visible && _widget.HighFrequency;
+    /// <summary>Apresenta a cada N &gt; 1 vblanks (<see cref="IWidget.VblankTargetHz"/>).</summary>
+    public bool Divided => _gfx.PresentInterval > 1;
     /// <summary>Widget de alta frequencia sem nada para desenhar neste quadro (volta ao ritmo de 60 Hz).</summary>
     public bool IsIdle(OverlayModel model) => _widget.IsIdle(model);
     double _lastLow = double.NegativeInfinity;
@@ -84,7 +89,7 @@ internal sealed class WidgetWindow : IDisposable
         _win = OverlayWindow.Create($"AMS2 Overlay - {id}", x, y, _w, _h);
         _win.Mouse = OnMouse;
         _win.IsResizeGrip = (cx, cy) => cx >= _w - GripSize && cy >= _h - GripSize;
-        _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
+        _gfx = CreateDevice();
         _canvas = new ThemeCanvas(_gfx, theme, settings.RenderScale);
         ApplyCanvas();
         _win.SetVisible(Visible);
@@ -128,15 +133,24 @@ internal sealed class WidgetWindow : IDisposable
         else if (_drag == Drag.None) _win.Move(x, y);
         ApplyCanvas();
         _win.SetVisible(Visible);
+        Invalidate();
     }
 
     void Rebuild()
     {
         _canvas.Dispose();
         _gfx.Dispose();
-        _gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
+        _gfx = CreateDevice();
         _canvas = new ThemeCanvas(_gfx, _theme, Settings.RenderScale);
         ApplyCanvas();
+        Invalidate();
+    }
+
+    DeviceResources CreateDevice()
+    {
+        var gfx = DeviceResources.CreateForWindow(_win.Handle, _w, _h);
+        gfx.PresentInterval = Ams2.Core.Calc.FramePacing.Divisor(PrimaryRefreshHz(), _widget.VblankTargetHz);
+        return gfx;
     }
 
     /// <summary>Regra central de visibilidade (PlayerDriving ou modo de edicao): fecha/abre a janela sem mexer nas Settings do perfil.</summary>
@@ -145,6 +159,7 @@ internal sealed class WidgetWindow : IDisposable
         if (_gateOpen == open) return;
         _gateOpen = open;
         _win.SetVisible(Visible);
+        Invalidate();
     }
 
     /// <summary>Grupo da sessao atual ("practice"/"qualify"/"race"; null = nao filtra).</summary>
@@ -153,20 +168,37 @@ internal sealed class WidgetWindow : IDisposable
         if (_session == session) return;
         _session = session;
         _win.SetVisible(Visible);
+        Invalidate();
     }
 
     public void SetEditMode(bool edit)
     {
         _win.SetEditMode(edit);
         if (!edit) _drag = Drag.None;
+        Invalidate();
     }
 
     public void BringToTop() => _win.BringToTop();
 
-    public void Render(OverlayModel model)
+    /// <summary>Ha algo novo a apresentar? Sem assinatura (null) ou editando = sempre.</summary>
+    public bool NeedsFrame(OverlayModel model) => Editing || _lastSig is null || _widget.FrameSignature(model) != _lastSig;
+
+    /// <summary>Esquece o ultimo quadro apresentado: o proximo desenha e apresenta inteiro.</summary>
+    void Invalidate() { _lastSig = null; _fullNext = true; }
+
+    /// <param name="paced">true = o host ja consumiu o sinal do waitable (laco de vblank).</param>
+    public void Render(OverlayModel model, bool paced = false)
     {
         if (!Visible) return;
         bool preview = Editing && !model.PlayerDriving;
+        long? sig = null;
+        if (!Editing)
+        {
+            sig = _widget.FrameSignature(model);
+            if (sig is not null && sig == _lastSig) return;   // nada mudou: o DComp mantem o ultimo quadro
+        }
+        // Present(N>1) fora do laco de vblank: so com vaga na fila (consome o sinal como o laco faria), para nunca bloquear o host.
+        if (!paced && _gfx.PresentInterval > 1 && FrameWaitHandle is var h and not 0 && WaitForSingleObjectEx(h, 0, false) != 0) return;
         if (preview)
         {
             model = LayoutPreview.ForWidget(Id);
@@ -179,11 +211,15 @@ internal sealed class WidgetWindow : IDisposable
         if (_win.EditMode) DrawEditAdornments(preview);
         _canvas.End();
         double drawn = Ams2.Core.Calc.RateStats.Now();
-        if (_gfx.EndFrame())
+        bool partial = !_fullNext && !_win.EditMode && _widget.DirtyRegion(_dirty);
+        if (_gfx.EndFrame(partial ? System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_dirty) : default))
         {
             RenderStats.Mark();
             if (_widget.HighFrequency) (_frameLog ??= new FrameLog(Id)).Add(_gfx.LastPresentStart, _gfx.LastPresentEnd, WaitTicks);
+            _lastSig = sig;
+            _fullNext = _win.EditMode;
         }
+        else Invalidate();
         _drawCount++;
         _drawSeconds += drawn - started;
         _presentSeconds += Ams2.Core.Calc.RateStats.Now() - drawn;

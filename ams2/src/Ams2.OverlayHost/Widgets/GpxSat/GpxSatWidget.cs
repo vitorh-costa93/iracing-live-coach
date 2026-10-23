@@ -20,11 +20,14 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
 {
     public string Id => "gpxsat";
     public (float Width, float Height) DesignSize => (1920, 1080);
-    // Janela de tela inteira (1920x1080): a animacao anda a 20 ms por passo (50/s), entao o ritmo de 60 Hz basta. Como HF ela disputava
-    // o vblank e a composicao do DWM com Inputs/Radar o tempo todo (as telas ficam minutos paradas) e deixava o grafico/radar lentos.
-    public bool HighFrequency => false;
-    bool _animating;
-    public double LowRateHz => _animating ? 60 : 30;
+    // Janela de tela inteira (1920x1080). No ritmo de vblank so enquanto anima ou um cronometro corre, e com divisor (N = refresh/60:
+    // 3 a 165 Hz) para nao disputar o vblank com Inputs/Radar; parada (IsIdle) so apresenta quando a assinatura muda e o DComp
+    // mantem o ultimo quadro. A apresentacao avisa so a regiao alterada (Present1 com retangulos).
+    public bool HighFrequency => true;
+    public double VblankTargetHz => 60;
+    public double LowRateHz => 30;
+    const double ActiveHoldSeconds = 1.5;
+    static readonly bool Debug = Environment.GetEnvironmentVariable("GPX_DEBUG") == "1";
 
     IGpxMode _mode = GpxModeRegistry.Create(null);
     WidgetSettings _cfg = new() { Id = "gpxsat" };
@@ -39,24 +42,162 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
     uint _sequence;
     bool _seenSequence;
 
+    // Despacho em cache por modelo (as telas so dependem do modelo e das opcoes); _content muda quando o que se ve muda.
+    readonly List<GpxScreen> _slots = [], _prevSlots = [];
+    readonly List<int> _groups = [];
+    readonly List<string> _gone = [];
+    OverlayModel? _plannedFor;
+    int _cfgVersion, _plannedVersion = -1;
+    GpxContext? _ctx;
+    bool _mapVisible;
+    long _mapFrame = -1, _content;
+    double _changedAt = double.NegativeInfinity;
+
     public IGpxMode Mode => _mode;
+
+    /// <summary>Relogio da animacao: o do amostrador (tempo real, como o radar); sem ele, o do provider.</summary>
+    static double Clock(OverlayModel m) => m.Inputs?.Now ?? m.Now;
 
     public void UseTheme(Theme.Theme theme)
     {
         var next = GpxModeRegistry.Create(theme.Id);
         if (next.Id == _mode.Id) return;
-        _mode = next; _anims.Clear();
+        _mode = next; _anims.Clear(); _cfgVersion++;
     }
 
     public void Configure(WidgetSettings settings)
     {
+        _cfgVersion++;
         _cfg = settings;
         _opt = GpxOptions.From(settings, _mode.Id == "classic") with { MixedCaseNames = _mode.Id is "digital2004" or "digital2010" };
         _sky.HoldSeconds = _opt.SkySeconds;
         _split.HoldSeconds = _opt.SplitSeconds;
     }
 
-    public bool IsIdle(OverlayModel model) => !model.Connected || _anims.Count == 0;
+    /// <summary>Fora do ritmo de vblank: nada animando e nada mudou ha <see cref="ActiveHoldSeconds"/> (cronometro parado ou sem tela).</summary>
+    public bool IsIdle(OverlayModel model)
+    {
+        if (!model.Connected) return true;
+        Plan(model);
+        double now = Clock(model);
+        return !(now - _changedAt < ActiveHoldSeconds || Animating(now));
+    }
+
+    public long? FrameSignature(OverlayModel model)
+    {
+        Plan(model);
+        double now = Clock(model);
+        Sync(now);
+        long sig = _content;
+        foreach (var sc in _slots)
+        {
+            var a = _anims[sc.Slot];
+            var phase = a.Logo(now, _opt.ShowLogo).Phase;
+            long part = !a.AllSettled(now) || phase == GpxLogoPhase.Flip ? BitConverter.DoubleToInt64Bits(now) : (long)phase;
+            sig = unchecked(sig * 1_000_003 + part);
+        }
+        return sig;
+    }
+
+    public bool DirtyRegion(List<Ams2.Core.Calc.PixelRect> rects)
+    {
+        _surface.Dirty.Collect(rects);
+        return true;
+    }
+
+    bool Animating(double now)
+    {
+        foreach (var sc in _slots)
+        {
+            if (!_anims.TryGetValue(sc.Slot, out var a)) return true;
+            if (!a.AllSettled(now) || a.Logo(now, _opt.ShowLogo).Phase == GpxLogoPhase.Flip) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Despacha as telas do modelo (uma vez por modelo/configuracao): a de maior prioridade por slot, mapa, versao do conteudo.</summary>
+    void Plan(OverlayModel m)
+    {
+        if (ReferenceEquals(m, _plannedFor) && _plannedVersion == _cfgVersion) return;
+        _plannedFor = m; _plannedVersion = _cfgVersion;
+        Observe(m);
+        _prevSlots.Clear(); _prevSlots.AddRange(_slots);
+        _slots.Clear(); _groups.Clear();
+        bool wasMap = _mapVisible;
+        _mapVisible = false; _ctx = null;
+        if (m.Connected && m.Session is { } s)
+        {
+            var ctx = _ctx = new GpxContext
+            {
+                Model = m, Session = s, Options = _opt, Settings = _cfg, G = new GpxGeometry(_mode.Spec.FH), Sky = _sky, Split = _split,
+            };
+            var debug = Debug ? new System.Text.StringBuilder() : null;
+            foreach (var sc in _mode.Dispatch(ctx)) Pick(sc, debug);
+            if (!ctx.Previewing) foreach (var sc in GpxSharedScreens.Dispatch(ctx)) Pick(sc, debug);
+            if (debug is not null) Console.Error.WriteLine($"[GPX] prev={_opt.PreviewScreen} now={m.Now} screens={debug}");
+            string? map = _cfg.Option("trackMap");
+            _mapVisible = !ctx.Previewing && _map.Ready && (map == "always" || (map is null or "auto") && s.FlagColour is 6 or 7);
+            foreach (var sc in _slots) _groups.Add(Groups(sc));
+        }
+        _gone.Clear();
+        foreach (var k in _anims.Keys) if (!HasSlot(k)) _gone.Add(k);
+        foreach (var k in _gone) _anims.Remove(k);
+        if (_mapVisible != wasMap || (_mapVisible && m.Frame != _mapFrame) || !SameScreens()) { _content++; _changedAt = Clock(m); }
+        _mapFrame = _mapVisible ? m.Frame : -1;
+    }
+
+    void Pick(GpxScreen sc, System.Text.StringBuilder? debug)
+    {
+        if (debug is not null) debug.Append(debug.Length == 0 ? "" : ",").Append(sc.Slot).Append(':').Append(sc.Key).Append(':').Append(sc.Boxes.Count);
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            if (_slots[i].Slot != sc.Slot) continue;
+            if (sc.Priority > _slots[i].Priority) _slots[i] = sc;
+            return;
+        }
+        _slots.Add(sc);
+    }
+
+    bool HasSlot(string slot)
+    {
+        foreach (var sc in _slots) if (sc.Slot == slot) return true;
+        return false;
+    }
+
+    static int Groups(GpxScreen sc)
+    {
+        int max = -1;
+        for (int i = 0; i < sc.Boxes.Count; i++) if (!sc.Boxes[i].Logo && sc.Boxes[i].Group > max) max = sc.Boxes[i].Group;
+        return sc.Boxes.Count == 0 ? 0 : max + 1;
+    }
+
+    bool SameScreens()
+    {
+        if (_slots.Count != _prevSlots.Count) return false;
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            GpxScreen a = _slots[i], b = _prevSlots[i];
+            if (ReferenceEquals(a, b)) continue;
+            if (a.Slot != b.Slot || a.Key != b.Key || a.Page != b.Page || a.Anim != b.Anim || a.Boxes.Count != b.Boxes.Count) return false;
+            for (int j = 0; j < a.Boxes.Count; j++) if (!a.Boxes[j].Equals(b.Boxes[j])) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Animadores das telas atuais no relogio <paramref name="now"/> (Update e idempotente para a mesma tela).</summary>
+    void Sync(double now)
+    {
+        if (_ctx is null) return;
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            var sc = _slots[i];
+            if (!_anims.TryGetValue(sc.Slot, out var a)) _anims[sc.Slot] = a = new GpxAnimator();
+            a.StepMs = _opt.StepMs;
+            a.LogoMs = _mode.Id == "digital2010" ? 8000 : 6000;
+            a.Update(sc.Key, sc.Page, _groups[i], sc.Anim, now);
+            if (_ctx.Previewing) a.StartAt(now - (_opt.PreviewMs >= 0 ? _opt.PreviewMs / 1000 : a.SettleSeconds + 0.001));
+        }
+    }
 
     public void Observe(OverlayModel m)
     {
@@ -79,34 +220,16 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
 
     public void Draw(ThemeCanvas canvas, OverlayModel m)
     {
-        Observe(m);
-        if (!m.Connected || m.Session is not { } s) return;
-        var ctx = new GpxContext
-        {
-            Model = m, Session = s, Options = _opt, Settings = _cfg, G = new GpxGeometry(_mode.Spec.FH), Sky = _sky, Split = _split,
-        };
-        var screens = _mode.Dispatch(ctx).Concat(ctx.Previewing ? [] : GpxSharedScreens.Dispatch(ctx)).ToArray();
-        if (Environment.GetEnvironmentVariable("GPX_DEBUG") == "1") Console.Error.WriteLine($"[GPX] prev={_opt.PreviewScreen} now={m.Now} screens={string.Join(",", screens.Select(x => x.Slot + ":" + x.Key + ":" + x.Boxes.Count))}");
-        var bySlot = screens.GroupBy(x => x.Slot).Select(g => g.OrderByDescending(x => x.Priority).First()).ToList();
-        foreach (var gone in _anims.Keys.Where(k => bySlot.All(x => x.Slot != k)).ToList()) _anims.Remove(gone);
-        bool mapVisible = !ctx.Previewing && _map.Ready && (_cfg.Option("trackMap") == "always" || (_cfg.Option("trackMap") is null or "auto") && s.FlagColour is 6 or 7);
-        if (bySlot.Count == 0 && !mapVisible) { _animating = false; return; }
-
-        _animating = false;
+        _surface.Dirty.NewFrame();
+        Plan(m);
+        if (_ctx is not { } ctx || (_slots.Count == 0 && !_mapVisible)) return;
+        double now = Clock(m);
+        Sync(now);
         _surface.Begin(canvas, DesignSize.Width, DesignSize.Height, _mode.Spec, _opt.Stretch, _opt.OriginalFonts, _cfg.TextScale ?? 1f);
         try
         {
-            if (mapVisible) _surface.TrackMap(_map, s);
-            foreach (var sc in bySlot)
-            {
-                if (!_anims.TryGetValue(sc.Slot, out var a)) _anims[sc.Slot] = a = new GpxAnimator();
-                a.StepMs = _opt.StepMs;
-                a.LogoMs = _mode.Id == "digital2010" ? 8000 : 6000;
-                a.Update(sc.Key, sc.Page, sc.Groups, sc.Anim, m.Now);
-                if (ctx.Previewing) a.StartAt(m.Now - (_opt.PreviewMs >= 0 ? _opt.PreviewMs / 1000 : a.SettleSeconds + 0.001));
-                DrawScreen(sc, a, ctx.G, m.Now);
-                if (!a.AllSettled(m.Now) || a.Logo(m.Now, _opt.ShowLogo).Phase == GpxLogoPhase.Flip) _animating = true;
-            }
+            if (_mapVisible) _surface.TrackMap(_map, ctx.Session);
+            foreach (var sc in _slots) DrawScreen(sc, _anims[sc.Slot], ctx.G, now);
         }
         finally { _surface.End(canvas); }
     }
@@ -114,10 +237,11 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
     void DrawScreen(GpxScreen sc, GpxAnimator a, GpxGeometry g, double now)
     {
         bool fadeDone = a.FadeDone(now);
-        float fade = a.FadePct(now) / 100f;
-        var (logoPhase, logoRot) = a.Logo(now, _opt.ShowLogo);
-        foreach (var b in sc.Boxes)
+        float fade = a.FadeFrac(now);
+        var (logoPhase, logoRot) = a.LogoFrac(now, _opt.ShowLogo);
+        for (int i = 0; i < sc.Boxes.Count; i++)
         {
+            var b = sc.Boxes[i];
             var r = b.Rect;
             if (b.Logo)
             {
@@ -128,24 +252,24 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
             }
             if (!fadeDone)
             {
-                // Fase 1: wipe branco da esquerda para a direita (largura x FADE%).
+                // Fase 1: wipe branco da esquerda para a direita (largura x FADE%), continuo entre os passos.
                 _surface.FillTexture(_surface.ToDevice(r with { W = r.W * fade }), GpxTextures.White);
                 continue;
             }
-            int rot = a.RotPct(b.Group, now);
             if (a.Settled(b.Group, now)) { DrawFinal(b, r, g, b.Alpha); continue; }
-            if (rot >= 100) { _surface.FillTexture(_surface.ToDevice(r), GpxTextures.White); continue; }   // grupo ainda nao comecou
+            float rot = a.RotFrac(b.Group, now);
+            if (rot >= 1) { _surface.FillTexture(_surface.ToDevice(r), GpxTextures.White); continue; }   // grupo ainda nao comecou
             if (sc.Anim == GpxAnimKind.Columns)
-                _surface.FillTexture(_surface.ToDevice(r with { H = r.H * rot / 100f }), GpxTextures.White, rot / 100f);
+                _surface.FillTexture(_surface.ToDevice(r with { H = r.H * rot }), GpxTextures.White, rot);
             else
                 _surface.FillTexture(_surface.ToDevice(Flip(r, rot, g.FH)), GpxTextures.White);
         }
     }
 
-    /// <summary>Flip vertical da linha: T += tri*FH/100, B -= tri*FH/100.</summary>
-    static GpxRect Flip(GpxRect r, int rot, float fh)
+    /// <summary>Flip vertical da linha: T += tri*FH, B -= tri*FH (rot e tri em fracao).</summary>
+    static GpxRect Flip(GpxRect r, float rot, float fh)
     {
-        float d = GpxAnimator.Tri(rot) * fh / 100f;
+        float d = GpxAnimator.TriFrac(rot) * fh;
         return new GpxRect(r.L, r.T + d, r.W, Math.Max(0, r.H - 2 * d));
     }
 

@@ -393,15 +393,21 @@ internal sealed class HostController : IDisposable
             }
             bool lowDue = now + LowSlack >= nextLow;
             if (lowDue) { nextLow += LowPeriod; if (nextLow < now - LowPeriod) nextLow = now + LowPeriod; }
-            bool high = false, anyVisible = false;
-            _hfWindows.Clear();
+            bool high = false, anyVisible = false, hfUnchanged = false;
+            _hfWindows.Clear(); _hfDivided.Clear();
             foreach (var w in _windows.Values)
             {
                 if (!w.Visible) continue;
                 anyVisible = true;
-                if (w.HighFrequency && !w.IsIdle(model)) _hfWindows.Add(w);
+                if (w.HighFrequency && !w.IsIdle(model))
+                {
+                    // HF com assinatura igual ao ultimo quadro: fica fora da espera (sem consumir o waitable) ate mudar.
+                    if (!w.NeedsFrame(model)) hfUnchanged = true;
+                    else (w.Divided ? _hfDivided : _hfWindows).Add(w);
+                }
                 else if (lowDue && w.LowDue(now)) w.Render(model);
             }
+            _hfWindows.AddRange(_hfDivided);   // divisor N>1 (GPx) depois de Inputs/Radar na mesma volta
             if (_hfWindows.Count > 0)
             {
                 high = true;
@@ -409,15 +415,15 @@ internal sealed class HostController : IDisposable
             }
 
             // Sem Sleep no caminho quente: com widget HF ativo, o Present(1) bloqueante de cada janela e o relogio (modelo do V3).
-            // Sem HF ativo: dorme ate o proximo passo de 60 Hz; sem nenhuma janela visivel: 50 ms.
+            // Sem HF ativo: dorme ate o proximo passo de 60 Hz; sem nenhuma janela visivel: 50 ms. HF parado (assinatura igual): 2 ms.
             lapHigh = high;
             if (high) continue;
             if (!anyVisible) Thread.Sleep(50);
-            else SleepUntil(run, nextLow);
+            else SleepUntil(run, hfUnchanged ? Math.Min(nextLow, now + 0.002) : nextLow);
         }
     }
 
-    readonly List<WidgetWindow> _hfWindows = [];
+    readonly List<WidgetWindow> _hfWindows = [], _hfDivided = [];
     readonly nint[] _waitHandles = new nint[64];
     readonly int[] _waitOwner = new int[64];
 
@@ -429,8 +435,9 @@ internal sealed class HostController : IDisposable
     void RenderHighFrequency(OverlayModel model)
     {
         int n = 0;
-        foreach (var (w, i) in _hfWindows.Select((w, i) => (w, i)))
+        for (int i = 0; i < _hfWindows.Count; i++)
         {
+            var w = _hfWindows[i];
             w.WaitTicks = 0;
             var h = w.FrameWaitHandle;
             if (h != 0 && n < _waitHandles.Length) { _waitHandles[n] = h; _waitOwner[n] = i; n++; }
@@ -452,7 +459,7 @@ internal sealed class HostController : IDisposable
             bool ready = timedOut || h == 0 || i == first || Win32.WaitForSingleObjectEx(h, 0, false) == 0;
             if (!ready) continue;
             w.WaitTicks = waited;
-            w.Render(model);
+            w.Render(model, paced: true);
         }
     }
 

@@ -40,6 +40,10 @@ public sealed unsafe class GpxSurface : IDisposable
     GpxModeSpec _spec = null!;
     bool _originalFonts = true;
 
+    readonly Dictionary<(int W, int H, int Dx), ComPtr<ID2D1PathGeometry>> _slants = [];
+    /// <summary>Retangulos desenhados (px do device) neste quadro e no anterior, para o Present1.</summary>
+    public Ams2.Core.Calc.DirtyRegion Dirty { get; } = new();
+
     public GpxGeometry Geometry { get; private set; } = new(17);
     /// <summary>Altura de linha em px do device.</summary>
     public float FhPx => Geometry.FH * _sy;
@@ -72,6 +76,8 @@ public sealed unsafe class GpxSurface : IDisposable
         _formats.Clear(); _cellToEm.Clear();
         foreach (var g in _gradients.Values) g.Dispose();
         _gradients.Clear();
+        foreach (var s in _slants.Values) s.Dispose();
+        _slants.Clear();
         _solid.Dispose(); _solid = default;
         _textParams.Dispose(); _textParams = default;
     }
@@ -90,6 +96,7 @@ public sealed unsafe class GpxSurface : IDisposable
         Geometry = new GpxGeometry(spec.FH);
         float devW = designW * canvas.Scale * canvas.WidthScale, devH = designH * canvas.Scale * canvas.HeightScale;
         (_sx, _sy, _ox, _oy) = GpxGeometry.Fit(devW, devH, stretch);
+        Dirty.Width = gfx.Width; Dirty.Height = gfx.Height;
         var id = Matrix3x2.Identity;
         _dc->SetTransform(&id);
         _savedAa = _dc->GetTextAntialiasMode();
@@ -152,35 +159,65 @@ public sealed unsafe class GpxSurface : IDisposable
     {
         if (r.Right <= r.Left || r.Bottom <= r.Top || alpha <= 0) return;
         var g = Gradient(texture);
-        g->SetStartPoint(horizontal ? new Vector2(r.Left, 0) : new Vector2(0, r.Top));
-        g->SetEndPoint(horizontal ? new Vector2(r.Right, 0) : new Vector2(0, r.Bottom));
         g->SetOpacity(Math.Clamp(alpha, 0, 1) * _opacity);
-        if (slant == 0) _dc->FillRectangle(&r, (ID2D1Brush*)g);
+        if (slant == 0)
+        {
+            g->SetStartPoint(horizontal ? new Vector2(r.Left, 0) : new Vector2(0, r.Top));
+            g->SetEndPoint(horizontal ? new Vector2(r.Right, 0) : new Vector2(0, r.Bottom));
+            _dc->FillRectangle(&r, (ID2D1Brush*)g);
+            Mark(r);
+        }
         else
         {
-            using ComPtr<ID2D1Factory> factory = default;
-            _dc->GetFactory(factory.GetAddressOf());
-            using ComPtr<ID2D1PathGeometry> path = default;
-            ThrowIfFailed(factory.Get()->CreatePathGeometry(path.GetAddressOf()));
-            using ComPtr<ID2D1GeometrySink> sink = default;
-            ThrowIfFailed(path.Get()->Open(sink.GetAddressOf()));
-            float dx = slant * _sx;
-            sink.Get()->BeginFigure(new Vector2(r.Left + dx, r.Top), FigureBegin.Filled);
-            sink.Get()->AddLine(new Vector2(r.Right, r.Top));
-            sink.Get()->AddLine(new Vector2(r.Right - dx, r.Bottom));
-            sink.Get()->AddLine(new Vector2(r.Left, r.Bottom));
-            sink.Get()->EndFigure(FigureEnd.Closed);
-            ThrowIfFailed(sink.Get()->Close());
-            _dc->FillGeometry((ID2D1Geometry*)path.Get(), (ID2D1Brush*)g, null);
+            // Paralelogramo em cache por (largura, altura, inclinacao), na origem; posicionado por translacao (o pincel vai no espaco local).
+            float w = r.Right - r.Left, h = r.Bottom - r.Top, dx = slant * _sx;
+            var path = Slanted(w, h, dx);
+            g->SetStartPoint(Vector2.Zero);
+            g->SetEndPoint(horizontal ? new Vector2(w, 0) : new Vector2(0, h));
+            var at = Matrix3x2.CreateTranslation(r.Left, r.Top);
+            _dc->SetTransform(&at);
+            _dc->FillGeometry((ID2D1Geometry*)path, (ID2D1Brush*)g, null);
+            var id = Matrix3x2.Identity;
+            _dc->SetTransform(&id);
+            Mark(r, 2 + MathF.Abs(dx));
         }
     }
 
-    public void Stroke(RectF r, uint argb) => _dc->DrawRectangle(&r, Solid(argb), Math.Max(1, _sy), null);
+    ID2D1PathGeometry* Slanted(float w, float h, float dx)
+    {
+        var key = (BitConverter.SingleToInt32Bits(w), BitConverter.SingleToInt32Bits(h), BitConverter.SingleToInt32Bits(dx));
+        if (_slants.TryGetValue(key, out var cached)) return cached.Get();
+        if (_slants.Count >= 256) { foreach (var s in _slants.Values) s.Dispose(); _slants.Clear(); }
+        using ComPtr<ID2D1Factory> factory = default;
+        _dc->GetFactory(factory.GetAddressOf());
+        ComPtr<ID2D1PathGeometry> path = default;
+        ThrowIfFailed(factory.Get()->CreatePathGeometry(path.GetAddressOf()));
+        using ComPtr<ID2D1GeometrySink> sink = default;
+        ThrowIfFailed(path.Get()->Open(sink.GetAddressOf()));
+        sink.Get()->BeginFigure(new Vector2(dx, 0), FigureBegin.Filled);
+        sink.Get()->AddLine(new Vector2(w, 0));
+        sink.Get()->AddLine(new Vector2(w - dx, h));
+        sink.Get()->AddLine(new Vector2(0, h));
+        sink.Get()->EndFigure(FigureEnd.Closed);
+        ThrowIfFailed(sink.Get()->Close());
+        _slants[key] = path;
+        return path.Get();
+    }
+
+    void Mark(RectF r, float pad = 2) => Dirty.Add(r.Left, r.Top, r.Right, r.Bottom, pad);
+
+    public void Stroke(RectF r, uint argb)
+    {
+        float width = Math.Max(1, _sy);
+        _dc->DrawRectangle(&r, Solid(argb), width, null);
+        Mark(r, 2 + width);
+    }
 
     public void FillSolid(RectF r, uint argb, float alpha = 1f)
     {
         if (r.Right <= r.Left || r.Bottom <= r.Top) return;
         _dc->FillRectangle(&r, Solid(argb, alpha));
+        Mark(r);
     }
 
     /// <summary>
@@ -267,7 +304,7 @@ public sealed unsafe class GpxSurface : IDisposable
     public void Text(RectF box, string text, GpxAlign align, uint argb, float indentLogical, GpxFontRole role = GpxFontRole.Normal, float alpha = 1f, bool shadow = false, bool topAligned = false)
     {
         if (string.IsNullOrEmpty(text) || box.Right <= box.Left) return;
-        var fmt = Format(role, align, out _);
+        var fmt = Format(role, align, out float sizePx);
         float indent = MathF.Round(indentLogical * _sx);
         float l = box.Left + (align == GpxAlign.Left ? indent : 0), r = box.Right - (align == GpxAlign.Right ? indent : 0);
         float w = Math.Max(1, r - l), h = box.Bottom - box.Top;
@@ -278,6 +315,16 @@ public sealed unsafe class GpxSurface : IDisposable
         float baseline = MathF.Round(top + line.baseline);
         if (shadow) _dc->DrawTextLayout(new Vector2(l + Math.Max(1, _sx), baseline - line.baseline + Math.Max(1, _sy)), layout, Solid(0xff000000, alpha * .8f), DrawTextOptions.None);
         _dc->DrawTextLayout(new Vector2(l, baseline - line.baseline), layout, Solid(argb, alpha), DrawTextOptions.None);
+        // Sem recorte: o texto pode passar da caixa. Regiao = caixa + extensao real do layout + folga de meia fonte (e sombra).
+        float x0 = box.Left, x1 = box.Right, y0 = box.Top, y1 = box.Bottom;
+        TextMetrics tm;
+        if (layout->GetMetrics(&tm).Success)
+        {
+            x0 = MathF.Min(x0, l + tm.left); x1 = MathF.Max(x1, l + tm.left + tm.widthIncludingTrailingWhitespace);
+            y0 = MathF.Min(y0, baseline - line.baseline + tm.top); y1 = MathF.Max(y1, baseline - line.baseline + tm.top + tm.height);
+        }
+        float pad = sizePx * .5f + 2 + (shadow ? Math.Max(1, Math.Max(_sx, _sy)) : 0);
+        Dirty.Add(x0, y0, x1, y1, pad);
     }
 
     /// <summary>Bandeira quadriculada procedural (no lugar do digital_flag.tga): 4x4 casas preto/branco num quadro escuro.</summary>
@@ -307,6 +354,7 @@ public sealed unsafe class GpxSurface : IDisposable
         if (bitmap == null) return false;
         RectF src = source is { } r ? new RectF(r.L, r.T, r.R, r.B) : default;
         _dc->DrawBitmap(bitmap, &destination, alpha * _opacity, InterpolationMode.HighQualityCubic, source is null ? null : &src, null);
+        Mark(destination);
         return true;
     }
 
@@ -314,12 +362,15 @@ public sealed unsafe class GpxSurface : IDisposable
     {
         const float size=256;
         if (!map.Ready) return;
+        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
+        void Grow(Vector2 p) { x0 = MathF.Min(x0, p.X); y0 = MathF.Min(y0, p.Y); x1 = MathF.Max(x1, p.X); y1 = MathF.Max(y1, p.Y); }
         foreach(var segment in map.Segments)
         {
             Vector2 Device(Vector2 p) => new(_ox+p.X*_sx, _oy+p.Y*_sy);
             var a=Device(map.Project(segment.A,0,0,size)); var b=Device(map.Project(segment.B,0,0,size));
             _dc->DrawLine(a,b,Solid(0xff202020),6*_sy,null);
             _dc->DrawLine(a,b,Solid(0xffc0c0c0),3*_sy,null);
+            Grow(a); Grow(b);
         }
         foreach(var car in session.Cars.Where(c=>c.HasPose && !c.InGarage).OrderBy(c=>c.IsPlayer))
         {
@@ -327,7 +378,9 @@ public sealed unsafe class GpxSurface : IDisposable
             var rect=ToDevice(new(p.X-4,p.Y-4,8,8));
             var e=new Ellipse { point=new((rect.Left+rect.Right)/2,(rect.Top+rect.Bottom)/2),radiusX=4*_sx,radiusY=4*_sy };
             _dc->FillEllipse(&e,Solid(car.IsPlayer?0xff00cc00:0xffff0000));
+            Grow(e.point);
         }
+        if (x1 >= x0) Dirty.Add(x0, y0, x1, y1, 4 + 6 * MathF.Max(_sx, _sy));
     }
 
     public void Badge(RectF r, GpxImage image, string? text, uint ink, float alpha)
@@ -337,6 +390,7 @@ public sealed unsafe class GpxSurface : IDisposable
         {
             var e = new Ellipse { point = new Vector2((r.Left + r.Right)/2, (r.Top + r.Bottom)/2), radiusX = (r.Right-r.Left)/2, radiusY = (r.Bottom-r.Top)/2 };
             _dc->FillEllipse(&e, Solid(0xff63d9d2, alpha));
+            Mark(r);
         }
         else FillTexture(r, GpxTextures.YellowFlag, alpha);
         Text(r, text ?? (image == GpxImage.Winner ? "WINNER" : ""), GpxAlign.Center, ink, 0,

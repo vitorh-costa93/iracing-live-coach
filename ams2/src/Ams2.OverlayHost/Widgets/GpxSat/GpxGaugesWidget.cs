@@ -12,7 +12,9 @@ public sealed class GpxGaugesWidget : IWidget
 {
     public string Id => "gpxgauges";
     public (float Width, float Height) DesignSize => (256, 200);
-    public bool HighFrequency => false;   // 256x200 a 60 Hz (taxa dos dados do jogo); como HF disputava o vblank com Inputs/Radar
+    // Ritmo de vblank com divisor (N=2 a 144/165 Hz): ponteiros sem o judder do acumulador de 60 Hz, sem disputar todo vblank com Inputs/Radar.
+    public bool HighFrequency => true;
+    public double VblankTargetHz => 80;
     double _peakRpm, _peakAt, _last = double.NegativeInfinity;
     string? _session;
     WidgetSettings _settings = new() { Id = "gpxgauges" };

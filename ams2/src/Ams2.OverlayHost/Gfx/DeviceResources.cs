@@ -60,8 +60,9 @@ public sealed unsafe class DeviceResources : IDisposable
     public int Height => _height;
     /// <summary>Muda a cada recuperação de device lost.</summary>
     public int Generation { get; private set; }
-    /// <summary>Intervalo de vsync do Present (1 = bloqueante no vblank, como o V3).</summary>
+    /// <summary>Intervalo de vsync do Present (1 = bloqueante no vblank, como o V3; N = um quadro a cada N vblanks).</summary>
     public int PresentInterval { get; set; } = 1;
+    bool _fullNext = true, _noDirtyRects;
     /// <summary>Handle waitable da swap chain (0 em offscreen). Muda em Recover/Rebuild: ler a cada volta, nao guardar.</summary>
     public nint FrameLatencyWaitable { get; private set; }
 
@@ -198,7 +199,11 @@ public sealed unsafe class DeviceResources : IDisposable
     public long LastPresentStart, LastPresentEnd;
 
     /// <summary>false = device lost detectado e recuperado; tente de novo no próximo quadro.</summary>
-    public bool EndFrame()
+    public bool EndFrame() => EndFrame(default);
+
+    /// <summary>Como <see cref="EndFrame()"/>, avisando ao DWM so a regiao alterada (<paramref name="dirty"/> vazio = quadro inteiro).
+    /// O quadro e redesenhado inteiro (Clear total): fora dos retangulos ele e identico ao anterior.</summary>
+    public bool EndFrame(ReadOnlySpan<Ams2.Core.Calc.PixelRect> dirty)
     {
         var end = _dc.Get()->EndDraw();
         if (IsLost(end)) { Recover(); return false; }
@@ -207,11 +212,32 @@ public sealed unsafe class DeviceResources : IDisposable
 
         // Modelo do V3: Present bloqueante no vblank e o relogio do laco (sem DoNotWait, sem descarte de quadro).
         long p0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        var present = _swapChain.Get()->Present((uint)PresentInterval, PresentFlags.None);
+        HResult present = default;
+        bool done = false;
+        if (!_fullNext && !_noDirtyRects && dirty.Length is > 0 and <= 64)
+        {
+            var rects = stackalloc Vortice.Win32.Numerics.Rect[dirty.Length];
+            uint n = 0;
+            foreach (var d in dirty)
+            {
+                int l = Math.Clamp(d.Left, 0, _width), t = Math.Clamp(d.Top, 0, _height), r = Math.Clamp(d.Right, 0, _width), b = Math.Clamp(d.Bottom, 0, _height);
+                if (r > l && b > t) rects[n++] = new Vortice.Win32.Numerics.Rect { Left = l, Top = t, Right = r, Bottom = b };
+            }
+            if (n > 0)
+            {
+                var pp = new PresentParameters { DirtyRectsCount = n, pDirtyRects = rects };
+                present = _swapChain.Get()->Present1((uint)PresentInterval, PresentFlags.None, &pp);
+                done = true;
+                // Driver/composicao que recusa retangulos: volta ao Present cheio para sempre nesta cadeia.
+                if (present.Failure && !IsLost(present)) { _noDirtyRects = true; done = false; }
+            }
+        }
+        if (!done) present = _swapChain.Get()->Present((uint)PresentInterval, PresentFlags.None);
         long p1 = System.Diagnostics.Stopwatch.GetTimestamp();
         LastPresentStart = p0; LastPresentEnd = p1;
         if (IsLost(present)) { Recover(); return false; }
         ThrowIfFailed(present);
+        _fullNext = false;
         // Commit por quadro, como no V3 (DeviceResources.cs do V3).
         var commit = _dcompDevice.Get()->Commit();
         if (IsLost(commit)) { Recover(); return false; }
@@ -247,6 +273,7 @@ public sealed unsafe class DeviceResources : IDisposable
         Release();
         Initialize();
         Generation++;
+        _fullNext = true;
     }
 
     static bool IsLost(HResult hr) => hr.Value is DXGI_ERROR_DEVICE_REMOVED or DXGI_ERROR_DEVICE_RESET or DXGI_ERROR_DEVICE_HUNG;

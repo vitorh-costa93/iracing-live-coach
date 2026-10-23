@@ -71,7 +71,33 @@ public sealed class GpxAnimator
     /// <summary>Passos inteiros decorridos desde o inicio (relogio voltando = 0).</summary>
     public int StepAt(double nowSeconds) => (int)Math.Floor(Math.Max(0, (nowSeconds - _start) * 1000) / Math.Max(1, StepMs) + 1e-9);
 
+    /// <summary>Passos decorridos com fracao (versao continua de <see cref="StepAt"/>; relogio voltando = 0).</summary>
+    public double StepsAt(double nowSeconds) => Math.Max(0, (nowSeconds - _start) * 1000) / Math.Max(1, StepMs);
+
     bool Instant => Kind == GpxAnimKind.Instant;
+
+    /// <summary>FADE% continuo (0.1..1): igual a <see cref="FadePct"/>/100 no inicio de cada passo, linear entre eles.</summary>
+    public float FadeFrac(double now) => Instant ? 1f : (float)Math.Min(1, (StepsAt(now) + 1) / Steps);
+
+    /// <summary>ROT% continuo (0..1): igual a <see cref="RotPct"/>/100 no inicio de cada passo; 1 antes de comecar e depois de assentar.</summary>
+    public float RotFrac(int group, double now)
+    {
+        if (Instant) return 1f;
+        double s = StepsAt(now) - GroupStart(group);
+        return s is >= 0 and < Steps ? (float)(s / Steps) : 1f;
+    }
+
+    /// <summary>Encolhimento continuo do flip (0..0.5): <see cref="Tri"/>/100 de ROT%.</summary>
+    public static float TriFrac(float rot) => rot > .5f ? 1 - rot : rot;
+
+    /// <summary><see cref="Logo"/> com o giro continuo (0..1).</summary>
+    public (GpxLogoPhase Phase, float Rot) LogoFrac(double now, bool enabled)
+    {
+        var (phase, rot) = Logo(now, enabled);
+        if (phase != GpxLogoPhase.Flip) return (phase, rot / 100f);
+        double s = StepsAt(now) - GroupStart(Groups);
+        return (phase, (float)Math.Clamp(s / Steps, 0, 1));
+    }
 
     /// <summary>FADE% da fase 1 (10..100; 100 = wipe concluido).</summary>
     public int FadePct(double now) => Instant ? 100 : Math.Min(100, (StepAt(now) + 1) * 10);

@@ -1,3 +1,4 @@
+using Ams2.Core.Calc;
 using Ams2.Core.Calc.GpxSat;
 
 namespace Ams2.Core.Tests;
@@ -47,6 +48,83 @@ public class GpxSatTests
         a.Update("p", 0, 4, GpxAnimKind.Instant, 5);
         Assert.True(a.FadeDone(5)); Assert.True(a.Settled(3, 5)); Assert.Equal(-1, a.ActiveGroup(5));
         Assert.Equal(0, GpxAnimator.Tri(0)); Assert.Equal(50, GpxAnimator.Tri(50)); Assert.Equal(10, GpxAnimator.Tri(90));
+    }
+
+    [Fact]
+    public void Animator_continuous_is_monotonic_and_matches_steps_at_boundaries()
+    {
+        var a = new GpxAnimator { StepMs = 20 };
+        a.Update("x", 0, 3, GpxAnimKind.Rows, 10);
+        float lastFade = 0, lastRot = 0;
+        for (int i = 0; i <= 600; i++)
+        {
+            double now = 10 + i * 0.001;
+            float fade = a.FadeFrac(now);
+            Assert.True(fade >= lastFade); lastFade = fade;
+            if (a.StepAt(now) is >= 20 and < 30) { float rot = a.RotFrac(1, now); Assert.True(rot >= lastRot); lastRot = rot; }
+        }
+        for (int k = 0; k < 60; k++)
+        {
+            double edge = 10 + k * 0.020 + 1e-7;
+            Assert.Equal(a.FadePct(edge) / 100f, a.FadeFrac(edge), 4);
+            for (int g = 0; g < 3; g++) Assert.Equal(a.RotPct(g, edge) / 100f, a.RotFrac(g, edge), 4);
+        }
+        Assert.Equal(0.15f, a.FadeFrac(10.010), 4);           // meio do passo 0: entre 10% e 20%
+        Assert.Equal(0.05f, a.RotFrac(0, 10.210), 4);
+        Assert.Equal(GpxAnimator.Tri(30) / 100f, GpxAnimator.TriFrac(.3f), 4);
+        Assert.Equal(GpxAnimator.Tri(70) / 100f, GpxAnimator.TriFrac(.7f), 4);
+    }
+
+    [Fact]
+    public void Animator_logo_flip_is_continuous()
+    {
+        var a = new GpxAnimator { StepMs = 20 };
+        a.Update("win", 0, 1, GpxAnimKind.Rows, 0);   // logo gira nos passos 20..29
+        var (phase, rot) = a.LogoFrac(0.41, true);
+        Assert.Equal(GpxLogoPhase.Flip, phase);
+        Assert.Equal(0.05f, rot, 3);
+        Assert.Equal(a.Logo(0.62, true).Phase, a.LogoFrac(0.62, true).Phase);
+    }
+
+    [Theory]
+    [InlineData(60, 60, 1)]
+    [InlineData(144, 60, 2)]
+    [InlineData(165, 60, 3)]
+    [InlineData(60, 80, 1)]
+    [InlineData(144, 80, 2)]
+    [InlineData(165, 80, 2)]
+    [InlineData(165, 0, 1)]
+    [InlineData(360, 60, 4)]
+    public void FramePacing_divisor_by_refresh(int refresh, double target, int expected)
+        => Assert.Equal(expected, FramePacing.Divisor(refresh, target));
+
+    [Fact]
+    public void DirtyRegion_unites_current_and_previous_frame()
+    {
+        var d = new DirtyRegion { Width = 1920, Height = 1080 };
+        var list = new List<PixelRect>();
+        d.NewFrame();
+        d.Add(100, 100, 200, 120, pad: 0);
+        d.Add(200, 100, 300, 120, pad: 0);   // encosta: vira um so
+        d.Add(100, 900, 400, 1000, pad: 0);
+        d.Collect(list);
+        Assert.Equal(2, list.Count);
+        Assert.Contains(new PixelRect(100, 100, 300, 120), list);
+        d.NewFrame();                          // quadro seguinte: so a caixa de baixo, a de cima sumiu
+        d.Add(100, 900, 400, 1000, pad: 0);
+        d.Collect(list);
+        Assert.Equal(2, list.Count);
+        Assert.Contains(new PixelRect(100, 100, 300, 120), list);
+        d.NewFrame(); d.NewFrame();            // dois quadros vazios: nada
+        d.Collect(list);
+        Assert.Empty(list);
+        d.Add(-5, 1070, 50, 1200);             // recorte ao device
+        d.Collect(list);
+        Assert.Equal(new PixelRect(0, 1068, 52, 1080), Assert.Single(list));
+        d.NewFrame();
+        for (int i = 0; i < 40; i++) d.Add(i * 40, 0, i * 40 + 10, 10, pad: 0);
+        d.Collect(list);
+        Assert.Equal(new PixelRect(0, 0, 1570, 1080), Assert.Single(list));   // muitos retangulos (+ o do quadro anterior): um envelope
     }
 
     [Fact]

@@ -42,6 +42,19 @@ public class GpxFinalTests
         Assert.Equal("false",WidgetCatalog.OptionsFor("f1-1998","gpxsat").Single(o=>o.Id=="showTimeLeft").Default);
     }
     [Fact]
+    public void Frame_signature_is_stable_for_same_content_and_changes_with_shown_text()
+    {
+        var w=new GpxSatWidget(); w.UseTheme(Ams2.OverlayHost.Theme.Themes.F1_2012);
+        w.Configure(new WidgetSettings { Id="gpxsat",Options=new() { ["lapsLeftMode"]="remaining",["previewScreen"]="time" } }.Normalized("f1-2012"));
+        var m=LayoutPreview.ForWidget("lapcounter") with { Inputs=null };
+        long? a=w.FrameSignature(m);
+        Assert.NotNull(a);
+        Assert.Equal(a,w.FrameSignature(m));
+        Assert.Equal(a,w.FrameSignature(m with { }));                        // novo registro, mesmo conteudo e relogio
+        var changed=m with { Session=m.Session! with { LapsInEvent=m.Session!.LapsInEvent+1 } };
+        Assert.NotEqual(a,w.FrameSignature(changed));                        // texto exibido mudou
+    }
+    [Fact]
     public void Gauge_angles_match_the_original_240kph_and_9000rpm_marks()
     {
         Assert.Equal(0,GpxGaugesWidget.Angle(240,360));
