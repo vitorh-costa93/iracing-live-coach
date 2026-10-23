@@ -11,6 +11,17 @@ public static class GpxRotation
 {
     public static int PagesOf(int count, int perPage) => count <= 0 ? 0 : (count + Math.Max(1, perPage) - 1) / Math.Max(1, perPage);
 
+    /// <summary>
+    /// Janela dos standings de corrida aberta quando o lider fecha a volta: pagina corrente (uma passagem por pagina, <paramref name="secondsPerPage"/> cada,
+    /// estatica dentro dela) ou null fora da janela / sem evento / sem dado.
+    /// </summary>
+    public static int? EventPage(double? openT, double now, double secondsPerPage, int pages)
+    {
+        if (openT is not { } t || pages <= 0 || now < t) return null;
+        int page = (int)Math.Floor((now - t) / Math.Max(0.5, secondsPerPage));
+        return page < pages ? page : null;
+    }
+
     public static GpxRotationSlot? Current(IReadOnlyList<GpxRotationPage> pages, double now, double pageSeconds)
     {
         int total = 0;

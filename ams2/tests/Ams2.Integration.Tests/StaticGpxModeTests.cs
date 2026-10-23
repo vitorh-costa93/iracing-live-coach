@@ -52,7 +52,7 @@ public class StaticGpxModeTests
     [Fact]
     public void Classic_clock_is_exclusive_digital_clock_overlays_standings()
     {
-        var classic = new ClassicMode(); var digital = new DigitalMode(); var options = new GpxOptions { ShowTimeLeft = true, RaceStandings = "standings" };
+        var classic = new ClassicMode(); var digital = new DigitalMode(); var options = new GpxOptions { ShowTimeLeft = true, RaceStandings = "standings", Rotation = false };
         Assert.Single(classic.Dispatch(Context(classic, options)));
         var screens = digital.Dispatch(Context(digital, options)); Assert.Equal(2, screens.Count); Assert.Contains(screens, s => s.Slot == "top"); Assert.Contains(screens, s => s.Key == "digital:str");
     }

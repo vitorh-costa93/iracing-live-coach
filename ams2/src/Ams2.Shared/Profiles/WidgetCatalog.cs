@@ -435,7 +435,7 @@ public static class WidgetCatalog
         new("skySeconds", "Sky messages na tela (s)", OptionKind.Number, null, "8", Min: 2, Max: 30),
         new("splitSeconds", "Splits/gaps/trap na tela (s)", OptionKind.Number, null, "8", Min: 2, Max: 30),
         new("pageSeconds", "Standings: segundos por página", OptionKind.Number, null, "6", Min: 2, Max: 30),
-        new("rotation", "Rotação de telas no slot principal (standings, pit stops, gaps, trap)", OptionKind.Toggle, null, "true"),
+        new("rotation", "Standings da corrida só quando o líder fecha a volta (janela finita; sem ciclo contínuo)", OptionKind.Toggle, null, "true"),
         new("bottomTower", "2010: torre inferior", OptionKind.Choice, [O("off", "Desligada"), O("standings", "Gap ao líder"), O("pitstops", "Pit stops"), O("interval", "Intervalos")], "off"),
         new("raceProgression", "2010: torre lateral de corrida", OptionKind.Toggle, null, "true"),
         new("qualiMode", "2010: valor na torre de classificação", OptionKind.Choice, [O("gap", "Gap ao líder"), O("absolute", "Tempo absoluto")], "gap"),

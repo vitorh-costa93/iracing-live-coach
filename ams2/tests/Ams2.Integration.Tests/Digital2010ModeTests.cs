@@ -54,7 +54,7 @@ public sealed class Digital2010ModeTests
     [Fact]
     public void Race_standings_suppresses_bottom_tower_unless_alwaysTower_is_enabled()
     {
-        var options=new GpxOptions { RaceStandings="standings" };
+        var options=new GpxOptions { RaceStandings="standings", Rotation=false };
         var first=new Digital2010Mode().Dispatch(Context(options,new() { ["bottomTower"]="standings",["raceProgression"]="false" }));
         Assert.DoesNotContain(first,s=>s.Slot=="bottom"); Assert.Contains(first,s=>s.Key.Contains("standings"));
         var second=new Digital2010Mode().Dispatch(Context(options,new() { ["bottomTower"]="standings",["alwaysTower"]="true",["raceProgression"]="false" }));

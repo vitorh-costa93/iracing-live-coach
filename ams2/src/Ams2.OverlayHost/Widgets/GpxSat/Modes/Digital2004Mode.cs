@@ -71,7 +71,7 @@ public sealed class Digital2004Mode : IGpxMode
         if (c.Options.Rotation)
         {
             if (split is not null) list.Add(split with { Priority = 30 });
-            else if (RaceRotation(c) is { } page) list.Add(page);
+            else if (LapStandings(c) is { } page) list.Add(page);
             return;
         }
         if (c.Options.RaceStandings is "standings" or "pitstops")
@@ -82,36 +82,13 @@ public sealed class Digital2004Mode : IGpxMode
         if (split is not null) list.Add(split with { Priority = 30 });
     }
 
-    /// <summary>Rotacao da corrida: standings, pit stops (se houve parada), gap a frente/atras e speed trap, so as paginas com dado.</summary>
-    GpxScreen? RaceRotation(GpxContext c)
+    /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
+    GpxScreen? LapStandings(GpxContext c)
     {
-        var s = c.Split;
-        int slides = GpxRotation.PagesOf(RaceRows(c).Count, CarsPerPage);
-        var pages = new List<GpxRotationPage>
-        {
-            new("str", slides), new("stp", c.Broadcast.Stops.Any(x => x.Value > 0) ? slides : 0),
-            new("ahead", c.GapReady(s.Ahead) ? 1 : 0), new("behind", c.GapReady(s.Behind) ? 1 : 0), new("trap", s.Trap is null ? 0 : 1),
-        };
-        if (GpxRotation.Current(pages, c.Now, c.Options.PageSeconds) is not { } cur) return null;
-        return cur.Id switch
-        {
-            "str" => RaceStandings(c, cur.Slide),
-            "stp" => PitStopsStandings(c, cur.Slide),
-            "ahead" => GapAhead(c, s.Ahead!),
-            "behind" => GapBehind(c, s.Behind!),
-            _ => SpeedTrap(c, s.Trap!),
-        };
-    }
-
-    /// <summary>Rotacao fora da corrida: classificacao, split (cartao/parcial) e speed trap, so as paginas com dado.</summary>
-    GpxScreen? QualiRotation(GpxContext c)
-    {
-        var split = QualiSplitNow(c);
-        int timed = c.Model.Quali?.Rows.Count(r => r.HasTime) ?? 0;
-        int slides = c.Options.QualiStandings && timed > 1 ? GpxRotation.PagesOf(Math.Min(22, c.Model.Quali!.Rows.Count), CarsPerPage) : 0;
-        var pages = new List<GpxRotationPage> { new("stq", slides), new("split", split is null ? 0 : 1), new("trap", c.Split.Trap is null ? 0 : 1) };
-        if (GpxRotation.Current(pages, c.Now, c.Options.PageSeconds) is not { } cur) return null;
-        return cur.Id switch { "stq" => QualiStandings(c, cur.Slide), "split" => split, _ => SpeedTrap(c, c.Split.Trap!) };
+        bool stops = c.Options.RaceStandings == "pitstops";
+        int pages = GpxRotation.PagesOf(RaceRows(c).Count, CarsPerPage);
+        if (GpxRotation.EventPage(c.Split.LeaderLapT, c.Now, c.Options.StandingsPageSeconds, pages) is not { } page) return null;
+        return stops ? PitStopsStandings(c, page) : RaceStandings(c, page);
     }
 
     /// <summary>Fora da corrida (0x9c0dffc): standings de classificacao (se ligado e houver mais de um tempo), senao o SpeedSplit.</summary>
@@ -120,7 +97,6 @@ public sealed class Digital2004Mode : IGpxMode
         var q = c.Model.Quali;
         // Parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; antes a tabela retornava primeiro e a parcial nunca aparecia.
         if (c.Options.SpeedSplitQuali != "trap" && QualiSplitNow(c) is { } live && live.Key.Contains("split:")) { list.Add(live with { Priority = 30 }); return; }
-        if (c.Options.Rotation) { if (QualiRotation(c) is { } page) list.Add(page); return; }
         if (c.Options.QualiStandings && q is not null && q.Rows.Count(r => r.HasTime) > 1) { list.Add(QualiStandings(c)); return; }
         if (c.Options.SpeedSplitQuali == "trap")
         {

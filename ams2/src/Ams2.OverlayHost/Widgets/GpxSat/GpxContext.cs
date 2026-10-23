@@ -31,8 +31,10 @@ public sealed record GpxOptions
     public double SplitSeconds { get; init; } = 8;
     public double PageSeconds { get; init; } = 6;
     public bool OriginalFonts { get; init; } = true;
-    /// <summary>Rotacao do slot main (standings, pit stops, gaps, trap) a cada PageSeconds quando nenhuma tela de prioridade alta o ocupa.</summary>
+    /// <summary>Standings de corrida por evento (como no GPxPatch): so aparecem, estaticos, numa janela finita depois que o lider fecha a volta; fora dela o slot fica vazio. Sem ciclo continuo.</summary>
     public bool Rotation { get; init; } = true;
+    /// <summary>Duracao de cada pagina dos standings por evento (2x PageSeconds: da tempo dos demais carros cruzarem a linha).</summary>
+    public double StandingsPageSeconds => PageSeconds * 2;
     public bool Stretch { get; init; }
     /// <summary>Digital 2004/2010: nomes em caixa mista ("V. Costa") como nas transmissoes; Classic/Digital mantem "V. COSTA".</summary>
     public bool MixedCaseNames { get; init; }

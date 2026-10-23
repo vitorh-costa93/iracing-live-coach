@@ -52,4 +52,29 @@ public class GpxPassageTests
         var point=map.Project(new(100,0),0,0,256); Assert.InRange(point.X,0,256); Assert.InRange(point.Y,0,256);
         map.Observe(s with { Track="Other" }); Assert.False(map.Ready); Assert.Equal(0,map.Count);
     }
+
+    [Fact]
+    public void Leader_lap_close_opens_standings_window_only_on_the_leader_crossing_the_line()
+    {
+        var t = new GpxSplitTracker();
+        var leader = Car(1, 1, 2); var other = Car(2, 2, 2);
+        t.Update(0, Session(leader, other));
+        Assert.Null(t.LeaderLapT);
+        t.Update(1, Session(leader with { Sector = 0, LapsCompleted = leader.LapsCompleted + 1 }, other));   // lider cruza a linha
+        Assert.Equal(1, t.LeaderLapT);
+        t.Update(5, Session(leader with { Sector = 0, LapsCompleted = leader.LapsCompleted + 1 }, other with { Sector = 0, LapsCompleted = other.LapsCompleted + 1 }));   // P2 cruza: nao reabre
+        Assert.Equal(1, t.LeaderLapT);
+    }
+
+    [Fact]
+    public void Standings_event_window_is_finite_static_per_page_and_empty_outside()
+    {
+        Assert.Null(GpxRotation.EventPage(null, 100, 12, 1));            // sem evento: nada
+        Assert.Null(GpxRotation.EventPage(10, 9.9, 12, 1));
+        Assert.Equal(0, GpxRotation.EventPage(10, 10, 12, 2));
+        Assert.Equal(0, GpxRotation.EventPage(10, 21.9, 12, 2));         // estatica dentro da pagina
+        Assert.Equal(1, GpxRotation.EventPage(10, 22, 12, 2));
+        Assert.Null(GpxRotation.EventPage(10, 34, 12, 2));               // some
+        Assert.Null(GpxRotation.EventPage(10, 11, 12, 0));               // sem dado
+    }
 }

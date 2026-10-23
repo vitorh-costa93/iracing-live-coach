@@ -116,7 +116,7 @@ public sealed class Digital2010Mode : IGpxMode
             {
                 if(c.Focus is { InPitLane:true } focus) list.Add(PitInfo(c,focus,true) with { Priority=90 });
                 else if(dc) AddDirector(c,list);
-                else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(RaceRotation(c) is { } page) list.Add(page); }
+                else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(LapStandings(c) is { } page) list.Add(page); }
                 else if(c.Options.RaceStandings is "standings" or "pitstops" or "interval") list.Add(Standings(c,c.Options.RaceStandings));
                 else if(GapNow(c,c.Options.SpeedSplitRace) is { } gap) list.Add(gap);
             }
@@ -256,22 +256,12 @@ public sealed class Digital2010Mode : IGpxMode
         return (r.LapsBehind>0?GpxFormat.LapsBehind(r.LapsBehind):r.GapToLeader is { } g?GpxFormat.SignedGap(g):"",Light);
     }
     int StandingsPerPage(GpxContext c) { int n=Count(c,"carsPerPage",8); return n==5?8:n; }
-    /// <summary>Rotacao da corrida: standings, pit stops (se houve parada), gap a frente e atras, so as paginas com dado (progressao e torres ja tem slot proprio).</summary>
-    GpxScreen? RaceRotation(GpxContext c)
+    /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
+    GpxScreen? LapStandings(GpxContext c)
     {
-        var s=c.Split; int slides=GpxRotation.PagesOf(Rows(c).Count,StandingsPerPage(c));
-        var pages=new List<GpxRotationPage>
-        {
-            new("standings",slides), new("pitstops",c.Broadcast.Stops.Any(x=>x.Value>0)?slides:0),
-            new("ahead",c.GapReady(s.Ahead)?1:0), new("behind",c.GapReady(s.Behind)?1:0),
-        };
-        if(GpxRotation.Current(pages,c.Now,c.Options.PageSeconds) is not { } cur) return null;
-        return cur.Id switch
-        {
-            "ahead" => Gap(c,s.Ahead!) with { Slot="main" },
-            "behind" => Gap(c,s.Behind!) with { Slot="main" },
-            _ => Standings(c,cur.Id,cur.Slide),
-        };
+        int pages=GpxRotation.PagesOf(Rows(c).Count,StandingsPerPage(c));
+        return GpxRotation.EventPage(c.Split.LeaderLapT,c.Now,c.Options.StandingsPageSeconds,pages) is { } page
+            ? Standings(c,c.Options.RaceStandings=="pitstops"?"pitstops":"standings",page) : null;
     }
     GpxScreen Standings(GpxContext c,string mode,int? fixedPage=null)
     {

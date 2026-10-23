@@ -54,10 +54,12 @@ public sealed class GpxSplitTracker
     public GpxGapWindow? Ahead { get; private set; }
     public GpxGapWindow? Behind { get; private set; }
     public GpxTrapWindow? Trap { get; private set; }
+    /// <summary>Instante em que o lider da corrida fechou a ultima volta (cruzou a linha); abre a janela dos standings. Null = nenhuma ainda.</summary>
+    public double? LeaderLapT { get; private set; }
 
     public void Reset()
     {
-        _cars.Clear(); _lastGap.Clear(); _key = null; _last = double.NegativeInfinity; Ahead = Behind = null; Trap = null;
+        _cars.Clear(); _lastGap.Clear(); _key = null; _last = double.NegativeInfinity; Ahead = Behind = null; Trap = null; LeaderLapT = null;
         for (int i = 0; i < 3; i++) _top[i] = (-1, 0);
     }
 
@@ -87,6 +89,7 @@ public sealed class GpxSplitTracker
                 tr.BestTrap[trap] = Math.Max(tr.BestTrap[trap], c.SpeedMps);
                 if (c.SpeedMps > _top[trap].Mps) _top[trap] = (c.Index, c.SpeedMps);
             }
+            if (race && pass % 3 == 0 && c.Position == 1 && Running(c)) LeaderLapT = now;
             crossed.Add((c, pass));
         }
         // Record all crossings before resolving pairs: car enumeration order must not change the gap.
