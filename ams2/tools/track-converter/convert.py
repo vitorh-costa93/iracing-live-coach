@@ -772,10 +772,80 @@ def racing_line_zebra(W, pw, lo, hi, sh, max_rounds=40, verbose=True):
 # (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio' (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain,
 # rejected 22/10).  Opt in with --racing-line NAME.
 RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'fastest')
+# 'f1' (23/10, optional): the F1 2020 (Codemasters) AI racing line, already mapped into AIW coordinates (*_f1_in_aiw.csv: x,y,z).
+F1_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--f1-line'), None)
 
 
-def racing_line(W, pw, lo, hi, sh, mode=None):
+def load_f1_line(path):
+    """F1 racing-line points (x, y, z) in AIW (AMS2) coordinates, in driving order, from a CSV with x,y,z columns."""
+    import csv
+    with open(path, newline='') as f:
+        P = np.array([[float(r['x']), float(r['y']), float(r['z'])] for r in csv.DictReader(f)])
+    if len(P) < 8 or not np.isfinite(P).all():
+        raise ValueError('F1 line needs >= 8 finite points: %s' % path)
+    return P
+
+
+def f1_lateral(W, pts):
+    """Project the F1 points on the closed centreline W: lap distance s along W (W[0] at s=0) and signed lateral offset along
+    the AIW perp (dz, 0, -dx), i.e. the wp_path convention (line = W + lat * perp)."""
+    A = W[:, [0, 2]]; D = np.roll(A, -1, 0) - A; L = np.linalg.norm(D, axis=1) + 1e-12
+    cum = np.r_[0.0, np.cumsum(L)[:-1]]
+    X = np.asarray(pts)[:, [0, 2]]
+    rel = X[:, None, :] - A[None]
+    t = np.clip((rel * D[None]).sum(-1) / L ** 2, 0.0, 1.0)
+    j = np.argmin(((rel - t[..., None] * D[None]) ** 2).sum(-1), 1)
+    tj = t[np.arange(len(X)), j]
+    q = A[j] + tj[:, None] * D[j]
+    nrm = np.c_[D[j, 1], -D[j, 0]] / L[j][:, None]
+    return cum[j] + tj * L[j], ((X - q) * nrm).sum(1), float(L.sum())
+
+
+def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3):
+    """Racing line from the F1 2020 AI line: lateral offset of each (sparse, ~10 m; up to ~140 m on straights) F1 point projected
+    on the AIW centreline, periodic cubic spline in lap distance (closed lap; overshoot across the long straight gaps measured
+    <= 0.15 m on Bahrain/Albert Park/Shanghai), clipped to the safety corridor [lo, hi] (asphalt margin,
+    kerb_start, walls -- same as 'fastest') and lightly smoothed (3 waypoints) only to remove clip corners.  Prints where the
+    F1 line leaves the corridor by more than `tol` m."""
+    from scipy.interpolate import CubicSpline
+    s, lat, lap = f1_lateral(W, pts)
+    s = s[0] + np.r_[0.0, np.cumsum(np.mod(np.diff(s) + lap / 2, lap) - lap / 2)]     # unwrap across the start line
+    if s[-1] < s[0]:
+        raise ValueError('F1 line runs against the AIW driving direction')
+    keep = np.r_[True, np.diff(np.maximum.accumulate(s)) > 0.05] & (s < s[0] + lap - 0.05)
+    if (~keep).sum() > 0.05 * len(s):
+        raise ValueError('F1 line projection not monotonic at %d/%d points' % ((~keep).sum(), len(s)))
+    s, lat = s[keep], lat[keep]
+    cs = CubicSpline(np.r_[s, s[0] + lap], np.r_[lat, lat[0]], bc_type='periodic')
+    cw = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(W[:, [0, 2]], axis=0), axis=1))]
+    sw = s[0] + np.mod(cw - s[0], lap)
+    raw = cs(sw)
+    out = np.maximum(lo - raw, raw - hi)
+    bad = out > tol
+    print('  racing line: F1 line %d points, max gap %.0f m, outside corridor by > %.1f m at %d/%d waypoints (max %.2f m)' %
+          (len(s), np.diff(np.r_[s, s[0] + lap]).max(), tol, int(bad.sum()), len(W), max(out.max(), 0.0)))
+    if bad.any():
+        idx = np.flatnonzero(bad)
+        for run in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1):
+            i = run[np.argmax(out[run])]
+            print('    F1 outside corridor: s %.0f-%.0f m, %s side, max %.2f m' %
+                  (cw[run[0]], cw[run[-1]], 'left/-perp' if raw[i] < lo[i] else 'right/+perp', out[i]))
+    d = np.clip(raw, lo, hi)
+    d = np.clip(np.convolve(np.r_[d[-1:], d, d[:1]], np.ones(3) / 3, 'valid'), lo, hi)
+    t_f1, t_ac = est_laptime(W + d[:, None] * pw), est_laptime(W + np.clip(sh, lo, hi)[:, None] * pw)
+    print('  racing line: est lap %.2f s (AC line) -> %.2f s (F1 line), mean |F1 raw - used| %.2f m' %
+          (t_ac, t_f1, np.abs(raw - d).mean()))
+    if not np.isfinite(d).all() or not np.isfinite(t_f1):
+        raise ValueError('Non-finite F1 racing line/lap estimate')
+    return d
+
+
+def racing_line(W, pw, lo, hi, sh, mode=None, f1=None):
     mode = mode or RACING_LINE
+    if mode == 'f1':
+        if f1 is None and not F1_LINE:
+            raise ValueError("Racing-line mode 'f1' needs --f1-line <csv>")
+        return racing_line_f1(W, pw, lo, hi, sh, load_f1_line(F1_LINE) if f1 is None else f1)
     if mode == 'zebra':
         return racing_line_zebra(W, pw, lo, hi, sh)
     if mode == 'fastest':
@@ -864,6 +934,11 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None):
     sh = racing_line(W, pw, lo, hi, sh)
     margin_l, margin_r = ex_l + sh, ex_r - sh
     print('  AI margins: left min=%.3f right min=%.3f finite=True' % (margin_l.min(), margin_r.min()))
+    kerb_l, kerb_r = mg_l < LINE_MARGIN, mg_r < LINE_MARGIN      # sides where a low kerb follows the asphalt edge
+    on_kerb = (kerb_l & (margin_l <= mg_l + 0.15)) | (kerb_r & (margin_r <= mg_r + 0.15))
+    at_bound = (sh <= lo + 0.15) | (sh >= hi - 0.15)
+    print('  racing line stats: %d waypoints, at corridor bound %.1f%%, on kerb %.1f%% (%d kerb-side waypoints)' %
+          (nw, 100.0 * at_bound.mean(), 100.0 * on_kerb.mean(), int((kerb_l | kerb_r).sum())))
     if np.any(sh < lo - 1e-6) or np.any(sh > hi + 1e-6):
         raise ValueError('Selected racing line violates asphalt/wall safety margins')
 
@@ -1877,7 +1952,8 @@ def parse_args(argv=None):
     parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
     parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
     parser.add_argument('--street', action='store_true')
-    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio'), default='fastest')
+    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio', 'f1'), default='fastest')
+    parser.add_argument('--f1-line', help="racing-line mode 'f1': F1 2020 AI line CSV (x,y,z) already in AIW coordinates")
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
@@ -1888,6 +1964,8 @@ def parse_args(argv=None):
 
 def main():
     args = parse_args()
+    if args.racing_line == 'f1' and not args.f1_line:
+        raise SystemExit("--racing-line f1 needs --f1-line <csv>")
     src, tid, out, sref, sx = args.src, args.tid, args.out, args.sref, args.sx
     locations = source_locations(src, args.layout)
     keys = surface_keys(locations['surfaces']) | {'SAND', 'GRASS'}

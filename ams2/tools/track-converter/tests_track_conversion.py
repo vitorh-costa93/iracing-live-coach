@@ -566,6 +566,36 @@ class AIValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Unknown racing-line mode'):
             convert.racing_line(W, pw, lo, hi, ac, mode='bogus')
 
+    def test_f1_line_reproduced_closed_and_clipped(self):
+        W, pw = self.rounded_square()
+        n = len(W)
+        A = W[:, [0, 2]]; D = np.roll(A, -1, 0) - A; L = np.linalg.norm(D, axis=1)
+        cum = np.r_[0.0, np.cumsum(L)]; lap = cum[-1]
+        true = lambda s: 3.0 * np.sin(2 * np.pi * 2 * s / lap + 0.4)
+
+        def f1_points(s):                      # sparse F1 gates: 10 m on the arcs, 60 m on the straights, starting mid-lap
+            j = np.clip(np.searchsorted(cum, s, side='right') - 1, 0, n - 1); t = (s - cum[j]) / L[j]
+            nrm = np.c_[D[j, 1], -D[j, 0]] / L[j][:, None]
+            p = A[j] + t[:, None] * D[j] + true(s)[:, None] * nrm
+            return np.c_[p[:, 0], np.zeros(len(s)), p[:, 1]]
+        k, _ = convert.line_curvature(W)
+        s, gates = 0.0, []
+        while s < lap - 1e-6:
+            gates.append(s); s += 10.0 if abs(k[int(np.searchsorted(cum, s, side='right') - 1) % n]) > 1e-3 else 60.0
+        gates = np.roll(np.array(gates), -len(gates) // 3)
+        lo, hi, ac = -6.0 * np.ones(n), 6.0 * np.ones(n), np.zeros(n)
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = convert.racing_line(W, pw, lo, hi, ac, mode='f1', f1=f1_points(gates))
+        self.assertLess(np.max(np.abs(d - true(cum[:-1]))), 0.15)            # reproduced within tolerance
+        self.assertLess(abs(d[0] - d[-1]), 0.5)                               # closed lap: no step at the start line
+        hi2 = 2.0 * np.ones(n)
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            d2 = convert.racing_line(W, pw, lo, hi2, ac, mode='f1', f1=f1_points(gates))
+        self.assertTrue(np.all((d2 >= lo - 1e-9) & (d2 <= hi2 + 1e-9)))         # clipped to the corridor
+        self.assertIn('F1 outside corridor', log.getvalue())
+        with self.assertRaisesRegex(ValueError, 'against the AIW driving direction'), contextlib.redirect_stdout(io.StringIO()):
+            convert.racing_line(W, pw, lo, hi, ac, mode='f1', f1=f1_points(gates)[::-1])
+
     def test_real_fallback_iteration_limit_remains_an_error(self):
         with contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaisesRegex(ValueError, 'did not converge: KKT'):
