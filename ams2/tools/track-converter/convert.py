@@ -768,10 +768,10 @@ def racing_line_zebra(W, pw, lo, hi, sh, max_rounds=40, verbose=True):
     return base
 
 
-# Racing-line strategy: 'zebra' (default, 23/10 kerb-to-kerb, never slower than 'fastest'), 'fastest' (21/10 logic), 'late_apex'
+# Racing-line strategy: 'fastest' (default, 21/10 logic), 'zebra' (23/10 kerb-to-kerb, optional: rejected after in-game test), 'late_apex'
 # (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio' (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain,
 # rejected 22/10).  Opt in with --racing-line NAME.
-RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'zebra')
+RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'fastest')
 
 
 def racing_line(W, pw, lo, hi, sh, mode=None):
@@ -1877,7 +1877,7 @@ def parse_args(argv=None):
     parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
     parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
     parser.add_argument('--street', action='store_true')
-    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio'), default='zebra')
+    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio'), default='fastest')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')

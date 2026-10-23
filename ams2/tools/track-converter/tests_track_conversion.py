@@ -527,9 +527,8 @@ class AIValidationTests(unittest.TestCase):
     def test_zebra_line_goes_outer_to_kerb_at_a_late_apex_and_is_never_slower(self):
         W, pw = self.rounded_square()
         n = len(W); lo, hi, ac = -6.0 * np.ones(n), 6.0 * np.ones(n), np.zeros(n)
-        self.assertEqual(convert.RACING_LINE, 'zebra')
         with contextlib.redirect_stdout(io.StringIO()):
-            d = convert.racing_line(W, pw, lo, hi, ac)
+            d = convert.racing_line(W, pw, lo, hi, ac, mode='zebra')
             fast = convert.racing_line(W, pw, lo, hi, ac, mode='fastest')
         self.assertTrue(np.all((d >= lo - 1e-9) & (d <= hi + 1e-9)))
         lap = lambda x: convert.est_laptime(W + x[:, None] * pw)
