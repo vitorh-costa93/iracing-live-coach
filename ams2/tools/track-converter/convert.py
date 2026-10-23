@@ -308,6 +308,32 @@ def speed_profile(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
     return v, ds
 
 
+# --ai-brake-physics (23/10): point mass with downforce for "does this corner need braking?".  a_lat = a_brake = MU*(g + AERO*v^2),
+# throttle a = min(grip, PM/v) - DRAG*v^2 (F1 2020: ~1000 W/kg, ~92 m/s top speed -> DRAG = (PM/92)/92^2).  MU/AERO fitted on the
+# 182 corners of the 12 F1 2020 aisplines (brake_line within 40 m of the apex = braked corner): MU 1.2, AERO 0.003 -> 25/26 corners
+# without brake_line predicted flat (the miss is a lap-wrap artefact), 124/156 with brake_line predicted braked (balanced acc. 0.88;
+# without downforce, AERO 0: 0.72).  speed_profile (alat 12 m/s^2, no downforce) brakes for every corner tighter than ~500 m.
+F1_MU, F1_AERO, F1_PM, F1_DRAG, F1_VMAX = 1.2, 0.003, 1000.0, 0.00128, 95.0
+BRAKE_CUT = 1.0          # m/s: braking pass must cut the envelope by more than this (fit threshold)
+
+
+def speed_profile_aero(L, mu=F1_MU, aero=F1_AERO, pm=F1_PM, drag=F1_DRAG, vmax=F1_VMAX, with_fwd=False):
+    """Speed profile (m/s) of the closed line L with the downforce point mass above; returns (v, ds) or, with_fwd,
+    (v, ds, fwd) where fwd = grip/throttle envelope before the braking pass (fwd - v > 0 = speed cut by braking)."""
+    k, ds = line_curvature(L)
+    den = np.abs(k) - mu * aero
+    v = np.minimum(vmax, np.where(den > 1e-9, np.sqrt(mu * 9.81 / np.maximum(den, 1e-9)), vmax))
+    n = len(L)
+    for i in list(range(n)) * 4:
+        j = (i + 1) % n; a = max(min(mu * (9.81 + aero * v[i] ** 2), pm / max(v[i], 1.0)) - drag * v[i] ** 2, 0.0)
+        v[j] = min(v[j], math.sqrt(v[i] ** 2 + 2 * a * ds[i]))
+    fwd = v.copy()
+    for i in list(range(n - 1, -1, -1)) * 4:
+        j = (i + 1) % n; a = mu * (9.81 + aero * v[j] ** 2) + drag * v[j] ** 2
+        v[i] = min(v[i], math.sqrt(v[j] ** 2 + 2 * a * ds[i]))
+    return (v, ds, fwd) if with_fwd else (v, ds)
+
+
 def est_laptime(L, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
     """Point-mass speed profile lap time; calibrated (median ratio ~1) against `times` of the original AMS2 AIWs."""
     v, ds = speed_profile(L, alat, vmax, acc, brk)
@@ -432,6 +458,24 @@ def min_curvature_offsets(W, pw, lo, hi, d0, reg=OPT_REG, rounds=30, w=None, fal
     return d
 
 
+CORR_REG = 0.01   # corridor_fit tether: a corridor violation is spread over ~reg^-1/2 = 10 wps (~50 m) each side
+
+
+def corridor_fit(lo, hi, target, reg=CORR_REG):
+    """--ai-brake-physics: offsets inside [lo, hi] with the shape of `target` (the unclipped wanted line).  Clipping pins the
+    line to the bound only where the target leaves the corridor and leaves a kink there (23/10 Bahrain T2: F1 line 0.76 m past the
+    kerb margin -> R 79 m became R 51 m over 3 wps, T3 R 210 -> 93 m, T6 R 86 -> 68 m, T7 R 114 -> 80 m).  Here the correction
+    c = d - target minimises its own second differences (+ a small tether), so it is a smooth bump of ~100 m and adds a curvature
+    of ~A/50^2 (A = violation, < 1e-3 1/m) instead of a kink."""
+    lo_c, hi_c = lo - target, hi - target
+    if np.all(lo_c <= 1e-9) and np.all(hi_c >= -1e-9):
+        return np.clip(target, lo, hi)
+    n = len(target)
+    one = np.zeros((n, 3)); one[:, 0] = 1.0
+    c = min_curvature_offsets(np.zeros((n, 3)), one, lo_c, hi_c, np.clip(np.zeros(n), lo_c, hi_c), reg=reg)
+    return np.clip(target + c, lo, hi)
+
+
 def racing_line_mincurv(W, pw, lo, hi, sh):
     """Previous (22/10) racing line: minimum curvature + entry/braking curvature weights.  Kept for comparison."""
     def smooth(a, n=5):
@@ -543,16 +587,18 @@ def racing_line_oio(W, pw, lo, hi, d0, apex_frac=0.6, tol_in=0.3, tol_out=0.4, m
     return min_curvature_offsets(W, pw, lo2, hi2, np.clip(base, lo2, hi2))
 
 
-def racing_line_fastest(W, pw, lo, hi, sh):
+def racing_line_fastest(W, pw, lo, hi, sh, physics=False):
     """21/10 racing line (Hermanos Rodriguez / Istanbul, good AI in game): minimum curvature anchored to the AC fast_lane inside
     the safety corridor, braking-zone curvature weights tried but kept only when the lap estimate improves, and the result kept
     only when it beats the AC line.  No apex/width bias: a slower-but-later apex lets the AI brake later and hit kerbs.
-    Fallback: if the base solve fails, the AC line clipped to the corridor."""
+    Fallback: if the base solve fails, the AC line clipped to the corridor.  physics (--ai-brake-physics): smoothed lines are
+    brought back into the corridor with corridor_fit (no clip kinks) instead of np.clip."""
     def smooth(a, n=5):
         k = np.ones(n) / n; return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
-    ac = np.clip(sh, lo, hi)
+    fit = (lambda t: corridor_fit(lo, hi, t)) if physics else (lambda t: np.clip(t, lo, hi))
+    ac = fit(sh)
     try:
-        d = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, ac), 5), lo, hi)
+        d = fit(smooth(min_curvature_offsets(W, pw, lo, hi, np.clip(sh, lo, hi)), 5))
     except ValueError as e:
         print('  racing line: optimisation failed (%s), keeping the AC line' % str(e)[:60])
         return ac
@@ -561,7 +607,7 @@ def racing_line_fastest(W, pw, lo, hi, sh):
     best = est_laptime(W + d[:, None] * pw)
     for beta in (2.0, 4.0, 8.0):
         try:
-            d2 = np.clip(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * bf), 5), lo, hi)
+            d2 = fit(smooth(min_curvature_offsets(W, pw, lo, hi, d, w=1.0 + beta * bf), 5))
         except ValueError as e:
             print('    beta %g skipped: %s' % (beta, str(e)[:60]))
             continue
@@ -832,7 +878,7 @@ def f1_side_lat(W, line, pts, max_ds=30.0, max_lat=30.0):
     return np.interp(cw, s_p[ok][o], lat[ok][o], period=lap), int((~ok).sum())
 
 
-def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3):
+def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3, physics=False):
     """Racing line from the F1 2020 AI line: lateral offset of each (sparse, ~10 m; up to ~140 m on straights) F1 point projected
     on the AIW centreline, periodic cubic spline in lap distance (closed lap; overshoot across the long straight gaps measured
     <= 0.15 m on Bahrain/Albert Park/Shanghai), clipped to the safety corridor [lo, hi] (asphalt margin,
@@ -861,8 +907,11 @@ def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3):
             i = run[np.argmax(out[run])]
             print('    F1 outside corridor: s %.0f-%.0f m, %s side, max %.2f m' %
                   (cw[run[0]], cw[run[-1]], 'left/-perp' if raw[i] < lo[i] else 'right/+perp', out[i]))
-    d = np.clip(raw, lo, hi)
-    d = np.clip(np.convolve(np.r_[d[-1:], d, d[:1]], np.ones(3) / 3, 'valid'), lo, hi)
+    if physics:      # --ai-brake-physics: the spline already follows the F1 gates (no noise); only remove the clip kinks
+        d = corridor_fit(lo, hi, raw)
+    else:
+        d = np.clip(raw, lo, hi)
+        d = np.clip(np.convolve(np.r_[d[-1:], d, d[:1]], np.ones(3) / 3, 'valid'), lo, hi)
     t_f1, t_ac = est_laptime(W + d[:, None] * pw), est_laptime(W + np.clip(sh, lo, hi)[:, None] * pw)
     print('  racing line: est lap %.2f s (AC line) -> %.2f s (F1 line), mean |F1 raw - used| %.2f m' %
           (t_ac, t_f1, np.abs(raw - d).mean()))
@@ -871,16 +920,16 @@ def racing_line_f1(W, pw, lo, hi, sh, pts, tol=0.3):
     return d
 
 
-def racing_line(W, pw, lo, hi, sh, mode=None, f1=None):
+def racing_line(W, pw, lo, hi, sh, mode=None, f1=None, physics=False):
     mode = mode or RACING_LINE
     if mode == 'f1':
         if f1 is None and not F1_LINE:
             raise ValueError("Racing-line mode 'f1' needs --f1-line <csv>")
-        return racing_line_f1(W, pw, lo, hi, sh, load_f1_line(F1_LINE) if f1 is None else f1)
+        return racing_line_f1(W, pw, lo, hi, sh, load_f1_line(F1_LINE) if f1 is None else f1, physics=physics)
     if mode == 'zebra':
         return racing_line_zebra(W, pw, lo, hi, sh)
     if mode == 'fastest':
-        return racing_line_fastest(W, pw, lo, hi, sh)
+        return racing_line_fastest(W, pw, lo, hi, sh, physics=physics)
     if mode == 'late_apex':
         return racing_line_mincurv(W, pw, lo, hi, sh)
     if mode != 'oio':
@@ -975,11 +1024,17 @@ def ai_reach(k, fast, keys, bad=frozenset(), props=None, res=0.5, reach=30.0, gr
     return out
 
 
-def braking_zones(line, min_drop=3.0, min_len=3):
-    """Braking runs of the point-mass speed profile: list of (start index, length in wps); start + length = minimum speed."""
-    v, _ = speed_profile(line)
+def braking_zones(line, min_drop=3.0, min_len=3, physics=False):
+    """Braking runs of the point-mass speed profile: list of (start index, length in wps); start + length = minimum speed.
+    physics (--ai-brake-physics): downforce profile (speed_profile_aero) and only waypoints where the braking pass cut the speed
+    (fwd - v > BRAKE_CUT, same criterion as the F1 fit) count -> fast corners/sequences taken flat or with a lift have no zone."""
+    if physics:
+        v, _, fwd = speed_profile_aero(line, with_fwd=True)
+        dec = (np.roll(v, -1) < v - 1e-3) & (fwd - v > BRAKE_CUT)
+    else:
+        v, _ = speed_profile(line)
+        dec = np.roll(v, -1) < v - 1e-3
     n = len(v)
-    dec = np.roll(v, -1) < v - 1e-3
     if dec.all() or not dec.any():
         return []
     s0 = int(np.argmin(dec))                         # a non-braking waypoint: runs never wrap the scan
@@ -1002,7 +1057,7 @@ def _smooth_closed(a, n):
     return np.convolve(np.r_[a[-n:], a, a[:n]], k, 'same')[n:-n]
 
 
-def secondary_line(line, pw, sh, lo, hi, off=AI_DRY2_OFF, ramp=8, back=2):
+def secondary_line(line, pw, sh, lo, hi, off=AI_DRY2_OFF, ramp=8, back=2, physics=False):
     """--ai-dry2 [H]: second dry line = main line moved `off` m to the inside of the coming corner in every braking zone (the
     'dive-bomb' side), ramped in over `ramp` wps before braking starts, back on the main line `back` wps before the minimum-speed
     point (apex side); raised-cosine ramps, clipped to the racing-line corridor [lo, hi] (asphalt margin, kerb, WALL_CLEAR)."""
@@ -1010,7 +1065,7 @@ def secondary_line(line, pw, sh, lo, hi, off=AI_DRY2_OFF, ramp=8, back=2):
     o = np.zeros(n)
     acc = np.roll(line, -1, 0) - 2 * line + np.roll(line, 1, 0)
     inward = np.sum(acc * pw, axis=1)                # > 0: the line curves toward +perp
-    for a, L in braking_zones(line):
+    for a, L in braking_zones(line, physics=physics):
         b = a + L
         side = np.sign(sum(inward[(b + j) % n] for j in range(-3, 4)))
         if side == 0:
@@ -1044,9 +1099,12 @@ def runs_over(mask, s):
     return out
 
 
-def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=None, dry2=False, f1lim=None):
+def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=None, dry2=False, f1lim=None, brake_physics=False):
     """pit: pit-lane centreline (AC coords, resampled) from build_pit(), or None for no pit branch.
     reach (--ai-width): ai_reach() per fast point -> per-side wp_dwidth; dry2 (--ai-dry2): wp_dry2 + timesDry2.
+    brake_physics (--ai-brake-physics): racing line without clip kinks (corridor_fit) and dry2 braking zones from the downforce
+    speed model (speed_profile_aero) instead of the 1.2 g one.  The AIW has no speed field (wp_event corner speed mult is 1.0
+    everywhere, also in the originals): the AI's corner speed comes from the line curvature, so a kink = a braking point.
     Both None/False = previous output byte for byte; wp_path[1] (wet) is always 0.0 as before."""
     if pit is not None:
         pit = pit * MIRROR
@@ -1106,7 +1164,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
         lo = np.maximum(lo, -(wall_l - WALL_CLEAR)); hi = np.minimum(hi, wall_r - WALL_CLEAR)
     if np.any(lo > hi):
         raise ValueError('Infeasible AI clearance corridor at %d waypoints' % np.count_nonzero(lo > hi))
-    sh = racing_line(W, pw, lo, hi, sh)
+    sh = racing_line(W, pw, lo, hi, sh, physics=brake_physics)
     margin_l, margin_r = ex_l + sh, ex_r - sh
     print('  AI margins: left min=%.3f right min=%.3f finite=True' % (margin_l.min(), margin_r.min()))
     kerb_l, kerb_r = mg_l < LINE_MARGIN, mg_r < LINE_MARGIN      # sides where a low kerb follows the asphalt edge
@@ -1133,6 +1191,9 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
     _t = np.roll(W, -1, 0) - np.roll(W, 1, 0); _t[:, 1] = 0; _t /= np.linalg.norm(_t, axis=1)[:, None]
     line = W + sh[:, None] * np.c_[_t[:, 2], np.zeros(nw), -_t[:, 0]]       # racing line = pos + path*perp
     tdry = est_laptime(line)
+    if brake_physics:
+        print('  AI brake physics: braking zones %d (downforce model) vs %d (1.2 g model)' %
+              (len(braking_zones(line, physics=True)), len(braking_zones(line))))
     cty, cst = corner_marks(line)
     ai = {}
     shift_a = (ex_r - ex_l) / 2.0; hw_a = (ex_l + ex_r) / 2.0
@@ -1186,7 +1247,7 @@ def build_aiw(fast, extra, dummies, tid, pit=None, wide=None, wallf=None, reach=
               (src, q(add_l), q(add_r), at0, 2 * nw, 100.0 * at0 / (2 * nw), AI_DW_FLOOR, atf, 100.0 * atf / (2 * nw),
                WALL_CLEAR, wall_hits))
     if dry2:
-        d2 = secondary_line(line, pw, sh, lo, hi)
+        d2 = secondary_line(line, pw, sh, lo, hi, physics=brake_physics)
         line2 = W + d2[:, None] * pw
         ai['dry2'] = d2; ai['tdry2'] = max(est_laptime(line2), tdry)   # [H] value only, never a selection criterion
         far = runs_over(np.abs(d2 - sh) > 1.0, s)
@@ -2205,6 +2266,9 @@ def parse_args(argv=None):
                              "WALL_CLEAR always wins; never below wp_width")
     parser.add_argument('--f1-limits', help="--ai-width-rule f1: F1 2020 aispline limits CSV in AIW coordinates (f1_limits.py: <type>_x/_y/_z columns)")
     parser.add_argument('--ai-dry2', action='store_true', help='emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones (hypothesis)')
+    parser.add_argument('--ai-brake-physics', action='store_true',
+                        help='racing line without corridor-clip kinks (spurious braking points) and dry2 braking zones from a '
+                             'downforce speed model fitted on F1 2020 brake lines (fast corners/sequences = no braking zone)')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
@@ -2376,7 +2440,8 @@ def main():
         f1lim = load_f1_limits(args.f1_limits) if args.f1_limits else {}
     elif args.ai_width and extra is not None:
         reach = ai_reach(k, fast, keys, invalid_keys(locations['surfaces']), surface_props(locations['surfaces']))
-    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf, reach=reach, dry2=args.ai_dry2, f1lim=f1lim)
+    aiw, info = build_aiw(fast, aextra, dummies, tid, pitc, wide, wallf, reach=reach, dry2=args.ai_dry2, f1lim=f1lim,
+                          brake_physics=args.ai_brake_physics)
     if args.dump_aiw: open(args.dump_aiw, 'w', encoding='latin1', newline='').write(aiw)
     print('pit branch waypoints', info['npit'])
     camtpl = open(os.path.join(sx, 'cameras', 'sochi_ams.xml'), encoding='utf-8').read()

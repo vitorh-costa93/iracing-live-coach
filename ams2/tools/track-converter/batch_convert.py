@@ -100,7 +100,7 @@ def main():
             if item.get('ground_pits'): cmd += ['--ground-pits']
             if item.get('racing_line'): cmd += ['--racing-line', item['racing_line']]
             if item.get('f1_line'): cmd += ['--f1-line', item['f1_line']]
-            for flag in ('ai_width', 'ai_dry2'):
+            for flag in ('ai_width', 'ai_dry2', 'ai_brake_physics'):
                 if item.get(flag): cmd += ['--' + flag.replace('_', '-')]
             if item.get('ai_width_rule'): cmd += ['--ai-width-rule', item['ai_width_rule']]
             if item.get('f1_limits'): cmd += ['--f1-limits', item['f1_limits']]
