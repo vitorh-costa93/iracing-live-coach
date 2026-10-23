@@ -501,7 +501,51 @@ class AIValidationTests(unittest.TestCase):
         self.assertTrue(np.all(kb[:, 0] == 30.0))
         self.assertTrue(np.all((kb[:, 1] >= 2.5) & (kb[:, 1] <= 3.0)))
 
-    def test_default_racing_line_is_fastest_and_never_slower_than_source(self):
+    @staticmethod
+    def rounded_square(R=30.0, S=200.0):
+        pts = []
+        centres = [(S / 2, S / 2), (-S / 2, S / 2), (-S / 2, -S / 2), (S / 2, -S / 2)]
+        for q, (cx, cz) in enumerate(centres):
+            a0 = q * np.pi / 2
+            p0 = np.array([cx + R * np.cos(a0), cz + R * np.sin(a0)]); d = np.array([-np.sin(a0), np.cos(a0)])
+            pts += [p0 - d * (S - t) for t in np.arange(0, S, 5.0)]
+            pts += [np.array([cx + R * np.cos(a0 + u / R), cz + R * np.sin(a0 + u / R)]) for u in np.arange(0, R * np.pi / 2, 5.0)]
+        W = np.array([[p[0], 0.0, p[1]] for p in pts])
+        t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t /= np.linalg.norm(t, axis=1)[:, None]
+        return W, np.c_[t[:, 2], np.zeros(len(W)), -t[:, 0]]
+
+    def test_lap_time_gradient_matches_estimate_and_finite_differences(self):
+        W, pw = self.rounded_square()
+        d = 2.0 * np.sin(np.arange(len(W)) * 0.07)
+        t, g = convert.lap_time_grad(W, pw, d)
+        self.assertAlmostEqual(t, convert.est_laptime(W + d[:, None] * pw), places=8)
+        for i in (3, 40, 47, 90, len(W) - 5):
+            e = np.zeros(len(W)); e[i] = 1e-6
+            fd = (convert.est_laptime(W + (d + e)[:, None] * pw) - t) / 1e-6
+            self.assertAlmostEqual(g[i], fd, delta=1e-4 + 1e-3 * abs(fd))
+
+    def test_zebra_line_goes_outer_to_kerb_at_a_late_apex_and_is_never_slower(self):
+        W, pw = self.rounded_square()
+        n = len(W); lo, hi, ac = -6.0 * np.ones(n), 6.0 * np.ones(n), np.zeros(n)
+        self.assertEqual(convert.RACING_LINE, 'zebra')
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = convert.racing_line(W, pw, lo, hi, ac)
+            fast = convert.racing_line(W, pw, lo, hi, ac, mode='fastest')
+        self.assertTrue(np.all((d >= lo - 1e-9) & (d <= hi + 1e-9)))
+        lap = lambda x: convert.est_laptime(W + x[:, None] * pw)
+        self.assertLessEqual(lap(d), lap(fast) + 1e-9)
+        inner = np.sign(np.sum(pw * -W, axis=1))
+        n_arc, n_str = int(np.ceil(30.0 * np.pi / 2 / 5.0)), 40
+        for q in range(4):
+            a = q * (n_str + n_arc) + n_str; b = a + n_arc - 1
+            din = lambda i: 6.0 - inner[i % n] * d[i % n]
+            apex = max(range(a, b + 1), key=lambda i: (din(i) <= 0.16, i))
+            self.assertLessEqual(din(apex), 0.16)                                   # touches the kerb-limited bound
+            self.assertGreaterEqual((apex - a) / max(b - a, 1), 0.4)                # late apex
+            self.assertGreaterEqual(din(apex - 5), 1.0)                             # no creeping along the kerb 25 m before it
+            self.assertLessEqual(min(12.0 - din(i) for i in range(a - 16, a + 1)), 0.5)   # outer edge before turn-in
+
+    def test_default_racing_line_never_slower_than_source(self):
         pts, R, S = [], 30.0, 200.0
         centres = [(S / 2, S / 2), (-S / 2, S / 2), (-S / 2, -S / 2), (S / 2, -S / 2)]
         for q, (cx, cz) in enumerate(centres):
@@ -513,9 +557,8 @@ class AIValidationTests(unittest.TestCase):
         t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t /= np.linalg.norm(t, axis=1)[:, None]
         pw = np.c_[t[:, 2], np.zeros(len(W)), -t[:, 0]]
         lo, hi, ac = -6.0 * np.ones(len(W)), 6.0 * np.ones(len(W)), np.zeros(len(W))
-        self.assertEqual(convert.RACING_LINE, 'fastest')
         with contextlib.redirect_stdout(io.StringIO()):
-            d = convert.racing_line(W, pw, lo, hi, ac)
+            d = convert.racing_line(W, pw, lo, hi, ac, mode='fastest')
             late = convert.racing_line(W, pw, lo, hi, ac, mode='late_apex')
         self.assertTrue(np.all((d >= lo - 1e-9) & (d <= hi + 1e-9)))
         lap = lambda x: convert.est_laptime(W + x[:, None] * pw)

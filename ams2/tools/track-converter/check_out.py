@@ -99,7 +99,10 @@ for w in W[::20]:
     ys = grid.get((int(w[0] // 4), int(w[2] // 4)))
     if ys:
         gaps.append(min(abs(y - w[1]) for y in ys))
-print('AI line vs nearest mesh vertex height: median %.2f m, max %.2f m over %d samples' % (np.median(gaps), max(gaps), len(gaps)))
+if gaps:
+    print('AI line vs nearest mesh vertex height: median %.2f m, max %.2f m over %d samples' % (np.median(gaps), max(gaps), len(gaps)))
+else:   # informational only: coarse road meshes can leave no sampled vertex in the 4 m cells (Hungaroring 1988 had 1 sample)
+    print('AI line vs nearest mesh vertex height: no samples (coarse road meshes)')
 
 # ---- AIW pit branch topology (rules from Sochi, SPEC 8)
 nmain = len(W); n_all = len(WPS)

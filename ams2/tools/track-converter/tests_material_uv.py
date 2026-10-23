@@ -21,6 +21,12 @@ class MaterialUvTests(unittest.TestCase):
         np.testing.assert_allclose(c.metric_uv_scale(points, uv, np.array([0,1,2]), 4), [2,1])
         np.testing.assert_array_equal(c.metric_uv_scale(points*0, uv, np.array([0,1,2]), 4), [1,1])
 
+    def test_mesh_names_opt_out_of_fp16_uv_compression(self):
+        # AMS2 halves FLOAT2 UVs unless the mesh resource name has '_no_uv_comp' (as every Sochi/OMTT mesh)
+        self.assertEqual(c.mesh_resource_name('asphalt_road'), 'asphalt_road_no_uv_comp')
+        self.assertEqual(c.mesh_resource_name('road_2'), 'road_2_no_uv_comp')
+        self.assertEqual(c.mesh_resource_name('wall_NO_UV_COMP'), 'wall_NO_UV_COMP')
+
 
 if __name__ == '__main__':
     unittest.main()

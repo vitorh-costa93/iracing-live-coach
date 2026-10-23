@@ -577,13 +577,207 @@ def racing_line_fastest(W, pw, lo, hi, sh):
     return d if best < t_ac else ac
 
 
-# Racing-line strategy: 'fastest' (default, 21/10 logic), 'late_apex' (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio'
-# (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain, rejected 22/10).  Opt in with --racing-line NAME.
-RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'fastest')
+# ---- kerb-to-kerb racing line (23/10): Bahrain feedback on the 'fastest' line -- T1-T3 sequence poor, T4 and T13 closed too early.
+# Cause: est_laptime is a point mass without a friction ellipse (turning while braking hard is free), so minimum-curvature and
+# minimum-time lines spiral in: they leave the outer edge early and creep onto the inner kerb long before the apex.  Fix: a
+# corridor that forces each corner to be driven outer edge -> inner kerb at the AC fast_lane's (later) apex -> exit free, then an
+# exact-gradient lap-time polish inside it; corners are relaxed only as far as needed to stay no slower than the 'fastest' line.
+
+
+def _cummin_arg(x):
+    y = np.minimum.accumulate(x)
+    return y, np.maximum.accumulate(np.where(x <= y, np.arange(len(x)), -1))
+
+
+def lap_time_grad(W, pw, d, alat=12.0, vmax=80.0, acc=5.0, brk=14.0):
+    """est_laptime(W + d*pw) and its exact gradient w.r.t. d (reverse mode through the same point-mass speed envelopes)."""
+    n = len(W)
+    L = W + d[:, None] * pw
+    ex = np.roll(L[:, 0], -1) - L[:, 0]; ez = np.roll(L[:, 2], -1) - L[:, 2]
+    r = np.sqrt(ex * ex + ez * ez); ds = r + 1e-9
+    h = np.unwrap(np.arctan2(ex, ez))
+    dh = np.angle(np.exp(1j * (np.roll(h, -1) - h)))
+    k0 = dh / ds
+    k = (np.roll(k0, 1) + k0 + np.roll(k0, -1)) / 3.0
+    ak = np.maximum(np.abs(k), 1e-4)
+    cap = alat / ak
+    u = np.minimum(vmax * vmax, cap)                     # v^2
+    S = np.r_[0.0, np.cumsum(np.r_[ds, ds])][:2 * n]
+    tape = []
+    for _ in range(2):
+        U = np.r_[u, u]
+        y, ka = _cummin_arg(U - 2 * acc * S)
+        f = 2 * acc * S + y
+        sel = f[n:] <= f[:n]; fm = np.where(sel, f[n:], f[:n])
+        keep = u <= fm; tape.append((2 * acc, ka, sel, keep)); u = np.minimum(u, fm)
+        U = np.r_[u, u]
+        yb, kb = _cummin_arg((U + 2 * brk * S)[::-1])
+        g = -2 * brk * S + yb[::-1]; kb = (2 * n - 1 - kb)[::-1]
+        sel = g[n:] < g[:n]; gm = np.where(sel, g[n:], g[:n])
+        keep = u <= gm; tape.append((-2 * brk, kb, sel, keep)); u = np.minimum(u, gm)
+    T = float((ds / np.sqrt(u)).sum())
+    gu = -0.5 * ds * u ** -1.5
+    gds = 1.0 / np.sqrt(u)
+    for coef, karg, sel, keep in reversed(tape):
+        gf = np.zeros(2 * n)
+        gf[np.arange(n) + n * sel] = np.where(keep, 0.0, gu)
+        gU = np.bincount(karg, weights=gf, minlength=2 * n)
+        gS = coef * (gf - gU)
+        gu = np.where(keep, gu, 0.0) + gU[:n] + gU[n:]
+        gdsd = np.r_[np.cumsum(gS[::-1])[::-1][1:], 0.0]
+        gds = gds + gdsd[:n] + gdsd[n:]
+    gak = np.where(cap < vmax * vmax, gu, 0.0) * (-alat / ak ** 2)
+    gk = np.where(np.abs(k) > 1e-4, gak * np.sign(k), 0.0)
+    gk0 = (np.roll(gk, -1) + gk + np.roll(gk, 1)) / 3.0
+    gds = gds - gk0 * dh / ds ** 2
+    gdh = gk0 / ds
+    gh = np.roll(gdh, 1) - gdh
+    r2 = np.maximum(r * r, 1e-18); rr = np.maximum(r, 1e-12)
+    gex = gh * ez / r2 + gds * ex / rr
+    gez = -gh * ex / r2 + gds * ez / rr
+    gLx = np.roll(gex, 1) - gex; gLz = np.roll(gez, 1) - gez
+    return T, gLx * pw[:, 0] + gLz * pw[:, 2]
+
+
+def lap_time_polish(W, pw, lo, hi, d0, schedule=None, maxiter=500):
+    """Minimise est_laptime + mu * sum|second difference of the line|^2 inside [lo, hi], mu decreasing (continuation: the
+    smooth problem first, so the time optimiser does not get stuck in the first local optimum of the point-mass model)."""
+    import scipy.sparse as sp
+    from scipy.optimize import minimize
+    n = len(W)
+    D2 = sp.diags([1., -2., 1.], [-1, 0, 1], shape=(n, n), format='lil'); D2[0, n - 1] = 1; D2[n - 1, 0] = 1; D2 = D2.tocsr()
+    Ax = D2 @ sp.diags(pw[:, 0]); Az = D2 @ sp.diags(pw[:, 2]); bx = D2 @ W[:, 0]; bz = D2 @ W[:, 2]
+    d = np.clip(d0, lo, hi); bounds = list(zip(lo, hi))
+    for mu in (schedule or (1000.0, 100.0, 10.0, 1.0, 0.3, 0.1)):
+        def fg(x):
+            t, g = lap_time_grad(W, pw, x)
+            rx = Ax @ x + bx; rz = Az @ x + bz
+            return t + mu * (rx @ rx + rz @ rz), g + 2 * mu * (Ax.T @ rx + Az.T @ rz)
+        d = np.clip(minimize(fg, d, jac=True, method='L-BFGS-B', bounds=bounds, options=dict(maxiter=maxiter, maxcor=30)).x, lo, hi)
+    return d
+
+
+def line_corners(W, pw, min_turn=12.0):
+    """(a, b, side, R_min, turn fraction per index a..b) of the corners of the reference line (compound corners split);
+    side +1 = turns toward +pw."""
+    n = len(W)
+    Ws = np.c_[[np.convolve(np.r_[W[-3:, j], W[:, j], W[:3, j]], np.ones(7) / 7, 'valid') for j in range(3)]].T
+    runs, k = corner_runs(Ws, radius=250.0, gap=2)
+    _, ds = line_curvature(Ws)
+    t = np.roll(W, -1, 0) - np.roll(W, 1, 0); t[:, 1] = 0; t /= np.linalg.norm(t, axis=1)[:, None] + 1e-12
+    dturn = ((np.roll(t, -1, 0) - np.roll(t, 1, 0)) * pw).sum(1)
+    out = []
+    for a, b in split_compound(runs, k):
+        idx = np.arange(a, b + 1) % n
+        turn = np.cumsum(np.abs(k[idx] * ds[idx]))
+        if np.degrees(turn[-1]) < min_turn:
+            continue
+        out.append((a, b, 1.0 if dturn[idx].sum() > 0 else -1.0, float(1.0 / np.abs(k[idx]).max()), turn / turn[-1]))
+    return out
+
+
+ZEBRA_LEVELS = ((0.6, 2.5, 0.65), (0.6, 4.0, 0.5), (0.45, 6.0, 0.4), (0.3, 10.0, 0.3))   # strict -> loose; past the end = free
+
+
+def zebra_corners(W, pw, lo, hi, ref, f0=0.35, f1=0.85):
+    """Corners of the reference line with their apex: inside the middle of the corner (turn fraction f0..f1), the latest point
+    where the reference (AC) line is closest to the inner bound (the AC timing, later than the minimum-curvature apex)."""
+    n = len(W); out = []
+    for a, b, s, rc, fr in line_corners(W, pw):
+        idx = np.arange(a, b + 1)[(fr >= f0) & (fr <= f1)]
+        if len(idx) == 0:
+            idx = np.arange(a, b + 1)[[int(np.searchsorted(fr, 0.6))]]
+        g = s * ((hi if s > 0 else lo)[idx % n] - ref[idx % n])
+        out.append((a, b, s, rc, int(idx[np.where(g <= g.min() + 0.15)[0][-1]])))
+    return out
+
+
+def zebra_corridor(W, pw, lo, hi, ref, cs, levels, max_win=36, pin=0.15, g_max=0.9):
+    """Narrow [lo, hi] into a 'kerb to kerb' corridor; returns (lo2, hi2, owner) with owner[i] = corner that moved bound i.
+    Per corner c at level (kappa, c_r, half) (levels[c] >= len(ZEBRA_LEVELS): corner left free):
+    - the line must touch the inner bound at the apex (within `pin` m; the bound already keeps the kerb_start margin);
+    - before the apex (back to `half` of the way to the previous apex, at most `max_win` waypoints) the inner gap must be at least
+      `kappa` x the reference line's own approach (stretched to the full width) and the parabola x^2 / (2 c_r R_corner) (a
+      constant-radius approach instead of a spiral hugging the kerb), capped at `g_max` x width: wide until a late turn-in.
+    The exit is left free (the time optimiser runs it out wide), so one corner's exit sets up the next corner's entry."""
+    n = len(W); lo2, hi2 = lo.copy(), hi.copy(); w = np.maximum(hi - lo, 1e-6); owner = np.full(n, -1)
+    for j, (a, b, s, rc, ia) in enumerate(cs):
+        if levels[j] >= len(ZEBRA_LEVELS):
+            continue
+        kappa, c_r, half = ZEBRA_LEVELS[levels[j]]
+        inner = hi if s > 0 else lo
+        prev = cs[j - 1][4] if j > 0 else cs[-1][4] - n
+        m0 = min(max_win, max(2, int(half * (ia - prev))))
+        p = s * (inner - ref) / w
+        win = np.arange(ia - m0, ia + 1); pv = p[win % n]; pa, top = pv[-1], pv.max(); jt = int(np.argmax(pv))
+        for q, i in enumerate(win[:-1]):
+            ii = i % n; m = ia - i
+            g = min(g_max * w[ii], (5.0 * m) ** 2 / (2.0 * c_r * rc))
+            if q >= jt and top - pa >= 0.05:
+                g = max(g, kappa * min(1.0, max(0.0, (pv[q] - pa) / (top - pa))) * w[ii])
+            if s > 0: hi2[ii] = min(hi2[ii], max(lo2[ii] + 0.05, hi[ii] - g))
+            else: lo2[ii] = max(lo2[ii], min(hi2[ii] - 0.05, lo[ii] + g))
+            owner[ii] = j
+        ii = ia % n
+        if s > 0: lo2[ii] = max(lo2[ii], min(hi2[ii], hi[ii] - pin))
+        else: hi2[ii] = min(hi2[ii], max(lo2[ii], lo[ii] + pin))
+        owner[ii] = j
+    return np.minimum(lo2, hi2), hi2, owner
+
+
+def racing_line_zebra(W, pw, lo, hi, sh, max_rounds=40, verbose=True):
+    """Kerb-to-kerb line: the fastest (21/10) line's lap estimate is the budget; every corner starts at the strictest kerb-to-kerb
+    level and the corners whose constraints cost the most lap time (first-order: |dT/dd| x bound shift) are relaxed one level
+    at a time until the time-polished line is not slower than the fastest line.  Fallback: the fastest line."""
+    base = racing_line_fastest(W, pw, lo, hi, sh)
+    t_base = est_laptime(W + base[:, None] * pw)
+    ref = np.clip(sh, lo, hi); n = len(W)
+    cs = zebra_corners(W, pw, lo, hi, ref)
+    if not cs:
+        return base
+    levels = [0] * len(cs); d = None
+    for rnd in range(max_rounds):
+        lo2, hi2, owner = zebra_corridor(W, pw, lo, hi, ref, cs, levels)
+        best = None
+        starts = [(ref, None), (base, None)] + ([] if d is None else [(d, (0.3, 0.1))])
+        for d0, sched in starts:
+            x = lap_time_polish(W, pw, lo2, hi2, d0, schedule=sched)
+            t = est_laptime(W + x[:, None] * pw)
+            if np.isfinite(t) and np.isfinite(x).all() and (best is None or t < best[0]):
+                best = (t, x)
+        t, d = best
+        if verbose:
+            print('  racing line: kerb-to-kerb round %d levels %s est lap %.2f s (fastest %.2f s)' % (rnd, ''.join(map(str, levels)), t, t_base))
+        if t <= t_base:
+            return d
+        _, g = lap_time_grad(W, pw, d)
+        shift = np.maximum(lo2 - lo, 0) * (d <= lo2 + 1e-6) + np.maximum(hi - hi2, 0) * (d >= hi2 - 1e-6)
+        cost = np.zeros(len(cs))
+        np.add.at(cost, owner[owner >= 0], (np.abs(g) * shift)[owner >= 0])
+        cost[np.array(levels) >= len(ZEBRA_LEVELS)] = -1
+        if cost.max() <= 0:
+            break
+        need = t - t_base; order = np.argsort(-cost); acc = 0.0
+        for j in order:                                   # relax the costliest corners covering the excess (at least one)
+            if cost[j] <= 0:
+                break
+            levels[j] += 1; acc += cost[j]
+            if acc >= 1.5 * need:
+                break
+    print('  racing line: kerb-to-kerb could not match the fastest line, keeping fastest')
+    return base
+
+
+# Racing-line strategy: 'zebra' (default, 23/10 kerb-to-kerb, never slower than 'fastest'), 'fastest' (21/10 logic), 'late_apex'
+# (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio' (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain,
+# rejected 22/10).  Opt in with --racing-line NAME.
+RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'zebra')
 
 
 def racing_line(W, pw, lo, hi, sh, mode=None):
     mode = mode or RACING_LINE
+    if mode == 'zebra':
+        return racing_line_zebra(W, pw, lo, hi, sh)
     if mode == 'fastest':
         return racing_line_fastest(W, pw, lo, hi, sh)
     if mode == 'late_apex':
@@ -1354,6 +1548,16 @@ def compact_vertices(idx):
     return keep, remap.ravel().astype(np.int64)
 
 
+NO_UV_COMP = '_no_uv_comp'
+
+
+def mesh_resource_name(name):
+    """AMS2 (CMeshPrimitiveType::LoadBinaryMeshFromResource) packs a FLOAT2 UV stream to half floats unless the mesh
+    resource name contains '_no_uv_comp'; every Sochi/OMTT mesh carries it.  Tiled AC road UVs reach thousands of
+    units (Shanghai ASPHALT_ROAD up to 12563: fp16 step 8), so the asphalt rendered as a smeared, magnified texel."""
+    return name if NO_UV_COMP in name.lower() else name + NO_UV_COMP
+
+
 def is_asphalt(mt):
     n = mt['name'].upper()
     return (detail_kind(mt) == 'road' or (mt['shader'] == 'ksMultilayer' and not n.startswith('KERB'))
@@ -1673,7 +1877,7 @@ def parse_args(argv=None):
     parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
     parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
     parser.add_argument('--street', action='store_true')
-    parser.add_argument('--racing-line', choices=('fastest', 'late_apex', 'oio'), default='fastest')
+    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio'), default='zebra')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
@@ -1775,6 +1979,7 @@ def main():
         while nm.lower() in mnames:
             j += 1; nm = '%s_%d' % (base, j)
         mnames.add(nm.lower())
+        nm = mesh_resource_name(nm)
         P = (m['pos'] * MIRROR).astype(np.float32)
         N = (m['nrm'] * MIRROR); N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-9)
         T = (m['tan'] * MIRROR); T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-9)

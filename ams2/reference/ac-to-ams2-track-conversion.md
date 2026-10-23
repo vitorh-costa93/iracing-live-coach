@@ -101,6 +101,7 @@ Resultado: 61 MiB, 294 arquivos, estrutura igual à do Sochi. Instalar pelo AMS2
 
 ## Licoes do Magny-Cours (20/10)
 - **Nome de malha/material que comeca com digito (`1road_01`) = AMS2 nao renderiza a malha** (pista inteira sem asfalto). O conversor prefixa `m`/`M`.
+- **Malha sem `_no_uv_comp` no nome = UV comprimido para half float** (`CMeshPrimitiveType::LoadBinaryMeshFromResource`: stream FLOAT2 de semantica UV vira tipo 0x22 se o nome nao contem a string). Todas as malhas do Sochi/OMTT tem o sufixo. Sem ele, UV tileado grande (Shanghai `ASPHALT_ROAD` ate 12563, passo fp16 = 8) vira asfalto claro liso com manchas (texel ampliado). `mesh_resource_name()` acrescenta o sufixo (22/10).
 - Malha satelite `exterior` (kn5, 4096^2 esticada em 11 km) fica borrada: usar detalhe tileado (`grass03`, 6 m/tile).
 - Materiais `ksMultilayer_fresnel` (ROAD*/PITR*/DROAD*): a superficie real e `txDetailR`, nao `txDiffuse`; UV reescalado para metrico (4 m/tile). Spec capado a 0.05.
 - Como testar: copiar o 7z em `Mods\Enabled`, abrir AMS2 CM, Apply; abrir o jogo (`Start-Process steam://rungameid/1066890`), Corrida simples > pista > sessao de treino ligada > Iniciar. Mouse no jogo so responde com mouse_move + down + up.
