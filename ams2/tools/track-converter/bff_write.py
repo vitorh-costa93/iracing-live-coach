@@ -85,6 +85,55 @@ def build_bff(pak_name, items, author='Reiza.xml', platform='PC'):
     return bytes(out)
 
 
+def patch_official(src, replacements, level=6):
+    """Official (RC4, unnamed) pak with some entries replaced, everything else byte-identical.
+    src: bff.Bff; replacements: {uid: uncompressed bytes}.  Header, name, EXT block (encrypted, not decoded) and all other
+    stored streams are copied verbatim; entries keep their TOC order, data order and timestamps.  A replaced entry gets a
+    new zlib stream (level 6, the 78 9c header of the originals), RC4-encrypted per entry like the originals (comp 0x04xx),
+    and its TOC crc = ~crc32(encrypted stream), the rule verified on every official entry.  Offsets after it move; the data
+    region keeps the original alignment and the TOC is re-encrypted with the same key."""
+    from bff import rc4, RC4_KEYS, ENTRY_FMT, ENTRY_SIZE
+    if not src.key_index or src.dhsa_size:
+        raise ValueError('patch_official only handles encrypted official paks without a DHSA block')
+    known = {e.uid for e in src.entries}
+    if set(replacements) - known:
+        raise ValueError('Replacement uid absent from the pak')
+    key = RC4_KEYS[src.key_index]
+    toc = bytearray(src.toc_plain[:ENTRY_SIZE * src.count])
+    if rc4(key, bytes(toc)) != src.header_blob[0x130:0x130 + len(toc)]:
+        raise ValueError('TOC does not re-encrypt to the original bytes')
+    order = sorted(src.entries, key=lambda e: e.offset)
+    if order[0].offset != src.data_offset:
+        raise ValueError('Unexpected gap before the first entry')
+    for a, b in zip(order, order[1:]):
+        if b.offset != a.offset + a.pak_size + _pad(a.offset + a.pak_size, src.alignment):
+            raise ValueError('Unexpected data layout (gap/overlap between entries)')
+    with open(src.path, 'rb') as f:
+        blob = f.read()
+    if len(blob) != order[-1].offset + order[-1].pak_size:
+        raise ValueError('Unexpected trailing data after the last entry')
+    out = bytearray(src.header_blob)
+    off = src.data_offset
+    for e in order:
+        if e.uid in replacements:
+            if not (e.comp >> 8) & 0x04 or (e.comp & 0xff) != 1:
+                raise ValueError('Replaced entry must be an encrypted zlib entry')
+            plain = replacements[e.uid]
+            stored = rc4(key, zlib.compress(plain, level))
+            size = len(plain)
+        else:
+            stored, size = blob[e.offset:e.offset + e.pak_size], e.size
+        out += b'\0' * (off - len(out))
+        out += stored
+        crc = (~zlib.crc32(stored)) & 0xffffffff
+        row = list(struct.unpack_from(ENTRY_FMT, toc, e.index * ENTRY_SIZE))   # uid, ts, comp, ext kept as stored
+        row[1], row[2], row[3], row[6] = off, len(stored), size, crc
+        struct.pack_into(ENTRY_FMT, toc, e.index * ENTRY_SIZE, *row)
+        off += len(stored); off += _pad(off, src.alignment)
+    out[0x130:0x130 + len(toc)] = rc4(key, bytes(toc))
+    return bytes(out)
+
+
 def write_bff(path, pak_name, items, **kw):
     blob = build_bff(pak_name, items, **kw)
     with open(path, 'wb') as f:
