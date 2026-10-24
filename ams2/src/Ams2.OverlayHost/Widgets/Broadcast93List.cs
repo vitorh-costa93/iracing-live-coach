@@ -18,6 +18,18 @@ public static class Broadcast93List
 
     public static float Height(int rows, bool sponsor) => Top + rows * RowH + (sponsor ? BandH : 0);
 
+    /// <summary>
+    /// Índices (ordem de posição) das linhas da lista. Estática (padrão da TV): os <paramref name="rows"/> primeiros. Dinâmica (Exibição):
+    /// a janela de <paramref name="around"/> pilotos centrada no jogador (inclui o jogador) e o topo no resto das linhas.
+    /// </summary>
+    public static IReadOnlyList<int> Pick(int count, int playerIndex, int rows, bool dynamic, int around)
+    {
+        rows = Math.Max(1, rows);
+        if (!dynamic || playerIndex < 0 || playerIndex < rows) return Enumerable.Range(0, Math.Min(rows, Math.Max(0, count))).ToArray();
+        int window = Math.Clamp(around, 1, rows);
+        return Ams2.Core.Calc.StandingsSelector.Select(count, playerIndex, rows - window, window).Select(p => p.Index).Take(rows).ToArray();
+    }
+
     /// <summary>Número do carro (real, da pintura) ou, sem ele, a posição: o AMS2 não informa o número pela memória compartilhada.</summary>
     public static string Number(CarSnapshot car, int position)
         => car.CarNumber.Length > 0 ? car.CarNumber : position.ToString(CultureInfo.InvariantCulture);

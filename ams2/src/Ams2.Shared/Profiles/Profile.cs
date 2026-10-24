@@ -56,6 +56,8 @@ public sealed record WidgetSettings
     /// <summary>Grupos de sessao em que o widget aparece (<see cref="SessionIds"/>: "practice", "qualify", "race"). Null = padrao do widget
     /// (<see cref="WidgetDef.Sessions"/>); a normalizacao grava null quando igual ao padrao ou vazio (sem bloco no JSON).</summary>
     public string[]? Sessions { get; init; }
+    /// <summary>Exibição (gatilho, duração, fades, forma e peças; <see cref="ShowSettings"/>). Null = padrão do widget no tema (<see cref="ShowCatalog"/>).</summary>
+    public ShowSettings? Show { get; init; }
 
     /// <summary>Grupos efetivos (nunca vazio): os gravados ou o padrao do widget.</summary>
     [JsonIgnore] public IReadOnlyList<string> EffectiveSessions => Sessions is { Length: > 0 } s ? s : WidgetCatalog.Find(Id)?.Sessions ?? SessionIds.All;
@@ -121,8 +123,11 @@ public sealed record WidgetSettings
         }
         float? textScale = TextScale is { } ts && float.IsFinite(ts) ? MathF.Round(Math.Clamp(ts, WidgetCatalog.MinTextScale, WidgetCatalog.MaxTextScale), 2) : null;
         if (textScale is 1f) textScale = null;
+        var options = NormalizeOptions(themeId);
         return this with
         {
+            // Sem tema os padroes nao sao conhecidos: o bloco passa como esta (so o vazio sai).
+            Show = themeId is null ? (Show is { IsEmpty: false } ? Show : null) : Show?.Normalized(ShowCatalog.For(themeId, Id), this with { Options = options }),
             ColumnWidths = widths,
             WidthScale = NormalizeFactor(WidthScale, WidgetCatalog.MinAxisScale, WidgetCatalog.MaxAxisScale),
             HeightScale = NormalizeFactor(HeightScale, WidgetCatalog.MinAxisScale, WidgetCatalog.MaxAxisScale),
@@ -133,7 +138,7 @@ public sealed record WidgetSettings
             LabelColor = ColorHex.Normalize(LabelColor),
             ValueColor = ColorHex.Normalize(ValueColor),
             Display = Display?.Normalized(),
-            Options = NormalizeOptions(themeId),
+            Options = options,
             Sessions = NormalizeSessions(),
             TopCount = top, NearCount = near,
             RadarRange = radar ? Math.Clamp(EffectiveRadarRange, WidgetCatalog.MinRadarRange, WidgetCatalog.MaxRadarRange) : null,
@@ -237,6 +242,8 @@ public sealed record WidgetPatch
     public Dictionary<string, string>? Options { get; init; }
     /// <summary>Substitui os grupos de sessao (vazio = volta ao padrao do widget).</summary>
     public string[]? Sessions { get; init; }
+    /// <summary>Substitui o bloco de Exibição inteiro (todos os campos nulos = padrão do widget no tema).</summary>
+    public ShowSettings? Show { get; init; }
 
     /// <param name="themeId">Tema do perfil: valida as <see cref="WidgetSettings.Options"/> (null = so descarta entradas vazias).</param>
     public WidgetSettings ApplyTo(WidgetSettings s, string? themeId = null) => (s with
@@ -265,6 +272,7 @@ public sealed record WidgetPatch
         Display = Display ?? s.Display,
         Options = Options ?? s.Options,
         Sessions = Sessions ?? s.Sessions,
+        Show = Show is null ? s.Show : Show.IsEmpty ? null : Show,
     }).Normalized(themeId);
 
     /// <summary>Junta dois patches (b vence a): usado pelo Control Center para agrupar edicoes antes do envio.</summary>
@@ -283,6 +291,7 @@ public sealed record WidgetPatch
         ColumnWidths = b.ColumnWidths ?? a.ColumnWidths, TextScale = b.TextScale ?? a.TextScale, FontWeight = b.FontWeight ?? a.FontWeight,
         TextColor = b.TextColor ?? a.TextColor, LabelColor = b.LabelColor ?? a.LabelColor, ValueColor = b.ValueColor ?? a.ValueColor,
         Display = b.Display ?? a.Display, Options = b.Options ?? a.Options, Sessions = b.Sessions ?? a.Sessions,
+        Show = b.Show ?? a.Show,
     };
 }
 

@@ -43,20 +43,25 @@ public sealed class QualiResultWidget : IWidget
     int Rows => Num("rows", 10, 3, 30);
     int Cutoff => Num("eliminationFrom", 0, 0, 30);
     int MaxElim => Num("maxEliminated", 5, 3, 5);
-    double ShowFor => Num("showFor", 15, 5, 60);
+    readonly ShowRef _show = new();
+    ShowPlan Show => _show.Get(_cfg, _style);
+    /// <summary>Exibição: segundos na tela após o fim da sessão (padrão 15, lê também a opção antiga showFor) e fades (.3/.6).</summary>
+    double ShowFor => Show.Duration;
     bool Always => _cfg.Option("always") is { } v && !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase);
 
     const double FadeIn = 0.3, FadeOut = 0.6;
 
     /// <summary>Opacidade do resultado: 0 fora da janela de exibição (<see cref="QualiEndState.Window"/>), com fade na entrada e na saída.</summary>
-    public static float Alpha(QualiEndState? end, double now, double showFor, bool always)
+    public static float Alpha(QualiEndState? end, double now, double showFor, bool always) => Alpha(end, now, showFor, always, FadeIn, FadeOut);
+
+    public static float Alpha(QualiEndState? end, double now, double showFor, bool always, double fadeIn, double fadeOut)
     {
         if (always) return 1f;
         if (end is null) return 0f;
         var (start, stop) = end.Window(showFor);
         if (now < start || now >= stop) return 0f;
-        if (now - start < FadeIn) return (float)((now - start) / FadeIn);
-        if (stop - now < FadeOut) return (float)((stop - now) / FadeOut);
+        if (now - start < fadeIn) return (float)((now - start) / fadeIn);
+        if (stop - now < fadeOut) return (float)((stop - now) / fadeOut);
         return 1f;
     }
 
@@ -95,7 +100,7 @@ public sealed class QualiResultWidget : IWidget
             BroadcastUi.WithReveal18(c, reveal, DesignSize.Width, DesignSize.Height, () => Draw18(c, q, m.QualiEnd is not null));
             return;
         }
-        float a = Alpha(m.QualiEnd, m.Now, ShowFor, Always);
+        float a = Alpha(m.QualiEnd, m.Now, ShowFor, Always, Show.FadeIn, Show.FadeOut);
         if (_style == ThemeStyle.Broadcast2000s && !Always && m.QualiEnd is { } end)
         {
             var (start, stop) = end.Window(ShowFor);

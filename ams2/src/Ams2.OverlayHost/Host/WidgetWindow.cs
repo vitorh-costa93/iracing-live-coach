@@ -83,7 +83,8 @@ internal sealed class WidgetWindow : IDisposable
         _widget = WidgetRegistry.Create(id);
         Settings = settings;
         _widget.UseTheme(theme);
-        _widget.Configure(settings);
+        _show = ShowPlan.For(settings, theme.Id);
+        _widget.Configure(ShowPlan.ContentSettings(settings, theme.Id));
         (_w, _h) = PixelSize(settings);
         var (x, y) = ClampToScreen(settings.X, settings.Y, _w, _h);
         _win = OverlayWindow.Create($"AMS2 Overlay - {id}", x, y, _w, _h);
@@ -121,7 +122,8 @@ internal sealed class WidgetWindow : IDisposable
         Settings = s;
         _theme = theme;
         _widget.UseTheme(theme);
-        _widget.Configure(s);
+        _show = ShowPlan.For(s, theme.Id);
+        _widget.Configure(ShowPlan.ContentSettings(s, theme.Id));
         var (w, h) = PixelSize(s);
         var (x, y) = ClampToScreen(s.X, s.Y, w, h);
         if (w != _w || h != _h)
@@ -181,7 +183,28 @@ internal sealed class WidgetWindow : IDisposable
     public void BringToTop() => _win.BringToTop();
 
     /// <summary>Ha algo novo a apresentar? Sem assinatura (null) ou editando = sempre.</summary>
-    public bool NeedsFrame(OverlayModel model) => Editing || _lastSig is null || _widget.FrameSignature(model) != _lastSig;
+    public bool NeedsFrame(OverlayModel model) => Editing || _lastSig is null || Signature(model) != _lastSig;
+
+    /// <summary>Exibicao efetiva (gatilho generico: sempre/por evento/periodico controla o alfa da janela inteira).</summary>
+    ShowPlan _show = null!;
+    float _lastGate = 1f;
+
+    /// <summary>Alfa do gatilho generico (1 = gatilho padrao do widget ou sempre), quantizado em 1/64 para a assinatura.</summary>
+    float GateAlpha(OverlayModel model)
+    {
+        if (_show.IsNative || _show.IsAlways) return 1f;
+        float a = _show.GateAlpha(model.Now, id => model.Events?.Last(id));
+        return MathF.Round(a * 64f) / 64f;
+    }
+
+    /// <summary>Assinatura do widget combinada com o alfa do gatilho; oculto pelo gatilho = assinatura fixa (nada a redesenhar).</summary>
+    long? Signature(OverlayModel model)
+    {
+        float gate = GateAlpha(model);
+        if (gate <= 0f) return long.MinValue + 1;
+        var sig = _widget.FrameSignature(model);
+        return sig is { } v && gate < 1f ? unchecked(v * 1_000_003L + BitConverter.SingleToInt32Bits(gate)) : sig;
+    }
 
     /// <summary>Esquece o ultimo quadro apresentado: o proximo desenha e apresenta inteiro.</summary>
     void Invalidate() { _lastSig = null; _fullNext = true; }
@@ -194,7 +217,7 @@ internal sealed class WidgetWindow : IDisposable
         long? sig = null;
         if (!Editing)
         {
-            sig = _widget.FrameSignature(model);
+            sig = Signature(model);
             if (sig is not null && sig == _lastSig) return;   // nada mudou: o DComp mantem o ultimo quadro
         }
         // Present(N>1) fora do laco de vblank: so com vaga na fila (consome o sinal como o laco faria), para nunca bloquear o host.
@@ -204,10 +227,17 @@ internal sealed class WidgetWindow : IDisposable
             model = LayoutPreview.ForWidget(Id);
             _widget.Configure(LayoutPreview.Settings(Settings));
         }
+        float gate = Editing ? 1f : GateAlpha(model);
+        if (gate != _lastGate) { _fullNext = true; _lastGate = gate; }
         double started = Ams2.Core.Calc.RateStats.Now();
         _gfx.BeginFrame();
         _canvas.Begin();
-        _widget.Draw(_canvas, model);
+        if (gate > 0f)
+        {
+            _canvas.Opacity = Settings.Opacity * gate;
+            _widget.Draw(_canvas, model);
+            _canvas.Opacity = Settings.Opacity;
+        }
         if (_win.EditMode) DrawEditAdornments(preview);
         _canvas.End();
         double drawn = Ams2.Core.Calc.RateStats.Now();
@@ -223,7 +253,7 @@ internal sealed class WidgetWindow : IDisposable
         _drawCount++;
         _drawSeconds += drawn - started;
         _presentSeconds += Ams2.Core.Calc.RateStats.Now() - drawn;
-        if (preview) _widget.Configure(Settings);
+        if (preview) _widget.Configure(ShowPlan.ContentSettings(Settings, _theme.Id));
     }
 
     void DrawEditAdornments(bool preview)

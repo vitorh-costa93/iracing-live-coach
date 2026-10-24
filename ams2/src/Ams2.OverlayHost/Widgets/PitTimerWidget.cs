@@ -13,6 +13,7 @@ public sealed class PitTimerWidget : IWidget
     bool _b98, _b18;
     readonly Broadcast18Motion _motion18 = new();
     readonly Broadcast18Motion _stopMotion18 = new();
+    readonly ShowRef _show = new();
     public void UseTheme(Theme.Theme theme) { _b98 = theme.Style == ThemeStyle.Broadcast98; _b18 = theme.Style == ThemeStyle.Modern2018; }
     const float Head18 = 38, Gap18 = 4, Strip18 = 44, Body18 = 96;
     WidgetSettings _cfg = new() { Id = "pittimer" };
@@ -26,27 +27,30 @@ public sealed class PitTimerWidget : IWidget
     {
         if (!m.Connected || m.Session is not { PlayerCar: { } car } s) { _motion18.Reset(); _stopMotion18.Reset(); return; }
         var b = BroadcastUi.State(m);
+        // Exibicao: tempo na tela depois da parada (padrao 4 s) e fades do tema.
+        var show = _show.Get(_cfg, c.Theme.Style);
+        double hold = show.Duration, fadeIn = show.FadeIn;
         if (_b18)
         {
             var (pw, ph) = DesignSize;
             bool always = _cfg.ColumnVisible("always");
             float reveal = always ? 1 : ShowPitTime18
-                ? _motion18.Presence(m.Now, b.PlayerInPitLane || b.PlayerStopped, BroadcastUi.PitTimerHold, b.SessionSeenT)
+                ? _motion18.Presence(m.Now, b.PlayerInPitLane || b.PlayerStopped, hold, b.SessionSeenT)
                 : _stopMotion18.Evaluate(m.Now, b.PlayerStopStartT,
-                    b.PlayerStopped ? double.PositiveInfinity : b.PlayerStopEndT + BroadcastUi.PitTimerHold, b.SessionSeenT);
+                    b.PlayerStopped ? double.PositiveInfinity : b.PlayerStopEndT + hold, b.SessionSeenT);
             string pname = _cfg.Name(car, BroadcastUi.ShortName(car, s.Cars));
             string? lane = ShowPitTime18 && b.PlayerInPitLane ? BroadcastUi.StopTime(b.PlayerPitLaneNow(m.Now)) : null;
             BroadcastUi.WithReveal18(c, reveal, pw, ph,
                 () => Draw18(c, c.Theme, car, s.Cars, pname, BroadcastUi.StopTime(b.PlayerStopNow(m.Now)), lane, pw));
             return;
         }
-        float alpha = _cfg.ColumnVisible("always") || b.PlayerStopped ? 1f : BroadcastUi.Fade(m.Now - b.PlayerStopEndT, BroadcastUi.PitTimerHold);
+        float alpha = _cfg.ColumnVisible("always") || b.PlayerStopped ? 1f : show.Fade(m.Now - b.PlayerStopEndT, hold);
         if (c.Theme.Style == ThemeStyle.Broadcast2000s && !_cfg.ColumnVisible("always"))
         {
             // A stopped-to-released timer remains visible: only the first stop starts the entry transition.
             double age = m.Now - b.PlayerStopStartT;
-            alpha = b.PlayerStopped ? BroadcastUi.Fade04(age, double.PositiveInfinity)
-                : Math.Min(BroadcastUi.Fade04(age, double.PositiveInfinity), BroadcastUi.Fade04(m.Now - b.PlayerStopEndT + .16, BroadcastUi.PitTimerHold + .16));
+            alpha = b.PlayerStopped ? show.Fade(age, double.PositiveInfinity)
+                : Math.Min(show.Fade(age, double.PositiveInfinity), show.Fade(m.Now - b.PlayerStopEndT + fadeIn, hold + fadeIn));
         }
         string name = _cfg.Name(car, BroadcastUi.ShortName(car, s.Cars)), time = BroadcastUi.StopTime(b.PlayerStopNow(m.Now));
         var t = c.Theme;

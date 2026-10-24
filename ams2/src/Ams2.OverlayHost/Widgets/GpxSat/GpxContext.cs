@@ -51,6 +51,8 @@ public sealed record GpxOptions
             => double.TryParse(s.Option(id), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? v : d;
         static bool Flag(WidgetSettings s, string id, bool d) => bool.TryParse(s.Option(id), out var v) ? v : d;
         static string Pick(WidgetSettings s, string id, string d) => (s.Option(id) ?? d).Trim().ToLowerInvariant();
+        // Duracoes pela Exibicao (timings sky/split/page; leem tambem as opcoes antigas skySeconds/splitSeconds/pageSeconds), mesmos padroes e limites.
+        var show = ShowPlan.For(s, "f1-1998");
         return new GpxOptions
         {
             ShowMode = Pick(s, "showMode", "all"),
@@ -62,9 +64,9 @@ public sealed record GpxOptions
             DirectorsCut = Flag(s, "directorsCut", false),
             ShowLogo = Flag(s, "showLogo", false),
             FadingSpeed = Num(s, "fadingSpeed", 10),
-            SkySeconds = Math.Clamp(Num(s, "skySeconds", 8), 2, 30),
-            SplitSeconds = Math.Clamp(Num(s, "splitSeconds", 8), 2, 30),
-            PageSeconds = Math.Clamp(Num(s, "pageSeconds", 6), 2, 30),
+            SkySeconds = show.Timing("sky", 8),
+            SplitSeconds = show.Timing("split", 8),
+            PageSeconds = show.Timing("page", 6),
             OriginalFonts = Flag(s, "originalFonts", true),
             Rotation = Flag(s, "rotation", true),
             Stretch = Pick(s, "aspect", "pillarbox") == "stretch",

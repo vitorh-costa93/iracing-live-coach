@@ -15,18 +15,21 @@ public sealed class Broadcast93QualiBoard
     int _generation = -1, _player = -1;
     string? _track;
     double _lastNow = double.NegativeInfinity;
+    readonly ShowRef _show = new();
     public sealed record View(QualiLapState Lap, QualiSplit? Split, QualiLapResult? Result,
         double? ReferenceTime, double? Delta, int ReferenceIndex, bool Personal);
 
-    public static View? Resolve(OverlayModel m, WidgetSettings cfg)
+    public static View? Resolve(OverlayModel m, WidgetSettings cfg, ShowPlan? show = null)
     {
         if (!Broadcast93RaceBoard.Visible(m) || m.QualiLap is not { CarIndex: >= 0 } q) return null;
         bool personal = string.Equals(cfg.OptionOr("compareTo", "leader"), "personal", StringComparison.OrdinalIgnoreCase);
-        double hold = double.TryParse(cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) && double.IsFinite(h) ? Math.Clamp(h, 3, 15) : 6;
-        var result = q.LastResult is { } r && m.Now - r.At is >= 0 && m.Now - r.At < hold ? r : null;
+        show ??= ShowPlan.For(cfg, "f1-1993");
+        double hold = ResultHold(show);
+        double splitHold = show.PieceEnabled("split") ? show.PieceDuration("split", QualiLapWidget.SplitHold) : 0;
+        var result = q.LastResult is { } r && m.Now - r.At >= 0 && m.Now - r.At < hold ? r : null;
         bool running = !q.InPit && !q.OutLap && q.Elapsed is { } elapsed && double.IsFinite(elapsed) && elapsed >= 0;
         if (result is null && !running) return null;
-        var split = result is null && q.LastSplit is { } sp && m.Now - sp.At is >= 0 and < QualiLapWidget.SplitHold ? sp : null;
+        var split = result is null && q.LastSplit is { } sp && m.Now - sp.At >= 0 && m.Now - sp.At < splitHold ? sp : null;
         double? delta = result is not null ? personal ? result.DeltaPersonal : result.GapToFirst
             : split is not null ? personal ? split.DeltaPersonal : split.DeltaLeader : null;
         double? reference = result is not null ? delta is { } d ? result.LapTime - d : null
@@ -59,21 +62,23 @@ public sealed class Broadcast93QualiBoard
         _fastest.Update(m.Now, m.Session, _generation);
 
         // A (resultado da volta) > B (fastest lap) > C (legenda do piloto, padrao).
-        var view = Resolve(m, cfg);
+        // Pecas (Exibicao): cada uma liga/desliga e tem o proprio tempo de tela; o padrao e o board de sempre.
+        var show = _show.Get(cfg, ThemeStyle.Broadcast93);
+        var view = Resolve(m, cfg, show);
         // Durante a volta lancada guarda o lider anterior: se esta volta tomar a pole, o delta continua contra ele.
         if (view is { Result: null }) _reference = m.Session.Cars.FirstOrDefault(car => car.Index == view.ReferenceIndex);
         if (view?.Result is not null) { LapResult(c, m, cfg, view); return; }
-        bool fastestOn = !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase);
-        if (fastestOn && _fastest.Latest is { } fastest)
+        if (show.PieceEnabled("fastest") && _fastest.Latest is { } fastest)
         {
             // A propria volta que bateu o recorde primeiro mostra o resultado (A); a placa de FASTEST LAP vem logo depois.
-            double notBefore = q?.LastResult is { } last && Math.Abs(last.At - fastest.At) < 3 ? last.At + ResultHold(cfg) : double.NegativeInfinity;
-            if (fastest.ActiveAt(m.Now, FastestLapDetector.DefaultHold, notBefore))
+            double notBefore = q?.LastResult is { } last && Math.Abs(last.At - fastest.At) < 3 ? last.At + ResultHold(show) : double.NegativeInfinity;
+            if (fastest.ActiveAt(m.Now, show.PieceDuration("fastest", FastestLapDetector.DefaultHold), notBefore))
             { Broadcast93RaceBoard.Fastest(c, fastest.Car, m.Session.Cars, cfg, m.Session.TrackLength); return; }
         }
         // Mesma cadencia do Qualy Board 1999 (QualiBoard99Presentation): out lap, relogio, aproximacao (5 s), intermediaria (3 s).
-        var live = Broadcast99QualiBoard.Resolve(m, cfg);
-        if (live.Stage is QualiBoard99Stage.Running or QualiBoard99Stage.Approach or QualiBoard99Stage.Split) { Live(c, m, cfg, live); return; }
+        var live = Broadcast99QualiBoard.Resolve(m, cfg, show);
+        if (show.PieceEnabled("live") && live.Stage is QualiBoard99Stage.Running or QualiBoard99Stage.Approach or QualiBoard99Stage.Split) { Live(c, m, cfg, live); return; }
+        if (!show.PieceEnabled("caption")) return;
         Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
         if (live.Stage == QualiBoard99Stage.OutLap)
             Broadcast93RaceBoard.Text(c, "FIRST LAP OUT OF PITS", 880, 68, 400, "label", 34, Broadcast93RaceBoard.Yellow, HAlign.Right);
@@ -103,8 +108,7 @@ public sealed class Broadcast93QualiBoard
     /// <summary>Relogio em andamento com uma casa (44.9; 1'07.9), como o cronometro da transmissao.</summary>
     static string Tenths(double seconds) => Time(Math.Floor(seconds * 10) / 10, 1);
 
-    static double ResultHold(WidgetSettings cfg)
-        => double.TryParse(cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) && double.IsFinite(h) ? Math.Clamp(h, 3, 15) : 6;
+    static double ResultHold(ShowPlan show) => show.PieceEnabled("result") ? show.PieceDuration("result", 6) : 0;
 
     /// <summary>A: "SOBRENOME 1'12.266 | (1) azul | -0.267 ciano | SOBRENOME 1'12.533"; volta invalida mostra INVALID no lugar do delta.</summary>
     void LapResult(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, View v)

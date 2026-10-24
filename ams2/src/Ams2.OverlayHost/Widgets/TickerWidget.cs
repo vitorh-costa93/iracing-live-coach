@@ -24,7 +24,9 @@ public sealed class TickerWidget : IWidget
     public void Configure(WidgetSettings s) => _cfg = s;
 
     bool IntervalMode => !string.Equals(_cfg.OptionOr("mode", "interval"), "gap", StringComparison.OrdinalIgnoreCase);
-    double PageSeconds => double.TryParse(_cfg.OptionOr("pageSeconds", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 3, 15) : 6;
+    readonly ShowRef _show = new();
+    /// <summary>Exibição (timing "page"; lê também a opção antiga pageSeconds): segundos por página, 3–15, padrão 6.</summary>
+    double PageSeconds => _show.Get(_cfg, ThemeStyle.Broadcast2000s).Timing("page", 6);
 
     public void Draw(ThemeCanvas c, OverlayModel m)
     {

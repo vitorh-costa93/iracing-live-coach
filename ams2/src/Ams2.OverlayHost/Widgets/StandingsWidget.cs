@@ -23,9 +23,11 @@ public sealed class StandingsWidget : IWidget
     /// <summary>Espaço reservado para o separador "..." (só existe se há topo; o painel só o ocupa quando há salto).</summary>
     float SepReserve => _cfg.EffectiveTop > 0 ? SepH : 0;
     const float SepH = 14;
-    /// <summary>1993: número de pilotos da lista (opção "rows"); mostra sempre o topo, sem janela ao redor do jogador.</summary>
-    int Rows93 => double.TryParse(_cfg.OptionOr("rows", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
-        ? (int)Math.Clamp(Math.Round(v), Broadcast93List.MinRows, Broadcast93List.MaxRows) : Broadcast93List.DefaultRows;
+    /// <summary>1993: número de pilotos da lista (Exibição: linhas; lê também a opção antiga "rows"). Forma estática = o topo (padrão da TV),
+    /// dinâmica = janela ao redor do jogador.</summary>
+    readonly ShowRef _show = new();
+    ShowPlan Show93 => _show.Get(_cfg, ThemeStyle.Broadcast93);
+    int Rows93 => Show93.Rows;
     public (float Width, float Height) DesignSize => _b93 ? (Broadcast93List.Width, Broadcast93List.Height(Rows93, _cfg.ColumnVisible("sponsor"))) : TableMode ? (TableWidth, TableTop + TableRows * TablePitch + TableBottom)
         : _b18 ? Size18 : (_b04 ? Width2004 : Layout().Width, Top + Rows * Pitch + SepReserve + 2);
     bool _b04, _b98, _b18, _b93;
@@ -143,7 +145,10 @@ public sealed class StandingsWidget : IWidget
     {
         var field = m.Standings.Select(r => r.Car).ToList();
         bool time = _cfg.ColumnVisible("time");
-        var lines = m.Standings.Take(Rows93).Select(r => new Broadcast93List.Line(
+        int player = -1;
+        for (int i = 0; i < m.Standings.Count; i++) if (m.Standings[i].IsPlayer) { player = i; break; }
+        var picked = Broadcast93List.Pick(m.Standings.Count, player, Rows93, Show93.Dynamic, Show93.Around).Select(i => m.Standings[i]);
+        var lines = picked.Select(r => new Broadcast93List.Line(
             Broadcast93List.Number(r.Car, r.Car.Position), Broadcast93List.Surname(r.Car, field, _cfg),
             time ? (r.Car.Position == 1 ? "LEADER" : Gap(r, defaultSign: false)) : null, r.IsPlayer)).ToList();
         Broadcast93List.Draw(c, lines, _cfg.ColumnVisible("sponsor"), tagHeuer: true);
@@ -195,7 +200,8 @@ public sealed class StandingsWidget : IWidget
     /// <summary>Modos da coluna clara; "auto" alterna entre eles (gained/lost só quando há grid capturado).</summary>
     public static readonly string[] Modes18 = ["gap", "interval", "gainedlost", "pitstops", "bestlap"];
     string Mode18 => _cfg.OptionOr("mode", "gap").ToLowerInvariant();
-    double ModeSeconds18 => double.TryParse(_cfg.OptionOr("modeSeconds", "10"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 5, 30) : 10;
+    /// <summary>Exibição (timing "mode"; lê também a opção antiga modeSeconds): segundos por modo no automático, 5–30, padrão 10.</summary>
+    double ModeSeconds18 => _show.Get(_cfg, ThemeStyle.Modern2018).Timing("mode", 10);
     double IntervalSeconds18 => double.TryParse(_cfg.OptionOr("intervalSeconds", "1"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Broadcast18ValueHold.Period(v) : 1;
     bool Battle18 => !string.Equals(_cfg.OptionOr("battle", "true"), "false", StringComparison.OrdinalIgnoreCase);
     bool FullNames18 => !string.Equals(_cfg.OptionOr("fullNames", "true"), "false", StringComparison.OrdinalIgnoreCase);

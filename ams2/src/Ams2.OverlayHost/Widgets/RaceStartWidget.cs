@@ -27,7 +27,10 @@ public sealed class RaceStartWidget : IWidget
 
     int Target => _cfg.OptionOr("target", "200") == "100" ? 100 : 200;
     bool ShowBest => !string.Equals(_cfg.OptionOr("showBest", "true"), "false", StringComparison.OrdinalIgnoreCase);
-    double ShowFor => double.TryParse(_cfg.OptionOr("showFor", "10"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? Math.Clamp(v, 5, 30) : 10;
+    readonly ShowRef _show = new();
+    /// <summary>Exibição (tema 2018): segundos na tela após alcançar o alvo (padrão 10, lê também a opção antiga showFor) e fades.</summary>
+    ShowPlan Show => _show.Get(_cfg, ThemeStyle.Modern2018);
+    double ShowFor => Show.Duration;
     bool Always => string.Equals(_cfg.OptionOr("always", "false"), "true", StringComparison.OrdinalIgnoreCase);
     /// <summary>Opção "always": o host deixa a janela aberta mesmo sem o jogador no carro.</summary>
     public bool IgnoresDrivingGate => Always;
@@ -41,7 +44,7 @@ public sealed class RaceStartWidget : IWidget
         if (Always) return 1f;
         var last = m.Launch?.Last;
         if (last?.Time(Target) is null) return 0f;
-        return BroadcastUi.Fade(m.Now - last.At(Target), ShowFor);
+        return Show.Fade(m.Now - last.At(Target));
     }
 
     public bool IsIdle(OverlayModel model) => Alpha(model) <= 0.01f;

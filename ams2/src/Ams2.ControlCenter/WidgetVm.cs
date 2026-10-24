@@ -112,8 +112,15 @@ public sealed class WidgetVm : Notify
     public WidgetVm(WidgetDef def, string themeId)
     {
         Def = def;
-        ThemeOptions = new ObservableCollection<OptionVm>(WidgetCatalog.OptionsFor(themeId, def.Id).Select(o => new OptionVm(o)));
-        foreach (var o in ThemeOptions) o.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(ThemeOptions)); };
+        _themeId = themeId;
+        // As opcoes antigas cujo valor agora e editado na Exibicao (showFor, rows, pageSeconds...) saem da lista, mas continuam guardadas no perfil.
+        var showDef = ShowCatalog.For(themeId, def.Id);
+        var legacy = new HashSet<string>(showDef.LegacyOptionIds, StringComparer.OrdinalIgnoreCase);
+        _allOptions = WidgetCatalog.OptionsFor(themeId, def.Id).Select(o => new OptionVm(o)).ToList();
+        ThemeOptions = new ObservableCollection<OptionVm>(_allOptions.Where(o => !legacy.Contains(o.Def.Id)));
+        foreach (var o in _allOptions) o.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(ThemeOptions)); };
+        Show = new ShowVm(showDef);
+        Show.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(Show)); };
         Columns = new ObservableCollection<ColumnVm>(def.Columns.Select(c => new ColumnVm(c)));
         foreach (var c in Columns) c.Edited += () => { if (!_loading) { Raise(nameof(Summary)); Edited?.Invoke(this, nameof(Columns)); } };
         Widths = new ObservableCollection<WidthVm>(def.Widths.Select(c => new WidthVm(c)));
@@ -121,6 +128,22 @@ public sealed class WidgetVm : Notify
         ElementFonts = new(WidgetCatalog.FontElements.Select(d => new ElementFontVm(d)));
         foreach (var f in ElementFonts) f.Edited += () => { if (!_loading) Edited?.Invoke(this, nameof(ElementFonts)); };
         _rows = def.DefaultRows ?? 0;
+    }
+
+    readonly string _themeId;
+    readonly List<OptionVm> _allOptions;
+
+    // ---- Exibicao (quando aparece, por quanto tempo, fades, forma, pecas) ----
+    public ShowVm Show { get; }
+    ShowSettings? BuildShow() => Show.Build(new WidgetSettings { Id = Id, Options = BuildOptions() });
+
+    /// <summary>Restaurar padrao do tema: Exibicao e as opcoes antigas equivalentes (showFor, rows...) voltam ao padrao do tema.</summary>
+    public void ResetShow()
+    {
+        var legacy = new HashSet<string>(Show.Def.LegacyOptionIds, StringComparer.OrdinalIgnoreCase);
+        foreach (var o in _allOptions.Where(o => legacy.Contains(o.Def.Id))) o.Reset();
+        Show.Load(new WidgetSettings { Id = Id, Options = BuildOptions() }, _themeId);
+        if (!_loading) Edited?.Invoke(this, nameof(Show));
     }
 
     // ---- Texto e formato (personalizacao) ----
@@ -147,7 +170,7 @@ public sealed class WidgetVm : Notify
     /// <summary>Mapa das opcoes fora do padrao (null = todas no padrao).</summary>
     Dictionary<string, string>? BuildOptions()
     {
-        var d = ThemeOptions.Where(o => !o.IsDefault).ToDictionary(o => o.Def.Id, o => o.Value, StringComparer.OrdinalIgnoreCase);
+        var d = _allOptions.Where(o => !o.IsDefault).ToDictionary(o => o.Def.Id, o => o.Value, StringComparer.OrdinalIgnoreCase);
         return d.Count == 0 ? null : d;
     }
     public bool HasName => Def.Caps.HasFlag(DisplayCaps.Name);
@@ -244,7 +267,8 @@ public sealed class WidgetVm : Notify
         NameChoice = -1; CarNumber = false; GapDecimals = -1; GapSign = -1; GapSuffix = false; LapStyle = -1; LapDecimals = -1;
         SpeedChoice = 0; TempChoice = 0; FuelChoice = 0;
         foreach (var w in Widths) w.Pct = 100;
-        foreach (var o in ThemeOptions) o.Reset();
+        foreach (var o in _allOptions) o.Reset();
+        ResetShow();
     }
 
     public WidgetDef Def { get; }
@@ -302,7 +326,8 @@ public sealed class WidgetVm : Notify
             FontChoice = s.Font ?? FontDefault;
             foreach (var c in Columns) c.Load(s.ColumnVisible(c.Def.Id));
             foreach (var w in Widths) w.Load((int)Math.Round(s.WidthFactor(w.Def.Id) * 100));
-            foreach (var o in ThemeOptions) o.Load(s.Option(o.Def.Id));
+            foreach (var o in _allOptions) o.Load(s.Option(o.Def.Id));
+            Show.Load(s, _themeId);
             LoadSessions(s.EffectiveSessions);
             WidthScalePct = (int)Math.Round((s.WidthScale ?? 1f) * 100);
             HeightScalePct = (int)Math.Round((s.HeightScale ?? 1f) * 100);
@@ -342,6 +367,7 @@ public sealed class WidgetVm : Notify
         Display = BuildDisplay(),
         Options = BuildOptions(),
         Sessions = BuildSessions(),
+        Show = BuildShow(),
     }.Normalized();
 
     /// <summary>Patch IPC so com o campo que mudou.</summary>
@@ -359,6 +385,7 @@ public sealed class WidgetVm : Notify
         nameof(Widths) => new WidgetPatch { ColumnWidths = BuildWidths() ?? [] },
         nameof(ThemeOptions) => new WidgetPatch { Options = BuildOptions() ?? [] },
         nameof(Sessions) => new WidgetPatch { Sessions = BuildSessions() ?? [] },   // vazio = padrao do widget
+        nameof(Show) => new WidgetPatch { Show = BuildShow() ?? new ShowSettings() },   // vazio = padrao do tema
         nameof(WidthScalePct) => new WidgetPatch { WidthScale = WidthScalePct / 100f },
         nameof(HeightScalePct) => new WidgetPatch { HeightScale = HeightScalePct / 100f },
         nameof(ElementFonts) => new WidgetPatch { ElementFonts = BuildElementFonts() ?? [] },

@@ -20,14 +20,18 @@ public sealed class DriverCaptionWidget : IWidget
     bool _b18, _b98, _b93, _b12;
     readonly Broadcast04Pulse _motion04 = new();
     readonly Broadcast18Motion _motion18 = new();
-    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _b93 = theme.Style == ThemeStyle.Broadcast93; _b12 = theme.Style == ThemeStyle.Broadcast2000s && theme.CellSlant > 0; }
+    public void UseTheme(Theme.Theme theme) { bool b18 = theme.Style == ThemeStyle.Modern2018, b98 = theme.Style == ThemeStyle.Broadcast98; if (_b18 != b18 || _b98 != b98) { _motion04.Reset(); _motion18.Reset(); _finishT = double.NaN; } _b18 = b18; _b98 = b98; _style = theme.Style; _b93 = theme.Style == ThemeStyle.Broadcast93; _b12 = theme.Style == ThemeStyle.Broadcast2000s && theme.CellSlant > 0; }
     WidgetSettings _cfg = new() { Id = "drivercaption" };
     public void Configure(WidgetSettings s) => _cfg = s;
 
     /// <summary>Variante escolhida no perfil (2018): driver, startednow, result ou auto (padrão).</summary>
     string Variant18 => _cfg.OptionOr("variant", "auto").ToLowerInvariant();
-    /// <summary>Segundos na tela por evento (2018), 3–15, padrão 6.</summary>
-    double ShowFor18 => double.TryParse(_cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 3, 15) : 6;
+    ThemeStyle _style = ThemeStyle.Broadcast98;
+    readonly ShowRef _show = new();
+    ShowPlan Show => _show.Get(_cfg, _style);
+    /// <summary>Segundos na tela por evento (Exibição: duração; 2018 também lê a opção antiga showFor), 3–15, padrão 6.</summary>
+    double Hold => Show.Duration;
+    float Fade(double age, double hold) => BroadcastUi.Fade(age, hold, Show.FadeIn, Show.FadeOut);
     double _finishT = double.NaN;   // primeiro quadro em que o jogador apareceu com a bandeirada (2018)
 
     /// <summary>
@@ -50,7 +54,7 @@ public sealed class DriverCaptionWidget : IWidget
             if (qualifying && m.QualiLap is not { OutLap: true, InPit: false }) return;
             var state93 = BroadcastUi.State(m);
             double at93 = Math.Max(state93.SessionSeenT, Math.Max(state93.PlayerPositionChangedT, state93.PlayerLapChangedT));
-            if (!_cfg.ColumnVisible("always") && !(m.Now - at93 is >= 0 and < BroadcastUi.CaptionHold)) return;
+            if (!_cfg.ColumnVisible("always") && !(m.Now - at93 >= 0 && m.Now - at93 < Hold)) return;
             if (!qualifying && string.Equals(_cfg.OptionOr("captionMode", "full"), "onboard", StringComparison.OrdinalIgnoreCase))
                 Broadcast93RaceBoard.Onboard(c, car, s.Cars, _cfg);
             else Broadcast93RaceBoard.Caption(c, m, _cfg, qualifying);
@@ -61,7 +65,7 @@ public sealed class DriverCaptionWidget : IWidget
         {
             if (m.QualiLap is not { OutLap: true, InPit: false }) return;
             double lastQuali = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
-            float qualiAlpha = _cfg.ColumnVisible("always") ? 1 : BroadcastUi.Fade(m.Now - lastQuali, _b18 ? ShowFor18 : BroadcastUi.CaptionHold);
+            float qualiAlpha = _cfg.ColumnVisible("always") ? 1 : Fade(m.Now - lastQuali, Hold);
             BroadcastUi.WithAlpha(c, qualiAlpha, () => QualiCaption.Draw(c, m, _cfg, DesignSize.Width));
             return;
         }
@@ -70,7 +74,7 @@ public sealed class DriverCaptionWidget : IWidget
         if (!_cfg.ColumnVisible("always"))
         {
             double last = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
-            alpha = _b98 ? BroadcastUi.Fade(m.Now - last, BroadcastUi.CaptionHold) : _motion04.Evaluate(m.Now, last, last + BroadcastUi.CaptionHold);
+            alpha = _b98 ? Fade(m.Now - last, Hold) : _motion04.Evaluate(m.Now, last, last + Hold);
             if (b.Winner is { } w && m.Now - w.FinishedT < BroadcastUi.WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
         }
         BroadcastUi.WithAlpha(c, alpha, () => { if (_b98) Broadcast98RaceBoard.Caption(c, car, s.Cars, _cfg); else CaptionPlate.DrawDriver(c, car, s.Cars, _cfg); });
@@ -86,12 +90,12 @@ public sealed class DriverCaptionWidget : IWidget
         int? started = race && m.Grid is { } g && g.TryGetValue(car.Index, out var gp) && gp > 0 ? gp : null;
         double last = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
         // Ultrapassagem = mudança de posição dentro da janela de exibição (mesmo que outro evento, como a linha de chegada, venha junto).
-        bool posEvent = m.Now - b.PlayerPositionChangedT < ShowFor18;
+        bool posEvent = m.Now - b.PlayerPositionChangedT < Hold;
         string v = EffectiveVariant18(Variant18, finished, started is not null, race && car.LapsCompleted == 0, posEvent);
         float alpha = 1f;
         if (!_cfg.ColumnVisible("always"))
         {
-            double hold = ShowFor18, t0 = last;
+            double hold = Hold, t0 = last;
             // Resultado: entra na bandeirada do jogador. Sem espera pelo vencedor: no 2018 o banner WINNER fica no alto da tela.
             if (v == "result" && finished) t0 = _finishT;
             alpha = _motion18.Evaluate(m.Now, t0, t0 + hold, b.SessionSeenT);

@@ -64,7 +64,7 @@ internal sealed class HostController : IDisposable
         static double Value(WidgetSettings? settings, string key, string fallback)
             => double.TryParse(settings?.OptionOr(key, fallback) ?? fallback, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : double.Parse(fallback, System.Globalization.CultureInfo.InvariantCulture);
-        _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), Value(cfg, "gapHoldSeconds", "6"), _theme.Id == "f1-1993");
+        _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), cfg is null ? 6 : ShowPlan.For(cfg, _theme.Id).PieceDuration("gap", 6), _theme.Id == "f1-1993");
     }
 
     public Profile Profile => _profile;

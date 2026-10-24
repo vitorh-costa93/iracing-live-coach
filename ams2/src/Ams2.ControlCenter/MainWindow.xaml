@@ -187,6 +187,58 @@
                                 </WrapPanel>
                             </StackPanel>
 
+                            <StackPanel x:Name="ShowPanel" DataContext="{Binding Show}" Margin="0,0,0,14">
+                                <StackPanel.Resources>
+                                    <DataTemplate x:Key="ShowNum">
+                                        <DockPanel Margin="0,0,0,6" ToolTip="{Binding Range}">
+                                            <TextBox DockPanel.Dock="Right" Width="80" Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+                                            <TextBlock Text="{Binding Label}" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,8,0"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </StackPanel.Resources>
+                                <TextBlock Text="EXIBIÇÃO" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"
+                                           ToolTip="Quando o widget aparece, por quanto tempo e em que forma. Tudo no padrão = o comportamento original do tema."/>
+                                <StackPanel Visibility="{Binding HasTriggers, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="Quando aparece" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{Binding Triggers}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Trigger, Mode=TwoWay}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding NativeLabel}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                               Visibility="{Binding IsNative, Converter={StaticResource BoolToVis}}"/>
+                                    <ItemsControl ItemsSource="{Binding Events}" Margin="0,2,0,8" Visibility="{Binding IsEvents, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate><CheckBox IsChecked="{Binding Checked, Mode=TwoWay}" Content="{Binding Label}" Margin="0,0,0,5"/></DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ContentControl Content="{Binding Period}" ContentTemplate="{StaticResource ShowNum}" Visibility="{Binding IsPeriodic, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
+                                <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource ShowNum}" Visibility="{Binding ShowDuration, Converter={StaticResource BoolToVis}}"/>
+                                <StackPanel Visibility="{Binding ShowFades, Converter={StaticResource BoolToVis}}">
+                                    <ContentControl Content="{Binding FadeIn}" ContentTemplate="{StaticResource ShowNum}"/>
+                                    <ContentControl Content="{Binding FadeOut}" ContentTemplate="{StaticResource ShowNum}"/>
+                                </StackPanel>
+                                <StackPanel Visibility="{Binding HasList, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                                    <TextBlock Text="Forma da lista" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
+                                    <ComboBox Height="32" ItemsSource="{Binding Forms}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Form, Mode=TwoWay}" Margin="0,0,0,6"/>
+                                    <ContentControl Content="{Binding Rows}" ContentTemplate="{StaticResource ShowNum}"/>
+                                    <ContentControl Content="{Binding Around}" ContentTemplate="{StaticResource ShowNum}" Visibility="{Binding IsDynamic, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding Timings}" ItemTemplate="{StaticResource ShowNum}" Margin="0,4,0,0" Visibility="{Binding HasTimings, Converter={StaticResource BoolToVis}}"/>
+                                <StackPanel Visibility="{Binding HasPieces, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                                    <TextBlock Text="Peças" Style="{StaticResource Muted}" Margin="0,0,0,6" ToolTip="Cada peça do board pode ser desligada ou ficar mais/menos tempo na tela. A ordem de prioridade é a do tema."/>
+                                    <ItemsControl ItemsSource="{Binding Pieces}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,6">
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding Enabled, Mode=TwoWay}" Margin="0,0,0,4"/>
+                                                    <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource ShowNum}" Margin="22,0,0,0"
+                                                                    Visibility="{Binding HasDuration, Converter={StaticResource BoolToVis}}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <Button Content="Restaurar padrão do tema" Click="ResetShow_Click" Margin="0,4,0,0" HorizontalAlignment="Left" Padding="10,3"/>
+                            </StackPanel>
+
                             <StackPanel x:Name="RowsPanel" Margin="0,0,0,14">
                                 <TextBlock Text="{Binding RowsLabel}" Style="{StaticResource Muted}" Margin="0,0,0,4"/>
                                 <StackPanel Orientation="Horizontal">

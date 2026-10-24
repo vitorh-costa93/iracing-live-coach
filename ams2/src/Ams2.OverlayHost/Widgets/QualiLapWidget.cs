@@ -39,8 +39,12 @@ public sealed class QualiLapWidget : IWidget
         _ => (W98, H98),
     };
 
-    /// <summary>Segundos com a parcial congelada (tempo do setor + diferença) e com o painel de setor do 2018.</summary>
+    /// <summary>Padrões (ShowCatalog, timings "split" e "sectorPanel") dos segundos com a parcial congelada e com o painel de setor do 2018.</summary>
     public const double SplitHold = 3, SectorPanelHold = 4;
+    readonly ShowRef _show = new();
+    ShowPlan Show => _show.Get(_cfg, _style);
+    double SplitFor => Show.Timing("split", SplitHold);
+    double SectorPanelFor => Show.Timing("sectorPanel", SectorPanelHold);
 
     // ---- Opções (WidgetCatalog.OptionsFor(tema, "qualilap")); padrão não gravado ----
     bool Flag(string id, bool def) => _cfg.Option(id) is { } v ? !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase) : def;
@@ -49,7 +53,8 @@ public sealed class QualiLapWidget : IWidget
     bool ShowSectorPanel => _style == ThemeStyle.Modern2018 && Flag("showSectorPanel", true);
     bool ShowSpeed => _style == ThemeStyle.Broadcast98 && Flag("showSpeed", true);
     bool Always => Flag("always", false);
-    double ShowFor => double.TryParse(_cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 3, 15) : 6;
+    /// <summary>Exibição: segundos do resultado após a linha (padrão 6, lê também a opção antiga showFor).</summary>
+    double ShowFor => Show.Duration;
 
     static Color4 Rgb(int r, int g, int b, float a = 1f) => new(r / 255f, g / 255f, b / 255f, a);
     static readonly Color4 Green = Rgb(37, 194, 58), Yellow = Rgb(250, 205, 0), Purple = Rgb(160, 32, 200), PurpleInk = Rgb(200, 120, 255), White = Rgb(255, 255, 255);
@@ -122,16 +127,16 @@ public sealed class QualiLapWidget : IWidget
             refName = lead is null ? "LEADER" : _cfg.Name(lead, BroadcastUi.ShortName(lead, s.Cars)).ToUpperInvariant();
             refTime = q.LeaderBestLap;
         }
-        QualiSplit? split = phase == Phase.Running && q.LastSplit is { } sp && m.Now - sp.At >= 0 && m.Now - sp.At < SplitHold ? sp : null;
+        QualiSplit? split = phase == Phase.Running && q.LastSplit is { } sp && m.Now - sp.At >= 0 && m.Now - sp.At < SplitFor ? sp : null;
         var result = phase == Phase.Result ? q.LastResult : null;
         double? resDelta = result is null ? null : personal ? result.DeltaPersonal : result.GapToFirst;
         if (result is not null) pos = result.Position;
         float alpha = 1f;
         // Sem volta seguinte (entrou no box) e sem "always": o resultado entra e sai com fade.
-        if (result is not null && !Always && !IsRunning(q)) alpha = BroadcastUi.Fade(m.Now - result.At, ShowFor);
+        if (result is not null && !Always && !IsRunning(q)) alpha = Show.Fade(m.Now - result.At, ShowFor);
         if (_style == ThemeStyle.Broadcast2000s && !Always)
-            alpha = result is not null ? BroadcastUi.Fade04(m.Now - result.At + .16, ShowFor + .16)
-                : phase == Phase.Running && q.Elapsed is { } age ? BroadcastUi.Fade04(age, double.PositiveInfinity) : 1f;
+            alpha = result is not null ? Show.Fade(m.Now - result.At + Show.FadeIn, ShowFor + Show.FadeIn)
+                : phase == Phase.Running && q.Elapsed is { } age ? Show.Fade(age, double.PositiveInfinity) : 1f;
         return new View(phase, car, s.Cars, q, pos, refName, refTime, split, split is null ? null : SplitDelta(q, split, personal), result, resDelta,
             result?.Sectors ?? q.Sectors, alpha);
     }
@@ -259,7 +264,7 @@ public sealed class QualiLapWidget : IWidget
         // Painel de setor à direita ao fechar S1/S2.
         if (ShowSectorPanel && v.Phase == Phase.Running && v.Q.LastSplit is { } ls && v.Q.Sectors.Count >= ls.Sector && v.Q.Sectors[ls.Sector - 1] is { } st)
         {
-            float a = _sectorMotion18.Evaluate(m.Now, ls.At, ls.At + SectorPanelHold, BroadcastUi.State(m).SessionSeenT);
+            float a = _sectorMotion18.Evaluate(m.Now, ls.At, ls.At + SectorPanelFor, BroadcastUi.State(m).SessionSeenT);
             BroadcastUi.WithReveal18(c, a, PanelW, PanelH, () => SectorPanel18(c, t, ls.Sector, last, st),
                 x: PlateW + PanelGap, y: PlateH - PanelH);
         }

@@ -325,7 +325,10 @@ public partial class MainWindow : Window
         BoardModeBar.Visibility = vm.IsBoard ? Visibility.Visible : Visibility.Collapsed;
         ColumnsPanel.Visibility = vm.HasColumns ? Visibility.Visible : Visibility.Collapsed;
         ThemeOptionsPanel.Visibility = vm.HasThemeOptions ? Visibility.Visible : Visibility.Collapsed;
+        ShowPanel.Visibility = vm.Show.HasAny ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    void ResetShow_Click(object sender, RoutedEventArgs e) { if (Detail.DataContext is WidgetVm vm) vm.ResetShow(); }
 
     void OnWidgetEdited(WidgetVm vm, string prop)
     {

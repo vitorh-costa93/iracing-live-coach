@@ -26,7 +26,8 @@ public sealed record OverlayModel(
     QualiTableState? Quali = null,                // tabela de melhores voltas (QualiTable + OutLapTracker) e relogio da sessao
     QualiLapState? QualiLap = null,               // volta em andamento do jogador: setores, parciais e resultado (QualiLapTracker)
     QualiEndState? QualiEnd = null,               // fim da classificacao (QualiEndTracker): instante do fim e mudancas da tabela depois dele
-    LapDeltaState? LapDelta = null)               // delta ao vivo da volta atual vs melhor volta observada (LapDeltaTracker); widget Lap Delta
+    LapDeltaState? LapDelta = null,               // delta ao vivo da volta atual vs melhor volta observada (LapDeltaTracker); widget Lap Delta
+    ShowEventTimes? Events = null)                // instantes dos eventos da Exibicao (ShowEventTracker): gatilho "por evento" dos widgets
 {
     /// <summary>Grupo da sessao para o filtro de visibilidade ("practice"/"qualify"/"race"); null = sem dados ou tipo invalido (nao filtra).</summary>
     public string? SessionGroup => Connected ? SessionGroups.IdOf(Session?.Kind) : null;
@@ -81,6 +82,7 @@ public sealed class OverlayDataProvider : IDisposable
     readonly QualiLapTracker _qualiLap = new();
     readonly QualiEndTracker _qualiEnd = new();
     readonly LapDeltaTracker _lapDelta = new();
+    readonly ShowEventTracker _events = new();
     readonly BoardTracker _board;
     /// <summary>Radar lateral (pose de mundo dos carros). As opcoes (alcance, sensibilidade) vem do perfil, pelo host.</summary>
     public RadarTracker Radar { get; } = new();
@@ -164,7 +166,7 @@ public sealed class OverlayDataProvider : IDisposable
         OverlayModel model;
         if (r.Status == ReadStatus.Ok && r.Snapshot is { } s)
         {
-            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); _qualiEnd.Reset(); _lapDelta.Reset(); }
+            if (!_wasConnected) { _gaps.Reset(); _fuel.Reset(); _broadcast.Reset(); _board.Reset(); Radar.Reset(); _driving.Reset(); _grid.Reset(); _launch.Reset(); _outLaps.Reset(); _qualiLap.Reset(); _qualiEnd.Reset(); _lapDelta.Reset(); _events.Reset(); }
             _wasConnected = true;
             s = ApplyPlayerName(now, s);
             if (_countries is not null) { s = PlayerIdentity.ApplyOpponentCountries(s, _countries.Resolve); s = PlayerIdentity.ApplyOpponentNumbers(s, _countries.ResolveNumber); }
@@ -192,7 +194,8 @@ public sealed class OverlayDataProvider : IDisposable
             var qualiLap = s.InSession ? trackedQualiLap : null;
             var qualiEnd = quali is not null ? _qualiEnd.Update(now, s, quali) : null;
             var lapDelta = s.InSession ? _lapDelta.Update(s, trackedQualiLap) : null;
-            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid, launch, quali, qualiLap, qualiEnd, lapDelta);
+            var events = s.InSession ? _events.Update(now, s, bc, qualiLap, qualiEnd) : ShowEventTimes.Empty;
+            model = new OverlayModel(true, r.Status, now, ++_frame, s, rel, fuel, standings, Inputs, bc, board, radar, driving, grid, launch, quali, qualiLap, qualiEnd, lapDelta, events);
         }
         else
         {

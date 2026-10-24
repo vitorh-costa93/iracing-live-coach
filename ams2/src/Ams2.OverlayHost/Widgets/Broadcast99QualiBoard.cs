@@ -11,13 +11,18 @@ namespace Ams2.OverlayHost.Widgets;
 public sealed class Broadcast99QualiBoard
 {
     public const float Width = 1920, Height = 300;
-    public static QualiBoard99Presentation.View Resolve(OverlayModel m, WidgetSettings cfg)
+    /// <summary>
+    /// Pecas (Exibicao): "result" e "split" com tempo de tela proprio e liga/desliga. <paramref name="show"/> null = plano do 1999
+    /// (o 1993 passa o seu). Desligada, a peca tem tempo 0 e o board segue para a seguinte.
+    /// </summary>
+    public static QualiBoard99Presentation.View Resolve(OverlayModel m, WidgetSettings cfg, ShowPlan? show = null)
     {
         if (!Broadcast93RaceBoard.Visible(m)) return new(QualiBoard99Stage.Hidden, null);
         bool personal = string.Equals(cfg.OptionOr("compareTo", "leader"), "personal", StringComparison.OrdinalIgnoreCase);
-        double hold = double.TryParse(cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
-            && double.IsFinite(seconds) ? Math.Clamp(seconds, 3, 15) : QualiBoard99Presentation.ResultHold;
-        return QualiBoard99Presentation.Resolve(m.QualiLap, m.Now, personal, hold);
+        show ??= ShowPlan.For(cfg, "f1-1998");
+        double hold = show.PieceEnabled("result") ? show.PieceDuration("result", QualiBoard99Presentation.ResultHold) : 0;
+        double split = show.PieceEnabled("split") ? show.PieceDuration("split", QualiBoard99Presentation.SplitHold) : 0;
+        return QualiBoard99Presentation.Resolve(m.QualiLap, m.Now, personal, hold, split);
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)

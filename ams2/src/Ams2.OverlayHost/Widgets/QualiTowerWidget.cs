@@ -51,15 +51,18 @@ public sealed class QualiTowerWidget : IWidget
         => double.TryParse(_cfg.OptionOr(id, def.ToString(CultureInfo.InvariantCulture)), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
             ? (int)Math.Clamp(Math.Round(v), min, max) : def;
     bool Flag(string id, bool def) => _cfg.Option(id) is { } v ? !string.Equals(v, "false", StringComparison.OrdinalIgnoreCase) : def;
+    // Exibição (ShowCatalog): linhas e forma. 2018/2004/2012 = dinâmica (topo + janela de nearCount ao redor do jogador; estática = só o topo,
+    // o jogador continua sempre visível); 1993 = estática (o topo, como na TV; dinâmica = janela ao redor do jogador). Leem as opções antigas.
+    readonly ShowRef _show = new();
+    ShowPlan Show => _show.Get(_cfg, _style);
     int TopRows => _style switch
     {
-        ThemeStyle.Modern2018 => Num("rows", 10, 5, 20),
-        ThemeStyle.Broadcast2000s => Num("rows", 5, 1, 20),
+        ThemeStyle.Modern2018 or ThemeStyle.Broadcast2000s => Show.Rows,
         _ => Num("rows", 6, 2, 10),
     };
-    int Rows93 => Num("rows", Broadcast93List.DefaultRows, Broadcast93List.MinRows, Broadcast93List.MaxRows);
+    int Rows93 => Show.Rows;
     int Columns98 => _cfg.OptionOr("columns", "2") == "1" ? 1 : 2;
-    int NearRows => Num("nearCount", 3, 0, 10);
+    int NearRows => _style is ThemeStyle.Modern2018 or ThemeStyle.Broadcast2000s ? (Show.Dynamic ? Show.Around : 0) : Num("nearCount", 3, 0, 10);
     int Cutoff => Num("eliminationFrom", 0, 0, 30);
     bool TyreMode => string.Equals(_cfg.OptionOr("mode", "time"), "fastesttyre", StringComparison.OrdinalIgnoreCase);
     bool ShowClock => Flag("showClock", true);
@@ -291,7 +294,9 @@ public sealed class QualiTowerWidget : IWidget
         if (m.Quali is not { Rows.Count: > 0 } q) return;
         var field = q.Rows.Select(r => r.Car).ToList();
         bool time = _cfg.ColumnVisible("time");
-        var lines = q.Rows.Take(Rows93).Select(r => new Broadcast93List.Line(
+        int player = -1;
+        for (int i = 0; i < q.Rows.Count; i++) if (q.Rows[i].IsPlayer) { player = i; break; }
+        var lines = Broadcast93List.Pick(q.Rows.Count, player, Rows93, Show.Dynamic, Show.Around).Select(i => q.Rows[i]).Select(r => new Broadcast93List.Line(
             Broadcast93List.Number(r.Car, r.Rank), Broadcast93List.Surname(r.Car, field, _cfg),
             !time ? null : r.BestLap is not { } best ? "--" : r.Rank == 1 || r.GapToFirst is not { } gap ? _cfg.Fmt.FormatLapTime(best) : _cfg.Fmt.FormatGap(Math.Max(0, gap), defaultSign: false),
             r.IsPlayer)).ToList();

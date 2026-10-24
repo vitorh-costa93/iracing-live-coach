@@ -10,7 +10,7 @@ public static class QualiBoard99Presentation
         double? ReferenceTime = null, double? Delta = null, CarSnapshot? ReferenceCar = null,
         double? ReferenceSpeedMps = null, double? PlayerSpeedMps = null, int Position = 0, bool Invalid = false);
 
-    public static View Resolve(QualiLapState? q, double now, bool personal = false, double resultHold = ResultHold)
+    public static View Resolve(QualiLapState? q, double now, bool personal = false, double resultHold = ResultHold, double splitHold = SplitHold)
     {
         if (q is null || q.CarIndex < 0 || !double.IsFinite(now)) return new(QualiBoard99Stage.Hidden, null);
         if (!q.InPit && q.OutLap) return new(QualiBoard99Stage.OutLap, null);
@@ -19,7 +19,7 @@ public static class QualiBoard99Presentation
                 PlayerSpeedMps: r.SpeedMps, Position: r.Position, Invalid: r.Invalid);
         if (q.InPit || q.Elapsed is not { } elapsed || !double.IsFinite(elapsed) || elapsed < 0)
             return new(QualiBoard99Stage.Hidden, null);
-        var split = q.LastSplit is { } sp && now >= sp.At && now - sp.At < SplitHold ? sp : null;
+        var split = q.LastSplit is { } sp && now >= sp.At && now - sp.At < splitHold ? sp : null;
         int mark = split?.Sector ?? Math.Clamp(q.Sector + 1, 1, 3);
         var reference = split is not null ? personal ? split.PersonalReference : split.LeaderReference
             : personal ? q.PersonalReference : q.LeaderReference;

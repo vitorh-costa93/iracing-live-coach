@@ -21,8 +21,10 @@ public sealed class Broadcast93RacePresentation
         _mode = Broadcast93RaceBoard.Mode.None;
     }
 
-    public Frame Update(OverlayModel m, FastestLapEvent? fastest = null, bool fastestEnabled = true)
+    public Frame Update(OverlayModel m, FastestLapEvent? fastest = null, bool fastestEnabled = true, Broadcast93RaceBoard.Holds? holds = null,
+        bool pitEnabled = true, bool gapEnabled = true, bool lapsToGoEnabled = true)
     {
+        holds ??= Broadcast93RaceBoard.Holds.Default;
         if (!Broadcast93RaceBoard.Visible(m)) { Reset(); return new(Broadcast93RaceBoard.Mode.None); }
         var s = m.Session!;
         var me = s.PlayerCar!;
@@ -35,14 +37,14 @@ public sealed class Broadcast93RacePresentation
         if (_gap is { } held && (_gapShown >= held.CloseT - held.CompletedT
             || !s.Cars.Any(c => c.Index == held.Player.CarIndex && c.Name == held.Player.Name)
             || !s.Cars.Any(c => c.Index == held.Neighbor.CarIndex && c.Name == held.Neighbor.Name))) _gap = null;
-        if (_remainingShown >= Broadcast93Rules.LapsToGoHold) _remaining = null;
-        if (m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT && gap.CompletedT > _gapAt)
+        if (_remainingShown >= holds.LapsToGo) _remaining = null;
+        if (gapEnabled && m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT && gap.CompletedT > _gapAt)
         { _gap = gap; _gapAt = gap.CompletedT; _gapShown = 0; }
         var b = BroadcastUi.State(m);
-        if (Broadcast93RaceBoard.LapsToGoActive(m, b) && b.PlayerLapChangedT > _lapAt)
+        if (lapsToGoEnabled && Broadcast93RaceBoard.LapsToGoActive(m, b, holds.LapsToGo) && b.PlayerLapChangedT > _lapAt)
         { _lapAt = b.PlayerLapChangedT; _remaining = m.Board?.LapsRemaining ?? Broadcast93Rules.LapsRemaining(s); _remainingShown = 0; }
-        _mode = Broadcast93RaceBoard.PitActive(b, m.Now) ? Broadcast93RaceBoard.Mode.Pit
-            : fastestEnabled && fastest?.ActiveAt(m.Now) == true ? Broadcast93RaceBoard.Mode.Fastest
+        _mode = pitEnabled && Broadcast93RaceBoard.PitActive(b, m.Now, holds.Pit) ? Broadcast93RaceBoard.Mode.Pit
+            : fastestEnabled && fastest?.ActiveAt(m.Now, holds.Fastest) == true ? Broadcast93RaceBoard.Mode.Fastest
             : _gap is not null ? Broadcast93RaceBoard.Mode.Gap
             : _remaining is not null ? Broadcast93RaceBoard.Mode.LapsToGo : Broadcast93RaceBoard.Mode.Caption;
         return new(_mode, _gap, _remaining);

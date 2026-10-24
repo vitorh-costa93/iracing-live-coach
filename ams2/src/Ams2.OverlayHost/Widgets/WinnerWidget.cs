@@ -29,8 +29,10 @@ public sealed class WinnerWidget : IWidget
 
     /// <summary>Estilo do 2018: banner (padrão), podium ou both.</summary>
     string Style18 => _cfg.OptionOr("style", "banner").ToLowerInvariant() switch { "podium" => "podium", "both" => "both", _ => "banner" };
-    /// <summary>Segundos na tela (2018), 5–30, padrão 12.</summary>
-    double ShowFor18 => double.TryParse(_cfg.OptionOr("showFor", "12"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 5, 30) : 12;
+    readonly ShowRef _show = new();
+    /// <summary>Exibição: segundos na tela (2018 padrão 12, também lê a opção antiga showFor; demais temas 10), 5–30, e fades do tema.</summary>
+    ShowPlan Show => _show.Get(_cfg, _style);
+    double ShowFor18 => Show.Duration;
     double _podiumT = double.NaN;   // primeiro quadro com o pódio completo (2018)
 
     public void Draw(ThemeCanvas c, OverlayModel m)
@@ -39,8 +41,7 @@ public sealed class WinnerWidget : IWidget
         var b = BroadcastUi.State(m);
         if (b.Winner is not { } w) { _podiumT = double.NaN; _banner18.Reset(); _podium18.Reset(); return; }
         if (_style == ThemeStyle.Modern2018) { Draw18(c, m, s, w); return; }
-        float alpha = _cfg.ColumnVisible("always") ? 1f : _style == ThemeStyle.Broadcast2000s
-            ? BroadcastUi.Fade04(m.Now - w.FinishedT, BroadcastUi.WinnerHold) : BroadcastUi.Fade(m.Now - w.FinishedT, BroadcastUi.WinnerHold);
+        float alpha = _cfg.ColumnVisible("always") ? 1f : Show.Fade(m.Now - w.FinishedT);
         BroadcastUi.WithAlpha(c, alpha, () => { if (_style == ThemeStyle.Broadcast98) Broadcast98RaceBoard.Winner(c, w, s.Cars, _cfg); else CaptionPlate.DrawWinner(c, w, s.Cars, _cfg); });
     }
 

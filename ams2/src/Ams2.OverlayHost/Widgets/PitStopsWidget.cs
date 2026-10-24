@@ -26,6 +26,7 @@ public sealed class PitStopsWidget : IWidget
     float StopsW => MathF.Round(_cfg.Width("stops", _b18 ? 56 : 110));   // 2018: so o numero de paradas
     bool _b18;
     readonly Broadcast18Motion _motion18 = new();
+    readonly ShowRef _show = new();
     public void UseTheme(Theme.Theme theme) => _b18 = theme.Style == ThemeStyle.Modern2018;
     float ColW => PosW + NameW + StopsW;
 
@@ -33,10 +34,11 @@ public sealed class PitStopsWidget : IWidget
     {
         if (!m.Connected || m.Session is not { } s) { _motion18.Reset(); return; }
         var b = BroadcastUi.State(m);
-        float alpha = _cfg.ColumnVisible("always") ? 1f : c.Theme.Style == ThemeStyle.Broadcast2000s
-            ? BroadcastUi.Fade04(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold) : BroadcastUi.Fade(m.Now - b.LastPitEntryT, BroadcastUi.PitListHold);
+        // Exibicao: duracao apos a entrada nos boxes (padrao 8 s) e fades do tema (2004/2012 .16/.16; demais .3/.6).
+        var show = _show.Get(_cfg, c.Theme.Style);
+        float alpha = _cfg.ColumnVisible("always") ? 1f : show.Fade(m.Now - b.LastPitEntryT);
         if (_b18 && !_cfg.ColumnVisible("always"))
-            alpha = _motion18.Evaluate(m.Now, b.LastPitEntryT, b.LastPitEntryT + BroadcastUi.PitListHold, b.SessionSeenT);
+            alpha = _motion18.Evaluate(m.Now, b.LastPitEntryT, b.LastPitEntryT + show.Duration, b.SessionSeenT);
         if (alpha <= 0.01f) return;
         var cars = s.Cars.Where(x => x.Position > 0).OrderBy(x => x.Position).ToList();
         if (cars.Count == 0) return;

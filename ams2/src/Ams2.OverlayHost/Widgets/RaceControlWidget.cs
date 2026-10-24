@@ -32,7 +32,10 @@ public sealed class RaceControlWidget : IWidget
     bool ShowFlags => !string.Equals(_cfg.OptionOr("showFlags", "true"), "false", StringComparison.OrdinalIgnoreCase);
     bool ShowSlowStop => !string.Equals(_cfg.OptionOr("showSlowStop", "true"), "false", StringComparison.OrdinalIgnoreCase);
     double Limit => Num("slowStopLimit", 5, 3, 30);
-    double ShowFor => Num("showFor", 8, 3, 15);
+    readonly ShowRef _show = new();
+    /// <summary>Exibição (tema 2018): tempo da barra de parada lenta (padrão 8, lê também a opção antiga showFor) e fades.</summary>
+    ShowPlan Show => _show.Get(_cfg, ThemeStyle.Modern2018);
+    double ShowFor => Show.Duration;
     double Num(string id, double def, double min, double max)
         => double.TryParse(_cfg.OptionOr(id, def.ToString(CultureInfo.InvariantCulture)), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, min, max) : def;
 
@@ -63,7 +66,7 @@ public sealed class RaceControlWidget : IWidget
         if (!ShowSlowStop || !m.Connected) return (null, 0f);
         var b = BroadcastUi.State(m);
         if (b.PlayerStopped || SlowStopDetector.Evaluate(b.PlayerStops, Limit) is not { } st) return (null, 0f);
-        return (st, BroadcastUi.Fade(m.Now - b.PlayerStopEndT, ShowFor));
+        return (st, Show.Fade(m.Now - b.PlayerStopEndT));
     }
 
     public bool IsIdle(OverlayModel model) => CurrentFlag(model) == Kind.None && SlowNow(model).Alpha <= 0.01f;

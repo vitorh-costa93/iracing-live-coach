@@ -25,6 +25,7 @@ public sealed class LapDeltaWidget : IWidget
 
     /// <summary>Segundos em que os setores da volta recem-fechada continuam na tela (a volta seguinte ja zerou os setores).</summary>
     public const double SectorHold = 8;
+    readonly ShowRef _show = new();
     /// <summary>Delta (s) que enche a barra para cada lado.</summary>
     public const double BarRange = 1.0;
 
@@ -65,7 +66,7 @@ public sealed class LapDeltaWidget : IWidget
         c.FillRect(lw, 10, 1.5f, H - 20, Rgb(255, 255, 255, 0.25f));
 
         // ---- Parciais ----
-        IReadOnlyList<QualiSector?> sectors = q is null ? [] : q.LastResult is { } lr && m.Now - lr.At is >= 0 and < SectorHold ? lr.Sectors : q.Sectors;
+        IReadOnlyList<QualiSector?> sectors = q is null ? [] : q.LastResult is { } lr && m.Now - lr.At >= 0 && m.Now - lr.At < _show.Get(_cfg, c.Theme.Style).Timing("sectors", SectorHold) ? lr.Sectors : q.Sectors;
         const float sx0 = lw + 8, sw = 104;
         for (int k = 0; k < 3; k++)
         {

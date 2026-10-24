@@ -162,7 +162,9 @@ public sealed class PositionCaptionWidget : IWidget
     public void Configure(WidgetSettings s) => _cfg = s;
 
     string Cars => _cfg.OptionOr("cars", "rival").ToLowerInvariant();
-    double ShowFor => double.TryParse(_cfg.OptionOr("showFor", "6"), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) ? Math.Clamp(v, 3, 15) : 6;
+    readonly ShowRef _show = new();
+    /// <summary>Exibição (tema 2018): segundos na tela por mudança de posição (padrão 6, lê também a opção antiga showFor).</summary>
+    double ShowFor => _show.Get(_cfg, ThemeStyle.Modern2018).Duration;
     bool Preview => string.Equals(_cfg.OptionOr("layoutPreview", "false"), "true", StringComparison.OrdinalIgnoreCase);
     public bool IgnoresDrivingGate => string.Equals(_cfg.OptionOr("always", "false"), "true", StringComparison.OrdinalIgnoreCase);
 

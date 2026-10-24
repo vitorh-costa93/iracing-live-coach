@@ -20,33 +20,44 @@ public sealed class Broadcast93RaceBoard
     public enum Mode { None, Caption, Gap, Fastest, Pit, LapsToGo }
     readonly FastestLapDetector _fastest = new();
     readonly Broadcast93RacePresentation _presentation = new();
+    readonly ShowRef _show = new();
+
+    /// <summary>Tempos de tela das pecas do board (Exibicao); Default = valores fixos da transmissao de 1993.</summary>
+    public sealed record Holds(double Pit = Broadcast93Rules.PitResultHold, double Fastest = FastestLapDetector.DefaultHold,
+        double LapsToGo = Broadcast93Rules.LapsToGoHold)
+    {
+        public static readonly Holds Default = new();
+        public static Holds From(ShowPlan p) => new(p.PieceDuration("pit", Broadcast93Rules.PitResultHold),
+            p.PieceDuration("fastest", FastestLapDetector.DefaultHold), p.PieceDuration("lapsToGo", Broadcast93Rules.LapsToGoHold));
+    }
 
     public static bool Visible(OverlayModel m)
         => m.Connected && m.PlayerDriving && m.Session is { InSession: true, GameState: 2, PlayerCar: not null };
 
     /// <summary>PIT STOP: parado no box, na pit lane antes da parada desta passagem, ou nos 3 s depois de sair do box.</summary>
-    public static bool PitActive(BroadcastState b, double now)
+    public static bool PitActive(BroadcastState b, double now, double hold = Broadcast93Rules.PitResultHold)
         => b.PlayerStopped || b.PlayerInPitLane && b.PlayerStopEndT < b.PlayerPitLaneStartT
-            || now - b.PlayerStopEndT is >= 0 && now - b.PlayerStopEndT < Broadcast93Rules.PitResultHold;
+            || now - b.PlayerStopEndT >= 0 && now - b.PlayerStopEndT < hold;
 
     /// <summary>Cronometro do pit: corre enquanto parado; depois da saida mostra a ultima parada; antes de parar, 0.0.</summary>
-    public static double PitSeconds(BroadcastState b, double now)
-        => b.PlayerStopped ? b.PlayerStopNow(now) : now - b.PlayerStopEndT is >= 0 && now - b.PlayerStopEndT < Broadcast93Rules.PitResultHold ? b.PlayerStopSeconds : 0;
+    public static double PitSeconds(BroadcastState b, double now, double hold = Broadcast93Rules.PitResultHold)
+        => b.PlayerStopped ? b.PlayerStopNow(now) : now - b.PlayerStopEndT >= 0 && now - b.PlayerStopEndT < hold ? b.PlayerStopSeconds : 0;
 
     /// <summary>LAPS TO GO: nos primeiros 6 s da volta em que as voltas restantes sao multiplo de 5 (corrida por voltas).</summary>
-    public static bool LapsToGoActive(OverlayModel m, BroadcastState b)
-        => Broadcast93Rules.IsLapsToGo(Remaining(m)) && m.Now - b.PlayerLapChangedT is >= 0 && m.Now - b.PlayerLapChangedT < Broadcast93Rules.LapsToGoHold;
+    public static bool LapsToGoActive(OverlayModel m, BroadcastState b, double hold = Broadcast93Rules.LapsToGoHold)
+        => Broadcast93Rules.IsLapsToGo(Remaining(m)) && m.Now - b.PlayerLapChangedT >= 0 && m.Now - b.PlayerLapChangedT < hold;
 
     static int? Remaining(OverlayModel m) => m.Board?.LapsRemaining ?? (m.Session is { } s ? Broadcast93Rules.LapsRemaining(s) : null);
 
-    public static Mode Select(OverlayModel m, FastestLapEvent? fastest = null, bool fastestEnabled = true)
+    public static Mode Select(OverlayModel m, FastestLapEvent? fastest = null, bool fastestEnabled = true, Holds? holds = null)
     {
         if (!Visible(m)) return Mode.None;
+        holds ??= Holds.Default;
         var b = BroadcastUi.State(m);
-        if (PitActive(b, m.Now)) return Mode.Pit;
-        if (fastestEnabled && fastest?.ActiveAt(m.Now) == true) return Mode.Fastest;
+        if (PitActive(b, m.Now, holds.Pit)) return Mode.Pit;
+        if (fastestEnabled && fastest?.ActiveAt(m.Now, holds.Fastest) == true) return Mode.Fastest;
         if (m.Board?.Gap93 is { } gap && m.Now >= gap.CompletedT && m.Now < gap.CloseT) return Mode.Gap;
-        return LapsToGoActive(m, b) ? Mode.LapsToGo : Mode.Caption;
+        return LapsToGoActive(m, b, holds.LapsToGo) ? Mode.LapsToGo : Mode.Caption;
     }
 
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
@@ -55,15 +66,18 @@ public sealed class Broadcast93RaceBoard
         if (!Visible(m)) { _presentation.Reset(); _fastest.Reset(); return; }
         var session = m.Session!;
         _fastest.Update(m.Now, session, m.QualiLap?.SessionGeneration ?? -1);
-        bool fastestOn = !string.Equals(cfg.OptionOr("showFastest", "true"), "false", StringComparison.OrdinalIgnoreCase);
-        var frame = _presentation.Update(m, _fastest.Latest, fastestOn);
+        // Pecas (Exibicao): cada uma pode ser desligada ou ter o tempo de tela alterado; o padrao e o board de 1993 de sempre.
+        var show = _show.Get(cfg, ThemeStyle.Broadcast93);
+        var holds = Holds.From(show);
+        var frame = _presentation.Update(m, _fastest.Latest, show.PieceEnabled("fastest"), holds, show.PieceEnabled("pit"),
+            show.PieceEnabled("gap"), show.PieceEnabled("lapsToGo"));
         switch (frame.Mode)
         {
-            case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now)); break;
+            case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now, holds.Pit)); break;
             case Mode.Fastest: Fastest(c, _fastest.Latest!.Car, session.Cars, cfg, session.TrackLength); break;
             case Mode.LapsToGo: LapsToGo(c, frame.Remaining ?? 0); break;
             case Mode.Gap: Gap(c, frame.Gap!, cfg); break;
-            case Mode.Caption: Caption(c, m, cfg); break;
+            case Mode.Caption: if (show.PieceEnabled("caption")) Caption(c, m, cfg); break;
         }
     }
 
