@@ -1,7 +1,9 @@
 """Regenerate the main AI line of an ORIGINAL AMS2 track (official, RC4-encrypted Physics.bff) into a staging folder.
 
 python -I regen_aiw_original.py plan [--game <AMS2 folder>]
-python -I regen_aiw_original.py stage <Track> <out_dir> [--game <AMS2 folder>] [--margin 1.2] [--max-shift M]
+python -I regen_aiw_original.py stage <Track> <out_dir> [--game <AMS2 folder>] [--margin 1.2] [--max-shift M] [--no-margin-fallback]
+python -I regen_aiw_original.py batch <out_dir> <Track> [<Track> ...]   (stage each + <out_dir>/pkg/"AIW <Track> (originais).7z"
+                                                                        for the approved ones + summary.json/summary.md)
 
 The game folder is only read.  stage writes
   <out_dir>\\<Track>\\Pakfiles\\Tracks\\<Track>_Physics.bff   (only the AIW entry differs, see bff_write.patch_official)
@@ -15,19 +17,23 @@ original wp_path as the reference line instead of the AC/F1 line:
               weights, corridor_fit (no clip kinks); candidates = corridor-fitted original, 'fastest', lap_time_polish and
               pinned_polish (polish re-optimised with waypoints pinned wherever it would turn tighter than the original
               nearby or kink more than the original's worst kink); every candidate passes curvature_guard and the fastest
-              one within criterion 4 wins.  Tracks whose original runs on the kerbs/near walls may need --margin 1.0
-              (Long_Beach: 1.2 m -> 83.24 s > 82.96 s original, refused; 1.0 m -> 82.84 s, accepted);
+              one within criterion 4 wins.  A track refused ONLY by criterion 3 at 1.2 m is retried at 1.0 m (margin_used /
+              margin_attempts in report.json; --no-margin-fallback disables it);
   pit ramp  = original line pinned +-PIN wps around the pit fork/join, raised-cosine blend to the new line over RAMP wps;
-  dry2      = convert.secondary_line(physics=True) where the original has wp_dry2 (never added, see DECISIONS);
-  dwidth    = F1 rule (asphalt/kerb/paved run-off + <= 2 m grass, floor width + 1 m, capped by any wall - WALL_CLEAR and
-              width + 12 m), never below the original nor wp_width, unchanged in the pit ramp.
+  dry2      = convert.secondary_line(physics=True); regenerated where the original has wp_dry2, CREATED where it has none
+              (line right after wp_path, timesDry2 right after times, as on the 56 originals that have it);
+  dwidth    = build_aiw --ai-width-rule f1 with the game's limit as track limit: per side max(min(paved reach, GCL flag 1
+              reach), width + AI_DW_FLOOR), capped by any wall/steep obstacle - WALL_CLEAR, smoothing never widens a bottleneck,
+              <= width + AI_DW_MAX; never below the original nor wp_width (only widens), unchanged in the pit ramp.
 DECISIONS (documented in report.json too):
   - wpd_CornerType/State, wp_event, wp_galpha stay ORIGINAL: hand-made by Reiza (galpha fades 0.018..0.432, corner states with
     state 1 runs, event 2 at 1.05) and the corners do not move; corner_marks() of the new line is only reported (agreement).
   - wp_groove_lat = -0.27 * path only on waypoints whose path moved > 5 cm (keeps the drawn groove 73 % of the way to the line);
     other waypoints keep the original value.
-  - no wp_dry2 is added to AIWs without it (55/229 originals have it; adding it changes every block's line count).
-  - times / timesDry2 are scaled by est_laptime(new) / est_laptime(original), keeping Reiza's calibration.
+  - wp_dry2 is created on MAIN waypoints only when missing; pit/branch waypoints stay byte-identical (on the originals that
+    have dry2 the pit wps carry wp_dry2=(0.0000), i.e. presumably the game default for a missing field [H]).
+  - times / timesDry2 are scaled by est_laptime(new) / est_laptime(original), keeping Reiza's calibration; a created
+    timesDry2 = new times[0] * max(est dry2 / est dry, 1) (build_aiw: max(est dry2, est dry)).
 """
 import argparse
 import hashlib
@@ -104,6 +110,18 @@ def set_field(block, key, toks):
     if n != 1:
         raise ValueError('Missing or duplicated field %s' % key)
     return new
+
+
+DRY2_COMMENT = ' // secondary dry line lateral offset'     # as on the originals that have it (only when wp_path has one)
+
+
+def insert_after(block, key, line, comment):
+    """Insert `line` right after the `key=` line, same line ending; `comment` only if that line carries a // comment."""
+    m = list(re.finditer(r'(?m)^' + re.escape(key) + r'=[^\r\n]*(\r?\n)', block))
+    if len(m) != 1:
+        raise ValueError('Missing or duplicated field %s' % key)
+    m = m[0]
+    return block[:m.end()] + line + (comment if '//' in m.group(0) else '') + m.group(1) + block[m.end():]
 
 
 def features(prefix):
@@ -230,6 +248,13 @@ class Walls:
         return out
 
 
+def side_reach(surf, p, perp, width):
+    """Contiguous extent per side (-perp, +perp) from p of `surf` (the interval holding p); wp_width when p is outside it."""
+    iv = surf.intervals(p, perp)
+    cur = next(((lo, hi) for lo, hi in iv if lo <= 0 <= hi), (-width[0], width[1]))
+    return [max(-cur[0], width[0]), max(cur[1], width[1])]
+
+
 def reach_sides(S, p, perp, width):
     """Free drivable distance per side (-perp, +perp) from p: contiguous asphalt/kerb/paved run-off, then <= AI_GRASS grass."""
     out = []
@@ -303,23 +328,51 @@ def physics_checks(text, S):
                 collision_dy_max=float(max(hits)) if hits else None)
 
 
-def text_diff(old, new, main_ids, has_dry2):
-    """Criterion 1: only the allowed keys change, only on main waypoints (and times/timesDry2 in the header)."""
+def _drop_inserted(la, lb, key, after):
+    """lb without the `key=` line that lb inserted right after the `after=` line (la has no `key=` line); None if lb has no
+    such line, 'misplaced' if it is elsewhere."""
+    if any(x.startswith(key + '=') for x in la):
+        return None
+    idx = [i for i, x in enumerate(lb) if x.startswith(key + '=')]
+    if not idx:
+        return None
+    if len(idx) != 1 or idx[0] == 0 or not lb[idx[0] - 1].startswith(after + '='):
+        return 'misplaced'
+    return lb[:idx[0]] + lb[idx[0] + 1:]
+
+
+def text_diff(old, new, main_ids, has_dry2=True):
+    """Criterion 1: only the allowed keys change, only on main waypoints (and times/timesDry2 in the header); wp_dry2 /
+    timesDry2 may be ADDED (right after wp_path / times) where the original has none, if has_dry2 (dry2 allowed)."""
     po, ho, bo = split_aiw(old); pn, hn, bn = split_aiw(new)
     errs = []
+    changed = {}
     if po != pn: errs.append('text before [Waypoint] changed')
     lo_, ln_ = ho.splitlines(True), hn.splitlines(True)
+    d = _drop_inserted(lo_, ln_, 'timesDry2', 'times')
+    if d == 'misplaced' or (d is not None and not has_dry2):
+        errs.append('timesDry2 added in the wrong place / not allowed')
+    elif d is not None:
+        ln_ = d; changed['timesDry2_added'] = 1
     if len(lo_) != len(ln_): errs.append('header line count changed')
     for a, b in zip(lo_, ln_):
         if a != b and a.split('=', 1)[0] not in ALLOWED_HEADER: errs.append('header line changed: ' + a.strip())
     if len(bo) != len(bn): errs.append('waypoint count changed')
-    changed = {}
     for i, (a, b) in enumerate(zip(bo, bn)):
         if a == b:
             continue
         if i not in main_ids:
             errs.append('pit/branch waypoint %d changed' % i); continue
         la, lb = a.splitlines(True), b.splitlines(True)
+        d = _drop_inserted(la, lb, 'wp_dry2', 'wp_path')
+        if d == 'misplaced' or (d is not None and not has_dry2):
+            errs.append('waypoint %d wp_dry2 added in the wrong place / not allowed' % i); continue
+        if d is not None:
+            ins = [x for x in lb if x.startswith('wp_dry2=')][0]
+            eol = la[0][len(la[0].rstrip('\r\n')):]
+            if not re.fullmatch(r'wp_dry2=\(-?\d+\.\d{4}\)( // secondary dry line lateral offset)?' + re.escape(eol), ins):
+                errs.append('waypoint %d inserted wp_dry2 malformed' % i)
+            lb = d; changed['wp_dry2_added'] = changed.get('wp_dry2_added', 0) + 1
         if len(la) != len(lb):
             errs.append('waypoint %d line count changed' % i); continue
         for x, y in zip(la, lb):
@@ -435,7 +488,10 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
     P = np.array([field(b, 'wp_pos') for b in mb]); perp = np.array([field(b, 'wp_perp') for b in mb])
     width = np.array([field(b, 'wp_width') for b in mb]); dwidth = np.array([field(b, 'wp_dwidth') for b in mb])
     old = np.array([field(b, 'wp_path')[0] for b in mb])
-    has_dry2 = all(has(b, 'wp_dry2') for b in mb) and has(header, 'timesDry2')
+    has_dry2 = all(has(b, 'wp_dry2') for b in mb)          # original second dry line (regenerated) / absent (created)
+    if not has_dry2 and any(has(b, 'wp_dry2') for b in mb):
+        raise ValueError('wp_dry2 on only some main waypoints')
+    has_tdry2 = has(header, 'timesDry2')
     old2 = np.array([field(b, 'wp_dry2')[0] for b in mb]) if has_dry2 else None
     if not np.allclose(np.linalg.norm(perp, axis=1), 1, atol=.01):
         raise ValueError('wp_perp is not unit length')
@@ -459,7 +515,7 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
     kink_cap = curv_old['kink_max'] * (1 + CURV_TOL) + 1e-4
     path = path2 = None
     picked = None
-    lo2, hi2 = (lo.copy(), hi.copy()) if has_dry2 else (None, None)
+    lo2, hi2 = lo.copy(), hi.copy()
     for it in range(6):
         # candidates: corridor-fitted original, convert 'fastest' (Bahrain logic), lap-time polish of the fitted original;
         # the fastest one that keeps max curvature/kinks within the criterion-4 tolerance wins
@@ -483,29 +539,35 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
         scored.sort(key=lambda x: (x[0], x[1]))
         log('  candidates: ' + ', '.join('%s %.3f s%s' % (nm, t, '' if not bad else ' (curvature)') for bad, t, nm, _ in scored))
         _, _, picked, path = scored[0]
-        if has_dry2:
-            d2 = cv.secondary_line(P + path[:, None] * perp, perp, path, lo2, hi2, physics=True)
-            b2 = np.clip(old2, lo2, hi2)
-            path2 = np.round(np.clip(b2 + wr * (d2 - b2), lo2, hi2), 4)
+        d2 = cv.secondary_line(P + path[:, None] * perp, perp, path, lo2, hi2, physics=True)
+        b2 = np.clip(old2, lo2, hi2) if has_dry2 else np.clip(path, lo2, hi2)     # pit ramp: original dry2 / the new line
+        path2 = np.round(np.clip(b2 + wr * (d2 - b2), lo2, hi2), 4)
         # serialized line between waypoints: tighten the corridor where a chord gets closer than 1 m to the asphalt edge
         bad = segment_shortfall(P + path[:, None] * perp, S, lo, hi, path, perp)
-        bad2 = segment_shortfall(P + path2[:, None] * perp, S, lo2, hi2, path2, perp) if has_dry2 else 0
+        bad2 = segment_shortfall(P + path2[:, None] * perp, S, lo2, hi2, path2, perp)
         if not bad and not bad2:
             break
         log('  dense clearance: tightened %d (line) + %d (dry2) waypoint bounds, round %d' % (bad, bad2, it + 1))
-        if np.any(lo > hi) or (has_dry2 and np.any(lo2 > hi2)):
+        if np.any(lo > hi) or np.any(lo2 > hi2):
             raise ValueError('Infeasible AI corridor after dense-clearance tightening')
     if np.any(path < lo - 1e-4) or np.any(path > hi + 1e-4):
         raise ValueError('Serialized racing line violates the corridor')
     L = P + path[:, None] * perp
-    # dwidth (F1 rule), never below original / width, untouched in the pit ramp
+    # dwidth = convert.build_aiw --ai-width-rule f1 (Bahrain): per side the track limit = min(paved reach, GCL flag 1 reach)
+    # (the game's own limit instead of the F1 data), at least width + AI_DW_FLOOR, only a wall/obstacle - WALL_CLEAR takes it
+    # below that, smoothing never widens a bottleneck, add capped at AI_DW_MAX; never below the original nor wp_width,
+    # untouched in the pit ramp
     obst = np.array([S['obstacles'].free(p, pp) for p, pp in zip(P, perp)])
-    reach = np.array([reach_sides(S, p, pp, w) for p, pp, w in zip(P, perp, width)])
+    paved = np.array([side_reach(S['drive'], p, pp, w) for p, pp, w in zip(P, perp, width)])
+    gclr = np.array([side_reach(S['limits'], p, pp, w) for p, pp, w in zip(P, perp, width)])
+    reach = np.minimum(paved, gclr)
     lim = np.maximum(reach, width + cv.AI_DW_FLOOR)
+    cap = lim.copy()
     lim = np.minimum(lim, obst - cv.WALL_CLEAR)
-    lim = np.minimum(lim, width + cv.AI_DW_MAX)
+    wall_hits = int((lim < cap - 1e-6).sum())
     sm = lambda a: cv._smooth_closed(a, 5)
     lim = np.minimum(np.c_[sm(lim[:, 0]), sm(lim[:, 1])], lim)
+    lim = np.minimum(lim, width + cv.AI_DW_MAX)
     newdw = np.maximum(dwidth, np.maximum(lim, width))
     newdw[wr < 1] = dwidth[wr < 1]
     newdw = np.round(newdw, 3)
@@ -523,6 +585,8 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
                 b = set_field(b, 'wp_groove_lat', [fmt_like(gt[0], -0.27 * path[i])])
         if has_dry2 and abs(path2[i] - old2[i]) > 1e-9:
             b = set_field(b, 'wp_dry2', [fmt_like(tokens(b, 'wp_dry2')[0], path2[i])])
+        elif not has_dry2:
+            b = insert_after(b, 'wp_path', 'wp_dry2=(%s)' % fmt_like('0.0000', path2[i]), DRY2_COMMENT)
         if np.any(newdw[i] > dwidth[i] + 1e-9):
             dt = tokens(b, 'wp_dwidth')
             b = set_field(b, 'wp_dwidth', [dt[s] if newdw[i, s] <= dwidth[i, s] + 1e-9 else fmt_like(dt[s], newdw[i, s]) for s in (0, 1)])
@@ -535,10 +599,14 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
         toks = m.group(1).split(',')
         return h[:m.start(1)] + ','.join(fmt_like(t, float(t) * r) for t in toks) + h[m.end(1):]
     header2 = scale_header(header, 'times', ratio)
-    t2_old = t2_new = None
-    if has_dry2:
-        t2_old, t2_new = cv.est_laptime(P + old2[:, None] * perp), cv.est_laptime(P + path2[:, None] * perp)
+    t2_old = cv.est_laptime(P + old2[:, None] * perp) if has_dry2 else None
+    t2_new = cv.est_laptime(P + path2[:, None] * perp)
+    if has_dry2 and has_tdry2:
         header2 = scale_header(header2, 'timesDry2', t2_new / t2_old)
+    elif not has_tdry2:
+        # build_aiw: timesDry2 = max(est dry2, est dry) -> here the new dry time times that ratio (one value, right after times)
+        t0 = float(re.search(r'(?m)^times=' + VAL, header2).group(1).split(',')[0])
+        header2 = insert_after(header2, 'times', 'timesDry2=(%.4f)' % (t0 * max(t2_new / t_new, 1.0)), '')
     new_text = prefix + '[Waypoint]' + header2 + ''.join(out)
     # corner markers: report only
     cty, cst = cv.corner_marks(L)
@@ -547,25 +615,28 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
     rep = dict(main_waypoints=n, main_ids=[int(i) for i in order], total_waypoints=len(blocks),
                pit_junctions=[int(order[k]) for k in forks], margin=margin, wall_clear=cv.WALL_CLEAR,
                max_shift_limit=max_shift, lap_est_before=t_old, lap_est_after=t_new,
-               times_scale=ratio, has_dry2=has_dry2, dry2_lap_est_before=t2_old, dry2_lap_est_after=t2_new,
+               times_scale=ratio, has_dry2=has_dry2, dry2_created=not has_dry2, times_dry2_created=not has_tdry2,
+               dry2_lap_est_before=t2_old, dry2_lap_est_after=t2_new,
                changed_path_wps=int((shift > 1e-4).sum()), max_shift=float(shift.max()), mean_shift=float(shift.mean()),
                pit_ramp_max_shift=float(shift[wr < 1].max()) if (wr < 1).any() else 0.0,
                pinned_wps_moved=int((shift[wr == 0] > 1e-4).sum()),
                original_outside_corridor_wps=int((old_out > 1e-4).sum()), original_outside_corridor_max=float(max(old_out.max(), 0)),
                dwidth_widened_sides=int((newdw > dwidth + 1e-9).sum()), dwidth_add_max=float((newdw - dwidth).max()),
                dwidth_minus_width_min=float((newdw - width).min()),
-               wall_limited_dwidth_sides=int(((obst - cv.WALL_CLEAR) < np.maximum(reach, width + cv.AI_DW_FLOOR)).sum()),
+               wall_limited_dwidth_sides=wall_hits,
+               dwidth_rule='f1: max(min(paved, GCL1), width+%.1f), obstacle-%.1f, smooth-min, <= width+%.1f, >= original' % (
+                   cv.AI_DW_FLOOR, cv.WALL_CLEAR, cv.AI_DW_MAX),
                corner_marks_agreement=float(np.mean((cty == oty) & (cst == ost))),
                curvature_before=curvature_stats(L_old), curvature_after=curvature_stats(L))
-    if has_dry2:
-        rep['dry2_changed_wps'] = int((np.abs(path2 - old2) > 1e-4).sum())
-    return new_text, rep, dict(L=L, L2=(P + path2[:, None] * perp) if has_dry2 else None)
+    rep['dry2_changed_wps'] = int((np.abs(path2 - old2) > 1e-4).sum()) if has_dry2 else n
+    rep['dry2_max_offset_from_line'] = float(np.abs(path2 - path).max())
+    return new_text, rep, dict(L=L, L2=P + path2[:, None] * perp)
 
 
 def accept(old_text, new_text, rep, lines, S):
     """Acceptance criteria 1-5; returns list of failures (criterion 6 is checked on the written pak)."""
     fail = []
-    errs, changed = text_diff(old_text, new_text, set(rep['main_ids']), rep['has_dry2'])
+    errs, changed = text_diff(old_text, new_text, set(rep['main_ids']), True)
     rep['text_diff'] = dict(errors=errs[:20], changed_lines=changed)
     if errs: fail.append('1 text diff: ' + '; '.join(errs[:5]))
     for key, L in (('line', lines['L']), ('dry2', lines['L2'])):
@@ -599,12 +670,17 @@ def sha256(p):
     return h.hexdigest()
 
 
-def stage(game, track, out_dir, margin=1.2, max_shift=None):
+MARGIN_FALLBACK = 1.0      # retried (and reported) when the 1.2 m corridor fails ONLY criterion 3 (lap estimate)
+
+
+def stage(game, track, out_dir, margin=1.2, max_shift=None, fallback=True, log=print):
     pak, b, E, tid, a_uid = open_track(game, track)
     text = b.read(E[a_uid]).decode('latin1')
     why = refusal(track, text, set(E), tid)
     dst = Path(out_dir) / track
-    dst.mkdir(parents=True, exist_ok=True)
+    if dst.exists():                       # only this script's outputs live here; no stale pak from an earlier run
+        shutil.rmtree(dst)
+    dst.mkdir(parents=True)
     rep = dict(track=track, source_pak=str(pak), source_sha256=sha256(pak), aiw_uid='%016x' % a_uid,
                decisions=__doc__.split('DECISIONS (documented in report.json too):')[1].strip().splitlines())
     def done(ok, fail):
@@ -615,12 +691,24 @@ def stage(game, track, out_dir, margin=1.2, max_shift=None):
     if why:
         return done(False, ['refused: ' + why])
     S = surfaces(b, E, tid)
-    try:
-        new_text, r, lines = regen(text, S, margin, max_shift)
-    except ValueError as e:
-        return done(False, ['regen: %s' % e])
-    rep.update(r)
-    fail = accept(text, new_text, rep, lines, S)
+    margins = [margin] + ([MARGIN_FALLBACK] if fallback and margin > MARGIN_FALLBACK else [])
+    tried = []
+    for m in margins:
+        try:
+            new_text, r, lines = regen(text, S, m, max_shift, log=log)
+        except ValueError as e:
+            tried.append(dict(margin=m, failures=['regen: %s' % e]))
+            break
+        rep.update(r)
+        fail = accept(text, new_text, rep, lines, S)
+        tried.append(dict(margin=m, failures=fail, lap_est_after=r['lap_est_after']))
+        if not fail or not all(f.startswith('3 ') for f in fail):
+            break
+        if m != margins[-1]:
+            log('  margin %.1f m fails only criterion 3 (%s) -> retry with %.1f m' % (m, fail[0], MARGIN_FALLBACK))
+    rep['margin_used'] = tried[-1]['margin']; rep['margin_attempts'] = tried
+    rep['margin_fallback'] = len(tried) > 1
+    fail = tried[-1]['failures']
     if fail:
         return done(False, fail)
     blob = patch_official(b, {a_uid: new_text.encode('latin1')})
@@ -642,11 +730,81 @@ def stage(game, track, out_dir, margin=1.2, max_shift=None):
     (dst / (track + '.original.aiw')).write_bytes(text.encode('latin1'))
     (dst / 'backup').mkdir(exist_ok=True)
     shutil.copy2(pak, dst / 'backup' / pak.name)
-    if sha256(dst / 'backup' / pak.name) != rep['source_sha256']:
-        raise RuntimeError('backup copy sha256 mismatch')
+    if sha256(dst / 'backup' / pak.name) != rep['source_sha256'] or sha256(pak) != rep['source_sha256']:
+        raise RuntimeError('backup copy / game pak sha256 mismatch (pak changed during the stage?)')
+    rep['backup_sha256_matches_game'] = True
     (dst / 'backup' / (pak.name + '.sha256')).write_text('%s  %s\n' % (rep['source_sha256'], pak.name), encoding='ascii')
     rep['staged_pak'] = str(out_pak); rep['staged_sha256'] = sha256(out_pak)
     return done(True, [])
+
+
+SEVEN_ZIP = r'C:\Program Files\7-Zip\7z.exe'
+
+
+def summary_row(r):
+    cb, ca = r.get('curvature_before') or {}, r.get('curvature_after') or {}
+    return dict(track=r['track'], accepted=r['accepted'], reason='; '.join(r['failures']) or None,
+                margin_used=r.get('margin_used'), margin_fallback=r.get('margin_fallback'),
+                lap_est_before=r.get('lap_est_before'), lap_est_after=r.get('lap_est_after'), max_shift=r.get('max_shift'),
+                min_clearance=min([v['dense_asphalt_clearance_min'] for v in (r.get('dense_line'), r.get('dense_dry2')) if v] or [None],
+                                  key=lambda x: 1e9 if x is None else x),
+                k_max_before=cb.get('k_max'), k_max_after=ca.get('k_max'), dry2_created=r.get('dry2_created'),
+                dwidth_widened_sides=r.get('dwidth_widened_sides'), dwidth_add_max=r.get('dwidth_add_max'),
+                source_sha256=r.get('source_sha256'), staged_sha256=r.get('staged_sha256'))
+
+
+def batch(game, out_dir, tracks, margin=1.2, max_shift=None):
+    """stage every track into <out_dir>\\<Track>, then one 7z per approved track (tree Automobilista 2\\Pakfiles\\Tracks)
+    under <out_dir>\\pkg and summary.json / summary.md."""
+    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for t in tracks:
+        print('== %s' % t, flush=True)
+        try:
+            r = stage(game, t, out_dir, margin, max_shift, log=lambda *a: None)
+        except (ValueError, KeyError, RuntimeError) as e:
+            r = dict(track=t, accepted=False, failures=['error: %s' % e])
+        rows.append(summary_row(r))
+        print('   %s %s' % ('APPROVED' if r['accepted'] else 'REFUSED', '; '.join(r['failures'])), flush=True)
+    pkg = out_dir / 'pkg'
+    if pkg.exists():
+        shutil.rmtree(pkg)
+    pkg.mkdir()
+    for row in rows:
+        if not row['accepted']:
+            continue
+        t = row['track']
+        tree = pkg / ('_tree_' + t)
+        tdir = tree / 'Automobilista 2' / 'Pakfiles' / 'Tracks'
+        tdir.mkdir(parents=True)
+        src = out_dir / t / 'Pakfiles' / 'Tracks' / (t + '_Physics.bff')
+        shutil.copy2(src, tdir / src.name)
+        arc = pkg / ('AIW %s (originais).7z' % t)
+        import subprocess
+        res = subprocess.run([SEVEN_ZIP, 'a', '-t7z', '-mx=9', str(arc), 'Automobilista 2'], cwd=str(tree),
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError('7z failed for %s: %s' % (t, res.stderr[-400:]))
+        lst = subprocess.run([SEVEN_ZIP, 'l', '-slt', str(arc)], capture_output=True, text=True).stdout
+        if ('Path = Automobilista 2\\Pakfiles\\Tracks\\%s_Physics.bff' % t) not in lst:
+            raise RuntimeError('7z tree check failed for %s' % t)
+        shutil.rmtree(tree)
+        row['package'] = str(arc); row['package_sha256'] = sha256(arc)
+    (out_dir / 'summary.json').write_text(json.dumps(rows, indent=2, default=float), encoding='utf8')
+    f = lambda v, fmt: '-' if v is None else fmt % v
+    md = ['# AIW regen (originals) - %s' % out_dir.name, '',
+          'approved %d / %d' % (sum(r['accepted'] for r in rows), len(rows)), '',
+          '| track | status | margin | lap est before -> after (s) | max shift (m) | min clearance (m) | k_max before -> after | dry2 created | dwidth widened sides (max add m) | sha256 original / new |',
+          '|---|---|---|---|---|---|---|---|---|---|']
+    for r in rows:
+        md.append('| %s | %s | %s%s | %s -> %s | %s | %s | %s -> %s | %s | %s (%s) | %s / %s |' % (
+            r['track'], 'approved' if r['accepted'] else 'refused: ' + (r['reason'] or ''), f(r['margin_used'], '%.1f'),
+            ' (fallback)' if r['margin_fallback'] else '', f(r['lap_est_before'], '%.3f'), f(r['lap_est_after'], '%.3f'),
+            f(r['max_shift'], '%.2f'), f(r['min_clearance'], '%.3f'), f(r['k_max_before'], '%.4f'), f(r['k_max_after'], '%.4f'),
+            {True: 'yes', False: 'no (regenerated)', None: '-'}[r['dry2_created']], f(r['dwidth_widened_sides'], '%d'),
+            f(r['dwidth_add_max'], '%.2f'), (r['source_sha256'] or '-')[:12], (r['staged_sha256'] or '-')[:12]))
+    (out_dir / 'summary.md').write_text('\n'.join(md) + '\n', encoding='utf8')
+    return rows
 
 
 def plan(game):
@@ -666,20 +824,25 @@ def plan(game):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('cmd', choices=('plan', 'stage')); ap.add_argument('track', nargs='?'); ap.add_argument('out', nargs='?')
+    ap.add_argument('cmd', choices=('plan', 'stage', 'batch')); ap.add_argument('args', nargs='*')
     ap.add_argument('--game', default=GAME); ap.add_argument('--margin', type=float, default=1.2)
     ap.add_argument('--max-shift', type=float, default=None)
+    ap.add_argument('--no-margin-fallback', action='store_true', help='do not retry 1.0 m when 1.2 m fails only criterion 3')
     a = ap.parse_args()
     game = Path(a.game).resolve()
     if a.cmd == 'plan':
         plan(game); return
-    if not a.track or not a.out:
-        ap.error('stage needs <Track> <out_dir>')
-    out = Path(a.out).resolve()
+    if (a.cmd == 'stage' and len(a.args) != 2) or (a.cmd == 'batch' and len(a.args) < 2):
+        ap.error('stage <Track> <out_dir> | batch <out_dir> <Track> [<Track> ...]')
+    out = Path(a.args[1] if a.cmd == 'stage' else a.args[0]).resolve()
     if out == game or game in out.parents:
         raise SystemExit('Output must be outside the game folder')
-    rep = stage(game, a.track, out, a.margin, a.max_shift)
-    keys = ('accepted', 'failures', 'lap_est_before', 'lap_est_after', 'max_shift', 'mean_shift', 'changed_path_wps',
+    if a.cmd == 'batch':
+        rows = batch(game, out, a.args[1:], a.margin, a.max_shift)
+        print('approved %d / %d -> %s' % (sum(r['accepted'] for r in rows), len(rows), out / 'summary.md'))
+        return
+    rep = stage(game, a.args[0], out, a.margin, a.max_shift, fallback=not a.no_margin_fallback)
+    keys = ('accepted', 'failures', 'margin_used', 'lap_est_before', 'lap_est_after', 'max_shift', 'mean_shift', 'changed_path_wps',
             'dwidth_widened_sides', 'curvature_before', 'curvature_after', 'pak_check')
     print(json.dumps({k: rep.get(k) for k in keys}, indent=2, default=float))
     raise SystemExit(0 if rep['accepted'] else 1)

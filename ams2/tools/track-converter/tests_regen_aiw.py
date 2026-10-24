@@ -29,7 +29,7 @@ def wall(r, n=96, h=3.0):
     return np.array(t)
 
 
-def track_fixture(n=120, R0=60.0, pit=True, bump=False):
+def track_fixture(n=120, R0=60.0, pit=True, bump=False, dry2=True):
     """Oval-ish closed loop (ellipse) with CRLF, // comments, a pit branch and wp_dry2; bump = original line 6.5 m out
     (past the 7 - 1.2 m asphalt corridor) on waypoints 58..64."""
     th = np.arange(n) * 2 * np.pi / n
@@ -53,6 +53,8 @@ def track_fixture(n=120, R0=60.0, pit=True, bump=False):
                 % (n, ','.join('%.4f' % x for x in P[15] - 10 * perp[15])))
     text = ('[Features]\r\npitspots=1\r\nOval=0\r\n[GRID]\r\nPos=(1,2,3)\r\n[PITS]\r\nPitPos=(1,2,3)\r\n[Waypoint]\r\n'
             'times=(100.000,105.000) // t\r\ntimesDry2=(101.000,106.000)\r\n' + ''.join(blocks) + pitb)
+    if not dry2:
+        text = text.replace('wp_dry2=(0.0000,0.0000)\r\n', '').replace('timesDry2=(101.000,106.000)\r\n', '')
     return text, P, perp
 
 
@@ -131,27 +133,42 @@ class TopologyTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(w[3:19]) >= 0))
 
 
+def ellipse_surfaces():
+    """asphalt = the band +-7 m around the ellipse; paved run-off to 12 m inside, GCL flag 1 to 9 m inside / 7.5 m outside;
+    wall 9.5 m outside."""
+    th = np.arange(240) * 2 * np.pi / 240
+    def band(off):
+        Q = np.c_[96 * np.cos(th), np.zeros(240), 60 * np.sin(th)]
+        t = np.c_[-96 * np.sin(th), np.zeros(240), 60 * np.cos(th)]; t /= np.linalg.norm(t, axis=1)[:, None]
+        return Q + off * np.c_[t[:, 2], np.zeros(240), -t[:, 0]]
+    def strip(a, b):
+        A, B = band(a), band(b); tr = []
+        for i in range(240):
+            j = (i + 1) % 240; tr.extend([[A[i], B[i], B[j]], [A[i], B[j], A[j]]])
+        return np.array(tr)
+    W = band(9.5); wl = []
+    for i in range(240):
+        j = (i + 1) % 240; wl.extend([[W[i], W[j], W[j] + [0, 3, 0]], [W[i], W[j] + [0, 3, 0], W[i] + [0, 3, 0]]])
+    return dict(road=LateralSurface(strip(-7, 7)), drive=LateralSurface(strip(-12, 7)), grass=None,
+                limits=LateralSurface(strip(-9, 7.5)), walls=R.Walls(np.array(wl)), obstacles=R.Walls(np.array(wl)))
+
+
 class RegenTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text, P, perp = track_fixture(bump=True)
-        # asphalt = the band +-7 m around the ellipse; GCL a bit wider; wall at +9.5 m outside
-        th = np.arange(240) * 2 * np.pi / 240
-        def band(off):
-            Q = np.c_[96 * np.cos(th), np.zeros(240), 60 * np.sin(th)]
-            t = np.c_[-96 * np.sin(th), np.zeros(240), 60 * np.cos(th)]; t /= np.linalg.norm(t, axis=1)[:, None]
-            return Q + off * np.c_[t[:, 2], np.zeros(240), -t[:, 0]]
-        def strip(a, b):
-            A, B = band(a), band(b); tr = []
-            for i in range(240):
-                j = (i + 1) % 240; tr.extend([[A[i], B[i], B[j]], [A[i], B[j], A[j]]])
-            return np.array(tr)
-        W = band(9.5); wl = []
-        for i in range(240):
-            j = (i + 1) % 240; wl.extend([[W[i], W[j], W[j] + [0, 3, 0]], [W[i], W[j] + [0, 3, 0], W[i] + [0, 3, 0]]])
-        road = LateralSurface(strip(-7, 7)); cls.S = dict(road=road, drive=road, grass=None, limits=LateralSurface(strip(-7.5, 7.5)),
-                                                          walls=R.Walls(np.array(wl)), obstacles=R.Walls(np.array(wl)))
+        cls.S = ellipse_surfaces()
         cls.new, cls.rep, cls.lines = R.regen(cls.text, cls.S, log=lambda *a: None)
+
+    def test_dwidth_f1_rule_paved_and_gcl_wall(self):
+        """inside: min(paved 12, GCL 9) = 9 m (> width + 1); outside: wall 9.5 - WALL_CLEAR = 7.7 < original 8 -> kept."""
+        _, _, blocks = R.split_aiw(self.new)
+        order = R.topology(blocks)[0]
+        wr = R.ramp_weights(len(order), [10, 20])
+        dw = np.array([R.field(blocks[i], 'wp_dwidth') for i in order])
+        np.testing.assert_allclose(dw[wr == 1, 0], 9.0, atol=0.15)
+        np.testing.assert_allclose(dw[:, 1], 8.0)
+        np.testing.assert_allclose(dw[wr < 1, 0], 8.0)                # pit ramp untouched
 
     def test_only_allowed_keys_and_pit_untouched(self):
         _, _, blocks = R.split_aiw(self.text)
@@ -179,6 +196,46 @@ class RegenTests(unittest.TestCase):
         for a, b in zip(ob, nb):
             self.assertTrue(np.all(np.array(R.field(b, 'wp_dwidth')) >= np.array(R.field(a, 'wp_dwidth'))))
             self.assertEqual(R.field(a, 'wp_width'), R.field(b, 'wp_width'))
+
+
+class CreateDry2Tests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.text, _, _ = track_fixture(bump=True, dry2=False)
+        cls.new, cls.rep, cls.lines = R.regen(cls.text, cls.S if hasattr(cls, 'S') else ellipse_surfaces(), log=lambda *a: None)
+
+    def test_dry2_created_after_wp_path_and_timesdry2_after_times(self):
+        self.assertTrue(self.rep['dry2_created'] and self.rep['times_dry2_created'])
+        _, hdr, blocks = R.split_aiw(self.new)
+        self.assertRegex(hdr, r'times=\([^)]*\) // t\r\ntimesDry2=\(\d+\.\d{4}\)\r\n')
+        for b in blocks[:120]:
+            self.assertRegex(b, r'wp_path=\([^)]*\)\r\nwp_dry2=\(-?\d+\.\d{4}\)\r\n')
+        self.assertNotIn('wp_dry2', blocks[120])                      # pit untouched (no dry2 added)
+        order = set(int(i) for i in R.topology(R.split_aiw(self.text)[2])[0])
+        errs, changed = R.text_diff(self.text, self.new, order, True)
+        self.assertEqual(errs, [])
+        self.assertEqual(changed['wp_dry2_added'], 120); self.assertEqual(changed['timesDry2_added'], 1)
+        self.assertTrue(R.text_diff(self.text, self.new, order, False)[0])   # not allowed -> error
+
+    def test_misplaced_insertion_rejected(self):
+        order = set(range(120))
+        bad = self.text.replace('wp_galpha=(0.100)\r\n', 'wp_galpha=(0.100)\r\nwp_dry2=(0.0000)\r\n', 1)
+        self.assertTrue(any('wrong place' in e for e in R.text_diff(self.text, bad, order, True)[0]))
+        pit = self.text.replace('wp_path=(0.0000,0.0000)\r\nwp_width=(3,3)', 'wp_path=(0.0000,0.0000)\r\nwp_dry2=(0.0000)\r\nwp_width=(3,3)')
+        self.assertTrue(any('pit/branch' in e for e in R.text_diff(self.text, pit, order, True)[0]))
+
+    def test_dry2_dense_clearance(self):
+        d = dense_clearance(self.lines['L2'], ellipse_surfaces()['road'], ellipse_surfaces()['limits'], R.DENSE_MIN)
+        self.assertGreaterEqual(d['dense_asphalt_clearance_min'], R.DENSE_MIN)
+
+
+class SummaryTests(unittest.TestCase):
+    def test_summary_row_min_clearance_and_refused(self):
+        r = dict(track='X', accepted=False, failures=['3 est lap'], dense_line={'dense_asphalt_clearance_min': 1.2},
+                 dense_dry2={'dense_asphalt_clearance_min': 1.1}, margin_used=1.0, margin_fallback=True)
+        row = R.summary_row(r)
+        self.assertEqual(row['min_clearance'], 1.1); self.assertEqual(row['reason'], '3 est lap')
+        self.assertIsNone(R.summary_row(dict(track='Y', accepted=False, failures=['refused: kart track']))['min_clearance'])
 
 
 @unittest.skipUnless(GAME_PAK.exists(), 'official pak not available')
