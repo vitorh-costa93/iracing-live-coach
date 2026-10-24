@@ -1,4 +1,4 @@
-"""--ai-brake-physics (default OFF): braking only where the downforce model needs it; no clip kinks. Run: python -I tests_ai_brake_physics.py."""
+"""--ai-brake-physics (default ON since 23/10, --no-ai-brake-physics): braking only where the downforce model needs it; no clip kinks. Run: python -I tests_ai_brake_physics.py."""
 import importlib.util
 from pathlib import Path
 import sys
@@ -25,9 +25,9 @@ def rounded_square(R, S, step=5.0):
 
 
 class BrakePhysicsTests(unittest.TestCase):
-    def test_flag_default_off(self):
-        self.assertFalse(convert.parse_args(['s', 'id', 'o', 'r', 'x']).ai_brake_physics)
-        self.assertTrue(convert.parse_args(['s', 'id', 'o', 'r', 'x', '--ai-brake-physics']).ai_brake_physics)
+    def test_flag_default_on(self):
+        self.assertTrue(convert.parse_args(['s', 'id', 'o', 'r', 'x']).ai_brake_physics)
+        self.assertFalse(convert.parse_args(['s', 'id', 'o', 'r', 'x', '--no-ai-brake-physics']).ai_brake_physics)
 
     def test_fast_corner_without_brake_needs_no_reduction(self):
         L = rounded_square(R=300.0, S=600.0)          # 300 m sweepers after 600 m straights: flat in an F1 (F1 2020: no brake_line)

@@ -1,4 +1,4 @@
-"""--ai-width / --ai-dry2 (anti-"trenzinho", default OFF). Run: python -I tests_ai_corridor.py."""
+"""--ai-width / --ai-dry2 (anti-"trenzinho", default ON since 23/10; --no-ai-width/--no-ai-dry2 switch off). Run: python -I tests_ai_corridor.py."""
 import contextlib
 import importlib.util
 import io
@@ -52,11 +52,14 @@ def build(*args, **kw):
 
 
 class AiCorridorTests(unittest.TestCase):
-    def test_flags_default_off(self):
+    def test_flags_default_on_since_bahrain(self):
         args = convert.parse_args(['s', 'id', 'o', 'r', 'x'])
-        self.assertEqual((args.ai_width, args.ai_dry2), (False, False))
-        args = convert.parse_args(['s', 'id', 'o', 'r', 'x', '--ai-width', '--ai-dry2'])
-        self.assertEqual((args.ai_width, args.ai_dry2), (True, True))
+        self.assertEqual((args.ai_width, args.ai_width_rule, args.ai_dry2, args.ai_brake_physics), (True, 'f1', True, True))
+        self.assertEqual(args.racing_line, 'fastest')
+        self.assertEqual(convert.parse_args(['s', 'id', 'o', 'r', 'x', '--f1-line', 'l.csv']).racing_line, 'f1')
+        self.assertEqual(convert.parse_args(['s', 'id', 'o', 'r', 'x', '--f1-line', 'l.csv', '--racing-line', 'zebra']).racing_line, 'zebra')
+        args = convert.parse_args(['s', 'id', 'o', 'r', 'x', '--no-ai-width', '--no-ai-dry2', '--no-ai-brake-physics', '--ai-width-rule', 'reach'])
+        self.assertEqual((args.ai_width, args.ai_width_rule, args.ai_dry2, args.ai_brake_physics), (False, 'reach', False, False))
         self.assertFalse(hasattr(args, 'ai_wet_line'))
         fast, extra, dummies = sample_ai()
         aiw, info = build(fast, extra, dummies, 't')

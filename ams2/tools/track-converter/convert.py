@@ -90,6 +90,13 @@ def make_mtx(m, tid, texname):
         spec = max(0.0, min(1.0, m['props']['ksSpecular'][0]))
     if m['shader'].startswith('ksMultilayer') and spec > 0.5:
         spec = 0.05    # AC multilayer ground relies on its own gloss shader; spec 1.0 here mirrors the sky (blue/white streaks)
+    if terrain_kind(m):
+        # AC masks ksSpecular with txMaps.r (Magny-Cours GRVL_01: ksSpecular 1.0, grvl_map black); rz_basic has no mask, so
+        # unmasked 1.0 painted the gravel traps white.  Matte ground like the Sochi grass (globalSpecularFactor 0.2).
+        mm = tex_mean(m['tex'].get('txMaps', ''))
+        if mm is not None:
+            spec *= mm[0] / 255.0
+        spec = min(spec, TERRAIN_SPEC_MAX)
     return RZ_BASIC.format(name=m['mname'], cull='EBFCT_NONE' if (alpha_test or alpha_blend) else 'EBFCT_ANTICLOCKWISE',
                            spec=repr(float(np.float32(spec))), tex=tex, zwrite='false' if alpha_blend else 'true',
                            blend=BLEND_ON if alpha_blend else BLEND_OFF,
@@ -106,10 +113,102 @@ UV_MULTILAYER = (1.5, 3.5)
 AVAIL = None    # textures present in the kn5 (set in main); ksMultilayer falls back when the tile is missing (Sepang)
 
 
-DETAIL_TILE_M = {'road': 4.0, 'grass': 6.0}    # metres covered by one repeat of the detail texture
+DETAIL_TILE_M = {'road': 4.0, 'grass': 6.0, 'gravel': 4.0}    # metres covered by one repeat of the detail texture
+TEXDATA = None            # kn5 texture bytes (set in main) for the terrain colour checks
+TERRAIN_SPEC_MAX = 0.2    # Sochi GRASS0/GRASS_FULLY globalSpecularFactor
+_TEX_MEAN = {}
 
 
-def detail_kind(mt):
+NOT_TERRAIN = r'KERB|CURB|WALL|TIRE|TYRE|LINE|FENCE|BARRIER|LOGO|TREE|BUSH|STARTLIGHT'
+# Opaque concrete ground (ksPerPixel ignores the diffuse alpha in AC; Sepang conc_smooth_grey_light 253k m2 alpha 77,
+# pitfloor alpha 17): rz_basic would read that mask, so these textures get opaque alpha like road/runoff.
+GROUND_RX = r'CONC|PITFLOOR|PIT_FLOOR|EDGESTRIP|SIDEWALK|PAVE'
+
+
+def _terrain_word(n):
+    if re.search(NOT_TERRAIN, n):
+        return None
+    if re.search(r'GRAVEL|GRVL|SAND|TRAP|KIES', n):
+        return 'gravel'
+    if re.search(r'GRASS|TURF|LAWN', n):
+        return 'grass'
+    return None
+
+
+def terrain_kind(mt):
+    """'grass' / 'gravel' for opaque ground materials named so (AC naming: GRASS*, GRVL_*, SAND*, *TRAP*), else None.
+    ksGrass ground (Sepang 'grass ext') is alpha-tested in name only: its diffuse is opaque, so it counts too.  A
+    ksMultilayer with a meaningless name (COTA 'del_tarmac_a!7') is classified by its diffuse texture name."""
+    if mt.get('blend') == 1 or mt['shader'] in ('ksPerPixelAT', 'ksPerPixelAT_NM', 'ksTree'):
+        return None
+    if mt.get('alphaTested') or mt['shader'] == 'ksGrass':
+        dm = tex_mean(mt['tex'].get('txDiffuse', ''))
+        if dm is None or dm[3] < 250:
+            return None
+    if re.search(NOT_TERRAIN, mt['name'].upper()):
+        return None
+    kind = _terrain_word(mt['name'].upper())
+    tex_word = _terrain_word(os.path.basename(mt['tex'].get('txDiffuse', '')).upper())
+    # Name and diffuse disagree (Zandvoort GRASS_INNER3 = sand_base + trap_detail): follow the diffuse word only when no
+    # texture of the material shows the named kind and one shows the other (Sepang 'sand' on grass_brd keeps sand.dds).
+    if kind and tex_word and tex_word != kind and not _terrain_fit(mt, kind)[0] and _terrain_fit(mt, tex_word)[0]:
+        kind = tex_word
+    if kind is None and mt['shader'] == 'ksGrass':    # opaque ksGrass is ground (Albert Park 'mel_infield_b_01_d')
+        kind = _terrain_word(os.path.basename(mt['tex'].get('txDiffuse', '')).upper()) or 'grass'
+    if kind is None and mt['shader'] == 'ksMultilayer' and not re.search(r'ROAD|ASPH|TARMAC|PIT', mt.get('tex', {}).get('txDiffuse', '').upper()):
+        kind = _terrain_word(os.path.basename(mt['tex'].get('txDiffuse', '')).upper())
+    return kind
+
+
+def tex_mean(name):
+    """Straight mean RGBA of a kn5 texture (None when unknown/undecodable); strided samples, no premultiplied resize."""
+    if TEXDATA is None or name not in TEXDATA:
+        return None
+    if name not in _TEX_MEAN:
+        import io
+        from PIL import Image
+        try:
+            a = np.asarray(Image.open(io.BytesIO(TEXDATA[name])).convert('RGBA'))
+            step = max(1, max(a.shape[:2]) // 256)
+            _TEX_MEAN[name] = a[::step, ::step].reshape(-1, 4).astype(np.float64).mean(0)
+        except Exception:
+            _TEX_MEAN[name] = None
+    return _TEX_MEAN[name]
+
+
+def terrain_colour_ok(rgb, kind):
+    r, g, b = rgb[:3]
+    L = 0.299 * r + 0.587 * g + 0.114 * b
+    if kind == 'grass':
+        return 35 <= L <= 170 and g >= r and g >= b * 1.15    # Zandvoort trap_detail 145/136/121 is sand, not grass
+    return 45 <= L <= 180 and not (g > r * 1.12 and g > b * 1.3)
+
+
+def terrain_detail(mt):
+    """Detail texture to tile on a terrain material whose diffuse is an AC macro map of the wrong colour.  AC multiplies the
+    diffuse by txDetail (ksPerPixelMultiMap_NMDetail) or picks txDetailR/G/B/A by txMask (ksMultilayer); rz_basic shows only
+    the diffuse, so Magny-Cours GRVL_SANDTRAP (sand_base 227/222/206) painted the traps white and GRASS_FILLER (grass-b
+    239/241/227, then greyed as 'asphalt') lost its green.  The diffuse is kept when its own colour fits the kind."""
+    kind = terrain_kind(mt)
+    return _terrain_fit(mt, kind)[1] if kind else None
+
+
+def _terrain_fit(mt, kind):
+    """(some texture of mt shows `kind`, detail texture to use instead of the diffuse or None)."""
+    diff = mt['tex'].get('txDiffuse')
+    dm = tex_mean(diff) if diff else None
+    if dm is None or terrain_colour_ok(dm, kind):
+        return True, None
+    for slot in ('txDetail', 'txDetailR', 'txDetailG', 'txDetailB', 'txDetailA', 'txVariation'):
+        t = mt['tex'].get(slot)
+        if t and (AVAIL is None or t in AVAIL):
+            m = tex_mean(t)
+            if m is not None and terrain_colour_ok(m, kind):
+                return True, t
+    return False, None
+
+
+def fresnel_kind(mt):
     # ksMultilayer_fresnel ground: the diffuse is a macro colour map (satellite photo, colour-layer mask) stretched over
     # hundreds of metres; the real surface lives in txDetailR/G, so tile that instead (Magny-Cours)
     d = mt['tex'].get('txDetailR')
@@ -121,6 +220,15 @@ def detail_kind(mt):
     if n in ('EXTERIOR', 'GRASS_MAIN'):
         return 'grass'
     return None
+
+
+def detail_kind(mt):
+    """Kind whose metric tile size applies when the exported texture is a detail texture (None: the diffuse is used)."""
+    return fresnel_kind(mt) or (terrain_kind(mt) if terrain_detail(mt) else None)
+
+
+def detail_tex(mt):
+    return mt['tex']['txDetailR'] if fresnel_kind(mt) else terrain_detail(mt)
 
 
 def metric_uv_scale(P, uv, idx, tile):
@@ -147,8 +255,8 @@ def metric_uv_scale(P, uv, idx, tile):
 
 def tex_of(mt):
     if detail_kind(mt):
-        return mt['tex']['txDetailR']
-    if mt['shader'] == 'ksMultilayer' and (AVAIL is None or TARMAC_TILE in AVAIL):
+        return detail_tex(mt)
+    if mt['shader'] == 'ksMultilayer' and not terrain_kind(mt) and (AVAIL is None or TARMAC_TILE in AVAIL):
         return TARMAC_TILE
     ok = [t for t in mt['tex'].values() if AVAIL is None or t in AVAIL]
     return next((t for n, t in mt['tex'].items() if n in ('txDiffuse', 'txBase') and t in ok), None) or next(iter(ok), None)
@@ -817,9 +925,10 @@ def racing_line_zebra(W, pw, lo, hi, sh, max_rounds=40, verbose=True):
 # Racing-line strategy: 'fastest' (default, 21/10 logic), 'zebra' (23/10 kerb-to-kerb, optional: rejected after in-game test), 'late_apex'
 # (22/10 apex bias, est. lap +1.9 s on Bahrain) or 'oio' (out-in-out pinned to the inner kerb, est. lap +2.1 s on Bahrain,
 # rejected 22/10).  Opt in with --racing-line NAME.
-RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'fastest')
-# 'f1' (23/10, optional): the F1 2020 (Codemasters) AI racing line, already mapped into AIW coordinates (*_f1_in_aiw.csv: x,y,z).
+# 'f1' (23/10): the F1 2020 (Codemasters) AI racing line, already mapped into AIW coordinates (*_f1_in_aiw.csv: x,y,z).
 F1_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--f1-line'), None)
+# Default since 23/10: 'f1' whenever --f1-line is given, else 'fastest' (kept in sync with parse_args by main()).
+RACING_LINE = next((sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == '--racing-line'), 'f1' if F1_LINE else 'fastest')
 
 
 def load_f1_line(path):
@@ -1837,6 +1946,33 @@ def gui_dds(png, size, cover=False):
     return b.getvalue()
 
 
+def resize_straight(im, size):
+    """Box-filter an RGBA image with colour and alpha resampled independently.  Pillow's RGBA resize premultiplies, so texels
+    whose alpha is a mask near 0 (AC detail strength: Hungaroring 1988 RATL_MAINGRASS) came out black on every mip >= 1 and
+    the grass rendered black beyond a few metres."""
+    from PIL import Image
+    rgb = im.convert('RGB').resize(size, Image.BOX)
+    rgb.putalpha(im.getchannel('A').resize(size, Image.BOX))
+    return rgb
+
+
+def encode_chain(im, data, fmt):
+    """Full DXT mip chain of `im` (level 0 as is, lower levels straight box-filtered) under the header of `data`."""
+    import io, struct, math
+    w, h = im.size
+    need = int(math.log2(max(w, h))) + 1
+    out = bytearray(data[:128]); body = bytearray()
+    for lv in range(need):
+        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
+        lim = im if lv == 0 else resize_straight(im, (lw, lh))
+        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format=fmt)
+        body += b.getvalue()[128:]
+    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
+    struct.pack_into('<I', out, 28, need)
+    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
+    return bytes(out + body)
+
+
 def full_mips(data):
     """AMS2 samples the whole mip chain: DDS files with a truncated chain (Shanghai: 4096x1024 with 1 level) render as white
     block garbage.  Rebuild the missing levels (box-filtered) and re-encode them in the original DXT format."""
@@ -1849,18 +1985,7 @@ def full_mips(data):
     need = int(math.log2(max(w, h))) + 1
     if mips >= need or min(w, h) < 4:
         return data
-    fmt = data[84:88].decode()
-    im = Image.open(io.BytesIO(data)).convert('RGBA')
-    out = bytearray(data[:128]); body = bytearray()
-    for lv in range(need):
-        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
-        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
-        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format=fmt)
-        body += b.getvalue()[128:]
-    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
-    struct.pack_into('<I', out, 28, need)
-    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
-    return bytes(out + body)
+    return encode_chain(Image.open(io.BytesIO(data)).convert('RGBA'), data, data[84:88].decode())
 
 
 def tone_asphalt(data, target=75.0, keep_sat=0.3):
@@ -1878,20 +2003,19 @@ def tone_asphalt(data, target=75.0, keep_sat=0.3):
     g = (a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114)[..., None]
     a[..., :3] = (g + (a[..., :3] - g) * keep_sat) * (target / lum)
     im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), 'RGBA')
-    h, w = struct.unpack_from('<II', data, 12)
-    need = int(math.log2(max(w, h))) + 1
-    fmt = data[84:88].decode()
-    out = bytearray(data[:128]); body = bytearray()
-    for lv in range(need):
-        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
-        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
-        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format=fmt)
-        body += b.getvalue()[128:]
-    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
-    struct.pack_into('<I', out, 28, need)
-    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
     print('  asphalt texture lum %.0f -> %.0f' % (lum, target))
-    return bytes(out + body)
+    return encode_chain(im, data, data[84:88].decode())
+
+
+def terrain_texture(data, kind):
+    """Opaque terrain: AC keeps the detail strength in the diffuse/detail alpha (Hungaroring RATL_MAINGRASS: alpha 0,
+    Abu Dhabi gravel 0, Melbourne GRVL_MAIN 105); rz_basic is opaque, so force alpha 255 (colour untouched)."""
+    if data[:4] != b'DDS ' or data[84:88] not in (b'DXT1', b'DXT3', b'DXT5'):
+        return data
+    out = opaque_alpha(data)
+    if out is not data:
+        print('  %s texture alpha opaque' % kind)
+    return out
 
 
 def opaque_alpha(data):
@@ -1899,7 +2023,7 @@ def opaque_alpha(data):
     (Shanghai asphalt/runoff rendered white with dark smears), so force alpha to 255 on textures no material blends or tests."""
     import io, struct, math
     from PIL import Image
-    if data[:4] != b'DDS ' or data[84:88] != b'DXT5':
+    if data[:4] != b'DDS ' or data[84:88] not in (b'DXT1', b'DXT3', b'DXT5'):
         return data
     im = Image.open(io.BytesIO(data)).convert('RGBA')
     a = np.asarray(im).copy()
@@ -1907,19 +2031,8 @@ def opaque_alpha(data):
         return data
     a[..., 3] = 255
     im = Image.fromarray(a, 'RGBA')
-    h, w = struct.unpack_from('<II', data, 12)
-    need = int(math.log2(max(w, h))) + 1
-    out = bytearray(data[:128]); body = bytearray()
-    for lv in range(need):
-        lw, lh = max(w >> lv, 1), max(h >> lv, 1)
-        lim = im if lv == 0 else im.resize((lw, lh), Image.BOX)
-        b = io.BytesIO(); lim.save(b, 'DDS', pixel_format='DXT5')
-        body += b.getvalue()[128:]
-    struct.pack_into('<I', out, 8, struct.unpack_from('<I', out, 8)[0] | 0x20000)
-    struct.pack_into('<I', out, 28, need)
-    struct.pack_into('<I', out, 108, struct.unpack_from('<I', out, 108)[0] | 0x400008)
-    print('  alpha stripped', w, h)
-    return bytes(out + body)
+    print('  alpha stripped', *im.size)
+    return encode_chain(im, data, data[84:88].decode())
 
 
 def compact_vertices(idx):
@@ -1940,6 +2053,12 @@ def mesh_resource_name(name):
 
 def is_asphalt(mt):
     n = mt['name'].upper()
+    if terrain_kind(mt):
+        return False    # Magny-Cours GRASS_FILLER / Hungaroring SAND1 are pure ksMultilayer: toned to grey asphalt before
+    if mt['shader'] == 'ksMultilayer' and tex_of(mt) != TARMAC_TILE:
+        dm = tex_mean(tex_of(mt) or '')
+        if dm is not None and dm[1] > dm[0] * 1.05 and dm[1] > dm[2] * 1.15:
+            return False    # green ground map (Magny-Cours 1992 'Background' 76/90/67) is not asphalt
     return (detail_kind(mt) == 'road' or (mt['shader'] == 'ksMultilayer' and not n.startswith('KERB'))
             or n.startswith(('ROAD', 'TARMAC', 'ASPHALT', 'PITR', 'DROAD')) and 'KERB' not in n and 'LINE' not in n)
 
@@ -2257,28 +2376,37 @@ def parse_args(argv=None):
     parser.add_argument('--require-complete-ai', action='store_true', help='Require fast-lane extras and a usable pit branch')
     parser.add_argument('--ground-pits', action='store_true', help='Explicitly align AC_PIT Y to source asphalt floor +0.3m; reject ambiguous/missing floors')
     parser.add_argument('--street', action='store_true')
-    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio', 'f1'), default='fastest')
+    # Defaults since 23/10 = what the Bahrain package validated in game: --ai-width (rule f1, AI_DW_FLOOR), --ai-dry2,
+    # --ai-brake-physics; racing line 'f1' when --f1-line is given, else 'fastest'. --no-<flag> restores the old behaviour.
+    parser.add_argument('--racing-line', choices=('zebra', 'fastest', 'late_apex', 'oio', 'f1'), default=None,
+                        help="default: 'f1' with --f1-line, else 'fastest'")
     parser.add_argument('--f1-line', help="racing-line mode 'f1': F1 2020 AI line CSV (x,y,z) already in AIW coordinates")
-    parser.add_argument('--ai-width', action='store_true', help='wp_dwidth per side up to paved run-off (+AI_GRASS of grass, no gravel), WALL_CLEAR off walls, 1-12 m past the asphalt')
-    parser.add_argument('--ai-width-rule', choices=('reach', 'f1'), default='reach',
+    parser.add_argument('--ai-width', action=argparse.BooleanOptionalAction, default=True,
+                        help='(default on) wp_dwidth per side up to paved run-off (+AI_GRASS of grass, no gravel), WALL_CLEAR off walls, 1-12 m past the asphalt')
+    parser.add_argument('--ai-width-rule', choices=('reach', 'f1'), default='f1',
                         help="with --ai-width: 'reach' = ai_reach heuristic above; 'f1' = F1 2020 rule: dwidth up to the track limit "
                              "(F1 track_limit from --f1-limits, else AC asphalt+kerb), not past the AC kerb edge, at least AI_DW_FLOOR past the asphalt; "
                              "WALL_CLEAR always wins; never below wp_width")
     parser.add_argument('--f1-limits', help="--ai-width-rule f1: F1 2020 aispline limits CSV in AIW coordinates (f1_limits.py: <type>_x/_y/_z columns)")
-    parser.add_argument('--ai-dry2', action='store_true', help='emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones (hypothesis)')
-    parser.add_argument('--ai-brake-physics', action='store_true',
-                        help='racing line without corridor-clip kinks (spurious braking points) and dry2 braking zones from a '
+    parser.add_argument('--ai-dry2', action=argparse.BooleanOptionalAction, default=True,
+                        help='(default on) emit wp_dry2/timesDry2: second dry line 3 m inside in braking zones')
+    parser.add_argument('--ai-brake-physics', action=argparse.BooleanOptionalAction, default=True,
+                        help='(default on) racing line without corridor-clip kinks (spurious braking points) and dry2 braking zones from a '
                              'downforce speed model fitted on F1 2020 brake lines (fast corners/sequences = no braking zone)')
     parser.add_argument('--max-meshes', type=int)
     parser.add_argument('--skip-mesh')
     parser.add_argument('--dump-aiw')
     for name in ('name', 'short', 'location', 'country', 'city', 'variation', 'lat', 'lon', 'tz', 'turns', 'year', 'cw', 'group'):
         parser.add_argument('--' + name)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.racing_line is None: args.racing_line = 'f1' if args.f1_line else 'fastest'
+    return args
 
 
 def main():
+    global RACING_LINE, F1_LINE
     args = parse_args()
+    RACING_LINE, F1_LINE = args.racing_line, args.f1_line
     if args.racing_line == 'f1' and not args.f1_line:
         raise SystemExit("--racing-line f1 needs --f1-line <csv>")
     src, tid, out, sref, sx = args.src, args.tid, args.out, args.sref, args.sx
@@ -2319,8 +2447,9 @@ def main():
     if maxm:
         meshes.sort(key=lambda m: -len(m['idx'])); meshes = meshes[:maxm]
     used = sorted({m['mat'] for m in meshes})
-    global AVAIL
+    global AVAIL, TEXDATA
     AVAIL = set(k['textures'])
+    TEXDATA = k['textures']; _TEX_MEAN.clear()
     names = set()
     for i in used:
         mt = k['materials'][i]
@@ -2341,7 +2470,7 @@ def main():
         bm = bmt_encode(ET.fromstring(mtx))
         loose[nm + '.bmt'] = bm
         main_items.append(dict(name=TD + nm + '.bmt', data=bm))
-    texs = {}; road_tex = set(); alpha_tex = set(); multi_tex = set()
+    texs = {}; road_tex = set(); alpha_tex = set(); multi_tex = set(); terrain_tex = {}; ground_tex = set()
     for i in used:
         mt = k['materials'][i]
         tex = tex_of(mt)
@@ -2349,13 +2478,19 @@ def main():
             texs[mt['texname']] = k['textures'][tex]
             if mt['shader'].startswith('ksMultilayer'):
                 multi_tex.add(mt['texname'])
-            if mt['blend'] == 1 or mt['alphaTested'] or mt['shader'] in ('ksPerPixelAT', 'ksPerPixelAT_NM', 'ksTree', 'ksGrass'):
+            if (mt['blend'] == 1 or mt['alphaTested'] or mt['shader'] in ('ksPerPixelAT', 'ksPerPixelAT_NM', 'ksTree', 'ksGrass')) and not terrain_kind(mt):
                 alpha_tex.add(mt['texname'])
             if is_asphalt(mt):
                 road_tex.add(mt['texname'])
+            if terrain_kind(mt):
+                terrain_tex.setdefault(mt['texname'], terrain_kind(mt))
+            elif re.search(GROUND_RX, mt['name'].upper()) and not re.search(NOT_TERRAIN, mt['name'].upper()):
+                ground_tex.add(mt['texname'])
     for tn, data in sorted(texs.items()):
         data = full_mips(legacy_dds(data))
-        if tn not in alpha_tex and (tn in road_tex or tn in multi_tex or 'TRACKSURFACE' in tn or 'RUNOFF' in tn):
+        if tn in terrain_tex and tn not in alpha_tex and tn not in road_tex:
+            data = terrain_texture(data, terrain_tex[tn])
+        elif tn not in alpha_tex and (tn in road_tex or tn in multi_tex or tn in ground_tex or 'TRACKSURFACE' in tn or 'RUNOFF' in tn):
             data = opaque_alpha(data)
         if tn in road_tex:
             data = tone_asphalt(data)

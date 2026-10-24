@@ -175,3 +175,14 @@ O [CLI oficial do AMS2CM 0.3.0](https://github.com/OpenSimTools/AMS2CM/blob/v0.3
 - Texturas cujo nome começa com dígito ganham prefixo `T` (AMS2 descarta recursos assim; 49 das de Shanghai).
 - Linha da IA: a otimização penaliza a curvatura na aproximação e na 1ª metade da curva (`entry_mask`) para o ápice ficar mais tarde (média ~0,55 em vez de 0,45), aceitando até 1,5% de volta estimada mais lenta.
 - Duplicatas das pistas DLC: o mod `Pistas DLC liberadas` instalava `jerez_1988` etc. em minúsculas e o `tracklist.lst` do jogo já lista `Jerez_1988`; o mod agora usa a caixa oficial.
+
+## Padrões da IA e terreno (23/10)
+- Ligados por padrão no `convert.py`: `--ai-brake-physics`, `--ai-width` (regra `f1`, piso de 1 m por lado) e `--ai-dry2`; desligue com `--no-ai-brake-physics`, `--no-ai-width`, `--no-ai-dry2`. `--racing-line` padrão = `fastest` (`f1` quando há `--f1-line`). Linha de chuva inalterada. No manifesto do lote, `false` vira `--no-…`.
+- Terreno (grama preta no Hungaroring 1988, brita meio branca em Magny-Cours): o rz_basic só lê um difuso, e o AC monta a cor de grama/brita no shader. Três causas, corrigidas de forma geral:
+  1. Mips refeitos pelo Pillow com alfa pré-multiplicado: difuso com alfa 0 (máscara de detalhe do AC, `RATL_MAINGRASS`) ficava preto em todo mip >= 1. Agora `resize_straight` redimensiona RGB e alfa separados (vale para todas as texturas: também escurecia árvores, faixas e transições).
+  2. Difuso "macro" do AC (claro/cinza, ex. `sand_base` 222, `grass-b` 240, `grass.dds` 208): `terrain_kind` reconhece grama/brita pelo nome (material, depois textura; nunca kerb/muro/linha/árvore nem materiais com blend/alpha-test translúcido) e `terrain_detail` troca pelo primeiro de `txDetail`, `txDetailR/G/B/A`, `txVariation` cuja cor combine (grama verde, brita não verde). Difuso que já combina é mantido. Terreno não é mais tonalizado como asfalto, e a textura de terreno vira alfa opaco.
+  3. Especular: `ksSpecular` do AC é mascarado pelo R de `txMaps`; agora multiplica pela média desse canal e fica limitado a 0,2 (grama da Sochi). Magny-Cours 2026 `GRVL_01` ia com 1,0.
+  4. Nome e textura em conflito (Zandvoort `GRASS_INNER3` = `sand_base` + `trap_detail`): vale a palavra do difuso só quando nenhuma textura mostra o tipo do nome e alguma mostra o outro (Sepang `sand` sobre `grass_brd` continua `sand.dds`).
+  5. Concreto opaco (`GROUND_RX`: CONC/PITFLOOR/EDGESTRIP/SIDEWALK/PAVE em ksPerPixel sem blend): alfa opaco como asfalto/runoff (Sepang `conc_smooth_grey_light` 253 mil m² com alfa 77, `pitfloor` com alfa 17).
+- Auditoria: `terrain_audit.py <saída>` lista, por malha visual, classe, textura, cor, alfa, mip e especular, e marca as anomalias. Teste de regressão: `tests_terrain.py`.
+- Phoenix 1991 `grass2` usa `roadad.dds` (cinza) já no original do AC; foi mantido.
