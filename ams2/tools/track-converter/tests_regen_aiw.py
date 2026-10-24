@@ -229,6 +229,96 @@ class CreateDry2Tests(unittest.TestCase):
         self.assertGreaterEqual(d['dense_asphalt_clearance_min'], R.DENSE_MIN)
 
 
+class KeepOriginalTests(unittest.TestCase):
+    """keep_original mode: the original line is never pushed off an edge it already uses (no clip/bump kink)."""
+    @classmethod
+    def setUpClass(cls):
+        cls.text, _, _ = track_fixture(bump=True)
+        cls.S = ellipse_surfaces()
+        cls.new, cls.rep, cls.lines = R.regen(cls.text, cls.S, keep_original=True, log=lambda *a: None)
+
+    def test_keep_corridor_relaxes_to_floor_then_holds(self):
+        lo, hi = np.full(4, -5.8), np.full(4, 5.8)
+        lo1, hi1 = np.full(4, -6.0), np.full(4, 6.0)
+        ref = np.array([0.0, 5.9, 6.5, -6.2])
+        l, h, keep, rel = R.keep_corridor(lo, hi, lo1, hi1, ref)
+        self.assertEqual(list(keep), [False, False, True, True])
+        self.assertEqual(list(rel), [False, True, False, False])
+        self.assertAlmostEqual(h[1], 5.9); self.assertAlmostEqual(l[1], -5.8)     # local margin = the original's (1.1 m)
+        self.assertEqual((l[2], h[2]), (6.5, 6.5)); self.assertEqual((l[3], h[3]), (-6.2, -6.2))
+        self.assertTrue(l[0] == -5.8 and h[0] == 5.8)                 # untouched where the original is inside
+
+    def test_bump_kept_on_original_and_counted(self):
+        blocks = R.split_aiw(self.new)[2][:120]
+        path = np.array([R.field(b, 'wp_path')[0] for b in blocks])
+        np.testing.assert_array_equal(path[58:65], 6.5)
+        self.assertGreaterEqual(self.rep['wps_kept_original'], 7)
+        self.assertEqual(self.rep['corridor_mode'], 'keep_original')
+        cb, ca = self.rep['curvature_before'], self.rep['curvature_after']
+        for k in ('k_max', 'kink_max'):
+            self.assertLessEqual(ca[k], cb[k] * (1 + R.CURV_TOL) + 1e-4)
+
+    def test_dense_exemption_only_on_identical_chords(self):
+        with self.assertRaises(ValueError):                           # the kept stretch is 0.5 m from the asphalt edge
+            R.dense_check(self.lines['L'], self.S['road'], self.S['limits'])
+        d = R.dense_check(self.lines['L'], self.S['road'], self.S['limits'], exempt=self.lines['exempt'])
+        self.assertGreaterEqual(d['dense_asphalt_clearance_min'], R.DENSE_MIN)
+        self.assertAlmostEqual(d['exempt_clearance_min'], 0.5, places=2)       # = the original's clearance
+        ex = self.lines['exempt']
+        self.assertTrue(ex[58:64].all())
+        R.dense_check(self.lines['L2'], self.S['road'], self.S['limits'], exempt=self.lines['exempt2'])
+        ids = set(int(i) for i in R.topology(R.split_aiw(self.text)[2])[0])
+        self.assertEqual(R.text_diff(self.text, self.new, ids, True)[0], [])
+
+
+class SourcePakTests(unittest.TestCase):
+    def test_orig_preferred_and_backup_sha_checked(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d); tr = d / 'Pakfiles' / 'TRACKS'; tr.mkdir(parents=True)
+            (tr / 'T_Physics.bff').write_bytes(b'modified')
+            saved = R.KNOWN_BACKUPS
+            try:
+                R.KNOWN_BACKUPS = (d / 'bk' / '{t}',)
+                self.assertEqual(R.source_pak(d, 'T')[0].name, 'T_Physics.bff')            # no .orig: the game pak
+                (tr / 'T_Physics.bff.orig').write_bytes(b'original')
+                src, s = R.source_pak(d, 'T')
+                self.assertEqual(src.name, 'T_Physics.bff.orig')
+                bk = d / 'bk' / 'T'; bk.mkdir(parents=True)
+                (bk / 'T_Physics.bff.sha256').write_text('%s  T_Physics.bff\n' % s, encoding='ascii')
+                (bk / 'T_Physics.bff').write_bytes(b'original')
+                self.assertEqual(R.source_pak(d, 'T')[1], s)
+                (bk / 'T_Physics.bff').write_bytes(b'other')
+                with self.assertRaises(ValueError):
+                    R.source_pak(d, 'T')
+                (bk / 'T_Physics.bff').write_bytes(b'original')
+                (tr / 'T_Physics.bff.orig').unlink()                                     # modified pak, backup says otherwise
+                with self.assertRaises(ValueError):
+                    R.source_pak(d, 'T')
+            finally:
+                R.KNOWN_BACKUPS = saved
+
+
+class TimesSentinelTests(unittest.TestCase):
+    def test_flt_max_sentinel_not_scaled(self):
+        text, _, _ = track_fixture(bump=True)
+        fmax = '340282346638528859811704183484516925440.0000'
+        text = text.replace('times=(100.000,105.000)', 'times=(100.000,%s)' % fmax)
+        new, rep, _ = R.regen(text, ellipse_surfaces(), log=lambda *a: None)
+        hdr = R.split_aiw(new)[1]
+        self.assertIn(',%s) // t' % fmax, hdr)
+        self.assertNotIn('times=(100.000,', hdr)                     # the real time is still scaled
+
+    def test_created_timesdry2_keeps_sentinel(self):
+        text, _, _ = track_fixture(bump=True, dry2=False)
+        fmax = '340282346638528859811704183484516925440.0000'
+        text = text.replace('times=(100.000,105.000)', 'times=(%s,%s)' % (fmax, fmax))
+        new, rep, _ = R.regen(text, ellipse_surfaces(), log=lambda *a: None)
+        hdr = R.split_aiw(new)[1]
+        self.assertIn('times=(%s,%s) // t\r\ntimesDry2=(%s)\r\n' % (fmax, fmax, fmax), hdr)
+
+
 class SummaryTests(unittest.TestCase):
     def test_summary_row_min_clearance_and_refused(self):
         r = dict(track='X', accepted=False, failures=['3 est lap'], dense_line={'dense_asphalt_clearance_min': 1.2},

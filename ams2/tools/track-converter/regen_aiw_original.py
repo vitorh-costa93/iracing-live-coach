@@ -8,7 +8,9 @@ python -I regen_aiw_original.py batch <out_dir> <Track> [<Track> ...]   (stage e
 The game folder is only read.  stage writes
   <out_dir>\\<Track>\\Pakfiles\\Tracks\\<Track>_Physics.bff   (only the AIW entry differs, see bff_write.patch_official)
   <out_dir>\\<Track>\\<Track>.aiw, <out_dir>\\<Track>\\report.json, <out_dir>\\<Track>\\backup\\<Track>_Physics.bff (+ .sha256)
-and refuses (exit 1, nothing but report.json written) when an acceptance check fails.
+and refuses (exit 1, nothing but report.json written) when an acceptance check fails.  The input (and the backup) is the
+TRUE original: <Track>_Physics.bff.orig when it exists (an installed regen replaced the game pak), else the game pak;
+refused when an earlier original backup (KNOWN_BACKUPS) has another sha256.
 
 Same line logic as the converted Bahrain (convert.build_aiw with --ai-brake-physics --ai-dry2 --ai-width-rule f1), with the
 original wp_path as the reference line instead of the AC/F1 line:
@@ -18,7 +20,12 @@ original wp_path as the reference line instead of the AC/F1 line:
               pinned_polish (polish re-optimised with waypoints pinned wherever it would turn tighter than the original
               nearby or kink more than the original's worst kink); every candidate passes curvature_guard and the fastest
               one within criterion 4 wins.  A track refused ONLY by criterion 3 at 1.2 m is retried at 1.0 m (margin_used /
-              margin_attempts in report.json; --no-margin-fallback disables it);
+              margin_attempts in report.json; --no-margin-fallback disables it).  If the clear corridor still fails only
+              criteria 2/3/4 (kinks: corridor_fit pushes the original off a kerb it uses, e.g. Spa 1993 wp 310 kink 0.089
+              vs 0.0115), the same margins are retried in keep_original mode (keep_corridor): the corridor bound moves out
+              to the original where it is closer to the edge (local margin >= MARGIN_FLOOR 1.0 m), below that the
+              waypoint is held on the ORIGINAL wp_path (wps_kept_original), so the base IS the original line;
+              (--no-margin-fallback disables both retries);
   pit ramp  = original line pinned +-PIN wps around the pit fork/join, raised-cosine blend to the new line over RAMP wps;
   dry2      = convert.secondary_line(physics=True); regenerated where the original has wp_dry2, CREATED where it has none
               (line right after wp_path, timesDry2 right after times, as on the 56 originals that have it);
@@ -34,6 +41,11 @@ DECISIONS (documented in report.json too):
     have dry2 the pit wps carry wp_dry2=(0.0000), i.e. presumably the game default for a missing field [H]).
   - times / timesDry2 are scaled by est_laptime(new) / est_laptime(original), keeping Reiza's calibration; a created
     timesDry2 = new times[0] * max(est dry2 / est dry, 1) (build_aiw: max(est dry2, est dry)).
+  - keep_original, criterion 2: a chord whose two serialized ends equal the original's (wp_path, or wp_dry2 / the original
+    line when dry2 is created) IS the original's chord, so its clearance is the original's and may be < 1 m (Reiza's line
+    on the kerb); every other chord still needs >= 1 m asphalt + GCL 1.  report: dense_*.exempt_chords / exempt_samples /
+    exempt_clearance_min (-1 = sample off asphalt id 0, i.e. on the kerb, as the original).  A chord that cannot reach
+    1 m next to a held waypoint holds its other end too.
 """
 import argparse
 import hashlib
@@ -65,6 +77,7 @@ PIN, RAMP = 3, 15                # waypoints pinned to the original line / blend
 GROOVE_MOVE = 0.05
 POLISH = (100.0, 10.0, 3.0)  # lap_time_polish continuation (stops before the kink-prone mu 0.1)
 DENSE_MIN, DENSE_TARGET = 1.0, 1.08  # criterion 2 limit / bound-tightening target between waypoints
+MARGIN_FLOOR = 1.0               # keep_original: the local margin follows the original line down to this, never below
 GUARD_WIN, GUARD_PIN, GUARD_RAMP = 5, 2, 12   # curvature guard: local original max over +-5 wps; held/blend widths
 PIN_HALF, POLISH_REFINE = 3, (10.0, 3.0)   # pinned polish: half window pinned per violation, re-optimisation schedule
 CURV_TOL = 0.05                  # criterion 4: new max |k| and max kink <= original * (1 + CURV_TOL) + 1e-4 1/m
@@ -180,10 +193,34 @@ def refusal(name, text, pak_uids, tid):
 
 
 # ---------------------------------------------------------------- pak access
-def open_track(game, track):
+RESEARCH = Path(r'D:\_ffds_temp\ams2_ai_research')
+# earlier backups of the TRUE original pak (stage 1/2 outputs); the input must match them when present
+KNOWN_BACKUPS = (RESEARCH / 'batch_1993' / '{t}' / 'backup', RESEARCH / 'stage_aiw' / '{t}' / 'backup', RESEARCH / 'backup_aiw' / '{t}')
+
+
+def source_pak(game, track):
+    """The TRUE original physics pak: <Track>_Physics.bff.orig when it exists (the game pak was replaced by an installed
+    regen), else the game pak.  Refused if an earlier backup of the original (KNOWN_BACKUPS) has a different sha256."""
     pak = Path(game) / 'Pakfiles' / 'TRACKS' / (track + '_Physics.bff')
-    if not pak.exists():
+    orig = pak.with_name(pak.name + '.orig')
+    src = orig if orig.exists() else pak
+    if not src.exists():
         raise ValueError('No official pak %s' % pak)
+    s = sha256(src)
+    for d in KNOWN_BACKUPS:
+        d = Path(str(d).format(t=track))
+        for f in sorted(d.glob(track + '_Physics.bff.sha256')) if d.is_dir() else []:
+            ref = f.read_text(encoding='ascii').split()[0]
+            if ref != s:
+                raise ValueError('source %s sha256 %s differs from the original backup %s (%s)' % (src.name, s[:12], f, ref[:12]))
+        for f in sorted(d.glob(track + '_Physics.bff')) if d.is_dir() else []:
+            if sha256(f) != s:
+                raise ValueError('source %s differs from the original backup %s' % (src.name, f))
+    return src, s
+
+
+def open_track(game, track):
+    pak, _ = source_pak(game, track)
     b = Bff(str(pak))
     if not b.key_index:
         raise ValueError('%s is not an official (encrypted) pak' % pak.name)
@@ -391,12 +428,15 @@ def text_diff(old, new, main_ids, has_dry2=True):
 
 
 # ---------------------------------------------------------------- regeneration
-def segment_shortfall(line, S, lo, hi, path, perp):
+def segment_shortfall(line, S, lo, hi, path, perp, skip=None, held=None, ref=None):
     """Sample every chord of the serialized closed line at < 1 m (as dense_clearance) and, where the asphalt clearance is
     below DENSE_TARGET or the point leaves GCL flag 1, move the bound on that side at both chord ends past the current
-    offset (in place).  Returns the number of tightened bounds."""
+    offset (in place).  keep_original: chords flagged in `skip` (identical to the original's) are not checked, and a short
+    chord with an end `held` on the original `ref` holds its other end too (in place).  Returns the number of changed bounds."""
     n, count = len(line), 0
     for i in range(n):
+        if skip is not None and skip[i]:
+            continue
         a, b = line[i], line[(i + 1) % n]
         t = b - a; t[1] = 0; ln = np.linalg.norm(t)
         sp = np.array([t[2], 0, -t[0]]) / ln
@@ -409,13 +449,30 @@ def segment_shortfall(line, S, lo, hi, path, perp):
                 l, h = iv[0]
                 if -l < DENSE_TARGET: need[0] = max(need[0], DENSE_TARGET + l)
                 if h < DENSE_TARGET: need[1] = max(need[1], DENSE_TARGET - h)
+            elif held is not None:
+                # keep_original only (the clear corridor never gets here): the sample is off asphalt id 0, e.g. on the
+                # kerb next to a held original waypoint -> push toward the nearest asphalt interval
+                ra = S['road'].intervals(q, sp)
+                if ra:
+                    l, h = min(ra, key=lambda x: min(abs(x[0]), abs(x[1])))
+                    if l > 0: need[0] = max(need[0], l + DENSE_TARGET)
+                    else: need[1] = max(need[1], -h + DENSE_TARGET)
+                else:
+                    need[0] = max(need[0], DENSE_TARGET)
             if not any(l <= 0 <= h for l, h in gl) and gl:
                 l, h = min(gl, key=lambda x: min(abs(x[0]), abs(x[1])))
                 if l > 0: need[0] = max(need[0], l + 0.1)
                 else: need[1] = max(need[1], -h + 0.1)
         sgn = 1.0 if np.dot(sp, perp[i]) >= 0 else -1.0      # chord perp vs wp_perp orientation
         if sgn < 0: need = need[::-1]
-        for k in (i, (i + 1) % n):
+        ends = (i, (i + 1) % n)
+        if held is not None and any(held[k] for k in ends) and max(need) > 1e-6:
+            # one end is held on the original: moving the other cannot clear the chord -> hold it on the original too
+            for k in ends:
+                if not held[k]:
+                    lo[k] = hi[k] = ref[k]; held[k] = True; count += 1
+            continue
+        for k in ends:
             if need[0] > 1e-6:
                 lo[k] = max(lo[k], path[k] + need[0] + 0.02); count += 1
             if need[1] > 1e-6:
@@ -478,7 +535,60 @@ def ramp_weights(n, junctions, pin=PIN, ramp=RAMP):
     return w
 
 
-def regen(text, S, margin=1.2, max_shift=None, log=print):
+def corridor_bounds(S, P, perp, width, ref, wall, margin):
+    edges = np.array([safe_corridor(S['road'], S['limits'], p, pp, w, d, margin) for p, pp, w, d in zip(P, perp, width, ref)])
+    lo = np.maximum(edges[:, 0] + margin, -(wall[:, 0] - cv.WALL_CLEAR))
+    hi = np.minimum(edges[:, 1] - margin, wall[:, 1] - cv.WALL_CLEAR)
+    return lo, hi, edges
+
+
+def keep_corridor(lo, hi, lo1, hi1, ref):
+    """keep_original mode: where the original line `ref` is closer to an edge than the corridor allows, that bound moves out
+    to the original (local margin = the original's, never below the MARGIN_FLOOR corridor lo1/hi1); where even that is not
+    enough the waypoint is held on the original (lo = hi = ref).  Returns (lo, hi, kept mask, relaxed mask)."""
+    lo_r = np.where(ref < lo, np.maximum(ref, np.minimum(lo1, lo)), lo)
+    hi_r = np.where(ref > hi, np.minimum(ref, np.maximum(hi1, hi)), hi)
+    keep = (ref < lo_r - 1e-9) | (ref > hi_r + 1e-9)
+    relaxed = ((lo_r < lo - 1e-9) | (hi_r > hi + 1e-9)) & ~keep
+    lo_r, hi_r = lo_r.copy(), hi_r.copy()
+    lo_r[keep] = hi_r[keep] = ref[keep]
+    return lo_r, hi_r, keep, relaxed
+
+
+def same_chords(path, ref):
+    """chord i (wp i -> i+1) is byte-identical to the original's when both serialized ends equal the original offset."""
+    eq = np.abs(path - ref) < 1e-6
+    return eq & np.roll(eq, -1)
+
+
+def dense_check(line, road, limits, minimum=DENSE_MIN, exempt=None):
+    """repair_aiw.dense_clearance (samples < 1 m apart on every chord) except that chords flagged in `exempt` (kept identical
+    to the original's chord, keep_original mode) may be below `minimum`: there the clearance IS the original's.  Exempt
+    samples are counted and their minimum reported."""
+    if exempt is None or not exempt.any():
+        return dense_clearance(line, road, limits, minimum=minimum)
+    count, smallest, ex, ex_min = 0, float('inf'), 0, float('inf')
+    for i, (a, b) in enumerate(zip(line, np.roll(line, -1, axis=0))):
+        tangent = b - a; tangent[1] = 0; length = np.linalg.norm(tangent)
+        if length < .01:
+            raise ValueError('Duplicate repaired racing-line waypoint')
+        perp = np.array([tangent[2], 0, -tangent[0]]) / length
+        for fraction in np.linspace(0, 1, int(np.ceil(np.linalg.norm(b - a))) + 1, endpoint=False):
+            point = a * (1 - fraction) + b * fraction
+            clearance = max((min(-lo, hi) for lo, hi in road.intervals(point, perp) if lo <= 0 <= hi), default=-1)
+            bad = clearance < minimum or not any(lo <= 0 <= hi for lo, hi in limits.intervals(point, perp))
+            if exempt[i]:
+                ex += 1; ex_min = min(ex_min, clearance)
+            elif bad:
+                raise ValueError('Unsafe repaired segment %d at %.3f: asphalt clearance %.3fm' % (i, fraction, clearance))
+            else:
+                smallest = min(smallest, clearance)
+            count += 1
+    return dict(dense_samples=count, dense_asphalt_clearance_min=smallest, exempt_chords=int(exempt.sum()),
+                exempt_samples=ex, exempt_clearance_min=ex_min)
+
+
+def regen(text, S, margin=1.2, max_shift=None, keep_original=False, log=print):
     if not np.isfinite(margin) or margin < 1.0:
         raise ValueError('Asphalt margin must be finite and at least 1 m')
     prefix, header, blocks = split_aiw(text)
@@ -496,15 +606,22 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
     if not np.allclose(np.linalg.norm(perp, axis=1), 1, atol=.01):
         raise ValueError('wp_perp is not unit length')
     # corridor (offsets from wp_pos along wp_perp)
-    edges = np.array([safe_corridor(S['road'], S['limits'], p, pp, w, d, margin) for p, pp, w, d in zip(P, perp, width, old)])
     wall = np.array([S['walls'].free(p, pp) for p, pp in zip(P, perp)])
-    lo = np.maximum(edges[:, 0] + margin, -(wall[:, 0] - cv.WALL_CLEAR))
-    hi = np.minimum(edges[:, 1] - margin, wall[:, 1] - cv.WALL_CLEAR)
+    lo, hi, edges = corridor_bounds(S, P, perp, width, old, wall, margin)
+    old_out = np.maximum(lo - old, old - hi)
+    keep = relaxed = np.zeros(n, bool)
+    lo2 = hi2 = None
+    if keep_original:
+        # the original line is the base: never pushed off a kerb it already uses (that clip/bump made the kinks), see
+        # keep_corridor; dry2 gets the same treatment against its own original (or the original line when created)
+        lo1, hi1, _ = corridor_bounds(S, P, perp, width, old, wall, MARGIN_FLOOR) if margin > MARGIN_FLOOR else (lo, hi, None)
+        ref2 = old2 if has_dry2 else old
+        lo2, hi2, keep2, _ = keep_corridor(lo, hi, lo1, hi1, ref2)
+        lo, hi, keep, relaxed = keep_corridor(lo, hi, lo1, hi1, old)
     if max_shift is not None:
         c = np.clip(old, lo, hi); lo, hi = np.maximum(lo, c - max_shift), np.minimum(hi, c + max_shift)
     if np.any(lo > hi):
         raise ValueError('Infeasible AI corridor at %d waypoints (asphalt/GCL/wall)' % int((lo > hi).sum()))
-    old_out = np.maximum(lo - old, old - hi)
     log('  corridor: original line outside the %.1f m corridor at %d wps (max %.2f m); wall-limited wps %d' %
         (margin, int((old_out > 1e-4).sum()), max(old_out.max(), 0), int(((wall - cv.WALL_CLEAR) < np.c_[-edges[:, 0], edges[:, 1]] - margin).any(1).sum())))
     wr = ramp_weights(n, forks)
@@ -515,8 +632,10 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
     kink_cap = curv_old['kink_max'] * (1 + CURV_TOL) + 1e-4
     path = path2 = None
     picked = None
-    lo2, hi2 = lo.copy(), hi.copy()
-    for it in range(6):
+    if lo2 is None:
+        lo2, hi2 = lo.copy(), hi.copy()
+    ref2 = (old2 if has_dry2 else old) if keep_original else None
+    for it in range(12 if keep_original else 6):
         # candidates: corridor-fitted original, convert 'fastest' (Bahrain logic), lap-time polish of the fitted original;
         # the fastest one that keeps max curvature/kinks within the criterion-4 tolerance wins
         base = cv.corridor_fit(lo, hi, old)
@@ -543,12 +662,22 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
         b2 = np.clip(old2, lo2, hi2) if has_dry2 else np.clip(path, lo2, hi2)     # pit ramp: original dry2 / the new line
         path2 = np.round(np.clip(b2 + wr * (d2 - b2), lo2, hi2), 4)
         # serialized line between waypoints: tighten the corridor where a chord gets closer than 1 m to the asphalt edge
-        bad = segment_shortfall(P + path[:, None] * perp, S, lo, hi, path, perp)
-        bad2 = segment_shortfall(P + path2[:, None] * perp, S, lo2, hi2, path2, perp)
+        if keep_original:
+            bad = segment_shortfall(P + path[:, None] * perp, S, lo, hi, path, perp, skip=same_chords(path, old), held=keep, ref=old)
+            bad2 = segment_shortfall(P + path2[:, None] * perp, S, lo2, hi2, path2, perp, skip=same_chords(path2, ref2),
+                                     held=keep2, ref=ref2)
+        else:
+            bad = segment_shortfall(P + path[:, None] * perp, S, lo, hi, path, perp)
+            bad2 = segment_shortfall(P + path2[:, None] * perp, S, lo2, hi2, path2, perp)
         if not bad and not bad2:
             break
         log('  dense clearance: tightened %d (line) + %d (dry2) waypoint bounds, round %d' % (bad, bad2, it + 1))
-        if np.any(lo > hi) or np.any(lo2 > hi2):
+        if keep_original:
+            # a bound that cannot reach 1 m at all: hold that waypoint on the original
+            for a, b_, r, h in ((lo, hi, old, keep), (lo2, hi2, ref2, keep2)):
+                x = a > b_
+                a[x] = b_[x] = r[x]; h |= x
+        elif np.any(lo > hi) or np.any(lo2 > hi2):
             raise ValueError('Infeasible AI corridor after dense-clearance tightening')
     if np.any(path < lo - 1e-4) or np.any(path > hi + 1e-4):
         raise ValueError('Serialized racing line violates the corridor')
@@ -597,7 +726,8 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
         if not m:
             return h
         toks = m.group(1).split(',')
-        return h[:m.start(1)] + ','.join(fmt_like(t, float(t) * r) for t in toks) + h[m.end(1):]
+        # FLT_MAX (3.4028e38) is Reiza's "no time" sentinel in the second slot: never scaled
+        return h[:m.start(1)] + ','.join(t if abs(float(t)) >= 1e30 else fmt_like(t, float(t) * r) for t in toks) + h[m.end(1):]
     header2 = scale_header(header, 'times', ratio)
     t2_old = cv.est_laptime(P + old2[:, None] * perp) if has_dry2 else None
     t2_new = cv.est_laptime(P + path2[:, None] * perp)
@@ -605,8 +735,11 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
         header2 = scale_header(header2, 'timesDry2', t2_new / t2_old)
     elif not has_tdry2:
         # build_aiw: timesDry2 = max(est dry2, est dry) -> here the new dry time times that ratio (one value, right after times)
-        t0 = float(re.search(r'(?m)^times=' + VAL, header2).group(1).split(',')[0])
-        header2 = insert_after(header2, 'times', 'timesDry2=(%.4f)' % (t0 * max(t2_new / t_new, 1.0)), '')
+        tok0 = re.search(r'(?m)^times=' + VAL, header2).group(1).split(',')[0]
+        t0 = float(tok0)
+        # times[0] = FLT_MAX sentinel ("no time"): timesDry2 is the same sentinel, never scaled past float32 max
+        header2 = insert_after(header2, 'times', 'timesDry2=(%s)' % (tok0.strip() if abs(t0) >= 1e30 else
+                                                                  '%.4f' % (t0 * max(t2_new / t_new, 1.0))), '')
     new_text = prefix + '[Waypoint]' + header2 + ''.join(out)
     # corner markers: report only
     cty, cst = cv.corner_marks(L)
@@ -630,7 +763,15 @@ def regen(text, S, margin=1.2, max_shift=None, log=print):
                curvature_before=curvature_stats(L_old), curvature_after=curvature_stats(L))
     rep['dry2_changed_wps'] = int((np.abs(path2 - old2) > 1e-4).sum()) if has_dry2 else n
     rep['dry2_max_offset_from_line'] = float(np.abs(path2 - path).max())
-    return new_text, rep, dict(L=L, L2=P + path2[:, None] * perp)
+    rep['corridor_mode'] = 'keep_original' if keep_original else 'clear'
+    if keep_original:
+        rep['wps_kept_original'] = int(keep.sum())                 # held on the original wp_path (lo = hi = original)
+        rep['wps_margin_relaxed'] = int(relaxed.sum())             # local margin = the original's (>= MARGIN_FLOOR)
+        rep['wps_equal_original'] = int((shift < 1e-6).sum())
+        rep['dry2_wps_kept_original'] = int(keep2.sum())
+    ex = same_chords(path, old) if keep_original else None
+    ex2 = same_chords(path2, ref2) if keep_original else None
+    return new_text, rep, dict(L=L, L2=P + path2[:, None] * perp, exempt=ex, exempt2=ex2)
 
 
 def accept(old_text, new_text, rep, lines, S):
@@ -639,11 +780,11 @@ def accept(old_text, new_text, rep, lines, S):
     errs, changed = text_diff(old_text, new_text, set(rep['main_ids']), True)
     rep['text_diff'] = dict(errors=errs[:20], changed_lines=changed)
     if errs: fail.append('1 text diff: ' + '; '.join(errs[:5]))
-    for key, L in (('line', lines['L']), ('dry2', lines['L2'])):
+    for key, L, ex in (('line', lines['L'], lines.get('exempt')), ('dry2', lines['L2'], lines.get('exempt2'))):
         if L is None:
             continue
         try:
-            rep['dense_' + key] = dense_clearance(L, S['road'], S['limits'], minimum=1.0)
+            rep['dense_' + key] = dense_check(L, S['road'], S['limits'], minimum=DENSE_MIN, exempt=ex)
         except ValueError as e:
             fail.append('2 dense clearance (%s): %s' % (key, e))
     if not rep['lap_est_after'] <= rep['lap_est_before'] + 1e-9:
@@ -691,23 +832,34 @@ def stage(game, track, out_dir, margin=1.2, max_shift=None, fallback=True, log=p
     if why:
         return done(False, ['refused: ' + why])
     S = surfaces(b, E, tid)
-    margins = [margin] + ([MARGIN_FALLBACK] if fallback and margin > MARGIN_FALLBACK else [])
+    # attempts: clear corridor at `margin`; at MARGIN_FALLBACK only if that fails ONLY criterion 3; keep_original mode (same
+    # margin order and rule) only if the clear corridor fails criteria 2/3/4 only (or is infeasible)
+    small = fallback and margin > MARGIN_FALLBACK
     tried = []
-    for m in margins:
-        try:
-            new_text, r, lines = regen(text, S, m, max_shift, log=log)
-        except ValueError as e:
-            tried.append(dict(margin=m, failures=['regen: %s' % e]))
+    for keep in ((False, True) if fallback else (False,)):
+        for m in [margin] + ([MARGIN_FALLBACK] if small else []):
+            try:
+                new_text, r, lines = regen(text, S, m, max_shift, keep_original=keep, log=log)
+            except ValueError as e:
+                fail = ['regen: %s' % e]
+                tried.append(dict(margin=m, keep_original=keep, failures=fail))
+                break
+            rep.update(r)
+            for k in ('wps_kept_original', 'wps_margin_relaxed', 'wps_equal_original', 'dry2_wps_kept_original'):
+                if not keep: rep.pop(k, None)
+            fail = accept(text, new_text, rep, lines, S)
+            tried.append(dict(margin=m, keep_original=keep, failures=fail, lap_est_after=r['lap_est_after']))
+            if not fail or not all(f.startswith('3 ') for f in fail):
+                break
+            if m == margin and small:
+                log('  margin %.1f m fails only criterion 3 (%s) -> retry with %.1f m' % (m, fail[0], MARGIN_FALLBACK))
+        if not fail or not all(f[:2] in ('2 ', '3 ', '4 ') or f.startswith('regen: Infeasible') for f in fail):
             break
-        rep.update(r)
-        fail = accept(text, new_text, rep, lines, S)
-        tried.append(dict(margin=m, failures=fail, lap_est_after=r['lap_est_after']))
-        if not fail or not all(f.startswith('3 ') for f in fail):
-            break
-        if m != margins[-1]:
-            log('  margin %.1f m fails only criterion 3 (%s) -> retry with %.1f m' % (m, fail[0], MARGIN_FALLBACK))
+        if not keep and fallback:
+            log('  clear corridor fails %s -> keep_original mode' % '; '.join(f[:40] for f in fail))
     rep['margin_used'] = tried[-1]['margin']; rep['margin_attempts'] = tried
-    rep['margin_fallback'] = len(tried) > 1
+    rep['margin_fallback'] = tried[-1]['margin'] != margin
+    rep['keep_original_used'] = tried[-1]['keep_original']
     fail = tried[-1]['failures']
     if fail:
         return done(False, fail)
@@ -724,16 +876,17 @@ def stage(game, track, out_dir, margin=1.2, max_shift=None, fallback=True, log=p
         tmp.unlink()
         return done(False, ['6 repacked pak differs outside the AIW entry or does not read back'])
     (dst / 'Pakfiles' / 'Tracks').mkdir(parents=True, exist_ok=True)
-    out_pak = dst / 'Pakfiles' / 'Tracks' / pak.name
+    name = track + '_Physics.bff'           # the source may be <Track>_Physics.bff.orig
+    out_pak = dst / 'Pakfiles' / 'Tracks' / name
     os.replace(tmp, out_pak)
     (dst / (track + '.aiw')).write_bytes(new_text.encode('latin1'))
     (dst / (track + '.original.aiw')).write_bytes(text.encode('latin1'))
     (dst / 'backup').mkdir(exist_ok=True)
-    shutil.copy2(pak, dst / 'backup' / pak.name)
-    if sha256(dst / 'backup' / pak.name) != rep['source_sha256'] or sha256(pak) != rep['source_sha256']:
-        raise RuntimeError('backup copy / game pak sha256 mismatch (pak changed during the stage?)')
-    rep['backup_sha256_matches_game'] = True
-    (dst / 'backup' / (pak.name + '.sha256')).write_text('%s  %s\n' % (rep['source_sha256'], pak.name), encoding='ascii')
+    shutil.copy2(pak, dst / 'backup' / name)
+    if sha256(dst / 'backup' / name) != rep['source_sha256'] or sha256(pak) != rep['source_sha256']:
+        raise RuntimeError('backup copy / source pak sha256 mismatch (pak changed during the stage?)')
+    rep['backup_sha256_matches_source'] = True; rep['source_is_orig'] = pak.name.endswith('.orig')
+    (dst / 'backup' / (name + '.sha256')).write_text('%s  %s\n' % (rep['source_sha256'], name), encoding='ascii')
     rep['staged_pak'] = str(out_pak); rep['staged_sha256'] = sha256(out_pak)
     return done(True, [])
 
@@ -748,7 +901,12 @@ def summary_row(r):
                 lap_est_before=r.get('lap_est_before'), lap_est_after=r.get('lap_est_after'), max_shift=r.get('max_shift'),
                 min_clearance=min([v['dense_asphalt_clearance_min'] for v in (r.get('dense_line'), r.get('dense_dry2')) if v] or [None],
                                   key=lambda x: 1e9 if x is None else x),
-                k_max_before=cb.get('k_max'), k_max_after=ca.get('k_max'), dry2_created=r.get('dry2_created'),
+                k_max_before=cb.get('k_max'), k_max_after=ca.get('k_max'), kink_max_before=cb.get('kink_max'),
+                kink_max_after=ca.get('kink_max'), corridor_mode=r.get('corridor_mode'),
+                wps_kept_original=r.get('wps_kept_original'), wps_margin_relaxed=r.get('wps_margin_relaxed'),
+                exempt_clearance_min=min([v['exempt_clearance_min'] for v in (r.get('dense_line'), r.get('dense_dry2'))
+                                          if v and 'exempt_clearance_min' in v] or [None], key=lambda x: 1e9 if x is None else x),
+                dry2_created=r.get('dry2_created'),
                 dwidth_widened_sides=r.get('dwidth_widened_sides'), dwidth_add_max=r.get('dwidth_add_max'),
                 source_sha256=r.get('source_sha256'), staged_sha256=r.get('staged_sha256'))
 
@@ -799,7 +957,9 @@ def batch(game, out_dir, tracks, margin=1.2, max_shift=None):
     for r in rows:
         md.append('| %s | %s | %s%s | %s -> %s | %s | %s | %s -> %s | %s | %s (%s) | %s / %s |' % (
             r['track'], 'approved' if r['accepted'] else 'refused: ' + (r['reason'] or ''), f(r['margin_used'], '%.1f'),
-            ' (fallback)' if r['margin_fallback'] else '', f(r['lap_est_before'], '%.3f'), f(r['lap_est_after'], '%.3f'),
+            (' (fallback)' if r['margin_fallback'] else '') + (' keep_original: %d wps kept, %d relaxed' % (
+                r['wps_kept_original'], r['wps_margin_relaxed']) if r.get('corridor_mode') == 'keep_original' else ''),
+            f(r['lap_est_before'], '%.3f'), f(r['lap_est_after'], '%.3f'),
             f(r['max_shift'], '%.2f'), f(r['min_clearance'], '%.3f'), f(r['k_max_before'], '%.4f'), f(r['k_max_after'], '%.4f'),
             {True: 'yes', False: 'no (regenerated)', None: '-'}[r['dry2_created']], f(r['dwidth_widened_sides'], '%d'),
             f(r['dwidth_add_max'], '%.2f'), (r['source_sha256'] or '-')[:12], (r['staged_sha256'] or '-')[:12]))
