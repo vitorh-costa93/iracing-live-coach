@@ -433,6 +433,23 @@ public static class ShowCatalog
 {
     static TimingDef T(string id, string label, double def, double min, double max, string? legacy = null) => new(id, label, def, min, max, legacy);
 
+    /// <summary>
+    /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão:
+    /// sem bloco "show" o despacho é o do GPxPatch.
+    /// </summary>
+    static PieceDef[] GpxSatPieces(string t) => t switch
+    {
+        "f1-1998" =>
+        [
+            new("time", "Time left / voltas restantes"),
+            new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
+            new("pittimer", "Cronômetro do jogador nos boxes"),
+            new("split", "Splits, gaps, speed trap e cartão da classificação"),
+            new("standings", "Standings (corrida, paradas, classificação)"),
+        ],
+        _ => [],
+    };
+
     /// <summary>Exibição padrão do widget no tema (widget sem durações próprias = genérico com os fades do tema).</summary>
     public static ShowDef For(string? themeId, string widgetId)
     {
@@ -509,6 +526,7 @@ public static class ShowCatalog
                     Triggers = false, NativeLabel = "Telas do GPxPatch (cada uma com o próprio evento)",
                     Timings = [T("sky", "Sky messages na tela (s)", 8, 2, 30, "skySeconds"), T("split", "Splits/gaps/trap na tela (s)", 8, 2, 30, "splitSeconds"),
                                T("page", "Standings: segundos por página", 6, 2, 30, "pageSeconds")],
+                    Pieces = GpxSatPieces(t),
                 };
             case "board" when is93:
                 return d with

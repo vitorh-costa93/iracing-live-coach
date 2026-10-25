@@ -44,6 +44,11 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
 
     // Despacho em cache por modelo (as telas so dependem do modelo e das opcoes); _content muda quando o que se ve muda.
     readonly List<GpxScreen> _slots = [], _prevSlots = [];
+    // Alfa de cada tela de _slots pela peca da Exibicao (1 = sem gatilho proprio); _show = null quando nenhuma peca esta configurada.
+    readonly List<float> _alphas = [];
+    string? _themeId;
+    ShowPlan? _show;
+    int _showVersion = -1;
     readonly List<int> _groups = [];
     readonly List<string> _gone = [];
     OverlayModel? _plannedFor;
@@ -55,11 +60,19 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
 
     public IGpxMode Mode => _mode;
 
+    /// <summary>Telas escolhidas para <paramref name="model"/> (uma por slot) e o alfa da peca de cada uma (testes/diagnostico).</summary>
+    public IReadOnlyList<(GpxScreen Screen, float Alpha)> Screens(OverlayModel model)
+    {
+        Plan(model);
+        return _slots.Select((s, i) => (s, _alphas[i])).ToArray();
+    }
+
     /// <summary>Relogio da animacao: o do amostrador (tempo real, como o radar); sem ele, o do provider.</summary>
     static double Clock(OverlayModel m) => m.Inputs?.Now ?? m.Now;
 
     public void UseTheme(Theme.Theme theme)
     {
+        if (_themeId != theme.Id) { _themeId = theme.Id; _cfgVersion++; }
         var next = GpxModeRegistry.Create(theme.Id);
         if (next.Id == _mode.Id) return;
         _mode = next; _anims.Clear(); _cfgVersion++;
@@ -80,7 +93,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         if (!model.Connected) return true;
         Plan(model);
         double now = Clock(model);
-        return !(now - _changedAt < ActiveHoldSeconds || Animating(now));
+        return !(now - _changedAt < ActiveHoldSeconds || Animating(now) || _alphas.Exists(a => a < 1f));
     }
 
     public long? FrameSignature(OverlayModel model)
@@ -96,6 +109,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
             long part = !a.AllSettled(now) || phase == GpxLogoPhase.Flip ? BitConverter.DoubleToInt64Bits(now) : (long)phase;
             sig = unchecked(sig * 1_000_003 + part);
         }
+        foreach (float alpha in _alphas) if (alpha < 1f) sig = unchecked(sig * 1_000_003 + BitConverter.SingleToInt32Bits(alpha));
         return sig;
     }
 
@@ -122,7 +136,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         _plannedFor = m; _plannedVersion = _cfgVersion;
         Observe(m);
         _prevSlots.Clear(); _prevSlots.AddRange(_slots);
-        _slots.Clear(); _groups.Clear();
+        _slots.Clear(); _groups.Clear(); _alphas.Clear();
         bool wasMap = _mapVisible;
         _mapVisible = false; _ctx = null;
         if (m.Connected && m.Session is { } s)
@@ -132,8 +146,11 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
                 Model = m, Session = s, Options = _opt, Settings = _cfg, G = new GpxGeometry(_mode.Spec.FH), Sky = _sky, Split = _split,
             };
             var debug = Debug ? new System.Text.StringBuilder() : null;
-            foreach (var sc in _mode.Dispatch(ctx)) Pick(sc, debug);
-            if (!ctx.Previewing) foreach (var sc in GpxSharedScreens.Dispatch(ctx)) Pick(sc, debug);
+            var show = Show();
+            // Peca com gatilho proprio: janela do evento/ciclo no relogio do provider (previa = conteudo sempre).
+            var gated = show is null || ctx.Previewing ? show : show.At(m.Now, id => m.Events?.Last(id));
+            foreach (var sc in _mode.Dispatch(ctx)) Pick(sc, gated, ctx, debug);
+            if (!ctx.Previewing) foreach (var sc in GpxSharedScreens.Dispatch(ctx)) Pick(sc, gated, ctx, debug);
             if (debug is not null) Console.Error.WriteLine($"[GPX] prev={_opt.PreviewScreen} now={m.Now} screens={debug}");
             string? map = _cfg.Option("trackMap");
             _mapVisible = !ctx.Previewing && _map.Ready && (map == "always" || (map is null or "auto") && s.FlagColour is 6 or 7);
@@ -146,16 +163,33 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         _mapFrame = _mapVisible ? m.Frame : -1;
     }
 
-    void Pick(GpxScreen sc, System.Text.StringBuilder? debug)
+    void Pick(GpxScreen sc, ShowPlan? show, GpxContext ctx, System.Text.StringBuilder? debug)
     {
         if (debug is not null) debug.Append(debug.Length == 0 ? "" : ",").Append(sc.Slot).Append(':').Append(sc.Key).Append(':').Append(sc.Boxes.Count);
+        // Peca desligada (ou fora da janela do gatilho, ou de outra janela de peca): a tela sai e o slot fica para a seguinte.
+        float alpha = show is not null && GpxPieces.Of(sc, ctx.Focus?.Index) is { } piece ? show.PieceAlpha(piece) : 1f;
+        if (alpha <= 0.01f) return;
         for (int i = 0; i < _slots.Count; i++)
         {
             if (_slots[i].Slot != sc.Slot) continue;
-            if (sc.Priority > _slots[i].Priority) _slots[i] = sc;
+            if (sc.Priority > _slots[i].Priority) { _slots[i] = sc; _alphas[i] = alpha; }
             return;
         }
-        _slots.Add(sc);
+        _slots.Add(sc); _alphas.Add(alpha);
+    }
+
+    /// <summary>Exibicao das pecas (null = perfil sem nada configurado nas pecas: o despacho fica identico ao do GPxPatch).</summary>
+    ShowPlan? Show()
+    {
+        if (_showVersion != _cfgVersion)
+        {
+            _showVersion = _cfgVersion;
+            var plan = ShowPlan.For(_cfg, _themeId);
+            bool configured = plan.Def.Pieces.Count > 0 && (_cfg.Show?.Pieces is { Count: > 0 } || plan.Solo is not null
+                || _cfg.Option(RenderSettings.PiecesDetachedOption) is { Length: > 0 });
+            _show = configured ? plan : null;
+        }
+        return _show;
     }
 
     bool HasSlot(string slot)
@@ -229,7 +263,12 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         try
         {
             if (_mapVisible) _surface.TrackMap(_map, ctx.Session);
-            foreach (var sc in _slots) DrawScreen(sc, _anims[sc.Slot], ctx.G, now);
+            for (int i = 0; i < _slots.Count; i++)
+            {
+                _surface.ScreenAlpha(_alphas[i]);
+                DrawScreen(_slots[i], _anims[_slots[i].Slot], ctx.G, now);
+            }
+            _surface.ScreenAlpha(1f);
         }
         finally { _surface.End(canvas); }
     }

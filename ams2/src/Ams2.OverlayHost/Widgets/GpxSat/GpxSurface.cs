@@ -36,7 +36,7 @@ public sealed unsafe class GpxSurface : IDisposable
     ComPtr<IDWriteRenderingParams> _textParams;
 
     ID2D1DeviceContext* _dc;
-    float _sx = 1, _sy = 1, _ox, _oy, _opacity = 1;
+    float _sx = 1, _sy = 1, _ox, _oy, _opacity = 1, _baseOpacity = 1;
     GpxModeSpec _spec = null!;
     bool _originalFonts = true;
 
@@ -92,7 +92,7 @@ public sealed unsafe class GpxSurface : IDisposable
         var gfx = canvas.Resources;
         EnsureDevice(gfx);
         _dc = canvas.DeviceContext;
-        _spec = spec; _originalFonts = originalFonts; _opacity = canvas.Opacity;
+        _spec = spec; _originalFonts = originalFonts; _opacity = _baseOpacity = canvas.Opacity;
         Geometry = new GpxGeometry(spec.FH);
         float devW = designW * canvas.Scale * canvas.WidthScale, devH = designH * canvas.Scale * canvas.HeightScale;
         (_sx, _sy, _ox, _oy) = GpxGeometry.Fit(devW, devH, stretch);
@@ -106,6 +106,9 @@ public sealed unsafe class GpxSurface : IDisposable
         _dc->SetTextAntialiasMode(TextAntialiasMode.Grayscale);
         if (_textParams.Get() != null) _dc->SetTextRenderingParams(_textParams.Get());
     }
+
+    /// <summary>Alfa da tela seguinte (gatilho/fade da peca da Exibicao) sobre a opacidade do canvas; 1 = sem mudanca.</summary>
+    public void ScreenAlpha(float alpha) => _opacity = _baseOpacity * Math.Clamp(alpha, 0f, 1f);
 
     /// <summary>Restaura transformacao do canvas e parametros de texto do contexto.</summary>
     public void End(ThemeCanvas canvas)
