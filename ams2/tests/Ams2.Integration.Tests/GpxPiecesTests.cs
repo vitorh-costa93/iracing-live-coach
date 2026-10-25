@@ -36,6 +36,7 @@ public class GpxPiecesTests
 
     [Theory]
     [InlineData("f1-1998")]
+    [InlineData("f1-1999-digital")]
     public void Every_screen_of_the_mode_belongs_to_a_piece_of_the_theme(string theme)
     {
         var pieces = ShowCatalog.For(theme, "gpxsat").Pieces.Select(p => p.Id).ToHashSet();
@@ -55,6 +56,7 @@ public class GpxPiecesTests
 
     [Theory]
     [InlineData("f1-1998")]
+    [InlineData("f1-1999-digital")]
     public void Default_profile_dispatches_exactly_the_gpxpatch_screens(string theme)
     {
         foreach (var id in Expected.Keys)
@@ -68,6 +70,7 @@ public class GpxPiecesTests
 
     [Theory]
     [InlineData("f1-1998")]
+    [InlineData("f1-1999-digital")]
     public void Disabled_piece_or_other_piece_window_hides_the_screen(string theme)
     {
         var off = new ShowSettings { Pieces = new() { ["time"] = new ShowSettings { Enabled = false } } };
@@ -80,6 +83,7 @@ public class GpxPiecesTests
 
     [Theory]
     [InlineData("f1-1998")]
+    [InlineData("f1-1999-digital")]
     public void Piece_with_event_trigger_waits_for_its_event(string theme)
     {
         // A previa de layout termina a corrida: o vencedor (sky) fica na tela; com gatilho por bandeira e nenhum evento, sai.

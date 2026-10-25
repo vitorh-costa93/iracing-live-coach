@@ -439,7 +439,7 @@ public static class ShowCatalog
     /// </summary>
     static PieceDef[] GpxSatPieces(string t) => t switch
     {
-        "f1-1998" =>
+        "f1-1998" or "f1-1999-digital" =>
         [
             new("time", "Time left / voltas restantes"),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
