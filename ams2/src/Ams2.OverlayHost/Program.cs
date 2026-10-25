@@ -155,8 +155,9 @@ internal static class Program
         // "layoutPreview" e flag de execucao (LayoutPreview.Settings), fora do catalogo: Normalized(theme) a descarta, entao reaplica a do arquivo.
         if (fromFile?.Option("layoutPreview") is { } lp)
             settings = settings with { Options = new Dictionary<string, string>(settings.Options ?? [], StringComparer.OrdinalIgnoreCase) { ["layoutPreview"] = lp } };
-        // GPxSAT: previewScreen/previewMs (tela forcada e instante da animacao) tambem sao flags de execucao fora do catalogo.
-        foreach (var key in new[] { "previewScreen", "previewMs" })
+        // GPxSAT: previewScreen/previewMs (tela forcada e instante da animacao) tambem sao flags de execucao fora do catalogo, assim como as
+        // opcoes compostas pelo RenderSettings (janela de peca do Control Center: so a peca; pecas destacadas; duracao do Winner).
+        foreach (var key in new[] { "previewScreen", "previewMs", RenderSettings.PieceSoloOption, RenderSettings.PiecesDetachedOption, RenderSettings.WinnerHoldOption })
             if (fromFile?.Option(key) is { } pv)
                 settings = settings with { Options = new Dictionary<string, string>(settings.Options ?? [], StringComparer.OrdinalIgnoreCase) { [key] = pv } };
         widget.Configure(settings);
