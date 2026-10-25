@@ -17,8 +17,8 @@ public static class QualiBoardTiming
             ? QualiBoardStage.Lap : QualiBoardStage.Hidden;
     }
 
-    public static float RowAlpha(double age, int row)
-        => (float)Math.Clamp((age - TitleSeconds - row * RowSeconds) / .15, 0, 1);
+    public static float RowAlpha(double age, int row, double title = TitleSeconds)
+        => (float)Math.Clamp((age - title - row * RowSeconds) / .15, 0, 1);
 
     public static bool ReferenceVisible(double? reference, double? elapsed, int mark)
         => reference is { } rt && elapsed is { } age && double.IsFinite(rt) && double.IsFinite(age) &&
@@ -53,7 +53,7 @@ public sealed class QualiOutLapPresentation
 
     public void Reset() { _car = _lap = -1; _track = null; _at = _previousNow = double.NaN; _wasOut = false; Age = 0; }
 
-    public QualiBoardStage Update(QualiLapState? q, double now, int rows, int pageCapacity = 8, string? track = null)
+    public QualiBoardStage Update(QualiLapState? q, double now, int rows, int pageCapacity = 8, string? track = null, double pageSeconds = QualiBoardTiming.PageSeconds)
     {
         if (q is null || q.CarIndex < 0) { Reset(); return QualiBoardStage.Hidden; }
         if (_car != q.CarIndex || now < _previousNow || q.Lap < _lap || q.SessionGeneration != _generation || q.PitExitGeneration != _pitExit || !string.Equals(track, _track, StringComparison.Ordinal)) Reset();
@@ -62,7 +62,7 @@ public sealed class QualiOutLapPresentation
         if (outLap && !_wasOut)
         {
             _at = now;
-            _duration = QualiBoardTiming.PageSeconds * Math.Max(1, (int)Math.Ceiling(rows / (double)Math.Max(1, pageCapacity)));
+            _duration = Math.Max(1, pageSeconds) * Math.Max(1, (int)Math.Ceiling(rows / (double)Math.Max(1, pageCapacity)));
         }
         _wasOut = outLap;
         if (!outLap) return QualiBoardTiming.Stage(q, now);

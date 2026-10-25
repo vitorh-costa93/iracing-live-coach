@@ -484,6 +484,11 @@ public static class ShowCatalog
                 return d with { List = new ListDef(ShowForms.Static, 6, 3, 20, 3, RowsOption: "rows") };
             case "qualitower" when is18:
                 return d with { List = new ListDef(ShowForms.Dynamic, 10, 5, 20, 3, RowsOption: "rows", AroundOption: "nearCount") };
+            case "qualitower" when is99:
+                return d with
+                {
+                    Timings = [T("title", "Título CLASSIFICATION na tela (s)", .6, .2, 3), T("page", "Segundos por página da classificação", 7, 3, 20)],
+                };
             case "qualitower" when is04:
                 return d with { List = new ListDef(ShowForms.Dynamic, 5, 1, 20, 3, RowsOption: "rows", AroundOption: "nearCount") };
             case "ticker":
@@ -520,6 +525,18 @@ public static class ShowCatalog
                         new PieceDef("gap", "Gap na linha de chegada (a cada 3 voltas)", T("duration", "Tempo na tela (s)", 6, 3, 15)),
                         new PieceDef("table", "Torre da volta (8 por página)", T("duration", "Segundos por página", 4, 2, 15)),
                         new PieceDef("caption", "Legenda do piloto (nome e equipe)"),
+                    ],
+                };
+            case "board" when is18 || is04:
+                return d with
+                {
+                    NativeLabel = "Peças por prioridade: torre da linha > gap no setor > comparativo de voltas > legenda",
+                    Pieces =
+                    [
+                        new PieceDef("tower", "Torre da linha (8 por página)", T("duration", "Segundos por página", 4, 2, 15)),
+                        new PieceDef("sector", "Gap no setor (S1/S2/S3)"),
+                        new PieceDef("laps", "Comparativo de voltas (a cada 3 voltas)"),
+                        new PieceDef("plate", "Legenda do piloto"),
                     ],
                 };
             case "qualiboard" when is93:

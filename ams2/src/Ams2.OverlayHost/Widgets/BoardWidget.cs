@@ -41,6 +41,29 @@ public sealed class BoardWidget : IWidget
         _style = style;
     }
     public void Configure(WidgetSettings s) { _cfg = s; _presentation18.Reset(); }
+    readonly ShowRef _show = new();
+    ShowPlan? _gate;   // plano com instante quando alguma peca tem gatilho proprio (null = sem efeito)
+
+    /// <summary>Pecas do board 2004/2012/2018 (Exibicao) para o Core; perfil sem Exibicao = <see cref="BoardPieces.Default"/>.</summary>
+    public static BoardPieces CoreOptions(WidgetSettings? board, string themeId)
+    {
+        string t = ThemeCatalog.Canonical(themeId);
+        if (board is null || t is not ("f1-2018" or "f1-2004" or "f1-2012")) return BoardPieces.Default;
+        var p = ShowPlan.For(board, t);
+        double page = p.PieceDuration("tower", BoardOptions.Default.PageHoldSeconds);
+        var r = new BoardPieces
+        {
+            Tower = p.PieceEnabled("tower"), Sector = p.PieceEnabled("sector"), Laps = p.PieceEnabled("laps"), Plate = p.PieceEnabled("plate"),
+            PageHold = page != BoardOptions.Default.PageHoldSeconds ? page : null,
+        };
+        return r == BoardPieces.Default ? BoardPieces.Default : r;
+    }
+
+    /// <summary>Peca da Exibicao que desenha o modo (o agendamento e do Core; o gatilho proprio da peca so esconde no desenho).</summary>
+    public static string PieceOf(BoardMode mode) => mode switch
+    {
+        BoardMode.LineTower => "tower", BoardMode.SectorGap => "sector", BoardMode.LapComparison => "laps", _ => "plate",
+    };
     double IntervalSeconds18 => double.TryParse(_cfg.OptionOr("intervalSeconds", "1"), NumberStyles.Float,
         CultureInfo.InvariantCulture, out var v) ? Broadcast18ValueHold.Period(v) : 1;
 
@@ -97,6 +120,9 @@ public sealed class BoardWidget : IWidget
     {
         if (_style == Style.S93) { _broadcast93.Draw(c, m, _cfg); return; }
         if (_style == Style.S98) { _broadcast98.Draw(c, m, _cfg); return; }
+        var plan = _show.Get(_cfg, _style == Style.S04 ? ThemeStyle.Broadcast2000s : ThemeStyle.Modern2018);
+        var gated = plan.At(m.Now, id => m.Events?.Last(id));
+        _gate = ReferenceEquals(gated, plan) ? null : gated;
         if (_style == Style.S18 && (!m.Connected || m.Session is null))
         { _presentation18.Reset(); _key = null; _last = _out = null; _lastShown = false; return; }
         var b = m.Board ?? BoardState.Empty;
@@ -148,6 +174,7 @@ public sealed class BoardWidget : IWidget
 
     void DrawState(ThemeCanvas c, BoardState b, double now, float alpha, float slide)
     {
+        if (_gate is { } g) alpha *= g.PieceAlpha(PieceOf(b.Mode));
         if (alpha <= 0.01f) return;
         var (cw, ch) = ContentSize(b);
         if (cw <= 0) return;

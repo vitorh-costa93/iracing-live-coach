@@ -46,6 +46,21 @@ public class BoardTrackerTests
     // ------------------------------------------------------------------ torre da linha
 
     [Fact]
+    public void Board_pieces_skip_the_tower_and_change_its_page_time()
+    {
+        const double c0 = 0.37;
+        var off = new BoardRig(Train(20, 4000, c0));
+        off.Board.SetBoardPieces(new BoardPieces { Tower = false });
+        Assert.NotEqual(BoardMode.LineTower, off.RunTo(c0 + 3.1).Mode);
+
+        var longer = new BoardRig(Train(20, 4000, c0));
+        longer.Board.SetBoardPieces(new BoardPieces { PageHold = 6 });
+        var st = longer.RunTo(c0 + 7.1);
+        Assert.Equal(BoardMode.LineTower, st.Mode);
+        Assert.Equal(c0 + 7 + 6, st.WindowEndT, 3);
+    }
+
+    [Fact]
     public void Tower_with_20_cars_builds_pages_of_8_holds_4s_and_shows_the_partial_last_page()
     {
         const double c0 = 0.37; // cruzamentos fora da grade de 60 Hz: exige interpolação sub-quadro

@@ -168,7 +168,7 @@ public sealed class QualiTowerWidget : IWidget
         if (_style == ThemeStyle.Broadcast93) { Draw93(c, m); return; }
         bool preview = Flag("layoutPreview", false);
         var stage = preview ? QualiBoardStage.Tower : _presentation.Update(m.QualiLap, m.Now, m.Quali?.Rows.Count ?? 0,
-            _style == ThemeStyle.Broadcast98 ? Num("rows", 8, 2, 10) : int.MaxValue, m.Session?.Track);
+            _style == ThemeStyle.Broadcast98 ? Num("rows", 8, 2, 10) : int.MaxValue, m.Session?.Track, PageSeconds98);
         if (stage == QualiBoardStage.Caption) { QualiCaption.Draw(c, m, _cfg, DesignSize.Width); return; }
         if (stage != QualiBoardStage.Tower) return;
         if (m.Quali is { } qc) _codes.Update(qc.Rows.Select(r => r.Car));
@@ -500,13 +500,18 @@ public sealed class QualiTowerWidget : IWidget
 
     void Draw98(ThemeCanvas c, OverlayModel m) => DrawBoard98(c, m, Math.Max(0, m.Now));
 
+    /// <summary>Titulo "CLASSIFICATION" e segundos por pagina da torre 1998-2001 (Exibicao; padrao = QualiBoardTiming).</summary>
+    double TitleSeconds98 => Show.Timing("title", QualiBoardTiming.TitleSeconds);
+    double PageSeconds98 => Show.Timing("page", QualiBoardTiming.PageSeconds);
+
     internal void DrawBoard98(ThemeCanvas c, OverlayModel m, double age)
     {
         var t = c.Theme;
         c.FillRect(0, 0, W98, H98, t.PanelFill);
-        if (age < QualiBoardTiming.TitleSeconds)
+        double title = TitleSeconds98, pageSeconds = PageSeconds98;
+        if (age < title)
         {
-            BroadcastUi.WithAlpha(c, BroadcastUi.Fade(age, QualiBoardTiming.TitleSeconds, .12, .15), () =>
+            BroadcastUi.WithAlpha(c, BroadcastUi.Fade(age, title, .12, .15), () =>
                 c.Text("CLASSIFICATION", t.Text with { Element = "title", Size = 28 }, 40, 10, W98 - 240, 40,
                     new Color4(1f, 0.86f, 0.1f, 1f), HAlign.Left, t.TextShadow));
             return;
@@ -521,8 +526,8 @@ public sealed class QualiTowerWidget : IWidget
         int columns = _cfg.Id == "qualiboard" ? 2 : Columns98;
         int perColumn = (perPage + columns - 1) / columns;
         int pages = (rows.Count + perPage - 1) / perPage;
-        int page = (int)(Math.Max(0, age) / QualiBoardTiming.PageSeconds) % pages;
-        double pageAge = pages > 1 ? age % QualiBoardTiming.PageSeconds : age;
+        int page = (int)(Math.Max(0, age) / pageSeconds) % pages;
+        double pageAge = pages > 1 ? age % pageSeconds : age;
         var field = rows.Select(r => r.Car).ToList();
         if (_cfg.Id != "qualiboard" && Flag("showClock", false))
             c.Text(Clock(m.Quali?.TimeRemaining), t.Label with { Element = "time", Size = 24 }, 800, 0, 320, 30, t.LabelColor, HAlign.Center);
@@ -530,7 +535,7 @@ public sealed class QualiTowerWidget : IWidget
         {
             var r = rows[page * perPage + i];
             float x = (columns == 1 ? 565 : 140) + (i / perColumn) * 850, y = 34 + (i % perColumn) * (236f / perColumn);
-            BroadcastUi.WithAlpha(c, QualiBoardTiming.RowAlpha(pageAge, i), () =>
+            BroadcastUi.WithAlpha(c, QualiBoardTiming.RowAlpha(pageAge, i, title), () =>
             {
                 Chrome.AccentBox(c, x, y + 6, 48, 42, r.Rank.ToString(CultureInfo.InvariantCulture), t.Numbers with { Element = "position", Size = 35 });
                 string name = _cfg.Name(r.Car, BroadcastUi.ShortName(r.Car, field)).ToUpperInvariant();

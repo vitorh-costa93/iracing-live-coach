@@ -114,6 +114,28 @@ public class ShowPiecesTests
         Assert.True(o.Pit && o.Fastest && o.Gap && o.Remaining);
     }
 
+    [Fact]
+    public void Board_2018_pieces_reach_the_core()
+    {
+        Assert.Same(BoardPieces.Default, BoardWidget.CoreOptions(Board, "f1-2018"));
+        Assert.Same(BoardPieces.Default, BoardWidget.CoreOptions(Pieces(("tower", false, 6)), "f1-1993"));
+        var o = BoardWidget.CoreOptions(Pieces(("tower", null, 6), ("laps", false, null)), "f1-2018");
+        Assert.Equal((true, true, false, true, 6d), (o.Tower, o.Sector, o.Laps, o.Plate, o.PageHold!.Value));
+        Assert.False(BoardWidget.CoreOptions(Pieces(("plate", false, null)), "f1-2004").Plate);
+    }
+
+    [Fact]
+    public void Quali_tower_1999_title_and_page_come_from_the_plan()
+    {
+        var q = new WidgetSettings { Id = "qualitower" };
+        Assert.Equal(QualiBoardTiming.TitleSeconds, ShowPlan.For(q, "f1-1998").Timing("title", -1));
+        Assert.Equal(QualiBoardTiming.PageSeconds, ShowPlan.For(q, "f1-1999-digital").Timing("page", -1));
+        var custom = ShowPlan.For(q with { Show = new ShowSettings { Timings = new() { ["page"] = 10, ["title"] = 1.5 } } }, "f1-1998");
+        Assert.Equal((10d, 1.5), (custom.Timing("page", -1), custom.Timing("title", -1)));
+        Assert.Equal(0f, QualiBoardTiming.RowAlpha(1.0, 0, title: 1.5));
+        Assert.Equal(1f, QualiBoardTiming.RowAlpha(1.0, 0));
+    }
+
     static WidgetSettings Triggered(string piece, ShowSettings s) => Board with { Show = new ShowSettings { Pieces = new() { [piece] = s } } };
 
     [Fact]

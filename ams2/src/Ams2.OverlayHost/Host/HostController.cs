@@ -66,6 +66,7 @@ internal sealed class HostController : IDisposable
                 System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : double.Parse(fallback, System.Globalization.CultureInfo.InvariantCulture);
         _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), cfg is null ? 6 : ShowPlan.For(cfg, _theme.Id).PieceDuration("gap", 6), _theme.Id == "f1-1993");
         _provider.SetRace99Options(Broadcast98RaceBoard.CoreOptions(cfg, _theme.Id));
+        _provider.SetBoardPieces(BoardWidget.CoreOptions(cfg, _theme.Id));
     }
 
 

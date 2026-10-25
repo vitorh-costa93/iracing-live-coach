@@ -39,6 +39,21 @@ public sealed record BoardOptions
     public static readonly BoardOptions Default = new();
 }
 
+/// <summary>
+/// Peças do board 2004/2012/2018 (Exibição do perfil): peça desligada nunca é composta (o board passa para a seguinte da prioridade);
+/// <see cref="PageHold"/> = segundos por página da torre (null = <see cref="BoardOptions.PageHoldSeconds"/>).
+/// </summary>
+public sealed record BoardPieces
+{
+    public bool Tower { get; init; } = true;
+    public bool Sector { get; init; } = true;
+    public bool Laps { get; init; } = true;
+    public bool Plate { get; init; } = true;
+    public double? PageHold { get; init; }
+
+    public static readonly BoardPieces Default = new();
+}
+
 /// <summary>Piloto pronto para exibição. <see cref="Position"/> = posição oficial do jogo no momento.</summary>
 public sealed record BoardDriver(
     int CarIndex,

@@ -118,6 +118,10 @@ public sealed class BoardTracker
     /// <summary>Exibicao do Race Board 1999 (duracoes e pecas ligadas).</summary>
     public void SetRace99Options(Race99Options options) => _race99.Options = options;
 
+    BoardPieces _pieces = BoardPieces.Default;
+    /// <summary>Exibicao do board 2004/2012/2018: pecas ligadas e segundos por pagina da torre.</summary>
+    public void SetBoardPieces(BoardPieces pieces) => _pieces = pieces ?? BoardPieces.Default;
+
     /// <summary>Reset total (reinício de sessão, troca de pista/tipo de sessão, relógio voltou, reconexão).</summary>
     public void Reset()
     {
@@ -315,7 +319,7 @@ public sealed class BoardTracker
         }
 
         int n = _crosses.Count, size = _o.PageSize;
-        double start = _roundT, hold = _o.PageHoldSeconds;
+        double start = _roundT, hold = _pieces.PageHold is { } ph && double.IsFinite(ph) ? Math.Max(1, ph) : _o.PageHoldSeconds;
         int p = 0;
         while (true)
         {
@@ -504,11 +508,11 @@ public sealed class BoardTracker
 
     BoardState Compose(double now, bool race)
     {
-        bool sector = _sectorGap is not null && (_mode == BoardMode.SectorGap || _sectorGap.CloseT - now >= _o.SectorMinShowSeconds);
-        BoardMode mode = _tower is not null ? BoardMode.LineTower
+        bool sector = _pieces.Sector && _sectorGap is not null && (_mode == BoardMode.SectorGap || _sectorGap.CloseT - now >= _o.SectorMinShowSeconds);
+        BoardMode mode = _pieces.Tower && _tower is not null ? BoardMode.LineTower
             : sector ? BoardMode.SectorGap
-            : _cmp is not null ? BoardMode.LapComparison
-            : _plate is not null ? BoardMode.DriverPlate
+            : _pieces.Laps && _cmp is not null ? BoardMode.LapComparison
+            : _pieces.Plate && _plate is not null ? BoardMode.DriverPlate
             : BoardMode.None;
         if (mode != _mode) { _mode = mode; _modeSince = now; _rev++; }
 

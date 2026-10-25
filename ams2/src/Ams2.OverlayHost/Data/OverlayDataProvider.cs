@@ -129,6 +129,8 @@ public sealed class OverlayDataProvider : IDisposable
         _board.SetGap93Options(pointPercent, holdSeconds, enabled, lapInterval);
     /// <summary>Exibicao do Race Board 1999 (duracoes e pecas do perfil).</summary>
     public void SetRace99Options(Ams2.Core.Calc.Race99Options options) => _board.SetRace99Options(options);
+    /// <summary>Exibicao do board 2004/2012/2018 (pecas ligadas e segundos por pagina da torre).</summary>
+    public void SetBoardPieces(Ams2.Core.Calc.BoardPieces pieces) => _board.SetBoardPieces(pieces);
     /// <summary>Nomes de exibicao do jogador por modelo de carro (null = sem substituicao).</summary>
     public PlayerNameStore? Names => _names;
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>
