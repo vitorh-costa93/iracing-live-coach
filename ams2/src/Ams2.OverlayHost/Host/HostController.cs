@@ -137,6 +137,12 @@ internal sealed class HostController : IDisposable
             {
                 if (req.Widget is null || req.Patch is null) return Fail("setWidget exige Widget e Patch.");
                 var cur = _profile.Get(req.Widget);
+                // Janela de peca ("pai.peca") ainda sem entrada no perfil: nasce desligada no lugar do pai e recebe o patch.
+                if (cur is null && WidgetCatalog.IsPiece(req.Widget) && RenderSettings.NewPiece(_profile, req.Widget) is { } piece)
+                {
+                    _profile = _profile with { Widgets = [.. _profile.Widgets, piece] };
+                    cur = piece;
+                }
                 if (cur is null) return Fail($"Widget desconhecido: {req.Widget}.");
                 var next = req.Patch.ApplyTo(cur, _theme.Id);
                 UpdateWidget(next, orderChanged: next.Order != cur.Order);
@@ -223,15 +229,7 @@ internal sealed class HostController : IDisposable
         foreach (var s in p.Ordered)
         {
             if (_only is not null && !_only.Contains(s.Id)) continue;
-            if (!_windows.TryGetValue(s.Id, out var w))
-            {
-                w = new WidgetWindow(s.Id, RenderSettings.For(p, s), _theme) { Snap = SnapToOthers };
-                w.UserChanged += OnUserChanged;
-                w.SetGate(_gate);
-                w.SetSession(_session);
-                w.SetEditMode(_edit);
-                _windows[s.Id] = w;
-            }
+            if (!_windows.TryGetValue(s.Id, out var w)) CreateWindow(p, s);
             else w.Apply(RenderSettings.For(p, s), _theme);
         }
         foreach (var id in _windows.Keys.Where(id => p.Get(id) is null).ToArray())
@@ -250,6 +248,17 @@ internal sealed class HostController : IDisposable
         _saveAt = null;
     }
 
+    WidgetWindow CreateWindow(Profile p, WidgetSettings s)
+    {
+        var w = new WidgetWindow(s.Id, RenderSettings.For(p, s), _theme) { Snap = SnapToOthers };
+        w.UserChanged += OnUserChanged;
+        w.SetGate(_gate);
+        w.SetSession(_session);
+        w.SetEditMode(_edit);
+        _windows[s.Id] = w;
+        return w;
+    }
+
     void UpdateWidget(WidgetSettings next, bool orderChanged)
     {
         if (orderChanged)
@@ -258,7 +267,9 @@ internal sealed class HostController : IDisposable
             _profile = _profile.WithWidget(next with { Order = cur.Order }).MoveTo(next.Id, next.Order);
         }
         else _profile = _profile.WithWidget(next);
-        var affected = new HashSet<string>(RenderSettings.Dependents(next.Id), StringComparer.OrdinalIgnoreCase) { next.Id };
+        var affected = new HashSet<string>(RenderSettings.Dependents(_profile, next.Id), StringComparer.OrdinalIgnoreCase) { next.Id };
+        // Janela de peca criada agora (primeira edicao no Control Center).
+        if (!_windows.ContainsKey(next.Id) && (_only is null || _only.Contains(next.Id))) { CreateWindow(_profile, _profile.Get(next.Id)!); orderChanged = true; }
         foreach (var o in _profile.Widgets)
             if ((affected.Contains(o.Id) || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(RenderSettings.For(_profile, o), _theme);
         if (orderChanged) RestackByOrder();

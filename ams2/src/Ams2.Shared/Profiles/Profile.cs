@@ -402,6 +402,10 @@ public sealed record Profile
                 w = (w ?? defaults.Get(d.Id)!) with { Visible = true };
             list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
+        // Janelas de peca ("pai.peca") que o usuario criou: ficam se a peca existir no tema.
+        foreach (var w in Widgets)
+            if (WidgetCatalog.IsPiece(w.Id) && WidgetCatalog.Find(w.Id, themeId) is { } pd && !list.Any(x => string.Equals(x.Id, pd.Id, StringComparison.OrdinalIgnoreCase)))
+                list.Add((w with { Id = pd.Id }).Normalized(themeId));
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
         return this with { SchemaVersion = CurrentSchemaVersion, ThemeId = themeId, Widgets = ordered };
     }

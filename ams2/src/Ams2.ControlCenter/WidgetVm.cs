@@ -282,7 +282,7 @@ public sealed class WidgetVm : Notify
     public int MaxRows => Def.MaxRows ?? 0;
     /// <summary>Standings: passos de "pilotos no topo" e "perto de mim".</summary>
     public bool HasSelection => Def.HasSelection;
-    public bool IsBoard => Def.Id == "board";
+    public bool IsBoard => (WidgetCatalog.ParentOf(Def.Id) ?? Def.Id) == "board";
     /// <summary>Radar: alcance em metros e sensibilidade.</summary>
     public bool HasRadarOptions => Def.HasRadarOptions;
     public bool IsRadar => Def.Id == "radar";

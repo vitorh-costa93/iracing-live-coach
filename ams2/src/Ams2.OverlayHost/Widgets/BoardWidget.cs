@@ -122,7 +122,8 @@ public sealed class BoardWidget : IWidget
         if (_style == Style.S98) { _broadcast98.Draw(c, m, _cfg); return; }
         var plan = _show.Get(_cfg, _style == Style.S04 ? ThemeStyle.Broadcast2000s : ThemeStyle.Modern2018);
         var gated = plan.At(m.Now, id => m.Events?.Last(id));
-        _gate = ReferenceEquals(gated, plan) ? null : gated;
+        // Sem gatilho por peca nem janela de peca (solo/destacada) o plano nao muda nada: alfa intacto (null).
+        _gate = ReferenceEquals(gated, plan) && plan.Solo is null && _cfg.Option(RenderSettings.PiecesDetachedOption) is null ? null : gated;
         if (_style == Style.S18 && (!m.Connected || m.Session is null))
         { _presentation18.Reset(); _key = null; _last = _out = null; _lastShown = false; return; }
         var b = m.Board ?? BoardState.Empty;

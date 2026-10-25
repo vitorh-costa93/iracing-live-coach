@@ -9,7 +9,8 @@ public static class WidgetRegistry
 {
     public static readonly string[] Ids = ["relative", "standings", "fuel", "tyres", "weather", "inputs", "lapcounter", "drivercaption", "pitstops", "pittimer", "winner", "board", "radar", "livespeed", "racestart", "racecontrol", "battle", "poscaption", "ticker", "qualitower", "qualilap", "qualiboard", "qualiresult", "lapdelta", "gpxsat", "gpxgauges"];
 
-    public static IWidget Create(string? id) => (id ?? "relative").ToLowerInvariant() switch
+    /// <summary>Janela de peca ("pai.peca"): o widget do pai, que desenha so a peca (<see cref="ShowPlan.Solo"/>).</summary>
+    public static IWidget Create(string? id) => (WidgetCatalog.ParentOf(id ?? "") ?? id ?? "relative").ToLowerInvariant() switch
     {
         "standings" => new StandingsWidget(),
         "fuel" => new FuelWidget(),

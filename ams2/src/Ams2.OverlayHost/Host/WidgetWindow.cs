@@ -224,7 +224,7 @@ internal sealed class WidgetWindow : IDisposable
         if (!paced && _gfx.PresentInterval > 1 && FrameWaitHandle is var h and not 0 && WaitForSingleObjectEx(h, 0, false) != 0) return;
         if (preview)
         {
-            model = LayoutPreview.ForWidget(Id);
+            model = LayoutPreview.ForWidget(WidgetCatalog.ParentOf(Id) ?? Id);
             _widget.Configure(LayoutPreview.Settings(Settings));
         }
         float gate = Editing ? 1f : GateAlpha(model);

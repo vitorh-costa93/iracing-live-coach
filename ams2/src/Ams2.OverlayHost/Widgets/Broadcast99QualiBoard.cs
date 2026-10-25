@@ -32,7 +32,7 @@ public sealed class Broadcast99QualiBoard
         var show = _show.Get(cfg, ThemeStyle.Broadcast98).At(m.Now, id => m.Events?.Last(id));
         var v = Resolve(m, cfg, show);
         if (v.Stage == QualiBoard99Stage.Hidden || m.Session?.PlayerCar is not { } car) return;
-        float alpha = v.Stage switch { QualiBoard99Stage.Finish => show.PieceAlpha("result"), QualiBoard99Stage.Split => show.PieceAlpha("split"), _ => 1f };
+        float alpha = v.Stage switch { QualiBoard99Stage.Finish => show.PieceAlpha("result"), QualiBoard99Stage.Split => show.PieceAlpha("split"), _ => show.Solo is null ? 1f : 0f };
         BroadcastUi.WithAlpha(c, alpha, () => DrawStage(c, m, cfg, v, car));
     }
 

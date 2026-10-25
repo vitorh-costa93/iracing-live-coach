@@ -193,4 +193,56 @@ public class ShowPiecesTests
         Assert.Equal("20", RenderSettings.For(changed, changed.Get("drivercaption")!).Option(RenderSettings.WinnerHoldOption));
         Assert.Contains("drivercaption", RenderSettings.Dependents("winner"));
     }
+
+    [Fact]
+    public void Piece_windows_are_cataloged_but_never_added_to_existing_profiles()
+    {
+        // Regressao: nenhum perfil (padrao ou normalizado) ganha janela de peca sem o usuario editar uma.
+        foreach (var t in ThemeCatalog.All)
+            Assert.DoesNotContain(ProfileFactory.CreateDefault("t", t.Id).Normalized().Widgets, w => WidgetCatalog.IsPiece(w.Id));
+        var d = WidgetCatalog.Find("board.fastest", "f1-1993")!;
+        Assert.True(d.InTheme("f1-1993"));
+        Assert.Contains("›", d.DisplayName);
+        Assert.Empty(d.Columns);
+        Assert.Null(WidgetCatalog.Find("board.tower", "f1-1993"));     // peca do 2018/2004, nao do 1993
+        Assert.NotNull(WidgetCatalog.Find("board.tower", "f1-2018"));
+        Assert.Null(WidgetCatalog.Find("standings.x", "f1-2018"));
+        Assert.False(ShowCatalog.For("f1-1993", "board.fastest").Triggers);
+        Assert.Equal(["board.pit", "board.fastest", "board.gap", "board.lapsToGo", "board.caption"], WidgetCatalog.PieceIds("f1-1993", "board"));
+        Assert.Empty(WidgetCatalog.PieceIds("f1-1993", "standings"));
+    }
+
+    [Fact]
+    public void Piece_window_draws_only_its_piece_and_the_parent_skips_it()
+    {
+        var profile = ProfileFactory.CreateDefault("t", "f1-1993").Normalized();
+        var piece = RenderSettings.NewPiece(profile, "board.caption")! with { X = 100, Y = 50, Visible = true };
+        Assert.Equal(profile.Get("board")!.Scale, piece.Scale);
+        var withPiece = (profile with { Widgets = [.. profile.Widgets, piece] }).Normalized();
+        Assert.NotNull(withPiece.Get("board.caption"));   // a normalizacao mantem a entrada criada pelo usuario
+        Assert.Null((profile with { Widgets = [.. profile.Widgets, piece with { Id = "board.tower" }] }).Normalized().Get("board.tower"));
+
+        var r = RenderSettings.For(withPiece, withPiece.Get("board.caption")!);
+        Assert.Equal(("board", 100, 50, true), (r.Id, r.X, r.Y, r.Visible));
+        var solo = ShowPlan.For(r, "f1-1993");
+        Assert.Equal("caption", solo.Solo);
+        Assert.True(solo.PieceEnabled("caption"));
+        Assert.False(solo.PieceEnabled("gap"));
+        var parent = ShowPlan.For(RenderSettings.For(withPiece, withPiece.Get("board")!), "f1-1993");
+        Assert.False(parent.PieceEnabled("caption"));
+        Assert.True(parent.PieceEnabled("gap"));
+        // Janela de peca desligada: o pai fica como antes (as proprias settings).
+        var hidden = withPiece.WithWidget(withPiece.Get("board.caption")! with { Visible = false });
+        Assert.Same(hidden.Get("board"), RenderSettings.For(hidden, hidden.Get("board")!));
+        Assert.Contains("board", RenderSettings.Dependents(withPiece, "board.caption"));
+        Assert.Contains("board.caption", RenderSettings.Dependents(withPiece, "board"));
+
+        // Desenho: a legenda sai do pai e aparece sozinha na janela da peca.
+        var idle = Race(7);
+        Assert.IsType<BoardWidget>(WidgetRegistry.Create("board.caption"));
+        Assert.DoesNotContain(Render(c => new Broadcast93RaceBoard().Draw(c, idle, RenderSettings.For(withPiece, withPiece.Get("board")!))), b => b != 0);
+        Assert.Contains(Render(c => new Broadcast93RaceBoard().Draw(c, idle, r)), b => b != 0);
+        var gapSolo = RenderSettings.For(withPiece, piece with { Id = "board.gap" });
+        Assert.DoesNotContain(Render(c => new Broadcast93RaceBoard().Draw(c, idle, gapSolo)), b => b != 0);
+    }
 }

@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     List<LiveryEntry>? _liveryCatalog;
     string? _liveryRoot;
     readonly Dictionary<string, WidgetPatch> _pending = [];
+    /// <summary>Janelas de peca listadas mas ainda fora do perfil (entram na primeira edicao).</summary>
+    readonly HashSet<string> _virtualPieces = new(StringComparer.OrdinalIgnoreCase);
     readonly DispatcherTimer _flushTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
     readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
     readonly DispatcherTimer _pollTimer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -178,6 +180,18 @@ public partial class MainWindow : Window
             _widgets.Add(vm);
             EnsureFontListed(s.Font);
         }
+        // Janelas de peca ainda nao criadas: aparecem no fim da lista (desligadas, no lugar do pai) e so entram no perfil na primeira edicao.
+        _virtualPieces.Clear();
+        foreach (var parent in _widgets.Select(w => w.Id).Where(id => !WidgetCatalog.IsPiece(id)).ToArray())
+            foreach (var pid in WidgetCatalog.PieceIds(_themeId, parent))
+            {
+                if (_profile.Get(pid) is not null || RenderSettings.NewPiece(_profile, pid) is not { } ns || WidgetCatalog.Find(pid, _themeId) is not { } pdef) continue;
+                var vm = new WidgetVm(pdef, _themeId);
+                vm.Load(ns);
+                vm.Edited += OnWidgetEdited;
+                _widgets.Add(vm);
+                _virtualPieces.Add(pid);
+            }
         WidgetsList.SelectedItem = _widgets.FirstOrDefault(w => w.Id == keep) ?? _widgets.FirstOrDefault();
         _loading = false;
         ShowDetail(WidgetsList.SelectedItem as WidgetVm);
@@ -336,7 +350,8 @@ public partial class MainWindow : Window
         if (ReferenceEquals(vm, Detail.DataContext)) SchedulePreview();
         _lastLocalEdit = DateTime.UtcNow;
         int order = _widgets.IndexOf(vm);
-        _profile = _profile.WithWidget(vm.ToSettings(order));
+        if (_virtualPieces.Remove(vm.Id) || _profile.Get(vm.Id) is null) _profile = _profile with { Widgets = [.. _profile.Widgets, vm.ToSettings(order)] };
+        else _profile = _profile.WithWidget(vm.ToSettings(order));
         _saveDirty = true;
         _saveTimer.Stop(); _saveTimer.Start();
         if (IsLiveTarget && vm.PatchFor(prop) is { } patch)
@@ -443,6 +458,15 @@ public partial class MainWindow : Window
         // Todas as opcoes do widget (linhas, colunas, larguras, formato, texto, radar...) vao no mesmo JSON do perfil (--settings); a previa usa escala 1.
         string settingsJson = Path.ChangeExtension(png, ".json");
         var previewSettings = vm.ToSettings(0) with { Scale = 1f };
+        // Janela de peca: a previa e a do pai desenhando so a peca.
+        string widgetId = vm.Id;
+        if (WidgetCatalog.ParentOf(vm.Id) is { } parentId && _profile.Get(parentId) is not null)
+        {
+            var piece = vm.ToSettings(0);
+            var withPiece = _profile.Get(vm.Id) is null ? _profile with { Widgets = [.. _profile.Widgets, piece] } : _profile.WithWidget(piece);
+            previewSettings = RenderSettings.For(withPiece, piece) with { Scale = 1f, Visible = true };
+            widgetId = parentId;
+        }
         // Widgets de evento (legenda, paradas, cronometro, vencedor) so aparecem com um evento recente: a previa os fixa (coluna "always") e simula o evento.
         double sim = vm.IsBoard ? BoardSimSeconds[_boardMode] : vm.IsRadar ? 3 : vm.Id == "racecontrol" ? 30 : 20;
         bool eventWidget = vm.Id is "drivercaption" or "pitstops" or "pittimer" or "winner";
@@ -452,12 +476,12 @@ public partial class MainWindow : Window
             sim = vm.Id switch { "winner" => 40, "pitstops" => 30, "pittimer" => 18, _ => 20 };
         }
         File.WriteAllText(settingsJson, JsonSerializer.Serialize(previewSettings, ProfileStore.Json));
-        foreach (var a in new[] { "--png", png, "--widget", vm.Id, "--theme", _themeId, "--bg", "none", "--sim", sim.ToString(System.Globalization.CultureInfo.InvariantCulture), "--settings", settingsJson })
+        foreach (var a in new[] { "--png", png, "--widget", widgetId, "--theme", _themeId, "--bg", "none", "--sim", sim.ToString(System.Globalization.CultureInfo.InvariantCulture), "--settings", settingsJson })
             psi.ArgumentList.Add(a);
         // Radar: carros orbitando o jogador (instante 3 s = um de cada lado); o alcance e a sensibilidade do widget valem na previa.
         if (vm.IsRadar) psi.Environment["AMS2_FAKE_RADAR"] = "1";
         if (vm.Id == "winner") psi.Environment["AMS2_FAKE_FINISH"] = "1";
-        if (vm.Id.StartsWith("quali", StringComparison.Ordinal)) psi.Environment["AMS2_FAKE_QUALI"] = "1";
+        if (widgetId.StartsWith("quali", StringComparison.Ordinal)) psi.Environment["AMS2_FAKE_QUALI"] = "1";
         if (vm.Id is "pitstops" or "pittimer") psi.Environment["AMS2_FAKE_PITS"] = "1";
         // Race Control 2018: bandeira amarela + parada lenta do jogador (11,1 s parado, termina em t=28,1 s; a previa e tirada em t=30).
         if (vm.Id == "racecontrol") { psi.Environment["AMS2_FAKE_FLAG"] = "6"; psi.Environment["AMS2_FAKE_PITS"] = "1"; psi.Environment["AMS2_FAKE_PITSTOP"] = "11.1"; }
@@ -725,7 +749,7 @@ public partial class MainWindow : Window
 
     void SyncWidgetsFromHost(HostState s)
     {
-        bool orderDiffers = !s.Widgets.Select(w => w.Id).SequenceEqual(_widgets.Select(w => w.Id));
+        bool orderDiffers = !s.Widgets.Select(w => w.Id).SequenceEqual(_widgets.Select(w => w.Id).Where(id => !_virtualPieces.Contains(id)));
         bool dataDiffers = s.Widgets.Any(w => _widgets.FirstOrDefault(v => v.Id == w.Id) is { } vm && Sig(vm.ToSettings(w.Order)) != Sig(w));
         if (!orderDiffers && !dataDiffers) return;
         _profile = _profile with { Widgets = s.Widgets.Select(w => w).ToList() };

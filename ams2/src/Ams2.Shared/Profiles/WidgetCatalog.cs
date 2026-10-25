@@ -20,8 +20,8 @@ public sealed record WidgetDef(
     /// <summary>Widget existe no tema? <see cref="Themes"/> nulo = todos os temas.</summary>
     public bool InTheme(string themeId)
         => (Themes is null || Themes.Any(t => string.Equals(t, ThemeCatalog.Canonical(themeId), StringComparison.OrdinalIgnoreCase)))
-            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(Id))
-            && (!WidgetCatalog.Is99(themeId) || WidgetCatalog.Supports99(Id));
+            && (ThemeCatalog.Canonical(themeId) != "f1-1993" || WidgetCatalog.Supports93(WidgetCatalog.ParentOf(Id) ?? Id))
+            && (!WidgetCatalog.Is99(themeId) || WidgetCatalog.Supports99(WidgetCatalog.ParentOf(Id) ?? Id));
 }
 
 public enum OptionKind { Choice, Toggle, Number }
@@ -146,7 +146,37 @@ public static class WidgetCatalog
     };
 
     public static WidgetDef? Find(string id, string? themeId = null)
-        => (themeId is null ? All : ForTheme(themeId)).FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+        => ParentOf(id) is { } parent ? FindPiece(id, parent, themeId)
+            : (themeId is null ? All : ForTheme(themeId)).FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Janela propria de uma peca da Exibicao ("pai.peca", p.ex. "board.fastest"): fora de <see cref="All"/>/<see cref="ForTheme"/> (o perfil so
+    /// ganha a entrada quando o usuario a edita no Control Center), com posicao/escala/visibilidade proprias e o conteudo do pai
+    /// (<see cref="RenderSettings"/>). Sem colunas/opcoes/formato proprios: tudo isso continua no pai.
+    /// </summary>
+    public const char PieceSeparator = '.';
+    public static string? ParentOf(string id) { int i = id.IndexOf(PieceSeparator); return i > 0 ? id[..i] : null; }
+    public static bool IsPiece(string id) => ParentOf(id) is not null;
+    /// <summary>Ids das janelas de peca do widget <paramref name="parentId"/> no tema (vazio = widget sem pecas).</summary>
+    public static IEnumerable<string> PieceIds(string themeId, string parentId)
+        => IsPiece(parentId) ? [] : ShowCatalog.For(themeId, parentId).Pieces.Select(p => parentId + PieceSeparator + p.Id);
+
+    static WidgetDef? FindPiece(string id, string parentId, string? themeId)
+    {
+        if (Find(parentId, themeId) is not { } parent) return null;
+        string pieceId = id[(parentId.Length + 1)..], label = pieceId;
+        if (themeId is not null)
+        {
+            if (ShowCatalog.For(themeId, parent.Id).Pieces.FirstOrDefault(p => string.Equals(p.Id, pieceId, StringComparison.OrdinalIgnoreCase)) is not { } piece) return null;
+            pieceId = piece.Id; label = piece.Label;
+        }
+        return parent with
+        {
+            Id = parent.Id + PieceSeparator + pieceId, DisplayName = $"{parent.DisplayName} › {label}",
+            MinRows = null, MaxRows = null, DefaultRows = null, RowsLabel = "", Columns = [], WidthColumns = [],
+            HasSelection = false, HasRadarOptions = false, DefaultVisible = false, Caps = DisplayCaps.None,
+        };
+    }
 
     /// <summary>Widgets do tema, na ordem do catalogo (os exclusivos de outros temas ficam de fora).</summary>
     static readonly HashSet<string> Widgets93 = new(StringComparer.OrdinalIgnoreCase)

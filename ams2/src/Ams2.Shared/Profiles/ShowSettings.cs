@@ -282,8 +282,16 @@ public sealed class ShowPlan
     {
         var p = PieceDefOf(id);
         if (p is null) return true;
+        // Janela de peca (RenderSettings): so a peca dela; no pai, as pecas com janela propria visivel saem.
+        if (Solo is { } solo) { if (!string.Equals(p.Id, solo, StringComparison.OrdinalIgnoreCase)) return false; }
+        else if (IsDetached(p.Id)) return false;
         return Piece(p.Id)?.Enabled ?? PieceDefaultEnabled(p, _cfg);
     }
+
+    /// <summary>Peca desenhada sozinha (janela "pai.peca"; null = widget inteiro).</summary>
+    public string? Solo => _cfg.Option(RenderSettings.PieceSoloOption) is { Length: > 0 } s ? s : null;
+    bool IsDetached(string id) => _cfg.Option(RenderSettings.PiecesDetachedOption) is { Length: > 0 } list
+        && list.Split(',').Contains(id, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Duração da peça; peça sem duração = <paramref name="fallback"/>.</summary>
     public double PieceDuration(string id, double fallback)
@@ -431,6 +439,8 @@ public static class ShowCatalog
         string t = ThemeCatalog.Canonical(themeId ?? ThemeCatalog.Default);
         bool is18 = t == "f1-2018", is04 = t is "f1-2004" or "f1-2012", is93 = t == "f1-1993", is99 = WidgetCatalog.Is99(t);
         var d = new ShowDef { FadeIn = is04 ? .16 : .3, FadeOut = is04 ? .16 : .6, NativeFade = !is18 };
+        // Janela de peca: a Exibicao (gatilho, duracao, liga/desliga) e a da peca no widget pai.
+        if (WidgetCatalog.IsPiece(widgetId)) return d with { Triggers = false };
         switch (widgetId.ToLowerInvariant())
         {
             case "drivercaption":
