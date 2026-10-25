@@ -67,19 +67,31 @@ public sealed class Broadcast93RaceBoard
         var session = m.Session!;
         _fastest.Update(m.Now, session, m.QualiLap?.SessionGeneration ?? -1);
         // Pecas (Exibicao): cada uma pode ser desligada ou ter o tempo de tela alterado; o padrao e o board de 1993 de sempre.
-        var show = _show.Get(cfg, ThemeStyle.Broadcast93);
+        // Gatilho proprio de cada peca (por evento/periodico): fora da janela a peca fica desligada e o board segue para a seguinte.
+        var show = _show.Get(cfg, ThemeStyle.Broadcast93).At(m.Now, id => m.Events?.Last(id));
         var holds = Holds.From(show);
         var frame = _presentation.Update(m, _fastest.Latest, show.PieceEnabled("fastest"), holds, show.PieceEnabled("pit"),
             show.PieceEnabled("gap"), show.PieceEnabled("lapsToGo"));
-        switch (frame.Mode)
+        float alpha = show.PieceAlpha(PieceOf(frame.Mode));
+        if (frame.Mode == Mode.None || alpha <= 0.01f) return;
+        BroadcastUi.WithAlpha(c, alpha, () =>
         {
-            case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now, holds.Pit)); break;
-            case Mode.Fastest: Fastest(c, _fastest.Latest!.Car, session.Cars, cfg, session.TrackLength); break;
-            case Mode.LapsToGo: LapsToGo(c, frame.Remaining ?? 0); break;
-            case Mode.Gap: Gap(c, frame.Gap!, cfg); break;
-            case Mode.Caption: if (show.PieceEnabled("caption")) Caption(c, m, cfg); break;
-        }
+            switch (frame.Mode)
+            {
+                case Mode.Pit: Pit(c, PitSeconds(BroadcastUi.State(m), m.Now, holds.Pit)); break;
+                case Mode.Fastest: Fastest(c, _fastest.Latest!.Car, session.Cars, cfg, session.TrackLength); break;
+                case Mode.LapsToGo: LapsToGo(c, frame.Remaining ?? 0); break;
+                case Mode.Gap: Gap(c, frame.Gap!, cfg); break;
+                case Mode.Caption: Caption(c, m, cfg); break;
+            }
+        });
     }
+
+    /// <summary>Peca da Exibicao (ShowCatalog "board" 1993) que desenha o modo.</summary>
+    public static string PieceOf(Mode mode) => mode switch
+    {
+        Mode.Pit => "pit", Mode.Fastest => "fastest", Mode.LapsToGo => "lapsToGo", Mode.Gap => "gap", _ => "caption",
+    };
 
     public static void Band(ThemeCanvas c, float y = 30, float height = 230)
         => c.FillRect(0, y, Width, height, c.Theme.PanelFill);

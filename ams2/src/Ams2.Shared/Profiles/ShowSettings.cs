@@ -145,7 +145,7 @@ public sealed record ShowSettings
             {
                 var p = def.Pieces.FirstOrDefault(x => string.Equals(x.Id, k, StringComparison.OrdinalIgnoreCase));
                 if (p is null || v is null) continue;
-                var n = v.NormalizedPiece(p, owner);
+                var n = v.NormalizedPiece(p, def, owner);
                 if (n is not null) (pieces ??= new(StringComparer.OrdinalIgnoreCase))[p.Id] = n;
             }
         var result = new ShowSettings
@@ -156,13 +156,25 @@ public sealed record ShowSettings
         return result.IsEmpty ? null : result;
     }
 
-    ShowSettings? NormalizedPiece(PieceDef p, WidgetSettings? owner)
+    ShowSettings? NormalizedPiece(PieceDef p, ShowDef parent, WidgetSettings? owner)
     {
         bool? enabled = Enabled;
         if (enabled is { } e && e == ShowPlan.PieceDefaultEnabled(p, owner)) enabled = null;
-        double? duration = p.Duration is { } dur ? Clamp(DurationSeconds, dur.Min, dur.Max) : null;
-        if (duration is { } d && p.Duration is { } pd && d == ShowPlan.LegacyOrDefault(pd, owner)) duration = null;
-        var r = new ShowSettings { Enabled = enabled, DurationSeconds = duration };
+        var dur = p.Duration ?? ShowDef.GenericDuration;
+        string? trigger = ShowTriggers.Canonical(Trigger);
+        // Peca: "sempre" = o padrao (a peca ja aparece enquanto tem dados); so evento/periodico restringem.
+        if (trigger is ShowTriggers.Native or ShowTriggers.Always) trigger = null;
+        bool generic = trigger is not null;
+        double? duration = p.Duration is not null || generic ? Clamp(DurationSeconds, dur.Min, dur.Max) : null;
+        if (duration is { } d && d == ShowPlan.LegacyOrDefault(dur, owner)) duration = null;
+        string[]? events = trigger == ShowTriggers.Events ? ShowEvents.Canonical(Events) : null;
+        if (events is not null && SameSet(events, parent.DefaultEvents)) events = null;
+        double? period = trigger == ShowTriggers.Periodic ? Clamp(PeriodSeconds, MinPeriod, MaxPeriod) : null;
+        if (period == parent.DefaultPeriod) period = null;
+        double? fadeIn = generic ? Clamp(FadeInSeconds, 0, MaxFade) : null, fadeOut = generic ? Clamp(FadeOutSeconds, 0, MaxFade) : null;
+        if (fadeIn == parent.FadeIn) fadeIn = null;
+        if (fadeOut == parent.FadeOut) fadeOut = null;
+        var r = new ShowSettings { Enabled = enabled, DurationSeconds = duration, Trigger = trigger, Events = events, PeriodSeconds = period, FadeInSeconds = fadeIn, FadeOutSeconds = fadeOut };
         return r.IsEmpty ? null : r;
     }
 
@@ -177,7 +189,7 @@ public sealed record TimingDef(string Id, string Label, double Default, double M
 /// <summary>Lista com forma estática/dinâmica: linhas (opção antiga em <see cref="RowsOption"/>) e pilotos ao redor do jogador.</summary>
 public sealed record ListDef(string DefaultForm, int DefaultRows, int MinRows, int MaxRows, int DefaultAround, string? RowsOption = null, string? AroundOption = null);
 
-/// <summary>Peça de um widget composto (Race Board / Qualy Board): liga/desliga e duração própria.</summary>
+/// <summary>Peça de um widget composto (Race Board / Qualy Board): liga/desliga, duração própria e gatilho próprio (padrão / por evento / periódico).</summary>
 public sealed record PieceDef(string Id, string Label, TimingDef? Duration = null, string? LegacyToggle = null, bool DefaultEnabled = true);
 
 /// <summary>Padrões da Exibição de um widget num tema (os antigos valores fixos do código).</summary>
@@ -263,10 +275,12 @@ public sealed class ShowPlan
         return _s.Timings is not null && _s.Timings.TryGetValue(t.Id, out var v) && double.IsFinite(v) ? Math.Clamp(v, t.Min, t.Max) : LegacyOrDefault(t, _cfg);
     }
 
-    /// <summary>Peça ligada?</summary>
-    public bool PieceEnabled(string id)
+    /// <summary>Peça ligada? Num plano com instante (<see cref="At"/>) também exige a janela do gatilho próprio da peça.</summary>
+    public bool PieceEnabled(string id) => _lastEvent is null ? PieceEnabledBase(id) : PieceAlpha(id) > 0.01f;
+
+    bool PieceEnabledBase(string id)
     {
-        var p = Def.Pieces.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+        var p = PieceDefOf(id);
         if (p is null) return true;
         return Piece(p.Id)?.Enabled ?? PieceDefaultEnabled(p, _cfg);
     }
@@ -275,11 +289,69 @@ public sealed class ShowPlan
     public double PieceDuration(string id, double fallback)
     {
         var p = Def.Pieces.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (p?.Duration is not { } dur) return fallback;
+        if (p is null) return fallback;
+        if (p.Duration is not { } dur)   // peça sem duração própria: só a da janela do gatilho por evento/periódico
+            return Piece(p.Id)?.DurationSeconds is { } g && double.IsFinite(g) ? Math.Clamp(g, ShowDef.GenericDuration.Min, ShowDef.GenericDuration.Max) : fallback;
         return Piece(p.Id)?.DurationSeconds is { } d && double.IsFinite(d) ? Math.Clamp(d, dur.Min, dur.Max) : LegacyOrDefault(dur, _cfg);
     }
 
     ShowSettings? Piece(string id) => _s.Pieces is not null && _s.Pieces.TryGetValue(id, out var v) ? v : null;
+    PieceDef? PieceDefOf(string id) => Def.Pieces.FirstOrDefault(x => string.Equals(x.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    double _now = double.NaN;
+    Func<string, double?>? _lastEvent;
+
+    /// <summary>
+    /// Plano no instante <paramref name="now"/>: <see cref="PieceEnabled"/> passa a considerar o gatilho de cada peça
+    /// (fora da janela do evento/ciclo = desligada, e o board segue para a peça seguinte) e <see cref="PieceAlpha"/> dá o fade.
+    /// Sem nenhuma peça com gatilho próprio devolve o próprio plano.
+    /// </summary>
+    public ShowPlan At(double now, Func<string, double?> lastEvent)
+    {
+        if (_s.Pieces is null || !_s.Pieces.Values.Any(p => PieceTriggerOf(p) is not null)) return this;
+        var r = (ShowPlan)MemberwiseClone();
+        r._now = now; r._lastEvent = lastEvent;
+        return r;
+    }
+
+    static string? PieceTriggerOf(ShowSettings? p) => ShowTriggers.Canonical(p?.Trigger) is ShowTriggers.Events or ShowTriggers.Periodic ? ShowTriggers.Canonical(p!.Trigger) : null;
+
+    /// <summary>Gatilho da peça: <see cref="ShowTriggers.Native"/>, <see cref="ShowTriggers.Events"/> ou <see cref="ShowTriggers.Periodic"/>.</summary>
+    public string PieceTrigger(string id) => PieceDefOf(id) is { } p ? PieceTriggerOf(Piece(p.Id)) ?? ShowTriggers.Native : ShowTriggers.Native;
+    /// <summary>Eventos do gatilho da peça (padrão = os do widget).</summary>
+    public IReadOnlyList<string> PieceEvents(string id) => ShowEvents.Canonical(PieceDefOf(id) is { } p ? Piece(p.Id)?.Events : null) ?? Def.DefaultEvents.ToArray();
+    public double PiecePeriod(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.PeriodSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, ShowSettings.MinPeriod, ShowSettings.MaxPeriod) : Def.DefaultPeriod;
+    public double PieceFadeIn(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.FadeInSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, 0, ShowSettings.MaxFade) : Def.FadeIn;
+    public double PieceFadeOut(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.FadeOutSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, 0, ShowSettings.MaxFade) : Def.FadeOut;
+
+    /// <summary>
+    /// Alfa do gatilho da peça em <paramref name="now"/>: padrão = 1; "events" = envelope do evento mais recente; "periodic" = começo de cada ciclo.
+    /// A duração da janela é a da peça (<see cref="PieceDuration"/>, genérica se a peça não tiver).
+    /// </summary>
+    public float PieceGate(string id, double now, Func<string, double?> lastEvent)
+    {
+        string trigger = PieceTrigger(id);
+        if (trigger == ShowTriggers.Native) return 1f;
+        double hold = PieceDuration(id, ShowDef.GenericDuration.Default), fi = PieceFadeIn(id), fo = PieceFadeOut(id);
+        if (trigger == ShowTriggers.Periodic)
+        {
+            if (!double.IsFinite(now)) return 0;
+            double period = PiecePeriod(id), phase = now % period;
+            if (phase < 0) phase += period;
+            return Envelope(phase, Math.Min(hold, period), fi, fo);
+        }
+        float best = 0;
+        foreach (var e in PieceEvents(id))
+            if (lastEvent(e) is { } at) best = Math.Max(best, Envelope(now - at, hold, fi, fo));
+        return best;
+    }
+
+    /// <summary>Alfa da peça no instante de <see cref="At"/> (sem instante = 1; desligada = 0).</summary>
+    public float PieceAlpha(string id)
+    {
+        if (!PieceEnabledBase(id)) return 0f;
+        return _lastEvent is null ? 1f : PieceGate(id, _now, _lastEvent);
+    }
 
     /// <summary>Envelope: fade in, <see cref="Duration"/> s na tela (contando os fades) e fade out. age fora de [0, hold) = 0.</summary>
     public float Fade(double age) => Envelope(age, Duration, FadeIn, FadeOut);

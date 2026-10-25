@@ -25,10 +25,19 @@ public sealed class Broadcast99QualiBoard
         return QualiBoard99Presentation.Resolve(m.QualiLap, m.Now, personal, hold, split);
     }
 
+    readonly ShowRef _show = new();
+
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
-        var v = Resolve(m, cfg);
+        var show = _show.Get(cfg, ThemeStyle.Broadcast98).At(m.Now, id => m.Events?.Last(id));
+        var v = Resolve(m, cfg, show);
         if (v.Stage == QualiBoard99Stage.Hidden || m.Session?.PlayerCar is not { } car) return;
+        float alpha = v.Stage switch { QualiBoard99Stage.Finish => show.PieceAlpha("result"), QualiBoard99Stage.Split => show.PieceAlpha("split"), _ => 1f };
+        BroadcastUi.WithAlpha(c, alpha, () => DrawStage(c, m, cfg, v, car));
+    }
+
+    void DrawStage(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, QualiBoard99Presentation.View v, Ams2.Core.CarSnapshot car)
+    {
         var t = c.Theme;
         const float left = 150, right = 1260, column = 520;
         var white = t.TextColor; var yellow = t.ValueColor; var cyan = t.LabelColor;

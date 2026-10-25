@@ -63,25 +63,29 @@ public sealed class Broadcast93QualiBoard
 
         // A (resultado da volta) > B (fastest lap) > C (legenda do piloto, padrao).
         // Pecas (Exibicao): cada uma liga/desliga e tem o proprio tempo de tela; o padrao e o board de sempre.
-        var show = _show.Get(cfg, ThemeStyle.Broadcast93);
+        var show = _show.Get(cfg, ThemeStyle.Broadcast93).At(m.Now, id => m.Events?.Last(id));
         var view = Resolve(m, cfg, show);
         // Durante a volta lancada guarda o lider anterior: se esta volta tomar a pole, o delta continua contra ele.
         if (view is { Result: null }) _reference = m.Session.Cars.FirstOrDefault(car => car.Index == view.ReferenceIndex);
-        if (view?.Result is not null) { LapResult(c, m, cfg, view); return; }
+        if (view?.Result is not null) { BroadcastUi.WithAlpha(c, show.PieceAlpha("result"), () => LapResult(c, m, cfg, view)); return; }
         if (show.PieceEnabled("fastest") && _fastest.Latest is { } fastest)
         {
             // A propria volta que bateu o recorde primeiro mostra o resultado (A); a placa de FASTEST LAP vem logo depois.
             double notBefore = q?.LastResult is { } last && Math.Abs(last.At - fastest.At) < 3 ? last.At + ResultHold(show) : double.NegativeInfinity;
             if (fastest.ActiveAt(m.Now, show.PieceDuration("fastest", FastestLapDetector.DefaultHold), notBefore))
-            { Broadcast93RaceBoard.Fastest(c, fastest.Car, m.Session.Cars, cfg, m.Session.TrackLength); return; }
+            { BroadcastUi.WithAlpha(c, show.PieceAlpha("fastest"), () => Broadcast93RaceBoard.Fastest(c, fastest.Car, m.Session.Cars, cfg, m.Session.TrackLength)); return; }
         }
         // Mesma cadencia do Qualy Board 1999 (QualiBoard99Presentation): out lap, relogio, aproximacao (5 s), intermediaria (3 s).
         var live = Broadcast99QualiBoard.Resolve(m, cfg, show);
-        if (show.PieceEnabled("live") && live.Stage is QualiBoard99Stage.Running or QualiBoard99Stage.Approach or QualiBoard99Stage.Split) { Live(c, m, cfg, live); return; }
+        if (show.PieceEnabled("live") && live.Stage is QualiBoard99Stage.Running or QualiBoard99Stage.Approach or QualiBoard99Stage.Split)
+        { BroadcastUi.WithAlpha(c, show.PieceAlpha("live") * (live.Stage == QualiBoard99Stage.Split ? show.PieceAlpha("split") : 1f), () => Live(c, m, cfg, live)); return; }
         if (!show.PieceEnabled("caption")) return;
-        Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
-        if (live.Stage == QualiBoard99Stage.OutLap)
-            Broadcast93RaceBoard.Text(c, "FIRST LAP OUT OF PITS", 880, 68, 400, "label", 34, Broadcast93RaceBoard.Yellow, HAlign.Right);
+        BroadcastUi.WithAlpha(c, show.PieceAlpha("caption"), () =>
+        {
+            Broadcast93RaceBoard.Caption(c, m, cfg, qualifying: true);
+            if (live.Stage == QualiBoard99Stage.OutLap)
+                Broadcast93RaceBoard.Text(c, "FIRST LAP OUT OF PITS", 880, 68, 400, "label", 34, Broadcast93RaceBoard.Yellow, HAlign.Right);
+        });
     }
 
     /// <summary>Relogio a esquerda; referencia a direita na aproximacao; na intermediaria, delta ciano e "INTERMEDIATE n" no centro.</summary>

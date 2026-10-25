@@ -57,7 +57,13 @@ public sealed class Broadcast98RaceBoard
         if (state is null) return;
         var mode = Select(m);
         if (mode == Mode.None) return;
-        if (!_show.Get(cfg, ThemeStyle.Broadcast98).PieceEnabled(PieceOf(mode))) return;
+        float alpha = _show.Get(cfg, ThemeStyle.Broadcast98).At(m.Now, id => m.Events?.Last(id)).PieceAlpha(PieceOf(mode));
+        if (alpha <= 0.01f) return;
+        BroadcastUi.WithAlpha(c, alpha, () => DrawMode(c, m, cfg, state, mode));
+    }
+
+    void DrawMode(ThemeCanvas c, OverlayModel m, WidgetSettings cfg, Broadcast99RaceState state, Mode mode)
+    {
         switch (mode)
         {
             case Mode.Tower: Table99(c, state, m.Now, cfg); break;

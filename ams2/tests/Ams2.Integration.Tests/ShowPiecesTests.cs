@@ -114,6 +114,52 @@ public class ShowPiecesTests
         Assert.True(o.Pit && o.Fastest && o.Gap && o.Remaining);
     }
 
+    static WidgetSettings Triggered(string piece, ShowSettings s) => Board with { Show = new ShowSettings { Pieces = new() { [piece] = s } } };
+
+    [Fact]
+    public void Piece_trigger_defaults_normalize_away()
+    {
+        var def = ShowCatalog.For("f1-1993", "board");
+        var native = new ShowSettings { Pieces = new() { ["caption"] = new ShowSettings { Enabled = true, Trigger = ShowTriggers.Always, DurationSeconds = 8, PeriodSeconds = 30 } } };
+        Assert.Null(native.Normalized(def, Board));   // perfil sem mudanca continua sem bloco "show"
+        var ev = new ShowSettings { Pieces = new() { ["caption"] = new ShowSettings { Trigger = ShowTriggers.Events, Events = [ShowEvents.Flag], DurationSeconds = 5 } } }.Normalized(def, Board)!;
+        Assert.Equal(ShowTriggers.Events, ev.Pieces!["caption"].Trigger);
+        Assert.Equal([ShowEvents.Flag], ev.Pieces["caption"].Events!);
+        Assert.Equal(5, ev.Pieces["caption"].DurationSeconds);
+    }
+
+    [Fact]
+    public void Piece_gate_follows_events_and_period()
+    {
+        var plan = ShowPlan.For(Triggered("caption", new ShowSettings { Trigger = ShowTriggers.Events, Events = [ShowEvents.PlayerLap], DurationSeconds = 6 }), "f1-1993");
+        Assert.Equal(1f, plan.PieceGate("caption", Now, e => e == ShowEvents.PlayerLap ? Now - 3 : null), 3);
+        Assert.Equal(0f, plan.PieceGate("caption", Now, e => e == ShowEvents.PlayerLap ? Now - 20 : null));
+        Assert.Equal(0f, plan.PieceGate("caption", Now, _ => null));
+        Assert.False(plan.At(Now, _ => null).PieceEnabled("caption"));
+        Assert.True(plan.At(Now, e => e == ShowEvents.PlayerLap ? Now - 3 : null).PieceEnabled("caption"));
+
+        var per = ShowPlan.For(Triggered("caption", new ShowSettings { Trigger = ShowTriggers.Periodic, PeriodSeconds = 60, DurationSeconds = 10 }), "f1-1993");
+        Assert.True(per.PieceGate("caption", 125, _ => null) > 0.99f);
+        Assert.Equal(0f, per.PieceGate("caption", 150, _ => null));
+    }
+
+    [Fact]
+    public void Plan_without_piece_triggers_is_unchanged_at_any_instant()
+    {
+        var plan = ShowPlan.For(Pieces(("fastest", null, 12)), "f1-1993");
+        Assert.Same(plan, plan.At(Now, _ => Now));
+    }
+
+    [Fact]
+    public void Caption_waiting_for_its_event_leaves_the_board_empty()
+    {
+        var idle = Race(7);
+        var cfg = Triggered("caption", new ShowSettings { Trigger = ShowTriggers.Events, Events = [ShowEvents.PlayerLap] });
+        Assert.DoesNotContain(Render(c => new Broadcast93RaceBoard().Draw(c, idle, cfg)), b => b != 0);
+        var fired = idle with { Events = ShowEventTimes.Empty with { PlayerLap = Now - 2 } };
+        Assert.Contains(Render(c => new Broadcast93RaceBoard().Draw(c, fired, cfg)), b => b != 0);
+    }
+
     [Fact]
     public void Driver_caption_follows_the_winner_duration()
     {

@@ -229,8 +229,23 @@
                                             <DataTemplate>
                                                 <StackPanel Margin="0,0,0,6">
                                                     <CheckBox Content="{Binding Label}" IsChecked="{Binding Enabled, Mode=TwoWay}" Margin="0,0,0,4"/>
-                                                    <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource ShowNum}" Margin="22,0,0,0"
-                                                                    Visibility="{Binding HasDuration, Converter={StaticResource BoolToVis}}"/>
+                                                    <StackPanel Margin="22,0,0,0" Visibility="{Binding Enabled, Converter={StaticResource BoolToVis}}">
+                                                        <ComboBox Height="28" ItemsSource="{Binding Triggers}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                  SelectedValue="{Binding Trigger, Mode=TwoWay}" Margin="0,0,0,4"
+                                                                  ToolTip="Padrão = a peça aparece pela regra do tema. Por evento/periódico = só dentro da janela do gatilho."/>
+                                                        <ItemsControl ItemsSource="{Binding Events}" Margin="0,2,0,4" Visibility="{Binding IsEvents, Converter={StaticResource BoolToVis}}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate><CheckBox IsChecked="{Binding Checked, Mode=TwoWay}" Content="{Binding Label}" Margin="0,0,0,4"/></DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <ContentControl Content="{Binding Period}" ContentTemplate="{StaticResource ShowNum}" Visibility="{Binding IsPeriodic, Converter={StaticResource BoolToVis}}"/>
+                                                        <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource ShowNum}"
+                                                                        Visibility="{Binding HasDuration, Converter={StaticResource BoolToVis}}"/>
+                                                        <StackPanel Visibility="{Binding IsTimed, Converter={StaticResource BoolToVis}}">
+                                                            <ContentControl Content="{Binding FadeIn}" ContentTemplate="{StaticResource ShowNum}"/>
+                                                            <ContentControl Content="{Binding FadeOut}" ContentTemplate="{StaticResource ShowNum}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>

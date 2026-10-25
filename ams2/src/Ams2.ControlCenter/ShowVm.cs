@@ -42,21 +42,67 @@ public sealed class ShowCheckVm : Notify
     public event Action? Edited;
 }
 
-/// <summary>Peca de um widget composto (Race Board / Qualy Board): liga/desliga e tempo de tela.</summary>
+/// <summary>Peca de um widget composto (Race Board / Qualy Board): liga/desliga, tempo de tela e gatilho proprio (padrao / por evento / periodico).</summary>
 public sealed class ShowPieceVm : Notify
 {
     bool _enabled = true;
+    string _trigger = ShowTriggers.Native;
     public ShowPieceVm(PieceDef def)
     {
         Def = def;
-        if (def.Duration is { } d) { Duration = new ShowNumVm(d.Id, d.Label, d.Min, d.Max); Duration.Edited += () => Edited?.Invoke(); }
+        var d = def.Duration ?? ShowDef.GenericDuration;
+        Duration = new ShowNumVm(d.Id, def.Duration is null ? "Tempo na tela por aparição (s)" : d.Label, d.Min, d.Max);
+        Period = new ShowNumVm("period", "Intervalo entre aparições (s)", ShowSettings.MinPeriod, ShowSettings.MaxPeriod);
+        FadeIn = new ShowNumVm("fadeIn", "Fade de entrada (s)", 0, ShowSettings.MaxFade);
+        FadeOut = new ShowNumVm("fadeOut", "Fade de saída (s)", 0, ShowSettings.MaxFade);
+        Events = new(ShowEvents.All.Select(e => new ShowCheckVm(e, ShowEvents.Label(e))));
+        foreach (var n in new[] { Duration, Period, FadeIn, FadeOut }) n.Edited += () => Edited?.Invoke();
+        foreach (var e in Events) e.Edited += () => Edited?.Invoke();
     }
+    /// <summary>Gatilhos de uma peca: "sempre" e o proprio padrao (a peca aparece enquanto tem dados).</summary>
+    static readonly IReadOnlyList<TextChoice> TriggerChoices =
+        [new("Padrão da peça", ShowTriggers.Native), new(ShowTriggers.Label(ShowTriggers.Events), ShowTriggers.Events), new(ShowTriggers.Label(ShowTriggers.Periodic), ShowTriggers.Periodic)];
+    public IReadOnlyList<TextChoice> Triggers => TriggerChoices;
     public PieceDef Def { get; }
     public string Label => Def.Label;
-    public ShowNumVm? Duration { get; }
-    public bool HasDuration => Duration is not null;
+    public ShowNumVm Duration { get; }
+    public ShowNumVm Period { get; }
+    public ShowNumVm FadeIn { get; }
+    public ShowNumVm FadeOut { get; }
+    public ObservableCollection<ShowCheckVm> Events { get; }
+    public bool HasDuration => Def.Duration is not null || !IsNative;
     public bool Enabled { get => _enabled; set { if (Set(ref _enabled, value)) Edited?.Invoke(); } }
-    public void Load(bool enabled) { _enabled = enabled; Raise(nameof(Enabled)); }
+    public string Trigger
+    {
+        get => _trigger;
+        set { if (ShowTriggers.Canonical(value) is { } v && Set(ref _trigger, v == ShowTriggers.Always ? ShowTriggers.Native : v)) { RaiseTrigger(); Edited?.Invoke(); } }
+    }
+    public bool IsNative => _trigger == ShowTriggers.Native;
+    public bool IsEvents => _trigger == ShowTriggers.Events;
+    public bool IsPeriodic => _trigger == ShowTriggers.Periodic;
+    public bool IsTimed => !IsNative;
+    void RaiseTrigger() { Raise(nameof(Trigger)); Raise(nameof(IsNative)); Raise(nameof(IsEvents)); Raise(nameof(IsPeriodic)); Raise(nameof(IsTimed)); Raise(nameof(HasDuration)); }
+
+    public void Load(ShowPlan plan)
+    {
+        string id = Def.Id;
+        _enabled = plan.PieceEnabled(id); Raise(nameof(Enabled));
+        _trigger = plan.PieceTrigger(id); RaiseTrigger();
+        Duration.Load(plan.PieceDuration(id, (Def.Duration ?? ShowDef.GenericDuration).Default));
+        Period.Load(plan.PiecePeriod(id)); FadeIn.Load(plan.PieceFadeIn(id)); FadeOut.Load(plan.PieceFadeOut(id));
+        var events = plan.PieceEvents(id);
+        foreach (var e in Events) e.Load(events.Contains(e.Id, StringComparer.OrdinalIgnoreCase));
+    }
+
+    public ShowSettings Build()
+    {
+        var events = Events.Where(e => e.Checked).Select(e => e.Id).ToArray();
+        return new ShowSettings
+        {
+            Enabled = _enabled, Trigger = _trigger, DurationSeconds = Duration.Value, PeriodSeconds = Period.Value,
+            FadeInSeconds = FadeIn.Value, FadeOutSeconds = FadeOut.Value, Events = events.Length == 0 ? null : events,
+        };
+    }
     public event Action? Edited;
 }
 
@@ -150,7 +196,7 @@ public sealed class ShowVm : Notify
                 Rows?.Load(plan.Rows); Around?.Load(plan.Around);
             }
             foreach (var t in Timings) t.Load(plan.Timing(t.Id, t.Min));
-            foreach (var p in Pieces) { p.Load(plan.PieceEnabled(p.Def.Id)); p.Duration?.Load(plan.PieceDuration(p.Def.Id, p.Duration.Min)); }
+            foreach (var p in Pieces) p.Load(plan);
         }
         finally { _loading = false; }
     }
@@ -166,8 +212,7 @@ public sealed class ShowVm : Notify
             PeriodSeconds = Period.Value, DurationSeconds = Duration.Value, FadeInSeconds = FadeIn.Value, FadeOutSeconds = FadeOut.Value,
             Form = Def.List is null ? null : _form, Rows = (int?)Rows?.Value, Around = (int?)Around?.Value,
             Timings = Timings.Count == 0 ? null : Timings.ToDictionary(t => t.Id, t => t.Value, StringComparer.OrdinalIgnoreCase),
-            Pieces = Pieces.Count == 0 ? null : Pieces.ToDictionary(p => p.Def.Id,
-                p => new ShowSettings { Enabled = p.Enabled, DurationSeconds = p.Duration?.Value }, StringComparer.OrdinalIgnoreCase),
+            Pieces = Pieces.Count == 0 ? null : Pieces.ToDictionary(p => p.Def.Id, p => p.Build(), StringComparer.OrdinalIgnoreCase),
         }.Normalized(Def, owner);
     }
 }
