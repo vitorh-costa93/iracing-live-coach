@@ -103,4 +103,26 @@ public class ShowPiecesTests
         Assert.Equal(QualiBoard99Presentation.SplitHold, ShowPlan.For(q, "f1-1998").PieceDuration("split", 0));
         Assert.Equal(QualiBoard99Presentation.ResultHold, ShowPlan.For(q, "f1-1998").PieceDuration("result", 0));
     }
+
+    [Fact]
+    public void Race_board_1999_pieces_reach_the_core_presentation()
+    {
+        Assert.Equal(Race99Options.Default, Broadcast98RaceBoard.CoreOptions(Board, "f1-1998"));
+        Assert.Equal(Race99Options.Default, Broadcast98RaceBoard.CoreOptions(Pieces(("fastest", null, 12)), "f1-1993"));
+        var o = Broadcast98RaceBoard.CoreOptions(Pieces(("fastest", null, 12), ("table", false, 6), ("gap", null, 9)), "f1-1999-digital");
+        Assert.Equal((12d, 9d, 6d, false), (o.FastestHold, o.GapHold, o.PageHold!.Value, o.Table));
+        Assert.True(o.Pit && o.Fastest && o.Gap && o.Remaining);
+    }
+
+    [Fact]
+    public void Driver_caption_follows_the_winner_duration()
+    {
+        var profile = ProfileFactory.CreateDefault("t", "f1-2004");
+        var caption = profile.Get("drivercaption")!;
+        Assert.Same(caption, RenderSettings.For(profile, caption));   // sem Exibicao: as proprias settings (perfil identico)
+        var winner = profile.Get("winner")! with { Show = new ShowSettings { DurationSeconds = 20 } };
+        var changed = profile.WithWidget(winner);
+        Assert.Equal("20", RenderSettings.For(changed, changed.Get("drivercaption")!).Option(RenderSettings.WinnerHoldOption));
+        Assert.Contains("drivercaption", RenderSettings.Dependents("winner"));
+    }
 }

@@ -115,6 +115,9 @@ public sealed class BoardTracker
     public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true, int lapInterval = Broadcast93Rules.GapEveryLaps) =>
         _gap93.SetOptions(pointPercent, holdSeconds, enabled, lapInterval);
 
+    /// <summary>Exibicao do Race Board 1999 (duracoes e pecas ligadas).</summary>
+    public void SetRace99Options(Race99Options options) => _race99.Options = options;
+
     /// <summary>Reset total (reinício de sessão, troca de pista/tipo de sessão, relógio voltou, reconexão).</summary>
     public void Reset()
     {

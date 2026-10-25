@@ -31,6 +31,9 @@ public sealed class DriverCaptionWidget : IWidget
     ShowPlan Show => _show.Get(_cfg, _style);
     /// <summary>Segundos na tela por evento (Exibição: duração; 2018 também lê a opção antiga showFor), 3–15, padrão 6.</summary>
     double Hold => Show.Duration;
+    /// <summary>Duracao do Winner no perfil (RenderSettings.WinnerHoldOption); sem a opcao = a fixa da transmissao.</summary>
+    double WinnerHold => double.TryParse(_cfg.Option(RenderSettings.WinnerHoldOption), System.Globalization.NumberStyles.Float,
+        System.Globalization.CultureInfo.InvariantCulture, out var v) && double.IsFinite(v) && v > 0 ? v : BroadcastUi.WinnerHold;
     float Fade(double age, double hold) => BroadcastUi.Fade(age, hold, Show.FadeIn, Show.FadeOut);
     double _finishT = double.NaN;   // primeiro quadro em que o jogador apareceu com a bandeirada (2018)
 
@@ -75,7 +78,7 @@ public sealed class DriverCaptionWidget : IWidget
         {
             double last = Math.Max(b.SessionSeenT, Math.Max(b.PlayerPositionChangedT, b.PlayerLapChangedT));
             alpha = _b98 ? Fade(m.Now - last, Hold) : _motion04.Evaluate(m.Now, last, last + Hold);
-            if (b.Winner is { } w && m.Now - w.FinishedT < BroadcastUi.WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
+            if (b.Winner is { } w && m.Now - w.FinishedT < WinnerHold + 0.5) alpha = 0f; // a legenda do vencedor ocupa o lugar
         }
         BroadcastUi.WithAlpha(c, alpha, () => { if (_b98) Broadcast98RaceBoard.Caption(c, car, s.Cars, _cfg); else CaptionPlate.DrawDriver(c, car, s.Cars, _cfg); });
     }

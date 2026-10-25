@@ -127,6 +127,8 @@ public sealed class OverlayDataProvider : IDisposable
     /// <summary>Configuração dinâmica exclusiva do GAP 1993 (ponto em percentual e retenção em segundos).</summary>
     public void SetGap93Options(double pointPercent, double holdSeconds, bool enabled = true, int lapInterval = Ams2.Core.Calc.Broadcast93Rules.GapEveryLaps) =>
         _board.SetGap93Options(pointPercent, holdSeconds, enabled, lapInterval);
+    /// <summary>Exibicao do Race Board 1999 (duracoes e pecas do perfil).</summary>
+    public void SetRace99Options(Ams2.Core.Calc.Race99Options options) => _board.SetRace99Options(options);
     /// <summary>Nomes de exibicao do jogador por modelo de carro (null = sem substituicao).</summary>
     public PlayerNameStore? Names => _names;
     /// <summary>Medição: passos do provider e amostras de entrada gravadas (usadas pelo --measure).</summary>

@@ -105,6 +105,38 @@ public class Broadcast99RaceTests
         Assert.Equal(Broadcast99RaceMode.Table, p.State!.Mode);
     }
 
+    [Fact]
+    public void Fastest_hold_comes_from_options()
+    {
+        var p = new Broadcast99RacePresentation(BoardOptions.Default) { Options = new Race99Options { FastestHold = 4 } };
+        var seed = Session(1) with { Cars = Session(1).Cars.Select(c => c with { BestLapTime = 100 }).ToArray() };
+        p.Update(0, seed, new(), null, true);
+        var next = Session(2) with { Cars = Session(2).Cars.Select(c => c with { BestLapTime = c.IsPlayer ? 99 : 100 }).ToArray() };
+        p.Update(.1, next, new(), null, true);
+        Assert.Equal(Broadcast99RaceMode.Fastest, p.State!.Mode);
+        Advance(p, .1, 4.3, next);
+        Assert.Equal(Broadcast99RaceMode.Table, p.State!.Mode);
+    }
+
+    [Fact]
+    public void Disabled_pieces_are_not_scheduled()
+    {
+        var p = new Broadcast99RacePresentation(BoardOptions.Default) { Options = new Race99Options { Fastest = false, Table = false } };
+        var seed = Session(1) with { Cars = Session(1).Cars.Select(c => c with { BestLapTime = 100 }).ToArray() };
+        p.Update(0, seed, new(), null, true);
+        var next = Session(2) with { Cars = Session(2).Cars.Select(c => c with { BestLapTime = c.IsPlayer ? 99 : 100 }).ToArray() };
+        p.Update(.1, next, new(), null, true);
+        Assert.Equal(Broadcast99RaceMode.Caption, p.State!.Mode);
+    }
+
+    [Fact]
+    public void Disabled_pit_keeps_the_caption()
+    {
+        var p = new Broadcast99RacePresentation(BoardOptions.Default) { Options = new Race99Options { Pit = false } };
+        p.Update(0, Session(2, PitState.InPit, 0), new(), null, true);
+        Assert.Equal(Broadcast99RaceMode.Caption, p.State!.Mode);
+    }
+
     [Theory]
     [InlineData(4)]
     [InlineData(5)]

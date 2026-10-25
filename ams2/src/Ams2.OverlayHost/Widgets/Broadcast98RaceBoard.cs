@@ -29,12 +29,35 @@ public sealed class Broadcast98RaceBoard
         };
     }
 
+    readonly ShowRef _show = new();
+
+    /// <summary>Exibicao do Race Board 1999 (perfil): duracoes e pecas ligadas; fora do 1999 ou sem board = padrao.</summary>
+    public static Ams2.Core.Calc.Race99Options CoreOptions(WidgetSettings? board, string themeId)
+    {
+        if (board is null || !WidgetCatalog.Is99(themeId)) return Ams2.Core.Calc.Race99Options.Default;
+        var p = ShowPlan.For(board, themeId);
+        var d = Ams2.Core.Calc.Race99Options.Default;
+        return new()
+        {
+            FastestHold = p.PieceDuration("fastest", d.FastestHold), GapHold = p.PieceDuration("gap", d.GapHold),
+            RemainingHold = p.PieceDuration("remaining", d.RemainingHold), PageHold = p.PieceDuration("table", 4) is var ph && ph != 4 ? ph : null,
+            Pit = p.PieceEnabled("pit"), Fastest = p.PieceEnabled("fastest"), Table = p.PieceEnabled("table"), Gap = p.PieceEnabled("gap"), Remaining = p.PieceEnabled("remaining"),
+        };
+    }
+
+    /// <summary>Peca do Exibicao (ShowCatalog "board" 1999) que desenha o modo; as demais sao agendadas no Core (Race99Options).</summary>
+    public static string PieceOf(Mode mode) => mode switch
+    {
+        Mode.Pit => "pit", Mode.Fastest => "fastest", Mode.Tower => "table", Mode.Sector => "gap", Mode.Remaining => "remaining", _ => "caption",
+    };
+
     public void Draw(ThemeCanvas c, OverlayModel m, WidgetSettings cfg)
     {
         var state = m.Board?.Race99;
         if (state is null) return;
         var mode = Select(m);
         if (mode == Mode.None) return;
+        if (!_show.Get(cfg, ThemeStyle.Broadcast98).PieceEnabled(PieceOf(mode))) return;
         switch (mode)
         {
             case Mode.Tower: Table99(c, state, m.Now, cfg); break;

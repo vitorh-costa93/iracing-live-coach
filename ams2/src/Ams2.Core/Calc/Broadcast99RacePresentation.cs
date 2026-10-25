@@ -11,6 +11,22 @@ public sealed record Broadcast99RaceState(Broadcast99RaceMode Mode, int Lap, dou
     public double ShownSeconds { get; init; }
 }
 
+/// <summary>Exibicao do Race Board 1999 (perfil, ShowCatalog "board" 1999): duracoes e pecas ligadas. Padrao = valores fixos de antes.</summary>
+public sealed record Race99Options
+{
+    public static readonly Race99Options Default = new();
+    public double FastestHold { get; init; } = FastestLapDetector.DefaultHold;
+    public double GapHold { get; init; } = Broadcast99RacePresentation.GapHold;
+    public double RemainingHold { get; init; } = Broadcast99RacePresentation.RemainingHold;
+    /// <summary>Torre: segundos por pagina; null = <see cref="BoardOptions.PageHoldSeconds"/>.</summary>
+    public double? PageHold { get; init; }
+    public bool Pit { get; init; } = true;
+    public bool Fastest { get; init; } = true;
+    public bool Table { get; init; } = true;
+    public bool Gap { get; init; } = true;
+    public bool Remaining { get; init; } = true;
+}
+
 /// <summary>1999: scheduled events retain their display time while obscured. A lap-15 gap precedes remaining.
 /// Cadence uses the player's current lap, never the leader or LastLapTime. Attach/resume only seeds a baseline.</summary>
 public sealed class Broadcast99RacePresentation(BoardOptions options)
@@ -36,6 +52,10 @@ public sealed class Broadcast99RacePresentation(BoardOptions options)
     double _fastShown;
     bool _showingFast;
     public Broadcast99RaceState? State { get; private set; }
+    Race99Options _opt = Race99Options.Default;
+    /// <summary>Peca desligada nao entra na fila (as outras ocupam o tempo dela); vale a partir do proximo evento.</summary>
+    public Race99Options Options { get => _opt; set => _opt = value ?? Race99Options.Default; }
+    double PageHold => Math.Max(1, _opt.PageHold ?? options.PageHoldSeconds);
 
     public void Reset()
     {
@@ -61,8 +81,8 @@ public sealed class Broadcast99RacePresentation(BoardOptions options)
         _lastNow = now; _player = me.Index; _identity = identity;
         if (_showingFast) _fastShown += dt;
         else if (_showing is { } shown) shown.Shown += dt;
-        if (_fastest.Update(now, s) is { } fastest) { _fast = fastest; _fastShown = 0; }
-        if (_fastShown >= FastestLapDetector.DefaultHold) _fast = null;
+        if (_fastest.Update(now, s) is { } fastest && _opt.Fastest) { _fast = fastest; _fastShown = 0; }
+        if (_fastShown >= _opt.FastestHold || !_opt.Fastest) _fast = null;
 
         bool changed = _lap >= 0 && lap > _lap;
         _lap = lap;
@@ -81,9 +101,9 @@ public sealed class Broadcast99RacePresentation(BoardOptions options)
                 int behind = Math.Max(0, (int)Math.Round((leader.TotalDistance(s.TrackLength) - c.TotalDistance(s.TrackLength) - delta) / s.TrackLength));
                 return new Broadcast99RaceRow(BoardText.Driver(c, s.Cars), c.Index == leader.Index ? 0 : gaps.GapSeconds(now, c, leader, 1), behind);
             }).ToArray();
-            _pending.Add(new Pending(Broadcast99RaceMode.Table, lap) { Rows = rows });
-            if (lap % Math.Max(1, options.LapComparisonEvery) == 0) _pending.Add(new Pending(Broadcast99RaceMode.Gap, lap));
-            if (lap % 5 == 0 && Broadcast93Rules.LapsRemaining(s) is { } remaining)
+            if (_opt.Table) _pending.Add(new Pending(Broadcast99RaceMode.Table, lap) { Rows = rows });
+            if (_opt.Gap && lap % Math.Max(1, options.LapComparisonEvery) == 0) _pending.Add(new Pending(Broadcast99RaceMode.Gap, lap));
+            if (_opt.Remaining && lap % 5 == 0 && Broadcast93Rules.LapsRemaining(s) is { } remaining)
                 _pending.Add(new Pending(Broadcast99RaceMode.Remaining, lap) { Remaining = remaining, Leader = rows.FirstOrDefault()?.Driver });
         }
         foreach (var p in _pending.Where(p => p.Mode == Broadcast99RaceMode.Gap && p.Gap is null && p.Lap == lap))
@@ -97,7 +117,7 @@ public sealed class Broadcast99RacePresentation(BoardOptions options)
             || completed.Player.Team != frozen.Player.Team || completed.Neighbor.Team != frozen.Neighbor.Team));
 
         _pending.RemoveAll(p => p.Shown >= Hold(p));
-        bool stopped = me.PitState == PitState.InPit && me.SpeedMps < 1;
+        bool stopped = _opt.Pit && me.PitState == PitState.InPit && me.SpeedMps < 1;
         Pending? next = stopped || _fast is not null ? null : _pending.OrderByDescending(p => p.Mode).ThenBy(p => p.Lap).FirstOrDefault();
         // Missing real crossings do not invent a gap or block lower priority data indefinitely.
         if (next is { Mode: Broadcast99RaceMode.Gap, Gap: null })
@@ -107,9 +127,9 @@ public sealed class Broadcast99RacePresentation(BoardOptions options)
         if (State?.Mode != mode || next != _showing) _started = now;
         _showing = next; _showingFast = fastMode;
         State = new(mode, lap, _started, next?.Rows ?? [], next?.Gap, next?.Remaining, next?.Leader, _fast)
-        { PageSize = Math.Max(1, options.PageSize), PageHoldSeconds = Math.Max(1, options.PageHoldSeconds), ShownSeconds = next?.Shown ?? 0 };
+        { PageSize = Math.Max(1, options.PageSize), PageHoldSeconds = PageHold, ShownSeconds = next?.Shown ?? 0 };
     }
     double Hold(Pending p) => p.Mode == Broadcast99RaceMode.Table
-        ? Math.Max(1, options.PageHoldSeconds) * Math.Max(1, (p.Rows.Count + Math.Max(1, options.PageSize) - 1) / Math.Max(1, options.PageSize))
-        : p.Mode == Broadcast99RaceMode.Gap ? GapHold : RemainingHold;
+        ? PageHold * Math.Max(1, (p.Rows.Count + Math.Max(1, options.PageSize) - 1) / Math.Max(1, options.PageSize))
+        : p.Mode == Broadcast99RaceMode.Gap ? _opt.GapHold : _opt.RemainingHold;
 }

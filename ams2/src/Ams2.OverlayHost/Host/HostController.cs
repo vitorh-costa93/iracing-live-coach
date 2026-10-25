@@ -65,7 +65,9 @@ internal sealed class HostController : IDisposable
             => double.TryParse(settings?.OptionOr(key, fallback) ?? fallback, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var value) && double.IsFinite(value) ? value : double.Parse(fallback, System.Globalization.CultureInfo.InvariantCulture);
         _provider.SetGap93Options(Value(cfg, "gapPointPercent", "0"), cfg is null ? 6 : ShowPlan.For(cfg, _theme.Id).PieceDuration("gap", 6), _theme.Id == "f1-1993");
+        _provider.SetRace99Options(Broadcast98RaceBoard.CoreOptions(cfg, _theme.Id));
     }
+
 
     public Profile Profile => _profile;
     internal IEnumerable<(string Id, Ams2.Core.Calc.RateStats Stats)> RenderStats => _windows.Select(kv => (kv.Key, kv.Value.RenderStats));
@@ -76,7 +78,7 @@ internal sealed class HostController : IDisposable
         foreach (var s in _profile.Ordered)
         {
             if (_only is not null && !_only.Contains(s.Id)) continue;
-            var w = new WidgetWindow(s.Id, s, _theme) { Snap = SnapToOthers };
+            var w = new WidgetWindow(s.Id, RenderSettings.For(_profile, s), _theme) { Snap = SnapToOthers };
             w.UserChanged += OnUserChanged;
             _windows[s.Id] = w;
         }
@@ -222,14 +224,14 @@ internal sealed class HostController : IDisposable
             if (_only is not null && !_only.Contains(s.Id)) continue;
             if (!_windows.TryGetValue(s.Id, out var w))
             {
-                w = new WidgetWindow(s.Id, s, _theme) { Snap = SnapToOthers };
+                w = new WidgetWindow(s.Id, RenderSettings.For(p, s), _theme) { Snap = SnapToOthers };
                 w.UserChanged += OnUserChanged;
                 w.SetGate(_gate);
                 w.SetSession(_session);
                 w.SetEditMode(_edit);
                 _windows[s.Id] = w;
             }
-            else w.Apply(s, _theme);
+            else w.Apply(RenderSettings.For(p, s), _theme);
         }
         foreach (var id in _windows.Keys.Where(id => p.Get(id) is null).ToArray())
         {
@@ -255,8 +257,9 @@ internal sealed class HostController : IDisposable
             _profile = _profile.WithWidget(next with { Order = cur.Order }).MoveTo(next.Id, next.Order);
         }
         else _profile = _profile.WithWidget(next);
+        var affected = new HashSet<string>(RenderSettings.Dependents(next.Id), StringComparer.OrdinalIgnoreCase) { next.Id };
         foreach (var o in _profile.Widgets)
-            if ((o.Id == next.Id || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(o, _theme);
+            if ((affected.Contains(o.Id) || orderChanged) && _windows.TryGetValue(o.Id, out var w)) w.Apply(RenderSettings.For(_profile, o), _theme);
         if (orderChanged) RestackByOrder();
         if (next.Id == "radar") ApplyRadarOptions();
         if (next.Id == "board") ApplyGap93Options();
@@ -292,7 +295,10 @@ internal sealed class HostController : IDisposable
 
     void OnUserChanged(WidgetWindow w)
     {
-        _profile = _profile.WithWidget(w.Settings.Normalized(_theme.Id));
+        // A janela guarda as settings de renderizacao (RenderSettings): do arraste so a geometria volta ao perfil.
+        var cur = _profile.Get(w.Id);
+        var moved = cur is null ? w.Settings : cur with { X = w.Settings.X, Y = w.Settings.Y, Scale = w.Settings.Scale };
+        _profile = _profile.WithWidget(moved.Normalized(_theme.Id));
         ScheduleSave();
         _ipc?.Broadcast(new IpcMessage { Event = IpcEvents.StateChanged, State = BuildState() });
     }

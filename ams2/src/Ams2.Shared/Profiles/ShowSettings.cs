@@ -436,6 +436,20 @@ public static class ShowCatalog
                         new PieceDef("caption", "Legenda do piloto (nome e equipe / a bordo)"),
                     ],
                 };
+            case "board" when is99:
+                return d with
+                {
+                    NativeLabel = "Peças por prioridade: boxes > volta mais rápida > voltas restantes > gap > torre > legenda",
+                    Pieces =
+                    [
+                        new PieceDef("pit", "Parada nos boxes (tempo parado)"),
+                        new PieceDef("fastest", "Volta mais rápida da corrida", T("duration", "Tempo na tela (s)", 7, 3, 15)),
+                        new PieceDef("remaining", "Voltas restantes (a cada 5 voltas)", T("duration", "Tempo na tela (s)", 6, 3, 15)),
+                        new PieceDef("gap", "Gap na linha de chegada (a cada 3 voltas)", T("duration", "Tempo na tela (s)", 6, 3, 15)),
+                        new PieceDef("table", "Torre da volta (8 por página)", T("duration", "Segundos por página", 4, 2, 15)),
+                        new PieceDef("caption", "Legenda do piloto (nome e equipe)"),
+                    ],
+                };
             case "qualiboard" when is93:
                 return d with
                 {
