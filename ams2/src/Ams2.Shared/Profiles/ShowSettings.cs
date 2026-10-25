@@ -447,6 +447,17 @@ public static class ShowCatalog
             new("split", "Splits, gaps, speed trap e cartão da classificação"),
             new("standings", "Standings (corrida, paradas, classificação)"),
         ],
+        "f1-2012" =>
+        [
+            new("time", "Time left / voltas restantes"),
+            new("logo", "Logo F1"),
+            new("sky", "Sky messages (volta mais rápida, abandono, boxes, card do piloto, vencedor)"),
+            new("pittimer", "Pit lane / pit stop do jogador"),
+            new("split", "Gap, splits e cartão da classificação"),
+            new("standings", "Standings e torre da classificação"),
+            new("tower", "Torre inferior"),
+            new("progression", "Progressão da corrida"),
+        ],
         _ => [],
     };
 
