@@ -330,7 +330,9 @@ public sealed record Profile
     // 6: text size is independent; dimensions and semantic font overrides are saved separately.
     // 7: composition of 1999 contains only the two boards, inputs and proximity radar.
     // 8: GPxSAT. Perfis salvos do f1-2004 ganham a camada "gpxsat" ligada e os widgets antigos equivalentes desligados (WidgetLayout.GpxSatReplaces).
-    public const int CurrentSchemaVersion = 9;
+    // 9: 1999/2012 ganham a GPxSAT ligada; f1-2004 troca o velocimetro "inputs" pelo GPxCInfo.
+    // 10: f1-2004 volta ao velocimetro dos prints ("inputs" ligado, gpxgauges desligado; regra em Uses2004StockGpxGauges).
+    public const int CurrentSchemaVersion = 10;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Name { get; init; } = "Padrão";
@@ -400,6 +402,8 @@ public sealed record Profile
                 w = w with { Visible = false };
             if (d.Id == "gpxsat" && SchemaVersion < 9 && themeId is "f1-1998" or "f1-2012")
                 w = (w ?? defaults.Get(d.Id)!) with { Visible = true };
+            if (w is not null && d.Id is "inputs" or "gpxgauges" && Uses2004StockGpxGauges(themeId))
+                w = w with { Visible = d.Id == "inputs" };
             list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
         // Janelas de peca ("pai.peca") que o usuario criou: ficam se a peca existir no tema.
@@ -409,6 +413,16 @@ public sealed record Profile
         var ordered = list.OrderBy(w => w.Order).Select((w, i) => w with { Order = i }).ToList();
         return this with { SchemaVersion = CurrentSchemaVersion, ThemeId = themeId, Widgets = ordered };
     }
+
+    /// <summary>
+    /// v10 (f1-2004): o velocimetro volta a ser o dos prints. Regra: so troca quando o perfil salvo (esquema 8 ou 9, os que a GPxSAT
+    /// gravou) esta exatamente no par da migracao/padrao anterior: "inputs" desligado E "gpxgauges" ligado (ou ausente). Qualquer outra
+    /// combinacao (os dois ligados, os dois desligados, inputs ligado) e escolha do usuario e fica como esta. Esquemas &lt; 8 nao
+    /// tinham GPxCInfo: o gpxgauges ausente nasce com o padrao novo (desligado) e o inputs mantem a escolha salva.
+    /// </summary>
+    bool Uses2004StockGpxGauges(string themeId)
+        => themeId == "f1-2004" && SchemaVersion is 8 or 9
+           && Get("inputs") is { Visible: false } && Get("gpxgauges") is null or { Visible: true };
 
     static bool LegacySlot(WidgetSettings w, int x, int y, float scale, int sw, int sh)
         => w.X == (int)Math.Round(x * sw / 1920.0) && w.Y == (int)Math.Round(y * sh / 1080.0)

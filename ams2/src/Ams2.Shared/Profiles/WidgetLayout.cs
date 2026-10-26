@@ -35,15 +35,18 @@ public static class WidgetLayout
         ["f1-1998"] = ["winner", "pittimer", "qualitower", "qualilap"],
         ["f1-1999-digital"] = ["winner", "pittimer", "qualitower", "qualilap"],
         ["f1-2012"] = ["board"],   // a faixa inferior (ticker) e o duelo (battle) ocupam o lugar do Board
+        // 2004: o velocimetro e o dos prints (widget "inputs", reference/f1-2000s-speedo-dial.png); GPxCInfo fica opcional (ESPECIFICACAO-TEMAS 3.4).
+        ["f1-2004"] = ["gpxgauges"],
     };
 
     /// <summary>
     /// GPxSAT: temas em que o widget "gpxsat" nasce ligado e os equivalentes antigos desligados (o codigo deles continua). Os quatro modos usam a camada nova. Inputs Graph, Radar e os sem equivalente no GPx
-    /// (Weather, Tyres, Fuel, Quali Result) preservam as escolhas; instrumentos GPxCInfo substituem o velocímetro antigo em 2004/2012.
+    /// (Weather, Tyres, Fuel, Quali Result) preservam as escolhas; instrumentos GPxCInfo substituem o velocímetro antigo no 2012. No 2004 o
+    /// velocimetro e o dos prints ("inputs" fica ligado; gpxgauges opcional, desligado: <see cref="HiddenByDefault"/>, migracao v10 em Profile).
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> GpxSatReplaces = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
     {
-        ["f1-2004"] = ["inputs", "standings", "lapcounter", "drivercaption", "winner", "board", "pitstops", "pittimer", "qualitower", "qualilap"],
+        ["f1-2004"] = ["standings", "lapcounter", "drivercaption", "winner", "board", "pitstops", "pittimer", "qualitower", "qualilap"],
         ["f1-1999-digital"] = ["board", "qualiboard"],
         ["f1-1998"] = ["board", "qualiboard"],
         ["f1-2012"] = ["inputs", "standings", "lapcounter", "drivercaption", "winner", "board", "pitstops", "pittimer", "qualitower", "qualilap", "ticker", "battle"],

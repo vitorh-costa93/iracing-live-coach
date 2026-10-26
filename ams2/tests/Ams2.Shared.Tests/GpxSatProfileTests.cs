@@ -24,7 +24,10 @@ public class GpxSatProfileTests
         var d04 = ProfileFactory.CreateDefault("x", "f1-2004");
         Assert.True(d04.Get("gpxsat")!.Visible);
         foreach (var id in WidgetLayout.GpxSatReplaces["f1-2004"]) Assert.False(d04.Get(id)!.Visible, id);
-        foreach (var id in new[] { "gpxgauges", "inputgraph", "radar", "fuel", "tyres", "weather", "qualiresult" }) Assert.True(d04.Get(id)!.Visible, id);
+        foreach (var id in new[] { "inputs", "inputgraph", "radar", "fuel", "tyres", "weather", "qualiresult" }) Assert.True(d04.Get(id)!.Visible, id);
+        Assert.False(d04.Get("gpxgauges")!.Visible);   // 2004: velocimetro dos prints; GPxCInfo opcional
+        Assert.True(ProfileFactory.CreateDefault("x", "f1-2012").Get("gpxgauges")!.Visible);
+        Assert.False(ProfileFactory.CreateDefault("x", "f1-2012").Get("inputs")!.Visible);
 
         var dig = ProfileFactory.CreateDefault("x", "f1-1999-digital");
         Assert.True(dig.Get("gpxsat")!.Visible);
@@ -76,5 +79,44 @@ public class GpxSatProfileTests
         // Depois da migracao a escolha do usuario vale: religar o board nao e desfeito.
         var again = (m with { Widgets = m.Widgets.Select(w => w.Id == "board" ? w with { Visible = true } : w).ToList() }).Normalized();
         Assert.True(again.Get("board")!.Visible);
+    }
+
+    static Profile Saved2004(int schema, bool inputs, bool? gauges)
+    {
+        var p = ProfileFactory.CreateDefault("Saved", "f1-2004");
+        var list = p.Widgets.Where(w => gauges is not null || w.Id != "gpxgauges")
+            .Select(w => w.Id switch { "inputs" => w with { Visible = inputs, X = 1111 }, "gpxgauges" => w with { Visible = gauges!.Value }, _ => w }).ToList();
+        return p with { SchemaVersion = schema, Widgets = list };
+    }
+
+    [Theory]
+    [InlineData(9, false, true, true, false)]    // par da v9 (GPxCInfo no lugar do velocimetro): troca
+    [InlineData(8, false, null, true, false)]    // v8 sem gpxgauges salvo: troca
+    [InlineData(9, true, true, true, true)]      // usuario religou o inputs: mantem os dois
+    [InlineData(9, false, false, false, false)]  // usuario desligou os dois: mantem
+    [InlineData(7, false, null, false, false)]   // antes da GPxSAT: inputs e escolha do usuario; gpxgauges nasce desligado
+    public void Schema10_restores_print_speedo_on_2004_only_from_the_stock_pair(int schema, bool inputs, bool? gauges, bool expInputs, bool expGauges)
+    {
+        var m = Saved2004(schema, inputs, gauges).Normalized();
+        Assert.Equal(Profile.CurrentSchemaVersion, m.SchemaVersion);
+        Assert.Equal(expInputs, m.Get("inputs")!.Visible);
+        Assert.Equal(expGauges, m.Get("gpxgauges")!.Visible);
+        Assert.Equal(1111, m.Get("inputs")!.X);   // geometria preservada
+        // Depois da migracao a escolha vale: religar o GPxCInfo nao e desfeito.
+        var again = (m with { Widgets = m.Widgets.Select(w => w.Id == "gpxgauges" ? w with { Visible = true } : w.Id == "inputs" ? w with { Visible = false } : w).ToList() }).Normalized();
+        Assert.True(again.Get("gpxgauges")!.Visible);
+        Assert.False(again.Get("inputs")!.Visible);
+    }
+
+    [Theory]
+    [InlineData("f1-2012")]
+    [InlineData("f1-1998")]
+    [InlineData("f1-1999-digital")]
+    public void Schema10_does_not_touch_speedos_of_other_gpx_themes(string theme)
+    {
+        var p = ProfileFactory.CreateDefault("Saved", theme);
+        var m = (p with { SchemaVersion = 9 }).Normalized();
+        Assert.Equal(p.Get("inputs")!.Visible, m.Get("inputs")!.Visible);
+        Assert.Equal(p.Get("gpxgauges")!.Visible, m.Get("gpxgauges")!.Visible);
     }
 }
