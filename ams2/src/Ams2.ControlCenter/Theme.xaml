@@ -139,6 +139,29 @@
         </Setter>
     </Style>
 
+    <!-- ===== Interruptor Ligado/Desligado (CheckBox) ===== -->
+    <Style x:Key="SwitchBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="Track" Width="42" Height="22" CornerRadius="11" Background="{StaticResource BgBrush}" BorderBrush="{StaticResource OffBrush}" BorderThickness="1">
+                        <Ellipse x:Name="Thumb" Width="14" Height="14" Fill="{StaticResource MutedBrush}" HorizontalAlignment="Left" Margin="3,0,0,0"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            <Setter TargetName="Thumb" Property="Fill" Value="#0B1514"/>
+                            <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                            <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Slider ===== -->
     <Style TargetType="Slider">
         <Setter Property="Height" Value="22"/>

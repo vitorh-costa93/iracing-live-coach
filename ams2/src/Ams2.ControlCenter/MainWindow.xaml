@@ -5,6 +5,33 @@
         Title="AMS2 Live Coach - Control Center" Icon="pack://application:,,,/Assets/ams2-live-coach.ico" Width="1100" Height="700" MinWidth="980" MinHeight="620"
         Background="{StaticResource BgBrush}" FontFamily="{StaticResource UiFont}" WindowStartupLocation="CenterScreen"
         Topmost="True" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <!-- Numero inline da frase (segundos, linhas): caixa pequena, valida/limita no ShowNumVm -->
+        <DataTemplate x:Key="ChoiceItem"><TextBlock Text="{Binding Label}"/></DataTemplate>
+        <DataTemplate x:Key="InlineNum">
+            <TextBox Width="54" Padding="4,3" TextAlignment="Center" Margin="2,0,4,0" ToolTip="{Binding Range}"
+                     Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+        </DataTemplate>
+        <Style x:Key="Word" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,0,2,0"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+        <Style x:Key="Chip" TargetType="ToggleButton" BasedOn="{StaticResource ToggleButtonStyle}">
+            <Setter Property="Padding" Value="9,3"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="TabButton" TargetType="ToggleButton" BasedOn="{StaticResource ToggleButtonStyle}">
+            <Setter Property="Padding" Value="18,7"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="10,4"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -53,6 +80,10 @@
         </Border>
 
         <Grid Grid.Row="2" Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260"/>
                 <ColumnDefinition Width="16"/>
@@ -62,7 +93,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- ===== Tema e perfis ===== -->
-            <Border Grid.Column="0" Style="{StaticResource Card}">
+            <Border Grid.Column="0" Grid.RowSpan="2" Style="{StaticResource Card}">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Text="TEMA" Style="{StaticResource SectionTitle}"/>
@@ -102,8 +133,184 @@
                 </DockPanel>
             </Border>
 
-            <!-- ===== Widgets ===== -->
-            <Border Grid.Column="2" Style="{StaticResource Card}">
+            <!-- ===== Abas principais: Telas e exibicao (padrao) | Avancado (lista antiga de widgets + detalhes) ===== -->
+            <StackPanel Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,0,0,12">
+                <ToggleButton x:Name="ViewScreens" Style="{StaticResource TabButton}" Content="Telas e exibição" IsChecked="True" Margin="0,0,8,0" Click="ViewScreens_Click"
+                              ToolTip="Escolha o que aparece em cada situação do jogo, quando e por quanto tempo."/>
+                <ToggleButton x:Name="ViewAdvanced" Style="{StaticResource TabButton}" Content="Avançado" Click="ViewAdvanced_Click"
+                              ToolTip="Lista completa de widgets: posição, tamanho, fonte, cores, colunas e formatos."/>
+            </StackPanel>
+
+            <!-- ===== Telas e exibicao ===== -->
+            <Border x:Name="ScreensView" Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="3" Style="{StaticResource Card}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Button DockPanel.Dock="Right" Content="Restaurar padrão do tema (esta situação)" Style="{StaticResource LinkButton}" Click="ResetAllCards_Click"
+                                ToolTip="Volta todos os cartões desta aba ao comportamento original do tema."/>
+                        <StackPanel Orientation="Horizontal">
+                            <ToggleButton x:Name="TabPractice" Tag="practice" Style="{StaticResource TabButton}" Content="Treino" Margin="0,0,6,0" Click="SituationTab_Click"/>
+                            <ToggleButton x:Name="TabQualify" Tag="qualify" Style="{StaticResource TabButton}" Content="Classificação" Margin="0,0,6,0" Click="SituationTab_Click"/>
+                            <ToggleButton x:Name="TabRace" Tag="race" Style="{StaticResource TabButton}" Content="Corrida" IsChecked="True" Click="SituationTab_Click"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBlock x:Name="ScreensHint" DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,12"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="CardsList" Margin="0,0,10,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,0,0,10" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPiece}" Value="True"><Setter Property="Margin" Value="28,0,0,10"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Border Width="4" HorizontalAlignment="Left" CornerRadius="8,0,0,8" Background="{StaticResource WarnBrush}"
+                                                    Visibility="{Binding IsModified, Converter={StaticResource BoolToVis}}" ToolTip="Alterado em relação ao padrão do tema"/>
+                                            <Grid Margin="18,14,16,14">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Width="44" Height="44" CornerRadius="8" Background="{StaticResource BgBrush}" VerticalAlignment="Top" Margin="0,0,14,0">
+                                                    <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="20" Foreground="{StaticResource AccentBrush}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <StackPanel Grid.Column="1">
+                                                    <!-- cabecalho -->
+                                                    <DockPanel>
+                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                                                            <Button Width="30" Padding="0,5" Margin="0,0,2,0" Click="CardUp_Click"
+                                                                    Visibility="{Binding CanReorder, Converter={StaticResource BoolToVis}}" ToolTip="Subir (maior prioridade)">
+                                                                <TextBlock Text="&#xE70E;" FontFamily="{StaticResource IconFont}" FontSize="12"/>
+                                                            </Button>
+                                                            <Button Width="30" Padding="0,5" Margin="0,0,12,0" Click="CardDown_Click"
+                                                                    Visibility="{Binding CanReorder, Converter={StaticResource BoolToVis}}" ToolTip="Descer (menor prioridade)">
+                                                                <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="12"/>
+                                                            </Button>
+                                                            <TextBlock Text="{Binding StateText}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0" Width="64" TextAlignment="Right"/>
+                                                            <CheckBox Style="{StaticResource SwitchBox}" IsChecked="{Binding IsOn, Mode=TwoWay}" VerticalAlignment="Center"
+                                                                      ToolTip="Ligado/Desligado nesta situação"/>
+                                                        </StackPanel>
+                                                        <WrapPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                            <Border Background="{StaticResource BgBrush}" CornerRadius="3" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                    Visibility="{Binding IsPiece, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="PEÇA" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"/>
+                                                            </Border>
+                                                            <Border Background="#2A2412" CornerRadius="3" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                    Visibility="{Binding IsModified, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="ALTERADO" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource WarnBrush}"/>
+                                                            </Border>
+                                                            <Border Width="20" Height="20" CornerRadius="10" Background="{StaticResource BgBrush}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                                                <Border.ToolTip>
+                                                                    <ToolTip MaxWidth="420"><TextBlock Text="{Binding Help}" TextWrapping="Wrap"/></ToolTip>
+                                                                </Border.ToolTip>
+                                                                <TextBlock Text="?" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </WrapPanel>
+                                                    </DockPanel>
+                                                    <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                                                    <!-- frase editavel -->
+                                                    <StackPanel Margin="0,12,0,0">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsOn}" Value="False"><Setter Property="Opacity" Value="0.45"/></DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+                                                        <WrapPanel>
+                                                            <TextBlock Text="Mostrar" Style="{StaticResource Word}"/>
+                                                            <ComboBox Height="30" MinWidth="170" Margin="4,2" ItemsSource="{Binding Triggers}" ItemTemplate="{StaticResource ChoiceItem}" SelectedValuePath="Value"
+                                                                      SelectedValue="{Binding Trigger, Mode=TwoWay}" Visibility="{Binding HasTrigger, Converter={StaticResource BoolToVis}}"
+                                                                      ToolTip="Quando aparece: no padrão do tema, sempre, a cada evento do jogo ou periodicamente."/>
+                                                            <TextBlock Text="{Binding NativeText}" Style="{StaticResource Word}" Foreground="{StaticResource MutedBrush}"
+                                                                       Visibility="{Binding NoTrigger, Converter={StaticResource BoolToVis}}"/>
+                                                            <StackPanel Orientation="Horizontal" Visibility="{Binding IsPeriodic, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="a cada" Style="{StaticResource Word}"/>
+                                                                <ContentControl Content="{Binding Period}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="s" Style="{StaticResource Word}"/>
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Visibility="{Binding ShowDuration, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="por" Style="{StaticResource Word}" Margin="8,0,2,0"/>
+                                                                <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="s" Style="{StaticResource Word}"/>
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Visibility="{Binding ShowFades, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="· fade de entrada" Style="{StaticResource Word}" Margin="8,0,2,0"/>
+                                                                <ContentControl Content="{Binding FadeIn}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="s, de saída" Style="{StaticResource Word}"/>
+                                                                <ContentControl Content="{Binding FadeOut}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="s" Style="{StaticResource Word}"/>
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Visibility="{Binding HasList, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="· forma" Style="{StaticResource Word}" Margin="8,0,2,0"/>
+                                                                <ComboBox Height="30" MinWidth="190" Margin="4,2" ItemsSource="{Binding Forms}" ItemTemplate="{StaticResource ChoiceItem}" SelectedValuePath="Value"
+                                                                          SelectedValue="{Binding Form, Mode=TwoWay}"
+                                                                          ToolTip="Estática: sempre o topo da lista, como nos prints. Dinâmica: janela que acompanha você, como no iRacing."/>
+                                                                <TextBlock Text="com" Style="{StaticResource Word}"/>
+                                                                <ContentControl Content="{Binding Rows}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="linhas" Style="{StaticResource Word}"/>
+                                                                <StackPanel Orientation="Horizontal" Visibility="{Binding IsDynamic, Converter={StaticResource BoolToVis}}">
+                                                                    <TextBlock Text="e" Style="{StaticResource Word}" Margin="6,0,2,0"/>
+                                                                    <ContentControl Content="{Binding Around}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                    <TextBlock Text="pilotos ao redor de você" Style="{StaticResource Word}"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                        </WrapPanel>
+                                                        <ItemsControl ItemsSource="{Binding Events}" Margin="0,8,0,0" Visibility="{Binding IsEvents, Converter={StaticResource BoolToVis}}">
+                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <ToggleButton Style="{StaticResource Chip}" IsChecked="{Binding Checked, Mode=TwoWay}" Content="{Binding Label}"/>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <ItemsControl ItemsSource="{Binding Timings}" Margin="0,6,0,0" Visibility="{Binding HasTimings, Converter={StaticResource BoolToVis}}">
+                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <StackPanel Orientation="Horizontal" Margin="0,2,16,2" ToolTip="{Binding Range}">
+                                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                                                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                    </StackPanel>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+
+                                                    <!-- acoes -->
+                                                    <WrapPanel Margin="0,12,0,0">
+                                                        <ToggleButton Style="{StaticResource Chip}" IsChecked="{Binding PreviewOpen, Mode=TwoWay}" Content="Ver prévia" Padding="12,4"
+                                                                      Visibility="{Binding HasPreview, Converter={StaticResource BoolToVis}}" ToolTip="Mostra como o item fica (dados simulados, nunca abre o jogo)."/>
+                                                        <Button Style="{StaticResource LinkButton}" Content="Ajustar posição" Margin="0,0,6,6" Click="CardPosition_Click"
+                                                                ToolTip="Abre o editor de posição e tamanho deste item (aba Avançado)."/>
+                                                        <Button Style="{StaticResource LinkButton}" Content="Restaurar padrão do tema" Margin="0,0,6,6" Click="CardReset_Click"
+                                                                ToolTip="Volta este cartão ao comportamento original do tema."/>
+                                                    </WrapPanel>
+                                                    <StackPanel Visibility="{Binding PreviewOpen, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                                                        <Image Source="{Binding PreviewImage}" MaxHeight="150" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left"
+                                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                        <TextBlock Text="{Binding PreviewStatus}" Style="{StaticResource Muted}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- ===== Widgets (Avancado) ===== -->
+            <Border x:Name="WidgetsPanel" Grid.Row="1" Grid.Column="2" Visibility="Collapsed" Style="{StaticResource Card}">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBlock Text="WIDGETS" Style="{StaticResource SectionTitle}" Margin="0"/>
@@ -157,7 +364,7 @@
             </Border>
 
             <!-- ===== Detalhes do widget ===== -->
-            <Border Grid.Column="4" Style="{StaticResource Card}">
+            <Border x:Name="DetailPanel" Grid.Row="1" Grid.Column="4" Visibility="Collapsed" Style="{StaticResource Card}">
                 <Grid>
                     <TextBlock x:Name="NoSelection" Text="Selecione um widget" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">

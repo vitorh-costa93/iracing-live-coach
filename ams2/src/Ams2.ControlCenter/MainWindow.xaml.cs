@@ -195,6 +195,7 @@ public partial class MainWindow : Window
         WidgetsList.SelectedItem = _widgets.FirstOrDefault(w => w.Id == keep) ?? _widgets.FirstOrDefault();
         _loading = false;
         ShowDetail(WidgetsList.SelectedItem as WidgetVm);
+        BuildCards();
     }
 
     void EnsureFontListed(string? font)
@@ -449,11 +450,22 @@ public partial class MainWindow : Window
     {
         if (Detail.DataContext is not WidgetVm vm) { PreviewImage.Source = null; PreviewStatus.Text = ""; return; }
         int seq = ++_previewSeq;
+        var (bmp, err) = await RenderPreviewAsync(vm, seq.ToString());
+        if (seq != _previewSeq) return;
+        if (bmp is null) { PreviewImage.Source = null; PreviewStatus.Text = err ?? "Prévia indisponível."; return; }
+        PreviewImage.Source = bmp;
+        PreviewStatus.Text = "";
+        PreviewCaption.Text = vm.IsBoard ? $"PRÉVIA · board · {new[] { "torre da linha", "gap de setor", "comparativo de voltas", "legenda" }[_boardMode]} · dados simulados" : $"PRÉVIA · {vm.Name} · dados simulados";
+    }
+
+    /// <summary>Renderiza a previa (OverlayHost --png, dados simulados) de uma janela de widget/peca; devolve a imagem ou o motivo da falha.</summary>
+    async Task<(BitmapImage? Image, string? Error)> RenderPreviewAsync(WidgetVm vm, string stem)
+    {
         var exe = FindHostExe();
-        if (exe is null) { PreviewImage.Source = null; PreviewStatus.Text = "OverlayHost não encontrado."; return; }
+        if (exe is null) return (null, "OverlayHost não encontrado.");
         _previewDir ??= Path.Combine(Path.GetTempPath(), "ams2-cc-preview-" + Environment.ProcessId);
         Directory.CreateDirectory(_previewDir);
-        string png = Path.Combine(_previewDir, $"{seq}.png");
+        string png = Path.Combine(_previewDir, $"{stem}.png");
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         // Todas as opcoes do widget (linhas, colunas, larguras, formato, texto, radar...) vao no mesmo JSON do perfil (--settings); a previa usa escala 1.
         string settingsJson = Path.ChangeExtension(png, ".json");
@@ -495,20 +507,17 @@ public partial class MainWindow : Window
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await p.WaitForExitAsync(cts.Token);
             TryDelete(settingsJson);
-            if (seq != _previewSeq) { TryDelete(png); return; }
-            if (p.ExitCode != 0 || !File.Exists(png)) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; return; }
+            if (p.ExitCode != 0 || !File.Exists(png)) return (null, "Prévia indisponível.");
             var bmp = new BitmapImage();
             bmp.BeginInit();
             bmp.CacheOption = BitmapCacheOption.OnLoad;   // carrega tudo e solta o arquivo
             bmp.UriSource = new Uri(png);
             bmp.EndInit();
             bmp.Freeze();
-            PreviewImage.Source = bmp;
-            PreviewStatus.Text = "";
-            PreviewCaption.Text = vm.IsBoard ? $"PRÉVIA · board · {new[] { "torre da linha", "gap de setor", "comparativo de voltas", "legenda" }[_boardMode]} · dados simulados" : $"PRÉVIA · {vm.Name} · dados simulados";
             TryDelete(png);
+            return (bmp, null);
         }
-        catch (Exception) { if (seq == _previewSeq) { PreviewImage.Source = null; PreviewStatus.Text = "Prévia indisponível."; } }
+        catch (Exception) { return (null, "Prévia indisponível."); }
     }
 
     static void TryDelete(string f) { try { File.Delete(f); } catch { } }
@@ -565,8 +574,15 @@ public partial class MainWindow : Window
         MarkDrop(null);
         if (e.Data.GetData(typeof(WidgetVm)) is not WidgetVm moving) return;
         var target = VmUnder(e);
-        int from = _widgets.IndexOf(moving);
         int to = target is null ? _widgets.Count - 1 : _widgets.IndexOf(target);
+        MoveWidget(moving, to);
+        e.Handled = true;
+    }
+
+    /// <summary>Move o widget para a posicao <paramref name="to"/> da lista (ordem de prioridade/desenho) e propaga ao perfil e ao host.</summary>
+    void MoveWidget(WidgetVm moving, int to)
+    {
+        int from = _widgets.IndexOf(moving);
         if (from < 0 || to < 0 || from == to) return;
         _loading = true;
         _widgets.Move(from, to);
@@ -581,7 +597,7 @@ public partial class MainWindow : Window
             _pending[moving.Id] = _pending.TryGetValue(moving.Id, out var old) ? Merge(old, patch) : patch;
             _flushTimer.Stop(); _flushTimer.Start();
         }
-        e.Handled = true;
+        BuildCards();
     }
 
     // ---------------------------------------------------------------- nome do piloto (um nome de exibicao por modelo de carro)

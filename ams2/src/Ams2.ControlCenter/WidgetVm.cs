@@ -136,6 +136,9 @@ public sealed class WidgetVm : Notify
     // ---- Exibicao (quando aparece, por quanto tempo, fades, forma, pecas) ----
     public ShowVm Show { get; }
     ShowSettings? BuildShow() => Show.Build(new WidgetSettings { Id = Id, Options = BuildOptions() });
+    /// <summary>Exibição fora do padrão do tema (null = tudo padrão); usado para marcar valor alterado na tela "Telas e exibição".</summary>
+    public ShowSettings? ShowOverrides => BuildShow();
+    public string ThemeId => _themeId;
 
     /// <summary>Restaurar padrao do tema: Exibicao e as opcoes antigas equivalentes (showFor, rows...) voltam ao padrao do tema.</summary>
     public void ResetShow()
