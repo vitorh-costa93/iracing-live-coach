@@ -433,6 +433,9 @@ public static class ShowCatalog
 {
     static TimingDef T(string id, string label, double def, double min, double max, string? legacy = null) => new(id, label, def, min, max, legacy);
 
+    /// <summary>Legenda recorrente do GPxSAT: tempo na tela e intervalo entre aparições (s) padrão.</summary>
+    public const double CaptionSeconds = 8, CaptionEvery = 25;
+
     /// <summary>
     /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão:
     /// sem bloco "show" o despacho é o do GPxPatch.
@@ -446,6 +449,7 @@ public static class ShowCatalog
             new("pittimer", "Cronômetro do jogador nos boxes"),
             new("split", "Splits, gaps, speed trap e cartão da classificação"),
             new("standings", "Standings (corrida, paradas, classificação)"),
+            new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
         ],
         "f1-2012" =>
         [
@@ -457,6 +461,7 @@ public static class ShowCatalog
             new("standings", "Standings e torre da classificação"),
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),
+            new("caption", "Legenda do piloto (nome, equipe, país, posição, pneu) recorrente"),
         ],
         _ => [],
     };
@@ -536,7 +541,9 @@ public static class ShowCatalog
                 {
                     Triggers = false, NativeLabel = "Telas do GPxPatch (cada uma com o próprio evento)",
                     Timings = [T("sky", "Sky messages na tela (s)", 8, 2, 30, "skySeconds"), T("split", "Splits/gaps/trap na tela (s)", 8, 2, 30, "splitSeconds"),
-                               T("page", "Standings: segundos por página", 6, 2, 30, "pageSeconds")],
+                               T("page", "Standings: segundos por página", 6, 2, 30, "pageSeconds"),
+                               T("caption", "Legenda do piloto na tela (s)", ShowCatalog.CaptionSeconds, 2, 60),
+                               T("captionEvery", "Legenda do piloto: a cada (s)", ShowCatalog.CaptionEvery, 5, 300)],
                     Pieces = GpxSatPieces(t),
                 };
             case "board" when is93:

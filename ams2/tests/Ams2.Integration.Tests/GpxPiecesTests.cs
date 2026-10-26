@@ -12,7 +12,7 @@ public class GpxPiecesTests
         ["time"] = "time", ["fl"] = "sky", ["out"] = "sky", ["dt"] = "sky", ["ride"] = "sky", ["win"] = "sky", ["pit"] = "sky",
         ["pitt"] = "pittimer", ["card"] = "split", ["split"] = "split", ["splitgreen"] = "split", ["gapa"] = "split", ["gapb"] = "split",
         ["trap"] = "split", ["str"] = "standings", ["stq"] = "standings", ["stp"] = "standings", ["sti"] = "standings",
-        ["bottom"] = "tower", ["progression"] = "progression",
+        ["cap"] = "caption", ["bottom"] = "tower", ["progression"] = "progression",
     };
 
     static Ams2.OverlayHost.Data.OverlayModel Model() => LayoutPreview.ForWidget("lapcounter") with { Inputs = null };

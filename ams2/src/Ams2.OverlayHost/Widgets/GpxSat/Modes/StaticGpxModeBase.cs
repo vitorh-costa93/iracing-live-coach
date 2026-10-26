@@ -89,6 +89,8 @@ public abstract class StaticGpxModeBase : IGpxMode
         else if (c.Options.SpeedSplitQuali == "trap") main = c.Split.Trap is { } t && t.ActiveAt(c.Now) ? Trap(c, t) : null;
         else main = QualiNow(c);
         if (main is not null) screens.Add(main);
+        // Legenda recorrente do piloto: so ocupa o slot principal quando nada mais esta nele (menor prioridade de todas).
+        else if (c.CaptionOpen && !screens.Any(s => s.Slot == "main") && c.Focus is { } me && !me.InPitLane && Caption(c, me) is { } cap) screens.Add(cap);
         return screens;
     }
 
@@ -202,7 +204,7 @@ public abstract class StaticGpxModeBase : IGpxMode
         {
             "time" => Clock(c, true), "fl" => Fastest(c, At(1), At(1).BestLapTime > 0 ? At(1).BestLapTime : 81.443),
             "out" => OutOfRace(c, At(2)), "pit" => InPits(c, At(3)), "pitt" => PitTimer(c, f, 12.3), "dt" => Penalty(c, f),
-            "ride" => Riding(c, f), "card" => Card(c, f),
+            "ride" => Riding(c, f), "card" => Card(c, f), "cap" => Caption(c, f),
             "win" => Winner(c, c.Broadcast.Winner ?? new(At(1), 5534.532, 305.28, 198.721, c.Now)),
             "split" => Split(c, f, GpxFormat.Intermediate(1), 28.112, .204, 4), "splitgreen" => Split(c, f, GpxFormat.FinishLine, 80.874, -.112, 1),
             "gapa" => Gap(c, new(true, At(3) with { Position = 3 }, At(2) with { Position = 2 }, 7, c.Now - 1, c.Now + 7, 1.842, 0, -.12)),
@@ -221,6 +223,13 @@ public abstract class StaticGpxModeBase : IGpxMode
     protected abstract GpxScreen Winner(GpxContext c, WinnerInfo winner);
     protected abstract GpxScreen Riding(GpxContext c, CarSnapshot car);
     protected abstract GpxScreen Card(GpxContext c, CarSnapshot car);
+    /// <summary>Legenda recorrente do piloto (nome, equipe, pais, posicao e pneu), na tipografia do modo; chave "cap:" (peca "caption").</summary>
+    protected abstract GpxScreen Caption(GpxContext c, CarSnapshot car);
+    /// <summary>Bandeira do pais do piloto na caixa (nada se o jogo nao informa o pais).</summary>
+    protected static void CountryFlag(List<GpxBox> b, CarSnapshot car, float l, float t, float r, float bottom)
+    {
+        if (!string.IsNullOrWhiteSpace(car.Country)) b.Add(Box(l, t, r, bottom, text: car.Country) with { Image = GpxImage.CountryFlag });
+    }
     protected abstract GpxScreen Split(GpxContext c, CarSnapshot car, string label, double? time, double? delta, int position);
     protected abstract GpxScreen Gap(GpxContext c, GpxGapWindow window);
     protected abstract GpxScreen Trap(GpxContext c, GpxTrapWindow window);

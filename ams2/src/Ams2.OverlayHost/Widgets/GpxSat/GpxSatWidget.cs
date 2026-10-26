@@ -319,6 +319,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         if (!artwork) switch (b.Image)
         {
             case GpxImage.Flag: _surface.CheckeredFlag(dev, alpha); return;
+            case GpxImage.CountryFlag: _surface.CountryFlag(dev, b.Text, alpha); return;
             case GpxImage.TyreM: _surface.TyreBadge(dev, 'M', alpha); return;
             case GpxImage.TyreB: _surface.TyreBadge(dev, 'B', alpha); return;
             case GpxImage.CarNumber:

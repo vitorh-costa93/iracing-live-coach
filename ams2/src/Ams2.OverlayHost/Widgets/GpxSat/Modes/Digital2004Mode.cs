@@ -38,7 +38,32 @@ public sealed class Digital2004Mode : IGpxMode
         if (c.ShowSky && SkyMessage(c) is { } sky) list.Add(sky);
         if (!c.ShowAll) return list;
         if (c.IsRace) RaceScreens(c, list); else OtherScreens(c, list);
+        // Legenda recorrente: menor prioridade, so quando o slot principal ficaria vazio.
+        if (c.CaptionOpen && !list.Any(s => s.Slot == "main") && c.Focus is { InPitLane: false } me) list.Add(Caption(c, me));
         return list;
+    }
+
+    /// <summary>
+    /// Legenda recorrente do piloto entre eventos: placa completa (nome + posicao, equipe com pneu, bandeira do pais, logo opcional) ou, com a janela
+    /// curta (menos de 4 s), a variante simples so com a faixa branca (nome + posicao + bandeira). Prioridade 0.
+    /// </summary>
+    GpxScreen Caption(GpxContext c, CarSnapshot car)
+    {
+        var g = c.G; float fh = g.FH;
+        bool full = c.Options.CaptionSeconds >= 4;
+        var boxes = new List<GpxBox> { Bx(g.L0, g.Row(4), C1w, fh, GpxTextures.White, c.Name(car)) };
+        int pos = c.PositionOf(car);
+        if (pos > 0) boxes.Add(PosBig(g.L0 + C1w, g.Row(4), fh, pos, 0));
+        if (!string.IsNullOrWhiteSpace(car.Country))
+            boxes.Add(Bx(g.L0 + C1w + (pos > 0 ? 1.5f * fh : 0) + 4, g.Row(4), 1.5f * fh, fh, GpxTextures.White, car.Country, img: GpxImage.CountryFlag) with { Asset = null });
+        if (full)
+        {
+            boxes.Add(Bx(g.L0, g.Row(3), C1w, fh, GpxTextures.Blue, GpxContext.Team(car), ink: Wh, group: 1));
+            if (car.TyreSupplier is "M" or "B")
+                boxes.Add(Bx(g.L0 + C1w - fh, g.Row(3), fh, fh, GpxTextures.White, group: 1, img: car.TyreSupplier == "M" ? GpxImage.TyreM : GpxImage.TyreB));
+            boxes.Add(Logo(g.L0, g.Row(5), C1w, fh));
+        }
+        return new GpxScreen("main", $"{Key0}cap:{car.Index}{(full ? "" : ":s")}", boxes);
     }
 
     /// <summary>Sky message ativa: vencedor (bandeirada do 1o), volta mais rapida, abandono, boxes (carro em foco = timer) e riding with.</summary>
@@ -457,6 +482,7 @@ public sealed class Digital2004Mode : IGpxMode
             "dt" => DriveThrough(c, At(2)),
             "win" => Winner(c, c.Broadcast.Winner ?? new WinnerInfo(At(1), 5534.532, 305.28, 198.721, now)),
             "ride" => RidingWith(c, focus, "ride"),
+            "cap" => Caption(c, focus),
             "split" => QualiSplit(c, focus, GpxFormat.Intermediate(1), 81.112, 0.204, 4, "split"),
             "splitgreen" => QualiSplit(c, focus, GpxFormat.FinishLine, 80.874, -0.112, 1, "split"),
             "card" => GenericCard(c, focus, "card"),

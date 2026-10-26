@@ -77,6 +77,12 @@ public sealed class DigitalMode : StaticGpxModeBase
         b.Add(Trans(Third, C, 2, c.Model.QualiLap?.OutLap == true ? "Warm-up lap" : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, twice: true));
         b.Add(Trans(C, W, 2, q is { Rank: > 1, GapToFirst: { } gap } ? GpxFormat.SignedGap(gap) : "", ink: Yellow)); return Screen("card:" + car.Index, b);
     }
+    protected override GpxScreen Caption(GpxContext c, CarSnapshot car)
+    {
+        var b = Team(car); Name(b, c, car, QualiPosition(c, car), C);
+        CountryFlag(b, car, C + F / 2, Y(2) + 2, C + F / 2 + 1.6f * F, Y(2) + F - 2);
+        return Screen("cap:" + car.Index, b, priority: 10);
+    }
     protected override GpxScreen Split(GpxContext c, CarSnapshot car, string label, double? time, double? delta, int position)
     {
         var b = new List<GpxBox> { B(0, Third, 3, Grey, label, GpxAlign.Right, Black), B(3 * F, Third, 2, Blue, c.Name(car)), Trans(Third, C, 2, GpxFormat.LapTime(time), GpxAlign.Right, twice: true) };

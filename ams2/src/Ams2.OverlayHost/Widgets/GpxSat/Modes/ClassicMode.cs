@@ -107,6 +107,13 @@ public sealed class ClassicMode : StaticGpxModeBase
         b.Add(Text(C, y, W - F / 2, c.Model.QualiLap?.OutLap == true ? "Warm-up lap" : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, Y));
         b.Add(Text(C, y + F + 5, W - F / 2, q is { Rank: > 1, GapToFirst: { } gap } ? GpxFormat.SignedGap(gap) : "", GpxAlign.Right, Y)); return Screen("card:" + car.Index, b);
     }
+    protected override GpxScreen Caption(GpxContext c, CarSnapshot car)
+    {
+        var b = Band(); float y = Origin(); Identity(b, c, car, y); int pos = QualiPosition(c, car);
+        if (pos > 0) b.Add(Tile(W - 2.5f * F, y, 2 * F, pos));
+        CountryFlag(b, car, W - 2.5f * F - 3.2f * F, y + F / 4, W - 2.5f * F - F / 2, y + 1.5f * F);
+        return Screen("cap:" + car.Index, b, priority: 10);
+    }
     protected override GpxScreen Split(GpxContext c, CarSnapshot car, string label, double? time, double? delta, int position)
     {
         var b = Band(); float y = Origin(); var leader = c.Model.Quali?.Leader;

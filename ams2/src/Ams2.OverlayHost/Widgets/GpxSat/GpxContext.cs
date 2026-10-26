@@ -30,6 +30,9 @@ public sealed record GpxOptions
     public double SkySeconds { get; init; } = 8;
     public double SplitSeconds { get; init; } = 8;
     public double PageSeconds { get; init; } = 6;
+    /// <summary>Legenda recorrente do piloto no slot principal vazio: tempo na tela e intervalo entre aparicoes (s). Duracao &gt;= intervalo = continua.</summary>
+    public double CaptionSeconds { get; init; } = ShowCatalog.CaptionSeconds;
+    public double CaptionEvery { get; init; } = ShowCatalog.CaptionEvery;
     public bool OriginalFonts { get; init; } = true;
     /// <summary>Standings de corrida por evento (como no GPxPatch): so aparecem, estaticos, numa janela finita depois que o lider fecha a volta; fora dela o slot fica vazio. Sem ciclo continuo.</summary>
     public bool Rotation { get; init; } = true;
@@ -67,6 +70,8 @@ public sealed record GpxOptions
             SkySeconds = show.Timing("sky", 8),
             SplitSeconds = show.Timing("split", 8),
             PageSeconds = show.Timing("page", 6),
+            CaptionSeconds = show.Timing("caption", ShowCatalog.CaptionSeconds),
+            CaptionEvery = show.Timing("captionEvery", ShowCatalog.CaptionEvery),
             OriginalFonts = Flag(s, "originalFonts", true),
             Rotation = Flag(s, "rotation", true),
             Stretch = Pick(s, "aspect", "pillarbox") == "stretch",
@@ -117,6 +122,23 @@ public sealed class GpxContext
 
     /// <summary>Janela de gap com dado para a rotacao: aberta, ou ja resolvida (gap/voltas); o cronometro do gap atras sem resultado nao entra.</summary>
     public bool GapReady(GpxGapWindow? w) => w is not null && (w.Gap is not null || w.Laps > 0 || w.ActiveAt(Now));
+
+    /// <summary>
+    /// Janela da legenda recorrente do piloto: aberta nos primeiros <see cref="GpxOptions.CaptionSeconds"/> s de cada ciclo de
+    /// <see cref="GpxOptions.CaptionEvery"/> s (relogio da sessao); duracao &gt;= intervalo = sempre aberta. So com o carro do jogador em pista (nao nos boxes/garagem).
+    /// </summary>
+    public bool CaptionOpen
+    {
+        get
+        {
+            if (Focus is not { InGarage: false } || !ShowAll || Options.DirectorsCut) return false;
+            double every = Math.Max(1, Options.CaptionEvery), hold = Options.CaptionSeconds;
+            if (hold >= every) return true;
+            double phase = Now % every;
+            if (phase < 0) phase += every;
+            return phase < hold;
+        }
+    }
 
     public bool Preview(string screen) => string.Equals(Options.PreviewScreen, screen, StringComparison.OrdinalIgnoreCase);
     public bool Previewing => !string.IsNullOrWhiteSpace(Options.PreviewScreen);

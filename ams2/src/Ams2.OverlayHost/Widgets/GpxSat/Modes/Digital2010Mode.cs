@@ -135,7 +135,19 @@ public sealed class Digital2010Mode : IGpxMode
             if(c.Options.QualiStandings && QualiTower(c) is { } tower) list.Add(tower);
             if(c.Options.SpeedSplitQuali=="split" && QualiSplit(c) is { } split) list.Add(split);
         }
+        // Legenda recorrente: menor prioridade, so quando nem o main nem o gap tem tela.
+        if(c.CaptionOpen && !list.Any(s => s.Slot is "main" or "gap") && c.Focus is { InPitLane:false } me) list.Add(DriverCaption(c,me));
         return list;
+    }
+    /// <summary>Legenda recorrente do piloto entre eventos: nome, equipe, posicao grande, bandeira do pais e fornecedor de pneus (prints 2012). Prioridade 0.</summary>
+    GpxScreen DriverCaption(GpxContext c,CarSnapshot car)
+    {
+        var boxes=new List<GpxBox>(); var name=Step(1); NameTeam(c,car,boxes,name);
+        int position=c.PositionOf(car); BigPosition(boxes,Down(name),position);
+        float x=name.R-2*Pad/3+(position>0?W(191,2*Rh,114)*105/117:0)+4, size=Rh;
+        if(!string.IsNullOrWhiteSpace(car.Country)) boxes.Add(Box(Rect(x,name.T,W(48)),Neutral,car.Country) with { Image=GpxImage.CountryFlag,Asset=null,SourceRect=null });
+        if(car.TyreSupplier is "M" or "B") boxes.Add(Box(Rect(x,name.T+size,size,size),Neutral) with { Image=car.TyreSupplier=="M"?GpxImage.TyreM:GpxImage.TyreB,Asset=null,SourceRect=null });
+        return Screen("main","cap:"+car.Index,boxes);
     }
     GpxScreen? Time(GpxContext c, bool force=false)
     {
@@ -447,7 +459,7 @@ public sealed class Digital2010Mode : IGpxMode
         return c.Options.PreviewScreen!.ToLowerInvariant() switch
         {
             "time"=>Time(c,true), "fl"=>FastLap(c,cars[0],cars[0].BestLapTime>0?cars[0].BestLapTime:81.443,"preview:fl",c.Now-1),
-            "ride"=>Card(c,car,"preview:ride"), "card"=>QualiCard(c,car), "out"=>Control(c,At(1),false), "dt"=>Control(c,At(1),true),
+            "ride"=>Card(c,car,"preview:ride"), "cap"=>DriverCaption(c,car), "card"=>QualiCard(c,car), "out"=>Control(c,At(1),false), "dt"=>Control(c,At(1),true),
             "pit"=>PitInfo(c,At(1),false), "pitt"=>PitInfo(c,car,true),
             "win"=>Winner(c,c.Broadcast.Winner??new WinnerInfo(cars[0],5534.532,305.28,198.721,c.Now)),
             "str"=>Standings(c,"standings"), "stp"=>Standings(c,"pitstops"), "sti"=>Standings(c,"interval"), "stq"=>QualiTower(c),

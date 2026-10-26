@@ -9,7 +9,9 @@ public enum GpxAlign { Left = 0, Center = 1, Right = 2 }
 public enum GpxFontRole { Normal, Big, Small, Mono }
 
 /// <summary>Imagem procedural no lugar da textura (os TGAs do GPxPatch nao sao usados nem copiados).</summary>
-public enum GpxImage { None, Flag, TyreM, TyreB, CarNumber, Position, Winner, BigOne }
+public enum GpxImage { None, Flag, TyreM, TyreB, CarNumber, Position, Winner, BigOne,
+    /// <summary>Bandeira do pais do piloto (alpha-3 do jogo em <see cref="GpxBox.Text"/>), PNG de Assets\Flags; sem arquivo nao desenha nada.</summary>
+    CountryFlag }
 
 /// <summary>Cores ARGB de texto do GPxSAT.</summary>
 public static class GpxInk

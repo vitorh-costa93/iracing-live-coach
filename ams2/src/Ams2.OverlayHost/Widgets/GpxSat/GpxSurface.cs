@@ -27,6 +27,7 @@ public sealed unsafe class GpxSurface : IDisposable
 
     DeviceResources? _gfx;
     GpxInstrumentBitmaps? _artwork;
+    Ams2.OverlayHost.Gfx.FlagBitmaps? _flags;
     int _generation = -1;
     ComPtr<ID2D1SolidColorBrush> _solid;
     readonly Dictionary<string, ComPtr<ID2D1LinearGradientBrush>> _gradients = new(StringComparer.OrdinalIgnoreCase);
@@ -70,6 +71,7 @@ public sealed unsafe class GpxSurface : IDisposable
     void ReleaseResources()
     {
         _artwork?.Dispose(); _artwork = null;
+        _flags?.Dispose(); _flags = null;
         foreach (var l in _layouts.Values) l.Dispose();
         _layouts.Clear(); _layoutOrder.Clear();
         foreach (var f in _formats.Values) f.Dispose();
@@ -349,6 +351,21 @@ public sealed unsafe class GpxSurface : IDisposable
         Text(r, letter.ToString(), GpxAlign.Center, GpxInk.Black, 0, GpxFontRole.Normal, alpha);
     }
 
+
+    /// <summary>Bandeira do pais (alpha-3 do jogo em <paramref name="country"/>; PNG de Assets\Flags) ajustada na caixa, sem deformar. Sem arquivo: nao desenha (nunca codigo nem emoji).</summary>
+    public void CountryFlag(RectF r, string? country, float alpha = 1f)
+    {
+        if (_gfx is null) return;
+        var bitmap = (_flags ??= new Ams2.OverlayHost.Gfx.FlagBitmaps(_gfx)).Find(country);
+        if (bitmap == null) return;
+        var size = bitmap->GetSize();
+        if (size.Width <= 0 || size.Height <= 0) return;
+        float bw = r.Right - r.Left, bh = r.Bottom - r.Top, k = MathF.Min(bw / size.Width, bh / size.Height), fw = size.Width * k, fh = size.Height * k;
+        float l = r.Left + (bw - fw) / 2, t = r.Top + (bh - fh) / 2;
+        var dest = new RectF(l, t, l + fw, t + fh);
+        _dc->DrawBitmap(bitmap, &dest, alpha * _opacity, InterpolationMode.HighQualityCubic, null, null);
+        Mark(r);
+    }
 
     public bool Artwork(RectF destination, string? asset, GpxRect? source, float alpha)
     {
