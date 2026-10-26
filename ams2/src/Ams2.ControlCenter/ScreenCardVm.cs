@@ -137,7 +137,8 @@ public sealed class ScreenCardVm : Notify
     public bool HasTrigger => IsPiece || Show.HasTriggers;
     public bool NoTrigger => !HasTrigger;
     public bool CanReorder => !IsPiece;
-    public IReadOnlyList<TextChoice> Triggers => IsPiece ? PieceTriggers : WidgetTriggers;
+    static readonly IReadOnlyList<TextChoice> PieceTriggersLaps = [.. PieceTriggers, new("a cada N voltas…", ShowTriggers.Laps)];
+    public IReadOnlyList<TextChoice> Triggers => IsPiece ? (Piece!.Def.EveryLaps is null ? PieceTriggers : PieceTriggersLaps) : WidgetTriggers;
     public string Trigger
     {
         get => IsPiece ? Piece!.Trigger : Show.Trigger;
@@ -146,6 +147,10 @@ public sealed class ScreenCardVm : Notify
     public bool IsNative => IsPiece ? Piece!.IsNative : Show.IsNative;
     public bool IsEvents => IsPiece ? Piece!.IsEvents : Show.IsEvents;
     public bool IsPeriodic => IsPiece ? Piece!.IsPeriodic : Show.IsPeriodic;
+    public bool IsLaps => IsPiece && Piece!.IsLaps;
+    public ShowNumVm? EveryLaps => IsPiece ? Piece!.EveryLaps : null;
+    public IReadOnlyList<TextChoice>? LapsOfs => IsPiece ? Piece!.LapsOfs : null;
+    public string? LapsOf { get => IsPiece ? Piece!.LapsOf : null; set { if (IsPiece && value is not null) Piece!.LapsOf = value; } }
     public string NativeText => IsPiece ? "pela regra do tema" : Show.Def.NativeLabel.ToLowerInvariant().Replace("padrão:", "").Trim();
     public ObservableCollection<ShowCheckVm> Events => IsPiece ? Piece!.Events : Show.Events;
     public ShowNumVm Period => IsPiece ? Piece!.Period : Show.Period;
@@ -185,6 +190,8 @@ public sealed class ScreenCardVm : Notify
             p.Trigger = ShowTriggers.Native;
             p.Duration.Value = plan.PieceDuration(p.Def.Id, (p.Def.Duration ?? ShowDef.GenericDuration).Default);
             p.Period.Value = plan.PiecePeriod(p.Def.Id);
+            p.EveryLaps.Value = plan.PieceEveryLaps(p.Def.Id);
+            p.LapsOf = plan.PieceLapsOf(p.Def.Id);
             p.FadeIn.Value = plan.PieceFadeIn(p.Def.Id);
             p.FadeOut.Value = plan.PieceFadeOut(p.Def.Id);
             var ev = plan.PieceEvents(p.Def.Id);

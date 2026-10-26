@@ -236,6 +236,13 @@
                                                                 <ContentControl Content="{Binding Period}" ContentTemplate="{StaticResource InlineNum}"/>
                                                                 <TextBlock Text="s" Style="{StaticResource Word}"/>
                                                             </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Visibility="{Binding IsLaps, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="a cada" Style="{StaticResource Word}"/>
+                                                                <ContentControl Content="{Binding EveryLaps}" ContentTemplate="{StaticResource InlineNum}"/>
+                                                                <TextBlock Text="voltas" Style="{StaticResource Word}"/>
+                                                                <ComboBox Height="30" MinWidth="110" Margin="4,2" ItemsSource="{Binding LapsOfs}" ItemTemplate="{StaticResource ChoiceItem}" SelectedValuePath="Value"
+                                                                          SelectedValue="{Binding LapsOf, Mode=TwoWay}" ToolTip="Voltas contadas do jogador ou do líder."/>
+                                                            </StackPanel>
                                                             <StackPanel Orientation="Horizontal" Visibility="{Binding ShowDuration, Converter={StaticResource BoolToVis}}">
                                                                 <TextBlock Text="por" Style="{StaticResource Word}" Margin="8,0,2,0"/>
                                                                 <ContentControl Content="{Binding Duration}" ContentTemplate="{StaticResource InlineNum}"/>

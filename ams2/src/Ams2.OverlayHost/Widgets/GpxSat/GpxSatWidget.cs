@@ -148,7 +148,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
             var debug = Debug ? new System.Text.StringBuilder() : null;
             var show = Show();
             // Peca com gatilho proprio: janela do evento/ciclo no relogio do provider (previa = conteudo sempre).
-            var gated = show is null || ctx.Previewing ? show : show.At(m.Now, id => m.Events?.Last(id));
+            var gated = show is null || ctx.Previewing ? show : show.At(m.Now, id => m.Events?.Last(id), of => m.Events?.Laps(of) ?? 0);
             foreach (var sc in _mode.Dispatch(ctx)) Pick(sc, gated, ctx, debug);
             if (!ctx.Previewing) foreach (var sc in GpxSharedScreens.Dispatch(ctx)) Pick(sc, gated, ctx, debug);
             if (debug is not null) Console.Error.WriteLine($"[GPX] prev={_opt.PreviewScreen} now={m.Now} screens={debug}");

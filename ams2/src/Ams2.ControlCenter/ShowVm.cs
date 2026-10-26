@@ -53,16 +53,24 @@ public sealed class ShowPieceVm : Notify
         var d = def.Duration ?? ShowDef.GenericDuration;
         Duration = new ShowNumVm(d.Id, def.Duration is null ? "Tempo na tela por aparição (s)" : d.Label, d.Min, d.Max);
         Period = new ShowNumVm("period", "Intervalo entre aparições (s)", ShowSettings.MinPeriod, ShowSettings.MaxPeriod);
+        EveryLaps = new ShowNumVm("everyLaps", "A cada (voltas)", 1, ShowSettings.MaxEveryLaps, integer: true);
         FadeIn = new ShowNumVm("fadeIn", "Fade de entrada (s)", 0, ShowSettings.MaxFade);
         FadeOut = new ShowNumVm("fadeOut", "Fade de saída (s)", 0, ShowSettings.MaxFade);
         Events = new(ShowEvents.All.Select(e => new ShowCheckVm(e, ShowEvents.Label(e))));
-        foreach (var n in new[] { Duration, Period, FadeIn, FadeOut }) n.Edited += () => Edited?.Invoke();
+        foreach (var n in new[] { Duration, Period, EveryLaps, FadeIn, FadeOut }) n.Edited += () => Edited?.Invoke();
         foreach (var e in Events) e.Edited += () => Edited?.Invoke();
     }
     /// <summary>Gatilhos de uma peca: "sempre" e o proprio padrao (a peca aparece enquanto tem dados).</summary>
     static readonly IReadOnlyList<TextChoice> TriggerChoices =
         [new("Padrão da peça", ShowTriggers.Native), new(ShowTriggers.Label(ShowTriggers.Events), ShowTriggers.Events), new(ShowTriggers.Label(ShowTriggers.Periodic), ShowTriggers.Periodic)];
-    public IReadOnlyList<TextChoice> Triggers => TriggerChoices;
+    static readonly TextChoice LapsChoice = new(ShowTriggers.Label(ShowTriggers.Laps), ShowTriggers.Laps);
+    static readonly IReadOnlyList<TextChoice> LapsOfChoices = ShowLapsOf.All.Select(l => new TextChoice(ShowLapsOf.Label(l), l)).ToArray();
+    /// <summary>"A cada N voltas" so nas pecas que oferecem a regra (<see cref="PieceDef.EveryLaps"/>).</summary>
+    public IReadOnlyList<TextChoice> Triggers => Def.EveryLaps is null ? TriggerChoices : [.. TriggerChoices, LapsChoice];
+    public IReadOnlyList<TextChoice> LapsOfs => LapsOfChoices;
+    public ShowNumVm EveryLaps { get; }
+    string _lapsOf = ShowLapsOf.Player;
+    public string LapsOf { get => _lapsOf; set { if (ShowLapsOf.Canonical(value) is { } v && Set(ref _lapsOf, v)) Edited?.Invoke(); } }
     public PieceDef Def { get; }
     public string Label => Def.Label;
     public ShowNumVm Duration { get; }
@@ -75,13 +83,14 @@ public sealed class ShowPieceVm : Notify
     public string Trigger
     {
         get => _trigger;
-        set { if (ShowTriggers.Canonical(value) is { } v && Set(ref _trigger, v == ShowTriggers.Always ? ShowTriggers.Native : v)) { RaiseTrigger(); Edited?.Invoke(); } }
+        set { if (ShowTriggers.CanonicalPiece(value) is { } v && Set(ref _trigger, v == ShowTriggers.Always ? ShowTriggers.Native : v)) { RaiseTrigger(); Edited?.Invoke(); } }
     }
     public bool IsNative => _trigger == ShowTriggers.Native;
     public bool IsEvents => _trigger == ShowTriggers.Events;
     public bool IsPeriodic => _trigger == ShowTriggers.Periodic;
+    public bool IsLaps => _trigger == ShowTriggers.Laps;
     public bool IsTimed => !IsNative;
-    void RaiseTrigger() { Raise(nameof(Trigger)); Raise(nameof(IsNative)); Raise(nameof(IsEvents)); Raise(nameof(IsPeriodic)); Raise(nameof(IsTimed)); Raise(nameof(HasDuration)); }
+    void RaiseTrigger() { Raise(nameof(Trigger)); Raise(nameof(IsNative)); Raise(nameof(IsEvents)); Raise(nameof(IsPeriodic)); Raise(nameof(IsLaps)); Raise(nameof(IsTimed)); Raise(nameof(HasDuration)); }
 
     public void Load(ShowPlan plan)
     {
@@ -90,6 +99,7 @@ public sealed class ShowPieceVm : Notify
         _trigger = plan.PieceTrigger(id); RaiseTrigger();
         Duration.Load(plan.PieceDuration(id, (Def.Duration ?? ShowDef.GenericDuration).Default));
         Period.Load(plan.PiecePeriod(id)); FadeIn.Load(plan.PieceFadeIn(id)); FadeOut.Load(plan.PieceFadeOut(id));
+        EveryLaps.Load(plan.PieceEveryLaps(id)); _lapsOf = plan.PieceLapsOf(id); Raise(nameof(LapsOf));
         var events = plan.PieceEvents(id);
         foreach (var e in Events) e.Load(events.Contains(e.Id, StringComparer.OrdinalIgnoreCase));
     }
@@ -99,7 +109,7 @@ public sealed class ShowPieceVm : Notify
         var events = Events.Where(e => e.Checked).Select(e => e.Id).ToArray();
         return new ShowSettings
         {
-            Enabled = _enabled, Trigger = _trigger, DurationSeconds = Duration.Value, PeriodSeconds = Period.Value,
+            Enabled = _enabled, Trigger = _trigger, DurationSeconds = Duration.Value, PeriodSeconds = Period.Value, EveryLaps = (int)EveryLaps.Value, LapsOf = _lapsOf,
             FadeInSeconds = FadeIn.Value, FadeOutSeconds = FadeOut.Value, Events = events.Length == 0 ? null : events,
         };
     }

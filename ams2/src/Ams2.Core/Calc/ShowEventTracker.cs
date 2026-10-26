@@ -9,6 +9,13 @@ public sealed record ShowEventTimes(
     double Flag, double Start, double Sector, double Finish, double SessionEnd)
 {
     const double Never = double.NegativeInfinity;
+
+    /// <summary>Voltas completas do líder e do jogador (gatilho "a cada N voltas"; vale desde o último evento de volta correspondente).</summary>
+    public int LeaderLaps { get; init; }
+    public int PlayerLaps { get; init; }
+
+    /// <summary>Voltas completas de <paramref name="of"/> ("leader" ou "player").</summary>
+    public int Laps(string of) => string.Equals(of, "leader", StringComparison.OrdinalIgnoreCase) ? LeaderLaps : PlayerLaps;
     public static readonly ShowEventTimes Empty = new(Never, Never, Never, Never, Never, Never, Never, Never, Never, Never, Never);
 
     /// <summary>Instante do evento <paramref name="id"/>; null = nunca houve ou id desconhecido.</summary>
@@ -73,6 +80,7 @@ public sealed class ShowEventTracker
         return new ShowEventTimes(
             _leaderLapT, bc.PlayerLapChangedT, _bestT, bc.PlayerPositionChangedT, bc.LastPitEntryT,
             Math.Max(bc.PlayerStopStartT, bc.PlayerPitLaneStartT), _flagT, _startT, sector,
-            bc.Winner?.FinishedT ?? double.NegativeInfinity, end?.EndedAt ?? double.NegativeInfinity);
+            bc.Winner?.FinishedT ?? double.NegativeInfinity, end?.EndedAt ?? double.NegativeInfinity)
+        { LeaderLaps = leaderLaps, PlayerLaps = s.PlayerCar?.LapsCompleted ?? 0 };
     }
 }

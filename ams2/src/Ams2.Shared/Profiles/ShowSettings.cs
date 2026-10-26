@@ -15,14 +15,34 @@ public static class ShowTriggers
     /// <summary>Aparece por <see cref="ShowSettings.DurationSeconds"/> s a cada <see cref="ShowSettings.PeriodSeconds"/> s.</summary>
     public const string Periodic = "periodic";
 
+    /// <summary>
+    /// So para peças: aparece por <see cref="ShowSettings.DurationSeconds"/> s a cada <see cref="ShowSettings.EveryLaps"/> voltas
+    /// (contadas do jogador ou do líder, <see cref="ShowSettings.LapsOf"/>). Não faz parte de <see cref="All"/> (os widgets inteiros não usam).
+    /// </summary>
+    public const string Laps = "laps";
+
     public static readonly IReadOnlyList<string> All = [Native, Always, Events, Periodic];
 
     public static string Label(string id) => id switch
     {
-        Native => "Padrão do widget", Always => "Sempre", Events => "Por evento", Periodic => "Periódico (a cada N s)", _ => id,
+        Native => "Padrão do widget", Always => "Sempre", Events => "Por evento", Periodic => "Periódico (a cada N s)", Laps => "A cada N voltas", _ => id,
     };
 
     /// <summary>Id conhecido no case canonico; desconhecido ou vazio = null.</summary>
+    public static string? Canonical(string? id)
+        => string.IsNullOrWhiteSpace(id) ? null : All.FirstOrDefault(t => string.Equals(t, id.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Como <see cref="Canonical"/>, mas aceitando também <see cref="Laps"/> (gatilhos de peça).</summary>
+    public static string? CanonicalPiece(string? id)
+        => string.Equals(id?.Trim(), Laps, StringComparison.OrdinalIgnoreCase) ? Laps : Canonical(id);
+}
+
+/// <summary>De quem são as voltas contadas pelo gatilho <see cref="ShowTriggers.Laps"/>.</summary>
+public static class ShowLapsOf
+{
+    public const string Player = "player", Leader = "leader";
+    public static readonly IReadOnlyList<string> All = [Player, Leader];
+    public static string Label(string id) => id switch { Player => "do jogador", Leader => "do líder", _ => id };
     public static string? Canonical(string? id)
         => string.IsNullOrWhiteSpace(id) ? null : All.FirstOrDefault(t => string.Equals(t, id.Trim(), StringComparison.OrdinalIgnoreCase));
 }
@@ -70,7 +90,7 @@ public static class ShowForms
 public sealed record ShowSettings
 {
     public const double MinPeriod = 5, MaxPeriod = 600, MaxFade = 5, MinDuration = 0.5, MaxDuration = 600;
-    public const int MaxAround = 10;
+    public const int MaxAround = 10, MaxEveryLaps = 99;
 
     /// <summary>Peças: liga/desliga a peça dentro do widget (null = padrão da peça).</summary>
     public bool? Enabled { get; init; }
@@ -80,6 +100,10 @@ public sealed record ShowSettings
     public string[]? Events { get; init; }
     /// <summary>Gatilho periódico: intervalo entre aparições (s).</summary>
     public double? PeriodSeconds { get; init; }
+    /// <summary>Gatilho "a cada N voltas" (peças): N (1..<see cref="MaxEveryLaps"/>).</summary>
+    public int? EveryLaps { get; init; }
+    /// <summary>Gatilho "a cada N voltas": voltas do jogador ou do líder (<see cref="ShowLapsOf"/>).</summary>
+    public string? LapsOf { get; init; }
     /// <summary>Tempo na tela (s) por evento/ciclo; no gatilho padrão substitui o tempo próprio do widget (p.ex. "showFor").</summary>
     public double? DurationSeconds { get; init; }
     public double? FadeInSeconds { get; init; }
@@ -96,7 +120,7 @@ public sealed record ShowSettings
     public Dictionary<string, ShowSettings>? Pieces { get; init; }
 
     [JsonIgnore]
-    public bool IsEmpty => Enabled is null && Trigger is null && Events is null && PeriodSeconds is null && DurationSeconds is null && FadeInSeconds is null
+    public bool IsEmpty => Enabled is null && Trigger is null && Events is null && PeriodSeconds is null && EveryLaps is null && LapsOf is null && DurationSeconds is null && FadeInSeconds is null
         && FadeOutSeconds is null && Form is null && Rows is null && Around is null && Timings is null && Pieces is null;
 
     /// <summary>
@@ -161,20 +185,31 @@ public sealed record ShowSettings
         bool? enabled = Enabled;
         if (enabled is { } e && e == ShowPlan.PieceDefaultEnabled(p, owner)) enabled = null;
         var dur = p.Duration ?? ShowDef.GenericDuration;
-        string? trigger = ShowTriggers.Canonical(Trigger);
+        string? trigger = ShowTriggers.CanonicalPiece(Trigger);
         // Peca: "sempre" = o padrao (a peca ja aparece enquanto tem dados); so evento/periodico restringem.
         if (trigger is ShowTriggers.Native or ShowTriggers.Always) trigger = null;
+        if (trigger == ShowTriggers.Laps && p.EveryLaps is null) trigger = null;
         bool generic = trigger is not null;
         double? duration = p.Duration is not null || generic ? Clamp(DurationSeconds, dur.Min, dur.Max) : null;
-        if (duration is { } d && d == ShowPlan.LegacyOrDefault(dur, owner)) duration = null;
+        // No gatilho por voltas o padrao do tempo e o da regra da peca (LapsSeconds), senao o generico.
+        double durDefault = trigger == ShowTriggers.Laps && p.Duration is null && p.LapsSeconds is { } ls ? ls : ShowPlan.LegacyOrDefault(dur, owner);
+        if (duration is { } d && d == durDefault) duration = null;
         string[]? events = trigger == ShowTriggers.Events ? ShowEvents.Canonical(Events) : null;
         if (events is not null && SameSet(events, parent.DefaultEvents)) events = null;
         double? period = trigger == ShowTriggers.Periodic ? Clamp(PeriodSeconds, MinPeriod, MaxPeriod) : null;
         if (period == parent.DefaultPeriod) period = null;
+        int? everyLaps = null; string? lapsOf = null;
+        if (trigger == ShowTriggers.Laps)
+        {
+            if (EveryLaps is { } n) everyLaps = Math.Clamp(n, 1, MaxEveryLaps);
+            if (everyLaps == p.EveryLaps) everyLaps = null;
+            lapsOf = ShowLapsOf.Canonical(LapsOf);
+            if (lapsOf == p.LapsOf) lapsOf = null;
+        }
         double? fadeIn = generic ? Clamp(FadeInSeconds, 0, MaxFade) : null, fadeOut = generic ? Clamp(FadeOutSeconds, 0, MaxFade) : null;
         if (fadeIn == parent.FadeIn) fadeIn = null;
         if (fadeOut == parent.FadeOut) fadeOut = null;
-        var r = new ShowSettings { Enabled = enabled, DurationSeconds = duration, Trigger = trigger, Events = events, PeriodSeconds = period, FadeInSeconds = fadeIn, FadeOutSeconds = fadeOut };
+        var r = new ShowSettings { Enabled = enabled, DurationSeconds = duration, Trigger = trigger, Events = events, PeriodSeconds = period, EveryLaps = everyLaps, LapsOf = lapsOf, FadeInSeconds = fadeIn, FadeOutSeconds = fadeOut };
         return r.IsEmpty ? null : r;
     }
 
@@ -189,8 +224,12 @@ public sealed record TimingDef(string Id, string Label, double Default, double M
 /// <summary>Lista com forma estática/dinâmica: linhas (opção antiga em <see cref="RowsOption"/>) e pilotos ao redor do jogador.</summary>
 public sealed record ListDef(string DefaultForm, int DefaultRows, int MinRows, int MaxRows, int DefaultAround, string? RowsOption = null, string? AroundOption = null);
 
-/// <summary>Peça de um widget composto (Race Board / Qualy Board): liga/desliga, duração própria e gatilho próprio (padrão / por evento / periódico).</summary>
-public sealed record PieceDef(string Id, string Label, TimingDef? Duration = null, string? LegacyToggle = null, bool DefaultEnabled = true);
+/// <summary>
+/// Peça de um widget composto (Race Board / Qualy Board): liga/desliga, duração própria e gatilho próprio (padrão / por evento / periódico / a cada N voltas).
+/// <see cref="EveryLaps"/> (null = a peça não oferece o gatilho por voltas), <see cref="LapsOf"/> e <see cref="LapsSeconds"/> = padrões do gatilho por voltas (regra do Race Board mesclado).
+/// </summary>
+public sealed record PieceDef(string Id, string Label, TimingDef? Duration = null, string? LegacyToggle = null, bool DefaultEnabled = true,
+    int? EveryLaps = null, string LapsOf = ShowLapsOf.Player, double? LapsSeconds = null);
 
 /// <summary>Padrões da Exibição de um widget num tema (os antigos valores fixos do código).</summary>
 public sealed record ShowDef
@@ -308,27 +347,32 @@ public sealed class ShowPlan
 
     double _now = double.NaN;
     Func<string, double?>? _lastEvent;
+    Func<string, int>? _laps;
 
     /// <summary>
     /// Plano no instante <paramref name="now"/>: <see cref="PieceEnabled"/> passa a considerar o gatilho de cada peça
     /// (fora da janela do evento/ciclo = desligada, e o board segue para a peça seguinte) e <see cref="PieceAlpha"/> dá o fade.
     /// Sem nenhuma peça com gatilho próprio devolve o próprio plano.
     /// </summary>
-    public ShowPlan At(double now, Func<string, double?> lastEvent)
+    public ShowPlan At(double now, Func<string, double?> lastEvent, Func<string, int>? laps = null)
     {
         if (_s.Pieces is null || !_s.Pieces.Values.Any(p => PieceTriggerOf(p) is not null)) return this;
         var r = (ShowPlan)MemberwiseClone();
-        r._now = now; r._lastEvent = lastEvent;
+        r._now = now; r._lastEvent = lastEvent; r._laps = laps;
         return r;
     }
 
-    static string? PieceTriggerOf(ShowSettings? p) => ShowTriggers.Canonical(p?.Trigger) is ShowTriggers.Events or ShowTriggers.Periodic ? ShowTriggers.Canonical(p!.Trigger) : null;
+    static string? PieceTriggerOf(ShowSettings? p) => ShowTriggers.CanonicalPiece(p?.Trigger) is ShowTriggers.Events or ShowTriggers.Periodic or ShowTriggers.Laps ? ShowTriggers.CanonicalPiece(p!.Trigger) : null;
 
     /// <summary>Gatilho da peça: <see cref="ShowTriggers.Native"/>, <see cref="ShowTriggers.Events"/> ou <see cref="ShowTriggers.Periodic"/>.</summary>
     public string PieceTrigger(string id) => PieceDefOf(id) is { } p ? PieceTriggerOf(Piece(p.Id)) ?? ShowTriggers.Native : ShowTriggers.Native;
     /// <summary>Eventos do gatilho da peça (padrão = os do widget).</summary>
     public IReadOnlyList<string> PieceEvents(string id) => ShowEvents.Canonical(PieceDefOf(id) is { } p ? Piece(p.Id)?.Events : null) ?? Def.DefaultEvents.ToArray();
     public double PiecePeriod(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.PeriodSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, ShowSettings.MinPeriod, ShowSettings.MaxPeriod) : Def.DefaultPeriod;
+    /// <summary>Gatilho por voltas: a cada N voltas (padrão da regra da peça) e de quem são as voltas ("player" ou "leader").</summary>
+    public int PieceEveryLaps(string id) => PieceDefOf(id) is { } p
+        ? Piece(p.Id)?.EveryLaps is { } v ? Math.Clamp(v, 1, ShowSettings.MaxEveryLaps) : p.EveryLaps ?? 1 : 1;
+    public string PieceLapsOf(string id) => PieceDefOf(id) is { } p ? ShowLapsOf.Canonical(Piece(p.Id)?.LapsOf) ?? p.LapsOf : ShowLapsOf.Player;
     public double PieceFadeIn(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.FadeInSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, 0, ShowSettings.MaxFade) : Def.FadeIn;
     public double PieceFadeOut(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.FadeOutSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, 0, ShowSettings.MaxFade) : Def.FadeOut;
 
@@ -340,13 +384,21 @@ public sealed class ShowPlan
     {
         string trigger = PieceTrigger(id);
         if (trigger == ShowTriggers.Native) return 1f;
-        double hold = PieceDuration(id, ShowDef.GenericDuration.Default), fi = PieceFadeIn(id), fo = PieceFadeOut(id);
+        double hold = PieceDuration(id, PieceDefOf(id) is { LapsSeconds: { } ls } && trigger == ShowTriggers.Laps ? ls : ShowDef.GenericDuration.Default), fi = PieceFadeIn(id), fo = PieceFadeOut(id);
         if (trigger == ShowTriggers.Periodic)
         {
             if (!double.IsFinite(now)) return 0;
             double period = PiecePeriod(id), phase = now % period;
             if (phase < 0) phase += period;
             return Envelope(phase, Math.Min(hold, period), fi, fo);
+        }
+        if (trigger == ShowTriggers.Laps)
+        {
+            // A janela abre quando a volta de quem conta fecha e esta e multipla de N (volta 0 nao conta).
+            string of = PieceLapsOf(id);
+            int count = _laps?.Invoke(of) ?? 0, every = PieceEveryLaps(id);
+            if (count <= 0 || count % every != 0) return 0;
+            return lastEvent(of == ShowLapsOf.Leader ? ShowEvents.LeaderLap : ShowEvents.PlayerLap) is { } lap ? Envelope(now - lap, hold, fi, fo) : 0f;
         }
         float best = 0;
         foreach (var e in PieceEvents(id))
@@ -437,6 +489,20 @@ public static class ShowCatalog
     public const double CaptionSeconds = 8, CaptionEvery = 25;
 
     /// <summary>
+    /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: gap (split) a cada 3 voltas do jogador por 6 s,
+    /// voltas restantes (time) a cada 5 voltas por 6 s. Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
+    /// por evento nas telas do GPxPatch. Não é o padrão (o padrão despacha exatamente as telas do GPxPatch): é um preset para o perfil.
+    /// </summary>
+    public static ShowSettings RaceBoardRules => new()
+    {
+        Pieces = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["split"] = new ShowSettings { Trigger = ShowTriggers.Laps },
+            ["time"] = new ShowSettings { Trigger = ShowTriggers.Laps },
+        },
+    };
+
+    /// <summary>
     /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão:
     /// sem bloco "show" o despacho é o do GPxPatch.
     /// </summary>
@@ -444,20 +510,20 @@ public static class ShowCatalog
     {
         "f1-1998" or "f1-1999-digital" or "f1-2004" =>
         [
-            new("time", "Time left / voltas restantes"),
+            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
             new("pittimer", "Cronômetro do jogador nos boxes"),
-            new("split", "Splits, gaps, speed trap e cartão da classificação"),
+            new("split", "Splits, gaps, speed trap e cartão da classificação", EveryLaps: 3, LapsSeconds: 6),
             new("standings", "Standings (corrida, paradas, classificação)"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
         ],
         "f1-2012" =>
         [
-            new("time", "Time left / voltas restantes"),
+            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6),
             new("logo", "Logo F1"),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, card do piloto, vencedor)"),
             new("pittimer", "Pit lane / pit stop do jogador"),
-            new("split", "Gap, splits e cartão da classificação"),
+            new("split", "Gap, splits e cartão da classificação", EveryLaps: 3, LapsSeconds: 6),
             new("standings", "Standings e torre da classificação"),
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),
