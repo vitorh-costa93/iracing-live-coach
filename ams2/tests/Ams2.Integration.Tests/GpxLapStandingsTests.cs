@@ -11,10 +11,14 @@ namespace Ams2.Integration.Tests;
 /// <summary>Standings de corrida por evento: nada sem evento; lider fecha a volta -> estaticos pela janela -> slot vazio.</summary>
 public sealed class GpxLapStandingsTests
 {
-    static GpxContext Context(GpxSplitTracker split, SessionSnapshot session, double now)
+    static GpxContext Context(GpxSplitTracker split, SessionSnapshot session, double now, double gapShift = 0)
     {
         var model = LayoutPreview.ForWidget("lapcounter");
         model = model with { Session = session, Now = now, Broadcast = BroadcastState.Empty with { SessionSeenT = 0 } };
+        // Standings com gaps conhecidos (deslocados por gapShift): o retrato tem que ignorar a mudanca ate o proximo cruzamento do lider.
+        var rows = session.Cars.Where(x => x.Position > 0).OrderBy(x => x.Position)
+            .Select(x => new StandingRow(x, x.Position == 1 ? null : x.Position * 1.5 + gapShift, 0, x.IsPlayer)).ToList();
+        model = model with { Standings = rows };
         return new GpxContext { Model = model, Session = session, Options = new GpxOptions { ShowTimeLeft = false }, Settings = new WidgetSettings { Id = "gpxsat" }, G = new(14), Sky = new(), Split = split };
     }
 
@@ -38,5 +42,33 @@ public sealed class GpxLapStandingsTests
         Assert.Equal(1, Main(shown));
         Assert.Equal(shown.Single(x => x.Slot == "main").Key, mode.Dispatch(Context(split, after, 105)).Single(x => x.Slot == "main").Key);   // estatica
         Assert.Equal(0, Main(mode.Dispatch(Context(split, after, 100 + 60))));   // janela acabou: vazio
+    }
+
+    static string Texts(GpxScreen s) => string.Join("|", s.Boxes.Select(b => b.Text));
+
+    [Theory, MemberData(nameof(Modes))]
+    public void Standings_are_a_snapshot_taken_when_the_leader_crosses_the_line(IGpxMode mode)
+    {
+        var baseSession = LayoutPreview.ForWidget("lapcounter").Session! with { Kind = SessionKind.Race };
+        var cars = baseSession.Cars.Select(c => c with { Sector = 2 }).ToList();
+        var before = baseSession with { Cars = cars };
+        int lead = cars.FindIndex(c => c.Position == 1);
+        var after = baseSession with { Cars = cars.Select((c, i) => i == lead ? c with { Sector = 0, LapsCompleted = c.LapsCompleted + 1 } : c).ToList() };
+        var split = new GpxSplitTracker();
+        split.Update(99, before);
+        split.Update(100, after);
+        GpxScreen MainAt(double now, double shift) => mode.Dispatch(Context(split, after, now, shift)).Single(x => x.Slot == "main");
+
+        var atCrossing = MainAt(100, 0);
+        var later = MainAt(105, 7.25);   // gaps mudaram 5 s depois: a tela continua com os valores do cruzamento
+        Assert.Equal(Texts(atCrossing), Texts(later));
+        Assert.DoesNotContain(later.Boxes, b => b.Text is { } t && t.Contains("7.25"));
+
+        // Proximo cruzamento do lider: novo retrato, agora com os gaps novos.
+        var again = after with { Cars = after.Cars.Select((c, i) => i == lead ? c with { Sector = 1 } : c).ToList() };
+        var next = again with { Cars = again.Cars.Select((c, i) => i == lead ? c with { Sector = 0, LapsCompleted = c.LapsCompleted + 1 } : c).ToList() };
+        split.Update(130, again); split.Update(160, next);
+        var fresh = mode.Dispatch(Context(split, next, 161, 7.25)).Single(x => x.Slot == "main");
+        Assert.NotEqual(Texts(atCrossing), Texts(fresh));
     }
 }

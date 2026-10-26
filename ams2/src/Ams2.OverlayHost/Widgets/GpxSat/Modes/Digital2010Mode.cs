@@ -112,12 +112,14 @@ public sealed class Digital2010Mode : IGpxMode
         if(c.IsRace)
         {
             bool dc=c.Options.DirectorsCut;
+            // Retrato da classificacao/torres no instante em que o lider cruza a linha (mesmo com outra tela no slot): valores congelados.
+            if(!dc && (c.Options.Rotation || c.Options.RaceStandings is "standings" or "pitstops" or "interval")) FrozenStandings(c,c.Options.Rotation?LapMode(c):c.Options.RaceStandings);
             if(sky is null)
             {
                 if(c.Focus is { InPitLane:true } focus) list.Add(PitInfo(c,focus,true) with { Priority=90 });
                 else if(dc) AddDirector(c,list);
                 else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(LapStandings(c) is { } page) list.Add(page); }
-                else if(c.Options.RaceStandings is "standings" or "pitstops" or "interval") list.Add(Standings(c,c.Options.RaceStandings));
+                else if(c.Options.RaceStandings is "standings" or "pitstops" or "interval" && FrozenStandings(c,c.Options.RaceStandings) is { Count:>0 } all) list.Add(all[c.PageOf(all.Count*StandingsPerPage(c),StandingsPerPage(c))]);
                 else if(GapNow(c,c.Options.SpeedSplitRace) is { } gap) list.Add(gap);
             }
             else if(dc) AddDirector(c,list,active?.Kind is GpxSkyKind.OutOfRace or GpxSkyKind.InPits);
@@ -259,10 +261,14 @@ public sealed class Digital2010Mode : IGpxMode
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
     GpxScreen? LapStandings(GpxContext c)
     {
-        int pages=GpxRotation.PagesOf(Rows(c).Count,StandingsPerPage(c));
-        return GpxRotation.EventPage(c.Split.LeaderLapT,c.Now,c.Options.StandingsPageSeconds,pages) is { } page
-            ? Standings(c,c.Options.RaceStandings=="pitstops"?"pitstops":"standings",page) : null;
+        var pages=FrozenStandings(c,LapMode(c));
+        return GpxRotation.EventPage(c.Split.LeaderLapT,c.Now,c.Options.StandingsPageSeconds,pages.Count) is { } page ? pages[page] : null;
     }
+    static string LapMode(GpxContext c) => c.Options.RaceStandings=="pitstops"?"pitstops":"standings";
+    readonly GpxEventSnapshot _frozen=new();
+    /// <summary>Todas as paginas da classificacao montadas quando o lider cruzou a linha e congeladas ate o proximo cruzamento (posicoes, gaps, voltas, Pit/Out).</summary>
+    IReadOnlyList<GpxScreen> FrozenStandings(GpxContext c,string mode)
+        => _frozen.Get("standings:"+mode,c.Split.LeaderLapT,()=>Enumerable.Range(0,GpxRotation.PagesOf(Rows(c).Count,StandingsPerPage(c))).Select(p=>Standings(c,mode,p)).ToArray());
     GpxScreen Standings(GpxContext c,string mode,int? fixedPage=null)
     {
         var rows=Rows(c); int n=StandingsPerPage(c);
@@ -278,9 +284,16 @@ public sealed class Digital2010Mode : IGpxMode
         }
         return Screen("main","standings:"+mode,boxes,page,40);
     }
+    /// <summary>Torre inferior: paginas montadas quando o lider cruzou a linha e congeladas ate o proximo cruzamento; a pagina corrente segue o ciclo.</summary>
     GpxScreen BottomTower(GpxContext c,string mode,int? dcPage=null)
     {
-        var rows=Rows(c); int n=Count(c,"bottomCars",5,12), page=dcPage??c.PageOf(rows.Count,n);
+        int n=Count(c,"bottomCars",5,12);
+        var pages=_frozen.Get("tower:"+mode+":"+n,c.Split.LeaderLapT,()=>Enumerable.Range(0,Math.Max(1,GpxRotation.PagesOf(Rows(c).Count,n))).Select(p=>BottomTowerPage(c,mode,n,p)).ToArray());
+        return pages[Math.Clamp(dcPage??c.PageOf(pages.Length*n,n),0,pages.Length-1)];
+    }
+    GpxScreen BottomTowerPage(GpxContext c,string mode,int n,int page)
+    {
+        var rows=Rows(c);
         const float space=6.144f, inset=3.072f;
         float height=Rh+2*inset, cap=height*1.2f, width=((Right-Left)-cap-(n-1)*space)/n;
         var boxes=new List<GpxBox>
@@ -303,7 +316,9 @@ public sealed class Digital2010Mode : IGpxMode
         }
         return Screen("bottom","tower:"+mode,boxes,page);
     }
-    GpxScreen Progression(GpxContext c)
+    /// <summary>Torre de siglas (progressao): montada quando o lider cruzou a linha e congelada ate o proximo cruzamento.</summary>
+    GpxScreen Progression(GpxContext c) => _frozen.Get("progression:"+Count(c,"raceTowerCars",10),c.Split.LeaderLapT,()=>ProgressionNow(c));
+    GpxScreen ProgressionNow(GpxContext c)
     {
         var boxes=new List<GpxBox>(); float width=133*Rh/32;
         foreach(var row in Rows(c).Take(Count(c,"raceTowerCars",10)))

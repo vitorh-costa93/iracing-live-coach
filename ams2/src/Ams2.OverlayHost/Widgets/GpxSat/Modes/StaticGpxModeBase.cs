@@ -62,6 +62,9 @@ public abstract class StaticGpxModeBase : IGpxMode
         if (c.Previewing) return Preview(c) is { } p ? [p] : [];
         if (c.Options.ShowMode == "none") return [];
         var screens = new List<GpxScreen>();
+        // Retrato da classificacao no instante em que o lider cruza a linha (mesmo com outra tela no slot): valores congelados na janela.
+        if (c.IsRace && c.ShowAll && !c.Options.DirectorsCut && (c.Options.Rotation || c.Options.RaceStandings is "standings" or "pitstops"))
+            FrozenStandings(c, RaceKind(c));
         // Pit timer precedes both the clock and sky messages, even in sky-only mode.
         if (c.IsRace && c.Focus is { InPitLane: true } f) return [PitTimer(c, f, PitSeconds(c)) with { Priority = 120 }];
         if (c.ShowSky && Sky(c) is { } sky) screens.Add(sky);
@@ -77,7 +80,7 @@ public abstract class StaticGpxModeBase : IGpxMode
         {
             if (c.Options.DirectorsCut) main = DirectorsCut(c);
             else if (c.Options.Rotation) main = ConfiguredSplit(c) ?? LapStandings(c);
-            else if (c.Options.RaceStandings is "standings" or "pitstops") main = Standings(c, c.Options.RaceStandings == "pitstops" ? "stp" : "str");
+            else if (c.Options.RaceStandings is "standings" or "pitstops") main = FrozenStandings(c, RaceKind(c)) is { Count: > 0 } all ? all[c.PageOf(all.Count * CarsPerPage, CarsPerPage)] : null;
             else main = ConfiguredSplit(c);
         }
         // A parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; fora da janela a tabela volta.
@@ -99,10 +102,19 @@ public abstract class StaticGpxModeBase : IGpxMode
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
     GpxScreen? LapStandings(GpxContext c)
     {
-        string mode = c.Options.RaceStandings == "pitstops" ? "stp" : "str";
-        int pages = GpxRotation.PagesOf(Rows(c, mode).Count, CarsPerPage);
-        return GpxRotation.EventPage(c.Split.LeaderLapT, c.Now, c.Options.StandingsPageSeconds, pages) is { } page ? Standings(c, mode, page) : null;
+        var pages = FrozenStandings(c, RaceKind(c));
+        return GpxRotation.EventPage(c.Split.LeaderLapT, c.Now, c.Options.StandingsPageSeconds, pages.Count) is { } page ? pages[page] : null;
     }
+
+    static string RaceKind(GpxContext c) => c.Options.RaceStandings == "pitstops" ? "stp" : "str";
+
+    readonly GpxEventSnapshot _frozen = new();
+    /// <summary>
+    /// Todas as paginas da classificacao montadas no quadro em que o lider cruzou a linha (<see cref="GpxSplitTracker.LeaderLapT"/>) e
+    /// congeladas ate o proximo cruzamento: posicoes, gaps, voltas e "Out" nao mudam durante a janela. Antes do 1o cruzamento: ao vivo.
+    /// </summary>
+    protected IReadOnlyList<GpxScreen> FrozenStandings(GpxContext c, string kind)
+        => _frozen.Get(kind, c.Split.LeaderLapT, () => Enumerable.Range(0, GpxRotation.PagesOf(Rows(c, kind).Count, CarsPerPage)).Select(p => Standings(c, kind, p)).ToArray());
 
     GpxScreen? Sky(GpxContext c)
     {

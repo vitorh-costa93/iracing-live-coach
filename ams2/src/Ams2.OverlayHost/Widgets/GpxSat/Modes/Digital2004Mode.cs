@@ -60,6 +60,8 @@ public sealed class Digital2004Mode : IGpxMode
     /// <summary>Corrida (0x9c0df02): drive-through (sem dado no AMS2) &gt; carro em foco nos boxes &gt; Director's cut &gt; standings &gt; SpeedSplit.</summary>
     void RaceScreens(GpxContext c, List<GpxScreen> list)
     {
+        // Retrato da classificacao no instante em que o lider cruza a linha (mesmo com outra tela no slot): valores congelados na janela.
+        if (!c.Options.DirectorsCut && (c.Options.Rotation || c.Options.RaceStandings is "standings" or "pitstops")) FrozenRace(c);
         if (c.Focus is { InPitLane: true } f) { list.Add(PitTimer(c, f, PitSeconds(c)) with { Priority = 90 }); return; }
         if (c.Options.DirectorsCut && DirectorsCut(c) is { } dc) { list.Add(dc with { Priority = 50 }); return; }
         var split = c.Options.SpeedSplitRace switch
@@ -76,7 +78,7 @@ public sealed class Digital2004Mode : IGpxMode
         }
         if (c.Options.RaceStandings is "standings" or "pitstops")
         {
-            list.Add(c.Options.RaceStandings == "pitstops" ? PitStopsStandings(c) : RaceStandings(c));
+            if (FrozenRace(c) is { Count: > 0 } all) list.Add(all[c.PageOf(all.Count * CarsPerPage, CarsPerPage)]);
             return;
         }
         if (split is not null) list.Add(split with { Priority = 30 });
@@ -85,10 +87,17 @@ public sealed class Digital2004Mode : IGpxMode
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
     GpxScreen? LapStandings(GpxContext c)
     {
+        var pages = FrozenRace(c);
+        return GpxRotation.EventPage(c.Split.LeaderLapT, c.Now, c.Options.StandingsPageSeconds, pages.Count) is { } page ? pages[page] : null;
+    }
+
+    readonly GpxEventSnapshot _frozen = new();
+    /// <summary>Todas as paginas da classificacao (ou paradas) montadas quando o lider cruzou a linha e congeladas ate o proximo cruzamento.</summary>
+    IReadOnlyList<GpxScreen> FrozenRace(GpxContext c)
+    {
         bool stops = c.Options.RaceStandings == "pitstops";
-        int pages = GpxRotation.PagesOf(RaceRows(c).Count, CarsPerPage);
-        if (GpxRotation.EventPage(c.Split.LeaderLapT, c.Now, c.Options.StandingsPageSeconds, pages) is not { } page) return null;
-        return stops ? PitStopsStandings(c, page) : RaceStandings(c, page);
+        return _frozen.Get(stops ? "stP" : "stR", c.Split.LeaderLapT, () => Enumerable.Range(0, GpxRotation.PagesOf(RaceRows(c).Count, CarsPerPage))
+            .Select(p => stops ? PitStopsStandings(c, p) : RaceStandings(c, p)).ToArray());
     }
 
     /// <summary>Fora da corrida (0x9c0dffc): standings de classificacao (se ligado e houver mais de um tempo), senao o SpeedSplit.</summary>
