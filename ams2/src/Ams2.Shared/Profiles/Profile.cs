@@ -332,7 +332,8 @@ public sealed record Profile
     // 8: GPxSAT. Perfis salvos do f1-2004 ganham a camada "gpxsat" ligada e os widgets antigos equivalentes desligados (WidgetLayout.GpxSatReplaces).
     // 9: 1999/2012 ganham a GPxSAT ligada; f1-2004 troca o velocimetro "inputs" pelo GPxCInfo.
     // 10: f1-2004 volta ao velocimetro dos prints ("inputs" ligado, gpxgauges desligado; regra em Uses2004StockGpxGauges).
-    public const int CurrentSchemaVersion = 10;
+    // 11: Race Board mesclado e o padrao nos temas GPxSAT (pecas split/time por voltas); regra em KeepPureGpxWhereCustomized.
+    public const int CurrentSchemaVersion = 11;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public string Name { get; init; } = "Padrão";
@@ -404,6 +405,7 @@ public sealed record Profile
                 w = (w ?? defaults.Get(d.Id)!) with { Visible = true };
             if (w is not null && d.Id is "inputs" or "gpxgauges" && Uses2004StockGpxGauges(themeId))
                 w = w with { Visible = d.Id == "inputs" };
+            if (w is not null && d.Id == "gpxsat" && SchemaVersion < 11) w = KeepPureGpxWhereCustomized(w);
             list.Add((w ?? defaults.Get(d.Id)!).Normalized(themeId));
         }
         // Janelas de peca ("pai.peca") que o usuario criou: ficam se a peca existir no tema.
@@ -423,6 +425,22 @@ public sealed record Profile
     bool Uses2004StockGpxGauges(string themeId)
         => themeId == "f1-2004" && SchemaVersion is 8 or 9
            && Get("inputs") is { Visible: false } && Get("gpxgauges") is null or { Visible: true };
+
+    /// <summary>
+    /// v11: o Race Board mesclado (gap a cada 3 voltas, voltas restantes a cada 5) passa a ser o padrao das pecas "split"/"time" do GPxSAT.
+    /// Regra: perfil antigo que nunca personalizou a Exibicao da peca (sem bloco da peca) migra para a mescla; quem tinha qualquer bloco
+    /// da peca sem gatilho proprio (desligada, duracao, fades...) manteve o comportamento "puro GPxPatch" e ganha o gatilho "native" gravado.
+    /// Gatilho ja escolhido (por voltas, evento, periodico) fica como esta.
+    /// </summary>
+    static WidgetSettings KeepPureGpxWhereCustomized(WidgetSettings w)
+    {
+        if (w.Show?.Pieces is not { Count: > 0 } pieces) return w;
+        var copy = new Dictionary<string, ShowSettings>(pieces, StringComparer.OrdinalIgnoreCase);
+        foreach (var id in ShowCatalog.MergedPieces)
+            if (copy.TryGetValue(id, out var p) && p is not null && string.IsNullOrWhiteSpace(p.Trigger))
+                copy[id] = p with { Trigger = ShowTriggers.Native };
+        return w with { Show = w.Show with { Pieces = copy } };
+    }
 
     static bool LegacySlot(WidgetSettings w, int x, int y, float scale, int sw, int sh)
         => w.X == (int)Math.Round(x * sw / 1920.0) && w.Y == (int)Math.Round(y * sh / 1080.0)

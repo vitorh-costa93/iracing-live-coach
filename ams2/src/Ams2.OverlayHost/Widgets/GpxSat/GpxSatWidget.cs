@@ -186,6 +186,7 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
             _showVersion = _cfgVersion;
             var plan = ShowPlan.For(_cfg, _themeId);
             bool configured = plan.Def.Pieces.Count > 0 && (_cfg.Show?.Pieces is { Count: > 0 } || plan.Solo is not null
+                || plan.Def.Pieces.Any(p => plan.PieceTrigger(p.Id) != ShowTriggers.Native)
                 || _cfg.Option(RenderSettings.PiecesDetachedOption) is { Length: > 0 });
             _show = configured ? plan : null;
         }

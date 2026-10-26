@@ -45,7 +45,7 @@ public class GpxFinalTests
     public void Frame_signature_is_stable_for_same_content_and_changes_with_shown_text()
     {
         var w=new GpxSatWidget(); w.UseTheme(Ams2.OverlayHost.Theme.Themes.F1_2012);
-        w.Configure(new WidgetSettings { Id="gpxsat",Options=new() { ["lapsLeftMode"]="remaining",["previewScreen"]="time" } }.Normalized("f1-2012"));
+        w.Configure(new WidgetSettings { Id="gpxsat",Show=ShowCatalog.PureGpx,Options=new() { ["lapsLeftMode"]="remaining",["previewScreen"]="time" } }.Normalized("f1-2012"));
         var m=LayoutPreview.ForWidget("lapcounter") with { Inputs=null };
         long? a=w.FrameSignature(m);
         Assert.NotNull(a);

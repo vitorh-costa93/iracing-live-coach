@@ -54,13 +54,14 @@ public sealed class GpxLapTriggerTests
     {
         var old = new WidgetSettings { Id = "gpxsat", Show = new ShowSettings { Pieces = new() { ["split"] = new ShowSettings { Enabled = false } } } }.Normalized(Theme);
         Assert.False(ShowPlan.For(old, Theme).PieceEnabled("split"));
-        Assert.Equal(ShowTriggers.Native, ShowPlan.For(old, Theme).PieceTrigger("split"));
-        var cfg = new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.RaceBoardRules }.Normalized(Theme);
+        Assert.Equal(ShowTriggers.Laps, ShowPlan.For(old, Theme).PieceTrigger("split"));   // mescla e o padrao
+        Assert.Null(new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.RaceBoardRules }.Normalized(Theme).Show);   // padrao nao se grava
+        var cfg = new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.PureGpx }.Normalized(Theme);
         var split = cfg.Show!.Pieces!["split"];
-        Assert.Equal((ShowTriggers.Laps, null, null, null), (split.Trigger, split.EveryLaps, split.LapsOf, split.DurationSeconds));
+        Assert.Equal((ShowTriggers.Native, null, null, null), (split.Trigger, split.EveryLaps, split.LapsOf, split.DurationSeconds));
         string json = System.Text.Json.JsonSerializer.Serialize(cfg.Show);
         var back = System.Text.Json.JsonSerializer.Deserialize<ShowSettings>(json)!;
-        Assert.Equal(ShowTriggers.Laps, back.Pieces!["time"].Trigger);
+        Assert.Equal(ShowTriggers.Native, back.Pieces!["time"].Trigger);
     }
 
     [Fact]
@@ -68,10 +69,33 @@ public sealed class GpxLapTriggerTests
     {
         foreach (var theme in new[] { "f1-1998", "f1-1999-digital", "f1-2004", "f1-2012" })
         {
-            var plan = ShowPlan.For(new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.RaceBoardRules }.Normalized(theme), theme);
+            var plan = ShowPlan.For(new WidgetSettings { Id = "gpxsat" }.Normalized(theme), theme);
+            Assert.Equal((ShowTriggers.Laps, ShowTriggers.Laps), (plan.PieceTrigger("split"), plan.PieceTrigger("time")));
+            var pure = ShowPlan.For(new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.PureGpx }.Normalized(theme), theme);
+            Assert.Equal((ShowTriggers.Native, ShowTriggers.Native), (pure.PieceTrigger("split"), pure.PieceTrigger("time")));
+            Assert.Same(pure, pure.At(100, _ => 99, _ => 3));   // puro GPx: sem janela, despacho do GPxPatch
+            Assert.Equal(0f, plan.At(100, _ => 99, _ => 2).PieceAlpha("split"));   // mesclado: so a cada 3 voltas
+            Assert.Equal(1f, plan.At(100, _ => 99, _ => 3).PieceAlpha("split"));
             Assert.Equal((3, 5), (plan.PieceEveryLaps("split"), plan.PieceEveryLaps("time")));
             Assert.Equal((6d, 6d), (plan.PieceDuration("split", 6), plan.PieceDuration("time", 6)));
             Assert.Equal(ShowTriggers.Native, plan.PieceTrigger("sky"));
+        }
+    }
+
+    [Fact]
+    public void Migration_v11_keeps_pure_gpx_only_where_the_piece_was_customized()
+    {
+        foreach (var theme in new[] { "f1-1998", "f1-1999-digital", "f1-2004", "f1-2012" })
+        {
+            var fresh = ProfileFactory.CreateDefault("x", theme, 1920, 1080);
+            Assert.Null(fresh.Get("gpxsat")!.Show);
+            Profile Old(ShowSettings? show) => (fresh with { SchemaVersion = 10, Widgets = fresh.Widgets.Select(w => w.Id == "gpxsat" ? w with { Show = show } : w).ToList() }).Normalized();
+            ShowPlan P(Profile p) => ShowPlan.For(p.Get("gpxsat")!, theme);
+            Assert.Equal(ShowTriggers.Laps, P(Old(null)).PieceTrigger("split"));
+            var custom = Old(new ShowSettings { Pieces = new() { ["split"] = new ShowSettings { Enabled = false }, ["time"] = new ShowSettings { Trigger = ShowTriggers.Laps, EveryLaps = 4 } } });
+            Assert.Equal((ShowTriggers.Native, false), (P(custom).PieceTrigger("split"), P(custom).PieceEnabled("split")));
+            Assert.Equal((ShowTriggers.Laps, 4), (P(custom).PieceTrigger("time"), P(custom).PieceEveryLaps("time")));
+            Assert.Equal(Profile.CurrentSchemaVersion, custom.SchemaVersion);
         }
     }
 

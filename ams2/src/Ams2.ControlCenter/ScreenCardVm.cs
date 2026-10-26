@@ -138,7 +138,9 @@ public sealed class ScreenCardVm : Notify
     public bool NoTrigger => !HasTrigger;
     public bool CanReorder => !IsPiece;
     static readonly IReadOnlyList<TextChoice> PieceTriggersLaps = [.. PieceTriggers, new("a cada N voltas…", ShowTriggers.Laps)];
-    public IReadOnlyList<TextChoice> Triggers => IsPiece ? (Piece!.Def.EveryLaps is null ? PieceTriggers : PieceTriggersLaps) : WidgetTriggers;
+    static readonly IReadOnlyList<TextChoice> PieceTriggersMerged =
+        [new("sempre (puro GPxPatch)", ShowTriggers.Native), new("a cada evento…", ShowTriggers.Events), new("periodicamente", ShowTriggers.Periodic), new("a cada N voltas…", ShowTriggers.Laps)];
+    public IReadOnlyList<TextChoice> Triggers => IsPiece ? (Piece!.Def.LapsByDefault ? PieceTriggersMerged : Piece.Def.EveryLaps is null ? PieceTriggers : PieceTriggersLaps) : WidgetTriggers;
     public string Trigger
     {
         get => IsPiece ? Piece!.Trigger : Show.Trigger;
@@ -187,7 +189,7 @@ public sealed class ScreenCardVm : Notify
             var p = Piece!;
             var plan = ShowPlan.For(new WidgetSettings { Id = Owner.Id }, Owner.ThemeId);
             p.Enabled = plan.PieceEnabled(p.Def.Id);
-            p.Trigger = ShowTriggers.Native;
+            p.Trigger = plan.PieceTrigger(p.Def.Id);   // mescla (voltas) nas pecas split/time do GPxSAT; "native" nas demais
             p.Duration.Value = plan.PieceDuration(p.Def.Id, (p.Def.Duration ?? ShowDef.GenericDuration).Default);
             p.Period.Value = plan.PiecePeriod(p.Def.Id);
             p.EveryLaps.Value = plan.PieceEveryLaps(p.Def.Id);

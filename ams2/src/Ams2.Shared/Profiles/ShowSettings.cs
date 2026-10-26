@@ -187,9 +187,11 @@ public sealed record ShowSettings
         var dur = p.Duration ?? ShowDef.GenericDuration;
         string? trigger = ShowTriggers.CanonicalPiece(Trigger);
         // Peca: "sempre" = o padrao (a peca ja aparece enquanto tem dados); so evento/periodico restringem.
-        if (trigger is ShowTriggers.Native or ShowTriggers.Always) trigger = null;
+        // Peca com regra de voltas por padrao (Race Board mesclado): o padrao e "laps"; "native"/"always" = puro GPxPatch e fica gravado.
+        if (p.LapsByDefault) trigger = trigger is ShowTriggers.Native or ShowTriggers.Always ? ShowTriggers.Native : trigger ?? ShowTriggers.Laps;
+        else if (trigger is ShowTriggers.Native or ShowTriggers.Always) trigger = null;
         if (trigger == ShowTriggers.Laps && p.EveryLaps is null) trigger = null;
-        bool generic = trigger is not null;
+        bool generic = trigger is not null and not ShowTriggers.Native;
         double? duration = p.Duration is not null || generic ? Clamp(DurationSeconds, dur.Min, dur.Max) : null;
         // No gatilho por voltas o padrao do tempo e o da regra da peca (LapsSeconds), senao o generico.
         double durDefault = trigger == ShowTriggers.Laps && p.Duration is null && p.LapsSeconds is { } ls ? ls : ShowPlan.LegacyOrDefault(dur, owner);
@@ -209,6 +211,7 @@ public sealed record ShowSettings
         double? fadeIn = generic ? Clamp(FadeInSeconds, 0, MaxFade) : null, fadeOut = generic ? Clamp(FadeOutSeconds, 0, MaxFade) : null;
         if (fadeIn == parent.FadeIn) fadeIn = null;
         if (fadeOut == parent.FadeOut) fadeOut = null;
+        if (trigger == ShowTriggers.Laps && p.LapsByDefault) trigger = null;   // o padrao do catalogo nao se grava
         var r = new ShowSettings { Enabled = enabled, DurationSeconds = duration, Trigger = trigger, Events = events, PeriodSeconds = period, EveryLaps = everyLaps, LapsOf = lapsOf, FadeInSeconds = fadeIn, FadeOutSeconds = fadeOut };
         return r.IsEmpty ? null : r;
     }
@@ -227,9 +230,10 @@ public sealed record ListDef(string DefaultForm, int DefaultRows, int MinRows, i
 /// <summary>
 /// Peça de um widget composto (Race Board / Qualy Board): liga/desliga, duração própria e gatilho próprio (padrão / por evento / periódico / a cada N voltas).
 /// <see cref="EveryLaps"/> (null = a peça não oferece o gatilho por voltas), <see cref="LapsOf"/> e <see cref="LapsSeconds"/> = padrões do gatilho por voltas (regra do Race Board mesclado).
+/// <see cref="LapsByDefault"/>: o gatilho por voltas é o padrão da peça (mescla); gatilho "native" gravado = puro GPxPatch.
 /// </summary>
 public sealed record PieceDef(string Id, string Label, TimingDef? Duration = null, string? LegacyToggle = null, bool DefaultEnabled = true,
-    int? EveryLaps = null, string LapsOf = ShowLapsOf.Player, double? LapsSeconds = null);
+    int? EveryLaps = null, string LapsOf = ShowLapsOf.Player, double? LapsSeconds = null, bool LapsByDefault = false);
 
 /// <summary>Padrões da Exibição de um widget num tema (os antigos valores fixos do código).</summary>
 public sealed record ShowDef
@@ -356,16 +360,24 @@ public sealed class ShowPlan
     /// </summary>
     public ShowPlan At(double now, Func<string, double?> lastEvent, Func<string, int>? laps = null)
     {
-        if (_s.Pieces is null || !_s.Pieces.Values.Any(p => PieceTriggerOf(p) is not null)) return this;
+        if (!Def.Pieces.Any(p => PieceTrigger(p.Id) != ShowTriggers.Native)) return this;
         var r = (ShowPlan)MemberwiseClone();
         r._now = now; r._lastEvent = lastEvent; r._laps = laps;
         return r;
     }
 
-    static string? PieceTriggerOf(ShowSettings? p) => ShowTriggers.CanonicalPiece(p?.Trigger) is ShowTriggers.Events or ShowTriggers.Periodic or ShowTriggers.Laps ? ShowTriggers.CanonicalPiece(p!.Trigger) : null;
-
-    /// <summary>Gatilho da peça: <see cref="ShowTriggers.Native"/>, <see cref="ShowTriggers.Events"/> ou <see cref="ShowTriggers.Periodic"/>.</summary>
-    public string PieceTrigger(string id) => PieceDefOf(id) is { } p ? PieceTriggerOf(Piece(p.Id)) ?? ShowTriggers.Native : ShowTriggers.Native;
+    /// <summary>
+    /// Gatilho da peça: <see cref="ShowTriggers.Native"/>, <see cref="ShowTriggers.Events"/>, <see cref="ShowTriggers.Periodic"/> ou <see cref="ShowTriggers.Laps"/>.
+    /// Peça com <see cref="PieceDef.LapsByDefault"/> sem gatilho gravado = Laps (mescla); "native" gravado = puro GPxPatch.
+    /// </summary>
+    public string PieceTrigger(string id)
+    {
+        if (PieceDefOf(id) is not { } p) return ShowTriggers.Native;
+        string? t = ShowTriggers.CanonicalPiece(Piece(p.Id)?.Trigger);
+        if (t is ShowTriggers.Events or ShowTriggers.Periodic) return t;
+        if (t == ShowTriggers.Laps && p.EveryLaps is not null) return t;
+        return t is null && p.LapsByDefault ? ShowTriggers.Laps : ShowTriggers.Native;
+    }
     /// <summary>Eventos do gatilho da peça (padrão = os do widget).</summary>
     public IReadOnlyList<string> PieceEvents(string id) => ShowEvents.Canonical(PieceDefOf(id) is { } p ? Piece(p.Id)?.Events : null) ?? Def.DefaultEvents.ToArray();
     public double PiecePeriod(string id) => PieceDefOf(id) is { } p && Piece(p.Id)?.PeriodSeconds is { } v && double.IsFinite(v) ? Math.Clamp(v, ShowSettings.MinPeriod, ShowSettings.MaxPeriod) : Def.DefaultPeriod;
@@ -491,7 +503,7 @@ public static class ShowCatalog
     /// <summary>
     /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: gap (split) a cada 3 voltas do jogador por 6 s,
     /// voltas restantes (time) a cada 5 voltas por 6 s. Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
-    /// por evento nas telas do GPxPatch. Não é o padrão (o padrão despacha exatamente as telas do GPxPatch): é um preset para o perfil.
+    /// por evento nas telas do GPxPatch. Desde o esquema 11 é o PADRÃO dos temas GPxSAT (<see cref="PieceDef.LapsByDefault"/>): normalizado vira vazio.
     /// </summary>
     public static ShowSettings RaceBoardRules => new()
     {
@@ -502,28 +514,41 @@ public static class ShowCatalog
         },
     };
 
+    /// <summary>"Puro GPx": gap e voltas restantes voltam a ser as telas do GPxPatch (sem a regra de voltas); é o despacho idêntico ao do GPxPatch.</summary>
+    public static ShowSettings PureGpx => new()
+    {
+        Pieces = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["split"] = new ShowSettings { Trigger = ShowTriggers.Native },
+            ["time"] = new ShowSettings { Trigger = ShowTriggers.Native },
+        },
+    };
+
+    /// <summary>Peças cuja regra de voltas é o padrão (mescla) nos temas GPxSAT.</summary>
+    public static readonly string[] MergedPieces = ["split", "time"];
+
     /// <summary>
-    /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão:
-    /// sem bloco "show" o despacho é o do GPxPatch.
+    /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão;
+    /// "time" e "split" seguem a regra de voltas por padrão (mescla); com <see cref="PureGpx"/> o despacho é o do GPxPatch.
     /// </summary>
     static PieceDef[] GpxSatPieces(string t) => t switch
     {
         "f1-1998" or "f1-1999-digital" or "f1-2004" =>
         [
-            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6),
+            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6, LapsByDefault: true),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
             new("pittimer", "Cronômetro do jogador nos boxes"),
-            new("split", "Splits, gaps, speed trap e cartão da classificação", EveryLaps: 3, LapsSeconds: 6),
+            new("split", "Splits, gaps, speed trap e cartão da classificação", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true),
             new("standings", "Standings (corrida, paradas, classificação)"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
         ],
         "f1-2012" =>
         [
-            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6),
+            new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6, LapsByDefault: true),
             new("logo", "Logo F1"),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, card do piloto, vencedor)"),
             new("pittimer", "Pit lane / pit stop do jogador"),
-            new("split", "Gap, splits e cartão da classificação", EveryLaps: 3, LapsSeconds: 6),
+            new("split", "Gap, splits e cartão da classificação", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true),
             new("standings", "Standings e torre da classificação"),
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),
@@ -605,7 +630,7 @@ public static class ShowCatalog
             case "gpxsat":
                 return d with
                 {
-                    Triggers = false, NativeLabel = "Telas do GPxPatch (cada uma com o próprio evento)",
+                    Triggers = false, NativeLabel = "Telas do GPxPatch mescladas com o Race Board (gap a cada 3 voltas, voltas restantes a cada 5; o resto, por evento)",
                     Timings = [T("sky", "Sky messages na tela (s)", 8, 2, 30, "skySeconds"), T("split", "Splits/gaps/trap na tela (s)", 8, 2, 30, "splitSeconds"),
                                T("page", "Standings: segundos por página", 6, 2, 30, "pageSeconds"),
                                T("caption", "Legenda do piloto na tela (s)", ShowCatalog.CaptionSeconds, 2, 60),

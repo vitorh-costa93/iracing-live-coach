@@ -66,7 +66,10 @@ public sealed class ShowPieceVm : Notify
     static readonly TextChoice LapsChoice = new(ShowTriggers.Label(ShowTriggers.Laps), ShowTriggers.Laps);
     static readonly IReadOnlyList<TextChoice> LapsOfChoices = ShowLapsOf.All.Select(l => new TextChoice(ShowLapsOf.Label(l), l)).ToArray();
     /// <summary>"A cada N voltas" so nas pecas que oferecem a regra (<see cref="PieceDef.EveryLaps"/>).</summary>
-    public IReadOnlyList<TextChoice> Triggers => Def.EveryLaps is null ? TriggerChoices : [.. TriggerChoices, LapsChoice];
+    static readonly IReadOnlyList<TextChoice> MergedChoices =
+        [new("Sempre (puro GPxPatch)", ShowTriggers.Native), new(ShowTriggers.Label(ShowTriggers.Events), ShowTriggers.Events),
+         new(ShowTriggers.Label(ShowTriggers.Periodic), ShowTriggers.Periodic), LapsChoice];
+    public IReadOnlyList<TextChoice> Triggers => Def.LapsByDefault ? MergedChoices : Def.EveryLaps is null ? TriggerChoices : [.. TriggerChoices, LapsChoice];
     public IReadOnlyList<TextChoice> LapsOfs => LapsOfChoices;
     public ShowNumVm EveryLaps { get; }
     string _lapsOf = ShowLapsOf.Player;
