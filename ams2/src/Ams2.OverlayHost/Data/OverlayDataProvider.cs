@@ -212,6 +212,10 @@ public sealed class OverlayDataProvider : IDisposable
         return model;
     }
 
+    /// <summary>Escolha explicita do usuario (Control Center) vence a deteccao automatica; a deteccao so preenche quando nao ha escolha.</summary>
+    public static PlayerNameEntry? ChooseIdentity(PlayerNameEntry? manual, PlayerNameEntry? detected)
+        => manual is { HasOverride: true } ? manual : detected ?? manual;
+
     /// <summary>Registra o carro do jogador no store (modelo, nome do jogo) e aplica a identidade da pintura escolhida (piloto, equipe, pais).
     /// So o Name/TeamName/Country mudam: indices e distancias intactos, o GapTracker nao e afetado.</summary>
     SessionSnapshot ApplyPlayerName(double now, SessionSnapshot s)
@@ -228,7 +232,7 @@ public sealed class OverlayDataProvider : IDisposable
             if (liveryKey != _liveryModel) { _liveryModel = liveryKey; if (model.Length == 0) _liveries.Forget(); else _liveries.Request(pc!.CarName, pc.ClassName); }
             int field = s.Cars.Count;
             if (field != _liveryField && model.Length > 0) { _liveryField = field; _liveries.SetOpponents(s.Cars.Where(c => c.Index != pc!.Index).Select(c => c.Name)); } // IA da sessao: tira as pinturas dela dos candidatos
-            var withPlayer = PlayerIdentity.Apply(s, m => _liveries.Get(m) ?? _names.Get(m));
+            var withPlayer = PlayerIdentity.Apply(s, m => ChooseIdentity(_names.Get(m), _liveries.Get(m)));
             // Equipe da IA depende do carro/classe da pintura, nunca do tema ou do nome global do piloto.
             var result = PlayerIdentity.ApplyFieldByCar(withPlayer, c => _liveries.FindDriver(c.Name, c.CarName, c.ClassName) is { } e ? (e.Country, e.Team) : null);
             string diag = $"{result.PlayerCar?.Name}|{result.PlayerCar?.Country}|{_liveries.Get(pc?.CarName ?? "")?.Country}";
