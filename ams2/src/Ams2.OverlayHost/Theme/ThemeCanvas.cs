@@ -168,6 +168,8 @@ public sealed unsafe class ThemeCanvas : IDisposable
         if (_fontOverride is not null && !(specialNumbers && font.Family == Theme.Numbers.Family)) font = font with { Family = _fontOverride };
         // "Formula1 Display" e uma familia virtual: cada peso e um arquivo proprio (Regular/Bold), escolhido pelo peso pedido.
         if (font.Family == "Formula1 Display") font = font with { Family = font.Weight >= 600 ? "Formula1 Disp B" : "Formula1 Disp R", Weight = 400 };
+        // DIN (2012) vem do GPxPatch (fora do git): sem ela, volta para a Barlow que o tema usava antes.
+        if (font.Family == "DIN" && !_gfx.Fonts.Has("DIN") && !_gfx.Fonts.SystemHas((IDWriteFactory*)_gfx.DWriteFactory, "DIN")) font = font with { Family = "Barlow Semi Condensed", Weight = 600 };
         bool has = _gfx.Fonts.Has(font.Family);
         // Fora da coleção própria: fonte instalada no Windows (Verdana do tema 2018, fonte escolhida no Control Center); senão Segoe UI.
         string family = has || _gfx.Fonts.SystemHas((IDWriteFactory*)_gfx.DWriteFactory, font.Family) ? font.Family : "Segoe UI";

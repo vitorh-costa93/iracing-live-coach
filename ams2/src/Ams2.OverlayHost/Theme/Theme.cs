@@ -235,16 +235,16 @@ public static class Themes
     };
     /// <summary>
     /// F1 2012 (gráfico de TV 2011–2013; ref. exemplos do GP da Malásia 2012): mesma lógica do 2004, em células escuras inclinadas "/" com gradiente
-    /// (nome preto, equipe azul-ardósia, caixa de posição cinza e vermelha para o líder), texto branco condensado (Barlow Semi Condensed no lugar
-    /// da DIN da TV), velocidade em amarelo e DRS verde.
+    /// (nome preto, equipe azul-ardósia, caixa de posição cinza e vermelha para o líder), texto branco condensado na DIN-Bold do GPxPatch Digital 2010
+    /// (Barlow Semi Condensed so se a DIN nao estiver na colecao), velocidade em amarelo e DRS verde.
     /// </summary>
     public static readonly Theme F1_2012 = F1_2004 with
     {
         Id = "f1-2012", DisplayName = "F1 2012",
-        Title = new FontToken("Barlow Semi Condensed", 600, 27f),
-        Label = new FontToken("Barlow Semi Condensed", 600, 23f),
-        Text = new FontToken("Barlow Semi Condensed", 600, 27f),
-        Numbers = new FontToken("Barlow Semi Condensed", 600, 27f),
+        Title = new FontToken("DIN", 700, 27f),
+        Label = new FontToken("DIN", 700, 23f),
+        Text = new FontToken("DIN", 700, 27f),
+        Numbers = new FontToken("DIN", 700, 27f),
         NameCellFill = Rgb(8, 8, 10, 0.97f), NameCellInk = Rgb(255, 255, 255),
         TextShadow = new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)), ValueShadow = new ShadowToken(0f, 0f, Rgb(0, 0, 0, 0f)),
         AccentFill = Rgb(200, 18, 32), PlayerColor = Rgb(255, 214, 64),
