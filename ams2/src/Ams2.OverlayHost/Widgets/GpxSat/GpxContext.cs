@@ -99,6 +99,10 @@ public sealed class GpxContext
     public required GpxGeometry G { get; init; }
     public required GpxSkyTracker Sky { get; init; }
     public required GpxSplitTracker Split { get; init; }
+    /// <summary>Peca da Exibicao (id de <see cref="GpxPieces"/>) na janela do gatilho? Null = sem Exibicao (tudo aberto, como no GPxPatch).</summary>
+    public Func<string, bool>? PieceOpen { get; init; }
+    /// <summary>Uma tela de peca fechada (ex.: gap fora da volta multipla de 3) nao pode ocupar o slot nem esconder a tela seguinte da rotacao.</summary>
+    public bool Open(string piece) => PieceOpen?.Invoke(piece) ?? true;
 
     public double Now => Model.Now;
     public BroadcastState Broadcast => Model.Broadcast ?? BroadcastState.Empty;

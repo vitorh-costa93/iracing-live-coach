@@ -71,7 +71,7 @@ public abstract class StaticGpxModeBase : IGpxMode
         if (ExclusiveClock)
         {
             if (!c.ShowAll) return screens;
-            if (c.Options.ShowTimeLeft && Clock(c) is { } clock) { screens.Add(clock); return screens; }
+            if (c.Options.ShowTimeLeft && c.Open("time") && Clock(c) is { } clock) { screens.Add(clock); return screens; }
         }
         else if (c.Options.ShowTimeLeft && Clock(c) is { } clock) screens.Add(clock);
         if (!c.ShowAll) return screens;
@@ -96,7 +96,7 @@ public abstract class StaticGpxModeBase : IGpxMode
         return screens;
     }
 
-    GpxScreen? ConfiguredSplit(GpxContext c) => c.Options.SpeedSplitRace switch
+    GpxScreen? ConfiguredSplit(GpxContext c) => !c.Open("split") ? null : c.Options.SpeedSplitRace switch
     {
         "trap" => c.Split.Trap is { } t && t.ActiveAt(c.Now) ? Trap(c, t) : null,
         "behind" => c.Split.Behind is { } b && b.ActiveAt(c.Now) ? Gap(c, b) : null,

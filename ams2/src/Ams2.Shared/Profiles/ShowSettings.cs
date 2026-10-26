@@ -392,11 +392,12 @@ public sealed class ShowPlan
     /// Alfa do gatilho da peça em <paramref name="now"/>: padrão = 1; "events" = envelope do evento mais recente; "periodic" = começo de cada ciclo.
     /// A duração da janela é a da peça (<see cref="PieceDuration"/>, genérica se a peça não tiver).
     /// </summary>
-    public float PieceGate(string id, double now, Func<string, double?> lastEvent)
+    public float PieceGate(string id, double now, Func<string, double?> lastEvent, bool windowOnly = false)
     {
         string trigger = PieceTrigger(id);
         if (trigger == ShowTriggers.Native) return 1f;
         double hold = PieceDuration(id, PieceDefOf(id) is { LapsSeconds: { } ls } && trigger == ShowTriggers.Laps ? ls : ShowDef.GenericDuration.Default), fi = PieceFadeIn(id), fo = PieceFadeOut(id);
+        if (windowOnly) fi = fo = 0;
         if (trigger == ShowTriggers.Periodic)
         {
             if (!double.IsFinite(now)) return 0;
@@ -420,6 +421,12 @@ public sealed class ShowPlan
 
     /// <summary>Alfa da peça ignorando qualquer janela de gatilho (só liga/desliga): usado onde a regra de voltas não se aplica (treino/classificação).</summary>
     public float PieceAlphaUngated(string id) => PieceEnabledBase(id) ? 1f : 0f;
+
+    /// <summary>
+    /// A peça está na janela do gatilho (ligada e dentro da duração, sem contar os fades)? Os modos usam para não deixar uma tela de peça
+    /// fechada ocupar o slot e esconder as de menor prioridade (standings, legenda).
+    /// </summary>
+    public bool PieceWindowOpen(string id) => PieceEnabledBase(id) && (_lastEvent is null || PieceGate(id, _now, _lastEvent, windowOnly: true) > 0f);
 
     /// <summary>Alfa da peça no instante de <see cref="At"/> (sem instante = 1; desligada = 0).</summary>
     public float PieceAlpha(string id)

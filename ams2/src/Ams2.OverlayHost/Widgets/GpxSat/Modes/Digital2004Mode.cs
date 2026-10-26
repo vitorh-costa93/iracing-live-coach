@@ -89,7 +89,7 @@ public sealed class Digital2004Mode : IGpxMode
         if (!c.Options.DirectorsCut && (c.Options.Rotation || c.Options.RaceStandings is "standings" or "pitstops")) FrozenRace(c);
         if (c.Focus is { InPitLane: true } f) { list.Add(PitTimer(c, f, PitSeconds(c)) with { Priority = 90 }); return; }
         if (c.Options.DirectorsCut && DirectorsCut(c) is { } dc) { list.Add(dc with { Priority = 50 }); return; }
-        var split = c.Options.SpeedSplitRace switch
+        var split = !c.Open("split") ? null : c.Options.SpeedSplitRace switch
         {
             "behind" => c.Split.Behind is { } gb && gb.ActiveAt(c.Now) ? GapBehind(c, gb) : null,
             "trap" => c.Split.Trap is { } tw && tw.ActiveAt(c.Now) ? SpeedTrap(c, tw) : null,
