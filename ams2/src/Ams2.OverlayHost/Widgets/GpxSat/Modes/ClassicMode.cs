@@ -104,7 +104,7 @@ public sealed class ClassicMode : StaticGpxModeBase
     {
         var b = Band(); float y = Origin(); Identity(b, c, car, y); var q = c.Model.Quali?.Row(car.Index); int pos = QualiPosition(c, car);
         if (pos > 0) b.Add(Tile(W - 2 * 7 * F - 2 * F, y, 2 * F, pos));
-        b.Add(Text(C, y, W - F / 2, c.Model.QualiLap?.OutLap == true ? "Warm-up lap" : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, Y));
+        b.Add(Text(C, y, W - F / 2, c.Model.QualiLap?.OutLap == true ? OutLapText(c) : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, Y));
         b.Add(Text(C, y + F + 5, W - F / 2, q is { Rank: > 1, GapToFirst: { } gap } ? GpxFormat.SignedGap(gap) : "", GpxAlign.Right, Y)); return Screen("card:" + car.Index, b);
     }
     protected override GpxScreen Caption(GpxContext c, CarSnapshot car)

@@ -10,7 +10,7 @@ public static class QualiBoard99Presentation
         double? ReferenceTime = null, double? Delta = null, CarSnapshot? ReferenceCar = null,
         double? ReferenceSpeedMps = null, double? PlayerSpeedMps = null, int Position = 0, bool Invalid = false);
 
-    public static View Resolve(QualiLapState? q, double now, bool personal = false, double resultHold = ResultHold, double splitHold = SplitHold)
+    public static View Resolve(QualiLapState? q, double now, bool personal = false, double resultHold = ResultHold, double splitHold = SplitHold, double approach = 5)
     {
         if (q is null || q.CarIndex < 0 || !double.IsFinite(now)) return new(QualiBoard99Stage.Hidden, null);
         if (!q.InPit && q.OutLap) return new(QualiBoard99Stage.OutLap, null);
@@ -25,7 +25,7 @@ public static class QualiBoard99Presentation
             : personal ? q.PersonalReference : q.LeaderReference;
         double? time = reference?.Times.ElementAtOrDefault(mark - 1)
             ?? QualiBoardTiming.ReferenceTime(q, mark, personal, split);
-        bool approaching = QualiBoardTiming.ReferenceVisible(time, elapsed, mark);
+        bool approaching = QualiBoardTiming.ReferenceVisible(time, elapsed, mark, approach);
         if (split is null && !approaching) return new(QualiBoard99Stage.Running, elapsed);
         return new(split is null ? QualiBoard99Stage.Approach : QualiBoard99Stage.Split,
             split?.Elapsed ?? elapsed, mark, time, split is null ? null : personal ? split.DeltaPersonal : split.DeltaLeader,

@@ -168,6 +168,8 @@ public sealed class GpxSatWidget : IWidget, IGpxFrameObserver, IDisposable
         if (debug is not null) debug.Append(debug.Length == 0 ? "" : ",").Append(sc.Slot).Append(':').Append(sc.Key).Append(':').Append(sc.Boxes.Count);
         // Peca desligada (ou fora da janela do gatilho, ou de outra janela de peca): a tela sai e o slot fica para a seguinte.
         float alpha = show is not null && GpxPieces.Of(sc, ctx.Focus?.Index) is { } piece ? show.PieceAlpha(piece) : 1f;
+        // A regra "a cada N voltas" (gap/voltas restantes) e da corrida: no treino/classificacao as telas dessas pecas seguem so o liga/desliga.
+        if (show is not null && !ctx.IsRace && GpxPieces.Of(sc, ctx.Focus?.Index) is { } lp && show.PieceTrigger(lp) == ShowTriggers.Laps) alpha = show.PieceAlphaUngated(lp);
         if (alpha <= 0.01f) return;
         for (int i = 0; i < _slots.Count; i++)
         {

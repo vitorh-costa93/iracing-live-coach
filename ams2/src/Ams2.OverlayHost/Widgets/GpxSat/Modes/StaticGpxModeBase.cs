@@ -83,6 +83,8 @@ public abstract class StaticGpxModeBase : IGpxMode
             else if (c.Options.RaceStandings is "standings" or "pitstops") main = FrozenStandings(c, RaceKind(c)) is { Count: > 0 } all ? all[c.PageOf(all.Count * CarsPerPage, CarsPerPage)] : null;
             else main = ConfiguredSplit(c);
         }
+        // Qualy Board mesclado: maquina de estados por volta (tabela estatica so na volta de saida, relogio, aproximacao, intermediaria, resultado).
+        else if (c.Options.QualiMerged && c.Options.SpeedSplitQuali != "trap" && c.Focus is { } qf && c.Model.QualiLap is { } qq && qq.CarIndex == qf.Index) main = QualiMergedScreen(c, qf, qq);
         // A parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; fora da janela a tabela volta.
         else if (c.Options.SpeedSplitQuali != "trap" && QualiSplitWindow(c) is { } liveSplit) main = liveSplit;
         else if (c.Options.QualiStandings && c.Model.Quali?.Rows.Any(r => r.HasTime) == true) main = Standings(c, "stq");
@@ -115,8 +117,8 @@ public abstract class StaticGpxModeBase : IGpxMode
     /// Todas as paginas da classificacao montadas no quadro em que o lider cruzou a linha (<see cref="GpxSplitTracker.LeaderLapT"/>) e
     /// congeladas ate o proximo cruzamento: posicoes, gaps, voltas e "Out" nao mudam durante a janela. Antes do 1o cruzamento: ao vivo.
     /// </summary>
-    protected IReadOnlyList<GpxScreen> FrozenStandings(GpxContext c, string kind)
-        => _frozen.Get(kind, c.Split.LeaderLapT, () => Enumerable.Range(0, GpxRotation.PagesOf(Rows(c, kind).Count, CarsPerPage)).Select(p => Standings(c, kind, p)).ToArray());
+    protected IReadOnlyList<GpxScreen> FrozenStandings(GpxContext c, string kind, double? eventT = null)
+        => _frozen.Get(kind, eventT ?? c.Split.LeaderLapT, () => Enumerable.Range(0, GpxRotation.PagesOf(Rows(c, kind).Count, CarsPerPage)).Select(p => Standings(c, kind, p)).ToArray());
 
     GpxScreen? Sky(GpxContext c)
     {
@@ -162,6 +164,30 @@ public abstract class StaticGpxModeBase : IGpxMode
         return a is not null ? Gap(c, a) : b is not null ? Gap(c, b) : null;
     }
 
+    readonly GpxQualiFlow _qualiFlow = new();
+    protected static string OutLapText(GpxContext c) => c.Options.QualiMerged ? "FIRST LAP OUT OF PITS" : "Warm-up lap";
+
+    /// <summary>
+    /// Qualy Board mesclado: tabela de melhores voltas (retrato congelado na saida dos boxes) so na volta de saida, depois "FIRST LAP OUT OF PITS";
+    /// na volta lancada, relogio, aproximacao da marca, intermediaria (qsplit) e resultado (qresult). Pit/garagem: nada (so a legenda recorrente).
+    /// </summary>
+    GpxScreen? QualiMergedScreen(GpxContext c, CarSnapshot f, QualiLapState q)
+    {
+        if (f.InGarage) return null;
+        var step = _qualiFlow.Step(q, f.Index, c.Now, Rows(c, "stq").Count, CarsPerPage, c.Session.Track, c.Options.QualiTimings);
+        switch (step.Phase)
+        {
+            case GpxQualiPhase.Table:
+                var pages = FrozenStandings(c, "stq", step.TableStart);
+                return pages.Count == 0 ? Card(c, f) : pages[Math.Min(step.TablePage, pages.Count - 1)];
+            case GpxQualiPhase.OutLap: return f.InPitLane ? null : Card(c, f);
+            case GpxQualiPhase.Running: return Split(c, f, GpxFormat.Lap(Math.Max(1, q.Lap)), step.View!.Time, null, QualiPosition(c, f));
+            case GpxQualiPhase.Approach: return Split(c, f, SplitLabel(step.View!.Mark >= 3 ? 0 : step.View.Mark), step.View.Time, null, QualiPosition(c, f));
+            case GpxQualiPhase.Split or GpxQualiPhase.Finish: return QualiSplitWindow(c);
+            default: return null;
+        }
+    }
+
     GpxScreen? QualiNow(GpxContext c)
     {
         if (c.Focus is not { } f || f.InPitLane || f.InGarage) return null;
@@ -176,8 +202,9 @@ public abstract class StaticGpxModeBase : IGpxMode
         if (c.Focus is not { } f || f.InPitLane || f.InGarage) return null;
         var q = c.Model.QualiLap;
         if (q is null || q.CarIndex != f.Index || q.OutLap) return null;
-        var sp = q.LastSplit is { } s && c.Now >= s.At && c.Now - s.At < c.Options.SplitSeconds ? s : null;
-        var lr = q.LastResult is { } r && c.Now >= r.At && c.Now - r.At < c.Options.SplitSeconds ? r : null;
+        double splitHold = c.Options.QualiMerged ? c.Options.QualiTimings.Split : c.Options.SplitSeconds, resultHold = c.Options.QualiMerged ? c.Options.QualiTimings.Result : c.Options.SplitSeconds;
+        var sp = q.LastSplit is { } s && c.Now >= s.At && c.Now - s.At < splitHold ? s : null;
+        var lr = q.LastResult is { } r && c.Now >= r.At && c.Now - r.At < resultHold ? r : null;
         if (lr is not null && (sp is null || lr.At >= sp.At)) return Split(c, f, GpxFormat.FinishLine, lr.LapTime, lr.Invalid ? null : lr.GapToFirst, lr.Position);
         if (sp is not null) return Split(c, f, GpxFormat.Intermediate(sp.Sector), sp.Elapsed, sp.DeltaLeader, QualiPosition(c, f));
         return null;

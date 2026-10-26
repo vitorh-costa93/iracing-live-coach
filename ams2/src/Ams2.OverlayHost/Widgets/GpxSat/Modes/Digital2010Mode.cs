@@ -132,7 +132,7 @@ public sealed class Digital2010Mode : IGpxMode
         }
         else if(sky is null)
         {
-            if(c.Options.QualiStandings && QualiTower(c) is { } tower) list.Add(tower);
+            if(c.Options.QualiStandings && (!c.Options.QualiMerged || QualiTablePhase(c)) && QualiTower(c) is { } tower) list.Add(tower);
             if(c.Options.SpeedSplitQuali=="split" && QualiSplit(c) is { } split) list.Add(split);
         }
         // Legenda recorrente: menor prioridade, so quando nem o main nem o gap tem tela.
@@ -388,6 +388,11 @@ public sealed class Digital2010Mode : IGpxMode
         var latched=_directorAhead?ahead:behind;
         if(latched is not null) list.Add(Gap(c,latched));
     }
+    readonly GpxQualiFlow _qualiFlow=new();
+    /// <summary>Qualy Board mesclado: a tabela (torre) so aparece na volta de saida.</summary>
+    bool QualiTablePhase(GpxContext c)
+        => c.Focus is { } f && c.Model.QualiLap is { } q && q.CarIndex==f.Index && !f.InGarage
+           && _qualiFlow.Step(q,f.Index,c.Now,Math.Min(22,c.Model.Quali?.Rows.Count??0),22,c.Session.Track,c.Options.QualiTimings).Phase==GpxQualiPhase.Table;
     GpxScreen? QualiTower(GpxContext c)
     {
         var quali=c.Model.Quali??(c.Previewing?QualiTable.Build(c.Session):null);
@@ -415,8 +420,8 @@ public sealed class Digital2010Mode : IGpxMode
         if(q is null || q.CarIndex!=car.Index || q.InPit || q.OutLap || q.Elapsed is null) return QualiCard(c,car);
         var boxes=new List<GpxBox>(); var name=Step(1); boxes.Add(Box(name,Neutral,c.Name(car),GpxAlign.Center)); var timer=Down(name);
         double? elapsed=q.Elapsed, delta=null; bool finished=false, frozen=false, invalid=false;
-        if(q.LastSplit is { } sp && c.Now-sp.At is >=0 and var age && age<c.Options.SplitSeconds) { elapsed=sp.Elapsed; delta=sp.DeltaLeader; frozen=true; }
-        if(q.LastResult is { } result && c.Now-result.At is >=0 and var resultAge && resultAge<c.Options.SplitSeconds && (q.LastSplit is null || result.At>=q.LastSplit.At)) { elapsed=result.LapTime; delta=result.Invalid?null:result.GapToFirst; finished=frozen=true; invalid=result.Invalid; }
+        if(q.LastSplit is { } sp && c.Now-sp.At is >=0 and var age && age<(c.Options.QualiMerged?c.Options.QualiTimings.Split:c.Options.SplitSeconds)) { elapsed=sp.Elapsed; delta=sp.DeltaLeader; frozen=true; }
+        if(q.LastResult is { } result && c.Now-result.At is >=0 and var resultAge && resultAge<(c.Options.QualiMerged?c.Options.QualiTimings.Result:c.Options.SplitSeconds) && (q.LastSplit is null || result.At>=q.LastSplit.At)) { elapsed=result.LapTime; delta=result.Invalid?null:result.GapToFirst; finished=frozen=true; invalid=result.Invalid; }
         boxes.Add(Box(timer,Neutral,invalid?GpxFormat.InvalidLap:frozen?GpxFormat.LapTime(elapsed):GpxFormat.Tenths(elapsed),GpxAlign.Right));
         if(delta is { } d)
         {

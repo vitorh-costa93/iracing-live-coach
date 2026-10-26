@@ -73,7 +73,7 @@ public class StaticGpxModeTests
     public void Outlap_shows_card_without_invented_split_and_finish_result_wins_older_split(bool classic)
     {
         IGpxMode mode = classic ? new ClassicMode() : new DigitalMode();
-        var options = new GpxOptions { ShowTimeLeft = false, QualiStandings = false };
+        var options = new GpxOptions { ShowTimeLeft = false, QualiStandings = false, QualiMerged = false };
         var outlap = QualiLapState.Empty with { CarIndex = 3, OutLap = true };
         var card = Assert.Single(mode.Dispatch(Context(mode, options, race: false, lap: outlap)));
         Assert.Contains(":card:", card.Key); Assert.Contains(card.Boxes, b => b.Text == "Warm-up lap");

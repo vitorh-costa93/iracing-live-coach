@@ -30,6 +30,7 @@ public static class GpxPieces
             "split" or "splitgreen" or "gapa" or "gapb" or "gap" or "trap" or "card" or "qualisplit" or "qualicard" => "split",
             "str" or "stq" or "stp" or "standings" or "quali" => "standings",
             "cap" => "caption",
+            "qb" => "qboard",
             "tower" => "tower",
             "progression" => "progression",
             "f1" => "logo",

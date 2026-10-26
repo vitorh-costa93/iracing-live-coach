@@ -20,9 +20,9 @@ public static class QualiBoardTiming
     public static float RowAlpha(double age, int row, double title = TitleSeconds)
         => (float)Math.Clamp((age - title - row * RowSeconds) / .15, 0, 1);
 
-    public static bool ReferenceVisible(double? reference, double? elapsed, int mark)
+    public static bool ReferenceVisible(double? reference, double? elapsed, int mark, double window = 5)
         => reference is { } rt && elapsed is { } age && double.IsFinite(rt) && double.IsFinite(age) &&
-            age >= rt - 5 && (mark == 3 || age < rt);
+            age >= rt - window && (mark == 3 || age < rt);
 
     /// <summary>Independent sector minima are not a best-lap split unless their full sum matches that lap.</summary>
     public static double? ReferenceTime(QualiLapState q, int sector, bool personal, QualiSplit? crossing = null)
@@ -47,6 +47,7 @@ public sealed class QualiOutLapPresentation
     int _generation;
     int _pitExit;
     string? _track;
+    public double StartedAt => _at;
     double _at = double.NaN, _previousNow = double.NaN, _duration;
     bool _wasOut;
     public double Age { get; private set; }

@@ -29,6 +29,9 @@ public sealed record GpxOptions
     public double FadingSpeed { get; init; } = 10;
     public double SkySeconds { get; init; } = 8;
     public double SplitSeconds { get; init; } = 8;
+    /// <summary>Qualy Board mesclado (peca "qboard" ligada, padrao): maquina de estados por volta; desligado = quali do GPxPatch (tabela continua, SplitSeconds).</summary>
+    public bool QualiMerged { get; init; } = true;
+    public Ams2.Core.Calc.GpxSat.GpxQualiTimings QualiTimings { get; init; } = new();
     public double PageSeconds { get; init; } = 6;
     /// <summary>Legenda recorrente do piloto no slot principal vazio: tempo na tela e intervalo entre aparicoes (s). Duracao &gt;= intervalo = continua.</summary>
     public double CaptionSeconds { get; init; } = ShowCatalog.CaptionSeconds;
@@ -69,6 +72,8 @@ public sealed record GpxOptions
             FadingSpeed = Num(s, "fadingSpeed", 10),
             SkySeconds = show.Timing("sky", 8),
             SplitSeconds = show.Timing("split", 8),
+            QualiMerged = show.PieceEnabled("qboard"),
+            QualiTimings = new(show.Timing("qsplit", 3), show.Timing("qresult", 6), show.Timing("qapproach", 5), show.Timing("qpage", 7)),
             PageSeconds = show.Timing("page", 6),
             CaptionSeconds = show.Timing("caption", ShowCatalog.CaptionSeconds),
             CaptionEvery = show.Timing("captionEvery", ShowCatalog.CaptionEvery),

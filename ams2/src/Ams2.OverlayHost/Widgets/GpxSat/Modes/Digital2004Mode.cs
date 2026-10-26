@@ -129,6 +129,7 @@ public sealed class Digital2004Mode : IGpxMode
     void OtherScreens(GpxContext c, List<GpxScreen> list)
     {
         var q = c.Model.Quali;
+        if (c.Options.QualiMerged && c.Options.SpeedSplitQuali != "trap") { if (QualiMerged(c) is { } m) list.Add(m with { Priority = 30 }); return; }
         // Parcial/resultado da volta (janela SplitSeconds) tem prioridade sobre a tabela; antes a tabela retornava primeiro e a parcial nunca aparecia.
         if (c.Options.SpeedSplitQuali != "trap" && QualiSplitNow(c) is { } live && live.Key.Contains("split:")) { list.Add(live with { Priority = 30 }); return; }
         if (c.Options.QualiStandings && q is not null && q.Rows.Count(r => r.HasTime) > 1) { list.Add(QualiStandings(c)); return; }
@@ -138,6 +139,31 @@ public sealed class Digital2004Mode : IGpxMode
             return;
         }
         if (QualiSplitNow(c) is { } s) list.Add(s with { Priority = 30 });
+    }
+
+    readonly GpxQualiFlow _qualiFlow = new();
+
+    /// <summary>
+    /// Qualy Board mesclado: tabela de melhores voltas (retrato) so na volta de saida, depois o cartao; na volta lancada, relogio,
+    /// aproximacao, intermediaria e resultado nos tempos da Exibicao.
+    /// </summary>
+    GpxScreen? QualiMerged(GpxContext c)
+    {
+        if (c.Focus is not { } f || c.Model.QualiLap is not { } ql || ql.CarIndex != f.Index || f.InGarage) return null;
+        int rows = Math.Min(22, c.Model.Quali?.Rows.Count ?? 0);
+        var st = _qualiFlow.Step(ql, f.Index, c.Now, rows, CarsPerPage, c.Session.Track, c.Options.QualiTimings);
+        switch (st.Phase)
+        {
+            case GpxQualiPhase.Table:
+                if (rows == 0) return GenericCard(c, f, $"{Key0}card:{f.Index}");
+                var pages = _frozen.Get("stQ", st.TableStart, () => Enumerable.Range(0, GpxRotation.PagesOf(rows, CarsPerPage)).Select(p => QualiStandings(c, p)).ToArray());
+                return pages[Math.Min(st.TablePage, pages.Length - 1)];
+            case GpxQualiPhase.OutLap: return f.InPitLane ? null : GenericCard(c, f, $"{Key0}card:{f.Index}");
+            case GpxQualiPhase.Running: return QualiSplit(c, f, GpxFormat.Lap(Math.Max(1, ql.Lap)), st.View!.Time, null, c.PositionOf(f), $"{Key0}split:{f.Index}:run:{ql.Lap}");
+            case GpxQualiPhase.Approach: return QualiSplit(c, f, GpxFormat.Intermediate(Math.Max(1, st.View!.Mark)), st.View.Time, null, c.PositionOf(f), $"{Key0}split:{f.Index}:app:{ql.Lap}:{st.View.Mark}");
+            case GpxQualiPhase.Split or GpxQualiPhase.Finish: return QualiSplitNow(c);
+            default: return null;
+        }
     }
 
     /// <summary>Tempo parado do carro em foco: ao vivo enquanto parado, a ultima parada desta passagem pela pit lane, senao 0.</summary>
@@ -176,9 +202,9 @@ public sealed class Digital2004Mode : IGpxMode
     GpxScreen? QualiSplitNow(GpxContext c)
     {
         if (c.Focus is not { } f || c.Model.QualiLap is not { CarIndex: >= 0 } ql) return null;
-        double hold = c.Options.SplitSeconds;
-        var sp = ql.LastSplit is { } s && c.Now - s.At is >= 0 and var sa && sa < hold ? s : null;
-        var lr = ql.LastResult is { } r && c.Now - r.At is >= 0 and var ra && ra < hold ? r : null;
+        double holdS = c.Options.QualiMerged ? c.Options.QualiTimings.Split : c.Options.SplitSeconds, holdR = c.Options.QualiMerged ? c.Options.QualiTimings.Result : c.Options.SplitSeconds;
+        var sp = ql.LastSplit is { } s && c.Now - s.At is >= 0 and var sa && sa < holdS ? s : null;
+        var lr = ql.LastResult is { } r && c.Now - r.At is >= 0 and var ra && ra < holdR ? r : null;
         if (lr is not null && (sp is null || lr.At >= sp.At))
             return QualiSplit(c, f, GpxFormat.FinishLine, lr.LapTime, lr.Invalid ? null : lr.GapToFirst, lr.Position, $"{Key0}split:{f.Index}:L{lr.Lap}");
         if (sp is not null)

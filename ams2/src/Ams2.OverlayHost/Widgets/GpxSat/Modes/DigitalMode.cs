@@ -74,7 +74,7 @@ public sealed class DigitalMode : StaticGpxModeBase
     {
         var b = Team(car); var q = c.Model.Quali?.Row(car.Index); Name(b, c, car, QualiPosition(c, car));
         b.Add(Trans(C, W, 3, $"{car.LapsCompleted} Laps completed", ink: Yellow, twice: true));
-        b.Add(Trans(Third, C, 2, c.Model.QualiLap?.OutLap == true ? "Warm-up lap" : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, twice: true));
+        b.Add(Trans(Third, C, 2, c.Model.QualiLap?.OutLap == true ? OutLapText(c) : GpxFormat.LapTime(q?.BestLap), GpxAlign.Right, twice: true));
         b.Add(Trans(C, W, 2, q is { Rank: > 1, GapToFirst: { } gap } ? GpxFormat.SignedGap(gap) : "", ink: Yellow)); return Screen("card:" + car.Index, b);
     }
     protected override GpxScreen Caption(GpxContext c, CarSnapshot car)

@@ -418,6 +418,9 @@ public sealed class ShowPlan
         return best;
     }
 
+    /// <summary>Alfa da peça ignorando qualquer janela de gatilho (só liga/desliga): usado onde a regra de voltas não se aplica (treino/classificação).</summary>
+    public float PieceAlphaUngated(string id) => PieceEnabledBase(id) ? 1f : 0f;
+
     /// <summary>Alfa da peça no instante de <see cref="At"/> (sem instante = 1; desligada = 0).</summary>
     public float PieceAlpha(string id)
     {
@@ -541,6 +544,7 @@ public static class ShowCatalog
             new("split", "Splits, gaps, speed trap e cartão da classificação", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true),
             new("standings", "Standings (corrida, paradas, classificação)"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
+            new("qboard", "Qualy Board mesclado (volta de saída com tabela estática, relógio, aproximação, intermediária, resultado)"),
         ],
         "f1-2012" =>
         [
@@ -553,6 +557,7 @@ public static class ShowCatalog
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição, pneu) recorrente"),
+            new("qboard", "Qualy Board mesclado (volta de saída com tabela estática, relógio, intermediária, resultado)"),
         ],
         _ => [],
     };
@@ -634,7 +639,9 @@ public static class ShowCatalog
                     Timings = [T("sky", "Sky messages na tela (s)", 8, 2, 30, "skySeconds"), T("split", "Splits/gaps/trap na tela (s)", 8, 2, 30, "splitSeconds"),
                                T("page", "Standings: segundos por página", 6, 2, 30, "pageSeconds"),
                                T("caption", "Legenda do piloto na tela (s)", ShowCatalog.CaptionSeconds, 2, 60),
-                               T("captionEvery", "Legenda do piloto: a cada (s)", ShowCatalog.CaptionEvery, 5, 300)],
+                               T("captionEvery", "Legenda do piloto: a cada (s)", ShowCatalog.CaptionEvery, 5, 300),
+                               T("qsplit", "Qualy Board: intermediária na tela (s)", 3, 1, 10), T("qresult", "Qualy Board: resultado da volta na tela (s)", 6, 3, 15),
+                               T("qapproach", "Qualy Board: aproximação da marca (s antes)", 5, 1, 15), T("qpage", "Qualy Board: tabela da volta de saída, segundos por página", 7, 3, 20)],
                     Pieces = GpxSatPieces(t),
                 };
             case "board" when is93:
