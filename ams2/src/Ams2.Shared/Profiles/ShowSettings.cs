@@ -511,15 +511,13 @@ public static class ShowCatalog
     public const double CaptionSeconds = 8, CaptionEvery = 25;
 
     /// <summary>
-    /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: gap (split) a cada 3 voltas do jogador por 6 s,
-    /// voltas restantes (time) a cada 5 voltas por 6 s. Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
+    /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: voltas restantes (time) a cada 5 voltas por 6 s. Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
     /// por evento nas telas do GPxPatch. Desde o esquema 11 é o PADRÃO dos temas GPxSAT (<see cref="PieceDef.LapsByDefault"/>): normalizado vira vazio.
     /// </summary>
     public static ShowSettings RaceBoardRules => new()
     {
         Pieces = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["split"] = new ShowSettings { Trigger = ShowTriggers.Laps },
             ["time"] = new ShowSettings { Trigger = ShowTriggers.Laps },
         },
     };
@@ -529,17 +527,16 @@ public static class ShowCatalog
     {
         Pieces = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["split"] = new ShowSettings { Trigger = ShowTriggers.Native },
             ["time"] = new ShowSettings { Trigger = ShowTriggers.Native },
         },
     };
 
     /// <summary>Peças cuja regra de voltas é o padrão (mescla) nos temas GPxSAT.</summary>
-    public static readonly string[] MergedPieces = ["split", "time"];
+    public static readonly string[] MergedPieces = ["time"];
 
     /// <summary>
     /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão;
-    /// "time" e "split" seguem a regra de voltas por padrão (mescla); com <see cref="PureGpx"/> o despacho é o do GPxPatch.
+    /// "time" segue a regra de voltas por padrão (mescla); "split" (gap) abre por evento de setor (fim do S1 e do S2), sem regra de voltas; com <see cref="PureGpx"/> o despacho é o do GPxPatch.
     /// </summary>
     static PieceDef[] GpxSatPieces(string t) => t switch
     {
@@ -548,7 +545,7 @@ public static class ShowCatalog
             new("time", "Time left / voltas restantes", EveryLaps: 5, LapsSeconds: 6, LapsByDefault: true),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
             new("pittimer", "Cronômetro do jogador nos boxes"),
-            new("split", "Splits, gaps, speed trap e cartão da classificação", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true),
+            new("split", "Splits, gaps (fim do S1 e do S2, toda volta), speed trap e cartão da classificação"),
             new("standings", "Standings (corrida, paradas, classificação)"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
             new("qboard", "Qualy Board mesclado (volta de saída com tabela estática, relógio, aproximação, intermediária, resultado)"),
@@ -559,7 +556,7 @@ public static class ShowCatalog
             new("logo", "Logo F1"),
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, card do piloto, vencedor)"),
             new("pittimer", "Pit lane / pit stop do jogador"),
-            new("split", "Gap, splits e cartão da classificação", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true),
+            new("split", "Gap (fim do S1 e do S2, toda volta), splits e cartão da classificação"),
             new("standings", "Standings e torre da classificação"),
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),

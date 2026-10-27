@@ -362,8 +362,8 @@ public sealed class Digital2010Mode : IGpxMode
         Label(front,y); Label(rear,y+2*Rh);
         float half=W(222)/2+2*Pad/9;
         boxes.Add(Box(Rect(x,y+Rh,half),Neutral,w.Laps>0?GpxFormat.LapsBehind(w.Laps):w.Gap is { } gap?GpxFormat.SignedGap(gap):"+ "+GpxFormat.Tenths(w.Running(c.Now)),GpxAlign.Right) with { Asset="digital2010/race_gap",SourceRect=new(0,0,133,32) });
-        // Change is delta from the previous split, so reconstruct the previous gap; never display delta as a gap.
-        if(w.Laps==0 && w.Gap is { } current && w.Change is { } change && current-change>0) boxes.Add(Box(Rect(x+half-4*Pad/9,y+Rh,W(222)-half+4*Pad/9),Neutral,"("+GpxFormat.SignedGap(current-change)+")",GpxAlign.Right) with { Asset="digital2010/race_gap",SourceRect=new(0,0,133,32) });
+        // Line 2 = gap measured at the previous sector (never the delta).
+        if(w.Laps==0 && w.Previous is { } previous && previous>0) boxes.Add(Box(Rect(x+half-4*Pad/9,y+Rh,W(222)-half+4*Pad/9),Neutral,GpxFormat.Previous(previous),GpxAlign.Right) with { Asset="digital2010/race_gap",SourceRect=new(0,0,133,32) });
         return Screen("gap","gap:"+w.Ahead+":"+w.Pass,boxes,priority:30);
     }
     void AddDirector(GpxContext c,List<GpxScreen> list,bool suppressGap=false)

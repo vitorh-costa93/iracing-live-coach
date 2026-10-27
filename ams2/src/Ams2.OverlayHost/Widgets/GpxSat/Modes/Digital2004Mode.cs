@@ -389,7 +389,7 @@ public sealed class Digital2004Mode : IGpxMode
         boxes.Add(Bx(x, t, c2w, fh, GpxTextures.Black, gap, GpxAlign.Center, Wh)); x += c2w;
         boxes.Add(Bx(x, t, C1w, fh, GpxTextures.White, c.Name(w.Focus))); x += C1w;
         boxes.Add(PosSmall(x, t, fh, pf, 0));
-        if (w.Change is { } ch && w.Laps == 0) boxes.Add(Bx(gapX, g.Row(3), c2w, fh, GpxTextures.Yellow, GpxFormat.Change(ch), GpxAlign.Center, K, 1));
+        if (w.Previous is { } ch && w.Laps == 0) boxes.Add(Bx(gapX, g.Row(3), c2w, fh, GpxTextures.Yellow, GpxFormat.Previous(ch), GpxAlign.Center, K, 1));
         return new GpxScreen("main", $"{Key0}gapA:{w.Focus.Index}:{w.Pass}", boxes);
     }
 
@@ -408,7 +408,7 @@ public sealed class Digital2004Mode : IGpxMode
         boxes.Add(Bx(x, t, c2w, fh, GpxTextures.Black, gap, GpxAlign.Center, Wh)); x += c2w;
         boxes.Add(Bx(x, t, C1w, fh, GpxTextures.White, c.Name(w.Other))); x += C1w;
         boxes.Add(PosSmall(x, t, fh, pb, 0));
-        if (w.Change is { } ch && w.Gap is not null && w.Laps == 0) boxes.Add(Bx(gapX, g.Row(3), c2w, fh, GpxTextures.Yellow, GpxFormat.Change(ch), GpxAlign.Center, K, 1));
+        if (w.Previous is { } ch && w.Gap is not null && w.Laps == 0) boxes.Add(Bx(gapX, g.Row(3), c2w, fh, GpxTextures.Yellow, GpxFormat.Previous(ch), GpxAlign.Center, K, 1));
         return new GpxScreen("main", $"{Key0}gapB:{w.Focus.Index}:{w.Pass}", boxes);
     }
 
@@ -513,7 +513,7 @@ public sealed class Digital2004Mode : IGpxMode
             "split" => QualiSplit(c, focus, GpxFormat.Intermediate(1), 81.112, 0.204, 4, "split"),
             "splitgreen" => QualiSplit(c, focus, GpxFormat.FinishLine, 80.874, -0.112, 1, "split"),
             "card" => GenericCard(c, focus, "card"),
-            "gapa" => GapAhead(c, new GpxGapWindow(true, At(3) with { Position = 3 }, At(2) with { Position = 2 }, 7, now - 1, now + 7, 1.842, 0, -0.12)),
+            "gapa" => GapAhead(c, new GpxGapWindow(true, At(3) with { Position = 3 }, At(2) with { Position = 2 }, 7, now - 1, now + 7, 1.842, 0, 1.953)),
             "gapb" => GapBehind(c, new GpxGapWindow(false, At(3) with { Position = 3 }, At(4) with { Position = 4 }, 7, now - 0.9, now + 7, null, 0, null)),
             "trap" => SpeedTrap(c, new GpxTrapWindow(focus, 0, 298.4 / 3.6, 305.1 / 3.6, At(1), 312.7 / 3.6, now - 1, now + 7)),
             "str" => RaceStandings(c),

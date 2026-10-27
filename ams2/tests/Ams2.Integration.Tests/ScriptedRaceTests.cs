@@ -15,7 +15,7 @@ public sealed class RaceRun
 
     public static readonly (string Moment, double T)[] Moments =
     [
-        ("caption", 28), ("standings", 35), ("gap", 270), ("time", 503), ("pit", 153), ("winner", 702),
+        ("caption", 28), ("standings", 35), ("gap", 75), ("time", 503), ("pit", 153), ("winner", 702),
     ];
 
     public RaceRun()
@@ -81,12 +81,19 @@ public sealed class ScriptedRaceTests(RaceRun run) : IClassFixture<RaceRun>
     }
 
     [Theory, MemberData(nameof(Themes))]
-    public void Gap_only_on_laps_3_6_9_for_about_6s(string theme)
+    public void Gap_at_s1_and_s2_every_lap_never_on_the_line(string theme)
     {
         var ticks = run.Ticks[theme];
         var gaps = Windows(ticks, t => t.Main is { Piece: "split" } ? t.Main : t.Gap, s => s.Piece == "split");
-        Assert.Equal(new[] { 3.0, 6.0 }, gaps.Select(w => w.LapAt).ToArray());   // 750 s = 6 voltas do jogador
-        Assert.All(gaps, w => Assert.InRange(w.End - w.Start, 5.0, 6.5));
+        // Regra 27/10: gap no fim do S1 e do S2 de toda volta (nunca na linha, que e so classificacao). Volta ~117 s, linha em ~33+117k s:
+        // S1 em ~+39 s e S2 em ~+78 s depois de cada linha. A volta 3 (linha em 150 s, jogador nos boxes) fecha o ciclo sem gap na linha.
+        Assert.Equal(new[] { 1.0, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 }, gaps.Select(w => w.LapAt).ToArray());
+        Assert.All(gaps.Take(gaps.Count - 1), w => Assert.InRange(w.End - w.Start, 7.9, 9.6));   // 8 s de janela; a ultima pode ser cortada pela bandeirada
+        foreach (var w in gaps)   // nenhuma janela abre perto da linha de chegada do jogador (33 + 117k s)
+        {
+            double sinceLine = (w.Start - 33) % 117;
+            Assert.InRange(sinceLine, 30, 90);
+        }
     }
 
     [Theory, MemberData(nameof(Themes))]

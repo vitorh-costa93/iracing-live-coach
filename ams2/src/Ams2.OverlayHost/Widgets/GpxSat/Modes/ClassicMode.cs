@@ -137,7 +137,7 @@ public sealed class ClassicMode : StaticGpxModeBase
         b.Add(Tile(F, y + F / 2, 2 * F, left.Position)); b.Add(Text(4 * F, y + 1.5f * F, C, c.Name(left)));
         b.Add(Tile(W - 3 * F, y + F / 2, 2 * F, right.Position)); b.Add(Text(C, y + 1.5f * F, W - 4 * F, c.Name(right), GpxAlign.Right));
         b.Add(Text(0, y + F / 2, W, w.Laps == 0 ? GapText(c, w) : "", GpxAlign.Center, Y));
-        b.Add(Text(0, y + 1.5f * F, W, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Change is { } change ? GpxFormat.Change(change) : "", GpxAlign.Center, Y));
+        b.Add(Text(0, y + 1.5f * F, W, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Previous is { } previous ? GpxFormat.Previous(previous) : "", GpxAlign.Center, Y));
         b.Add(Text(0, y + 3 * F, W, SplitLabel(w.Split), GpxAlign.Center, Y)); return Screen((w.Ahead ? "gapa:" : "gapb:") + w.Focus.Index + ":" + w.Pass, b);
     }
     protected override GpxScreen Trap(GpxContext c, GpxTrapWindow w)

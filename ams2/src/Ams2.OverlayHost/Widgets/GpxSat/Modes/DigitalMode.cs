@@ -103,7 +103,7 @@ public sealed class DigitalMode : StaticGpxModeBase
         var b = new List<GpxBox>(); var left = w.Ahead ? w.Other : w.Focus; var right = w.Ahead ? w.Focus : w.Other;
         b.Add(Tile(2 * F, Y(3), F, left.Position)); b.Add(B(3 * F, Third, 3, Blue, c.Name(left)));
         b.Add(Trans(Third, C, 3, w.Laps == 0 ? GapText(c, w) : "", GpxAlign.Center, twice: true));
-        b.Add(Trans(Third, C, 2, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Change is { } change ? GpxFormat.Change(change) : "", GpxAlign.Center));
+        b.Add(Trans(Third, C, 2, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Previous is { } previous ? GpxFormat.Previous(previous) : "", GpxAlign.Center));
         b.Add(Tile(C, Y(2), F, right.Position)); b.Add(B(C + F, W - W / 4, 2, Blue, c.Name(right))); return Screen((w.Ahead ? "gapa:" : "gapb:") + w.Focus.Index + ":" + w.Pass, b);
     }
     protected override GpxScreen Trap(GpxContext c, GpxTrapWindow w)

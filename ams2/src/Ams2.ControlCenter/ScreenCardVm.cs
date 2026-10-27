@@ -189,7 +189,7 @@ public sealed class ScreenCardVm : Notify
             var p = Piece!;
             var plan = ShowPlan.For(new WidgetSettings { Id = Owner.Id }, Owner.ThemeId);
             p.Enabled = plan.PieceEnabled(p.Def.Id);
-            p.Trigger = plan.PieceTrigger(p.Def.Id);   // mescla (voltas) nas pecas split/time do GPxSAT; "native" nas demais
+            p.Trigger = plan.PieceTrigger(p.Def.Id);   // mescla (voltas) na peca time do GPxSAT; "native" nas demais
             p.Duration.Value = plan.PieceDuration(p.Def.Id, (p.Def.Duration ?? ShowDef.GenericDuration).Default);
             p.Period.Value = plan.PiecePeriod(p.Def.Id);
             p.EveryLaps.Value = plan.PieceEveryLaps(p.Def.Id);

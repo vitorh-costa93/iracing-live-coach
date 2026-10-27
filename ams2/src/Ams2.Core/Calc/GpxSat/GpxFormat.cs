@@ -50,6 +50,8 @@ public static class GpxFormat
     public static string LapsBehind(int laps) => string.Create(Inv, $"+ {laps} {(laps == 1 ? "Lap" : "Laps")}");
 
     /// <summary>Variacao entre duas passagens: "(+0.05)" / "(-0.12)" (centesimos).</summary>
+    /// <summary>Segunda linha do gap: o gap medido no setor anterior, entre parenteses.</summary>
+    public static string Previous(double gap) => "(" + SignedGap(gap) + ")";
     public static string Change(double delta) => "(" + (delta < 0 ? "-" : "+") + Math.Abs(delta).ToString("0.00", Inv) + ")";
 
     /// <summary>"%d Stop" / "%d Stops" (strings 4/5).</summary>

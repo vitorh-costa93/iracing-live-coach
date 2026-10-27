@@ -27,7 +27,7 @@ Forma: **estática** = montada como nos prints (aparece, fica congelada, some); 
 
 ## 3. Por tema
 
-Prioridade padrão do Race Board (de `1999-behavior.md`, adotada como base mesclada): pit parado > volta mais rápida (7 s) > tabela de início de volta (8 por página, 4 s) > gap periódico (a cada 3ª volta, vizinho físico, 6 s) > voltas restantes (a cada 5ª volta, 6 s) > legenda.
+Prioridade padrão do Race Board (de `1999-behavior.md`, adotada como base mesclada): pit parado > volta mais rápida (7 s) > tabela de início de volta = classificação na linha de chegada (8 por página, 4 s; sem gap) > gap por setor (fim do S1 e do S2, toda volta, carro mais próximo; linha 2 = gap medido no setor anterior; 8 s) > comparativo de melhor volta com o carro mais próximo (a cada 3ª volta, 6 s; criação nossa, não existe no GPxPatch) > voltas restantes (a cada 5ª volta, 6 s) > legenda.
 
 ### 3.1 f1-1993 (Broadcast93, próprio)
 Widgets: board, qualiboard, standings, qualitower, radar, inputs (graph). Origem: **Prints** (ref01..09 em `reference/1993/`, requisitos de 13/10).
@@ -79,7 +79,7 @@ Origem: **Prints** (BoardWidget S18, poscaption com bandeira, battle, standings 
 2. Duração da janela estática: manter 2 x pageSeconds (12 s por página) ou 4 s por página como nos prints?
 3. Velocímetro do 2012: dos prints do 2004 ou o dial de bordo (`f1-2012-onboard-dial.jpg`, não feito)?
 4. Velocímetro do 1999: manter `inputs` (hoje mantido) ou GPxCInfo?
-5. No 1999/2004/2012, gap a cada 3 voltas e voltas restantes a cada 5 valem em cima das telas do GPxSAT?
+5. No 1999/2004/2012, o gap vale por setor (S1 e S2, toda volta) e as voltas restantes a cada 5 voltas em cima das telas do GPxSAT? (27/10: gap por setor toda volta, linha de chegada só classificação; a cada 3 voltas é só o comparativo de melhor volta, ainda sem tela no GPxSAT)
 6. Legenda: fixa nos intervalos ou periódica (ex.: 6 s a cada N s)?
 7. Quais extras do GPxSAT manter por tema (microtime, trackmap, ATL, progressão)?
 8. Itens 3 (UI de seleção) e 5 (nome da pintura) ficam fora desta especificação? (Item 5 está com outro agente.)
@@ -101,3 +101,6 @@ Origem: **Prints** (BoardWidget S18, poscaption com bandeira, battle, standings 
    **Feito (26/10):** `Theme.F1_2012` (Title/Label/Text/Numbers) em DIN-Bold 700 (a mesma do `Digital2010Mode.Spec`); `ThemeCanvas.Format` cai para Barlow se a DIN do GPxPatch não existir. 1999 (Reddit Sans/F1 Broadcast e Mañana/Futura) intocado. Testes: `ThemeTypographyFreezeTests`.
 7. Tarefas separadas: UI de seleção amigável (item 3) e nome pela pintura (item 5).
 8. Após cada passo: `dotnet build`, `dotnet test`, publicar, conferir por recorte.
+
+
+**Regra 27/10 (Race Board mesclado no GPxSAT):** peça `split` sem gatilho por voltas. `GpxSplitTracker` abre a janela de gap (carro mais próximo) no fim do S1 e do S2 toda volta; a passagem da linha (3N) não abre gap (só classificação). Linha 2 da tela = gap do setor anterior (`GpxGapWindow.Previous`; no fim do S1 = gap do S2 da volta anterior, vazia se não houver ou se o carro mudou). O "a cada 3 voltas" é só do comparativo de melhor volta (`BoardTracker.UpdateComparison`, temas Board); não há tela equivalente no GPxSAT.

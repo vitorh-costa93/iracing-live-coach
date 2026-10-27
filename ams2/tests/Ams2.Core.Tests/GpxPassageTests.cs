@@ -46,8 +46,10 @@ public class GpxPassageTests
         t.Update(2, Session(focus, Lap(ahead, 0)));            // sector zera: nao duplica
         t.Update(3, Session(Lap(focus, 2), Lap(ahead, 0)));
         t.Update(4, Session(Lap(focus, 0), Lap(ahead, 0)));
-        Assert.NotNull(t.Ahead);
-        Assert.Equal(0, t.Ahead!.Split);
+        Assert.Null(t.Ahead);   // linha de chegada = so classificacao: sem janela de gap
+        t.Update(5, Session(Lap(focus, 0), Lap(ahead, 1)));
+        t.Update(7, Session(Lap(focus, 1), Lap(ahead, 1)));
+        Assert.Equal(1, t.Ahead!.Split);   // a passagem da linha nao foi duplicada: o proximo gap e o do S1 (gap 2 medido na linha de referencia)
         Assert.Equal(2, t.Ahead.Gap);
         // ordem inversa (sector zera antes de laps) continua valendo.
         var f2 = Car(0, 2, 2); var a2 = Car(1, 1, 2); var t2 = new GpxSplitTracker();
@@ -56,7 +58,48 @@ public class GpxPassageTests
         t2.Update(2, Session(f2, Lap(a2, 0)));
         t2.Update(3, Session(f2 with { Sector = 0 }, Lap(a2, 0)));
         t2.Update(4, Session(Lap(f2, 0), Lap(a2, 0)));
+        Assert.Null(t2.Ahead);
+        t2.Update(5, Session(Lap(f2, 0), Lap(a2, 1)));
+        t2.Update(7, Session(Lap(f2, 1), Lap(a2, 1)));
         Assert.Equal(2, t2.Ahead!.Gap);
+    }
+
+    [Fact]
+    public void Gap_opens_at_s1_and_s2_every_lap_not_at_the_line_and_line_two_is_the_previous_sector_gap()
+    {
+        var focus = Car(0, 2); var ahead = Car(1, 1); var t = new GpxSplitTracker();
+        t.Update(0, Session(focus, ahead));
+        // Volta 1: S1 (gap 2) sem anterior; S2 (gap 3) com anterior = S1.
+        ahead = ahead with { Sector = 1 }; t.Update(10, Session(focus, ahead));
+        focus = focus with { Sector = 1 }; t.Update(12, Session(focus, ahead));
+        Assert.Equal(1, t.Ahead!.Split); Assert.Equal(2, t.Ahead.Gap!.Value, 3); Assert.Null(t.Ahead.Previous);
+        ahead = ahead with { Sector = 2 }; t.Update(20, Session(focus, ahead));
+        focus = focus with { Sector = 2 }; t.Update(23, Session(focus, ahead));
+        Assert.Equal(2, t.Ahead!.Split); Assert.Equal(3, t.Ahead.Gap!.Value, 3); Assert.Equal(2, t.Ahead.Previous!.Value, 3);
+        // Linha: sem gap.
+        ahead = ahead with { LapsCompleted = 2, Sector = 0 }; t.Update(30, Session(focus, ahead));
+        focus = focus with { LapsCompleted = 2, Sector = 0 }; t.Update(34, Session(focus, ahead));
+        Assert.Null(t.Ahead); Assert.Null(t.Behind); Assert.Null(t.Nearest(34));
+        // Volta 2: no S1 a linha 2 e o gap do S2 da volta anterior.
+        ahead = ahead with { Sector = 1 }; t.Update(40, Session(focus, ahead));
+        focus = focus with { Sector = 1 }; t.Update(45, Session(focus, ahead));
+        Assert.Equal(1, t.Ahead!.Split); Assert.Equal(5, t.Ahead.Gap!.Value, 3); Assert.Equal(3, t.Ahead.Previous!.Value, 3);
+    }
+
+    [Fact]
+    public void Previous_gap_is_dropped_when_the_nearest_car_changed()
+    {
+        var focus = Car(0, 3); var a1 = Car(1, 2); var a2 = Car(2, 1); var t = new GpxSplitTracker();
+        t.Update(0, Session(focus, a1, a2));
+        a1 = a1 with { Sector = 1 }; a2 = a2 with { Sector = 1 }; t.Update(10, Session(focus, a1, a2));
+        focus = focus with { Sector = 1 }; t.Update(12, Session(focus, a1, a2));
+        Assert.Equal(2, t.Ahead!.Gap!.Value, 3);
+        focus = focus with { Position = 2 }; a1 = a1 with { Position = 3 }; a2 = a2 with { Sector = 2 };
+        t.Update(20, Session(focus, a1, a2));
+        a1 = a1 with { Sector = 2 }; t.Update(21, Session(focus, a1, a2));
+        focus = focus with { Sector = 2 }; t.Update(22, Session(focus, a1, a2));
+        Assert.Equal(a2.Index, t.Ahead!.Other.Index);
+        Assert.Null(t.Ahead.Previous);
     }
 
     [Fact]

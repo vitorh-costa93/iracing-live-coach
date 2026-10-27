@@ -3,10 +3,11 @@ namespace Ams2.Core.Calc.GpxSat;
 /// <summary>
 /// Janela de gap do GPxSAT numa passagem de split (4.12 gap a frente / 4.13 gap atras). <see cref="Gap"/> null = carro de tras
 /// ainda nao cruzou (o GPx mostra o cronometro correndo desde <see cref="OpenT"/>). <see cref="Laps"/> &gt; 0 = diferenca em voltas.
-/// <see cref="Change"/> = gap desta passagem menos o da passagem anterior com o mesmo carro (linha amarela "(+-x)").
+/// <see cref="Previous"/> = gap medido no setor anterior com o mesmo carro (segunda linha da tela): no fim do S2 o do S1, no fim do S1 o do S2 da volta
+/// anterior; null = sem medida (primeira volta, carro diferente). A linha de chegada (passagem 3N) nao abre janela de gap: e so classificacao.
 /// </summary>
 public sealed record GpxGapWindow(bool Ahead, CarSnapshot Focus, CarSnapshot Other, int Pass, double OpenT, double CloseT,
-    double? Gap, int Laps, double? Change)
+    double? Gap, int Laps, double? Previous)
 {
     public int Split => Pass % 3;   // 0 = linha, 1 = intermediario 1, 2 = intermediario 2
     public bool ActiveAt(double now) => now >= OpenT && now < CloseT;
@@ -48,7 +49,7 @@ public sealed class GpxSplitTracker
 
     readonly Dictionary<int, CarTrack> _cars = [];
     readonly (int Car, double Mps)[] _top = [(-1, 0), (-1, 0), (-1, 0)];
-    readonly Dictionary<(bool Ahead, int Other), double> _lastGap = [];
+    readonly Dictionary<(bool Ahead, int Sector), (int Other, int Pass, double Gap)> _lastGap = [];
     string? _key;
     double _last = double.NegativeInfinity;
 
@@ -119,16 +120,18 @@ public sealed class GpxSplitTracker
             if (focus is not null && c.Index != focus.Index && Behind is { Gap: null, Laps: 0 } b && b.Other.Index == c.Index && pass == b.Pass)
             {
                 double gap = Math.Max(0, now - b.OpenT);
-                Behind = b with { Other = c, Gap = gap, CloseT = now + HoldSeconds, Change = ChangeOf(false, c.Index, gap) };
+                Behind = b with { Other = c, Gap = gap, CloseT = now + HoldSeconds, Previous = PreviousOf(false, c.Index, b.Pass, gap) };
             }
         if (Behind is { Gap: null, Laps: 0 } open && now - open.OpenT > MaxOpenSeconds) Behind = null;
     }
 
-    double? ChangeOf(bool ahead, int other, double gap)
+    /// <summary>Gap do mesmo lado e carro no setor anterior (S2 le o S1; S1 le o S2 da volta anterior) e registra o desta passagem.</summary>
+    double? PreviousOf(bool ahead, int other, int pass, double gap)
     {
-        double? change = _lastGap.TryGetValue((ahead, other), out var prev) ? gap - prev : null;
-        _lastGap[(ahead, other)] = gap;
-        return change;
+        int sector = pass % 3, prevPass = sector == 2 ? pass - 1 : pass - 2;
+        double? previous = _lastGap.TryGetValue((ahead, prevPass % 3), out var p) && p.Other == other && p.Pass == prevPass ? p.Gap : null;
+        _lastGap[(ahead, sector)] = (other, pass, gap);
+        return previous;
     }
 
     void OnFocusPass(double now, SessionSnapshot s, CarSnapshot f, int pass, bool race)
@@ -141,6 +144,7 @@ public sealed class GpxSplitTracker
         if (!race || f.InPitLane || f.Position <= 0) return;
 
         Ahead = null; Behind = null;
+        if (pass % 3 == 0) return;   // linha de chegada = so classificacao; o gap sai no fim do S1 e do S2
         var ahead = s.Cars.FirstOrDefault(c => c.Position == f.Position - 1 && Running(c));
         if (ahead is not null && _cars.TryGetValue(ahead.Index, out var at))
         {
@@ -149,7 +153,7 @@ public sealed class GpxSplitTracker
             else if (at.Times.TryGetValue(pass, out var t))
             {
                 double gap = now - t;
-                Ahead = new GpxGapWindow(true, f, ahead, pass, now, now + HoldSeconds, gap, 0, ChangeOf(true, ahead.Index, gap));
+                Ahead = new GpxGapWindow(true, f, ahead, pass, now, now + HoldSeconds, gap, 0, PreviousOf(true, ahead.Index, pass, gap));
             }
         }
         var behind = s.Cars.FirstOrDefault(c => c.Position == f.Position + 1 && Running(c));
