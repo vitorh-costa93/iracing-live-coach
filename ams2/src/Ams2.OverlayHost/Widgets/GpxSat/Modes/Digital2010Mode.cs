@@ -349,7 +349,7 @@ public sealed class Digital2010Mode : IGpxMode
     GpxScreen? GapNow(GpxContext c,string direction)
     {
         if(!c.Open("split")) return null;
-        GpxGapWindow? w=direction=="ahead"?c.Split.Ahead:direction=="behind"?c.Split.Behind:null;
+        GpxGapWindow? w=direction=="ahead"?c.Split.Ahead:direction=="behind"?c.Split.Behind:direction=="trap"?null:c.Split.Nearest(c.Now);
         // At the end of the field, GPx's 'behind' choice falls back to the preceding car.
         if(direction=="behind" && c.Focus is { } f && f.Position==Rows(c).Count) w=c.Split.Ahead;
         return w is not null && w.ActiveAt(c.Now)?Gap(c,w):null;

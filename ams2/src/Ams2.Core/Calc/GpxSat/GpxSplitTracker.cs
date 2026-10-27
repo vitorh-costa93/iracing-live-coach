@@ -36,6 +36,7 @@ public sealed class GpxSplitTracker
     sealed class CarTrack
     {
         public int Pass = int.MinValue;
+        public int Laps, Sector = -1;
         public readonly Dictionary<int, double> Times = [];
         public readonly double[] BestTrap = new double[3];
         public void Add(int pass, double t)
@@ -56,6 +57,22 @@ public sealed class GpxSplitTracker
     public GpxTrapWindow? Trap { get; private set; }
     /// <summary>Instante em que o lider da corrida fechou a ultima volta (cruzou a linha); abre a janela dos standings. Null = nenhuma ainda.</summary>
     public double? LeaderLapT { get; private set; }
+
+    /// <summary>
+    /// Modo "nearest": entre a janela da frente e a de tras (so as abertas em <paramref name="now"/>), a de menor gap em segundos.
+    /// Um lado so = ele (lider mostra o de tras, ultimo o da frente). Gap de tras ainda correndo ou diferenca em voltas nao compete:
+    /// fica a frente ate o de tras fechar com gap menor.
+    /// </summary>
+    public GpxGapWindow? Nearest(double now)
+    {
+        var a = Ahead is { } ga && ga.ActiveAt(now) ? ga : null;
+        var b = Behind is { } gb && gb.ActiveAt(now) ? gb : null;
+        if (a is null || b is null) return a ?? b;
+        double? ag = a.Laps == 0 ? a.Gap : null, bg = b.Laps == 0 ? b.Gap : null;
+        if (ag is null) return b;
+        if (bg is null) return a;
+        return bg < ag ? b : a;
+    }
 
     public void Reset()
     {
@@ -79,6 +96,9 @@ public sealed class GpxSplitTracker
         {
             if (!_cars.TryGetValue(c.Index, out var tr)) _cars[c.Index] = tr = new CarTrack();
             int pass = PassOf(c);
+            // O AMS2 pode subir LapsCompleted um quadro antes do Sector zerar: volta +1 com o setor ainda no ultimo = a linha ja foi cruzada.
+            if (tr.Pass != int.MinValue && c.LapsCompleted == tr.Laps + 1 && tr.Sector == 2 && c.Sector == 2) pass = c.LapsCompleted * 3;
+            tr.Laps = c.LapsCompleted; tr.Sector = c.Sector;
             if (tr.Pass == int.MinValue) { tr.Pass = pass; continue; }   // primeiro quadro: so referencia
             if (pass <= tr.Pass || pass - tr.Pass > 3) { tr.Pass = pass; continue; }   // sem passagem (ou salto/teleporte)
             tr.Pass = pass;

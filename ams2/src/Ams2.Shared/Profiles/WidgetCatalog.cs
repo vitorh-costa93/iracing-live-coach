@@ -456,7 +456,7 @@ public static class WidgetCatalog
             [O("off", "Desligado (SpeedSplit)"), O("standings", "Classificação"), O("pitstops", "Pit stops"), O("interval", "Intervalos (2010)")], "off"),
         new("qualiStandings", "Fora da corrida: standings de classificação", OptionKind.Toggle, null, "true"),
         new("speedSplitRace", "Corrida: SpeedSplit", OptionKind.Choice,
-            [O("ahead", "Gap para o carro à frente"), O("behind", "Gap para o carro atrás"), O("trap", "Speed trap")], "ahead"),
+            [O("nearest", "Gap para o carro mais próximo"), O("ahead", "Gap para o carro à frente"), O("behind", "Gap para o carro atrás"), O("trap", "Speed trap")], "nearest"),
         new("speedSplitQuali", "Fora da corrida: SpeedSplit", OptionKind.Choice,
             [O("split", "Split de quali"), O("trap", "Speed trap")], "split"),
         new("directorsCut", "Director's cut (corrida)", OptionKind.Toggle, null, "false"),

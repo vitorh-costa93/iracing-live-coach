@@ -19,8 +19,8 @@ public sealed record GpxOptions
     /// <summary>Corrida: "off" (0), "standings" (1), "pitstops" (2).</summary>
     public string RaceStandings { get; init; } = "off";
     public bool QualiStandings { get; init; } = true;
-    /// <summary>Corrida: "ahead" (0), "behind" (1), "trap" (2).</summary>
-    public string SpeedSplitRace { get; init; } = "ahead";
+    /// <summary>Corrida: "nearest" (padrao: o de menor gap entre frente e tras), "ahead" (0), "behind" (1), "trap" (2).</summary>
+    public string SpeedSplitRace { get; init; } = "nearest";
     /// <summary>Fora da corrida: "split" (0), "trap" (1).</summary>
     public string SpeedSplitQuali { get; init; } = "split";
     public bool DirectorsCut { get; init; }
@@ -65,7 +65,7 @@ public sealed record GpxOptions
             ShowTimeLeft = Flag(s, "showTimeLeft", !classicClock),
             RaceStandings = Pick(s, "raceStandings", "off"),
             QualiStandings = Flag(s, "qualiStandings", true),
-            SpeedSplitRace = Pick(s, "speedSplitRace", "ahead"),
+            SpeedSplitRace = Pick(s, "speedSplitRace", "nearest"),
             SpeedSplitQuali = Pick(s, "speedSplitQuali", "split"),
             DirectorsCut = Flag(s, "directorsCut", false),
             ShowLogo = Flag(s, "showLogo", false),

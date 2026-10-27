@@ -44,8 +44,8 @@ public static class GpxSharedScreens
                 ("Skymessages only",c.Options.ShowMode=="sky"),("Hide all",c.Options.ShowMode=="none"),
                 (c.IsRace?"Lap counter":"Time left",c.Options.ShowTimeLeft),("Director's cut",c.Options.DirectorsCut),
                 ("Standings",c.IsRace?c.Options.RaceStandings=="standings":c.Options.QualiStandings),
-                ("Pit stops",c.Options.RaceStandings=="pitstops"),("Gap car ahead",c.Options.SpeedSplitRace=="ahead"),
-                ("Gap car behind",c.Options.SpeedSplitRace=="behind"),("Speed traps",c.Options.SpeedSplitRace=="trap"),
+                ("Pit stops",c.Options.RaceStandings=="pitstops"),("Gap car ahead",c.Options.SpeedSplitRace is "ahead" or "nearest"),
+                ("Gap car behind",c.Options.SpeedSplitRace is "behind" or "nearest"),("Speed traps",c.Options.SpeedSplitRace=="trap"),
             };
             yield return new("info","info",lines.Select((line,i)=>new GpxBox(new(700,i*14,300,14),"gpx_shared_clear",line.Label,GpxAlign.Right,line.Active?0xfffe0000:GpxInk.White,Font:GpxFontRole.Mono)).ToArray(),GpxAnimKind.Instant);
         }

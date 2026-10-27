@@ -37,6 +37,68 @@ public class GpxPassageTests
     }
 
     [Fact]
+    public void Line_crossing_survives_laps_completed_updating_one_frame_before_sector()
+    {
+        var focus = Car(0, 2, 2); var ahead = Car(1, 1, 2); var t = new GpxSplitTracker();
+        CarSnapshot Lap(CarSnapshot c, int sector) => c with { LapsCompleted = c.LapsCompleted + 1, Sector = sector };
+        t.Update(0, Session(focus, ahead));
+        t.Update(1, Session(focus, Lap(ahead, 2)));            // laps +1, sector ainda 2
+        t.Update(2, Session(focus, Lap(ahead, 0)));            // sector zera: nao duplica
+        t.Update(3, Session(Lap(focus, 2), Lap(ahead, 0)));
+        t.Update(4, Session(Lap(focus, 0), Lap(ahead, 0)));
+        Assert.NotNull(t.Ahead);
+        Assert.Equal(0, t.Ahead!.Split);
+        Assert.Equal(2, t.Ahead.Gap);
+        // ordem inversa (sector zera antes de laps) continua valendo.
+        var f2 = Car(0, 2, 2); var a2 = Car(1, 1, 2); var t2 = new GpxSplitTracker();
+        t2.Update(0, Session(f2, a2));
+        t2.Update(1, Session(f2, a2 with { Sector = 0 }));
+        t2.Update(2, Session(f2, Lap(a2, 0)));
+        t2.Update(3, Session(f2 with { Sector = 0 }, Lap(a2, 0)));
+        t2.Update(4, Session(Lap(f2, 0), Lap(a2, 0)));
+        Assert.Equal(2, t2.Ahead!.Gap);
+    }
+
+    [Fact]
+    public void Nearest_picks_the_smaller_gap_and_falls_back_to_the_only_side()
+    {
+        // Lider: so existe o de tras.
+        var l = Car(0, 1); var lb = Car(2, 2); var tl = new GpxSplitTracker();
+        tl.Update(0, Session(l, lb));
+        tl.Update(1, Session(l with { Sector = 1 }, lb));
+        Assert.Null(tl.Ahead);
+        Assert.False(tl.Nearest(1.5)!.Ahead);
+        tl.Update(3, Session(l with { Sector = 1 }, lb with { Sector = 1 }));
+        Assert.Equal(2, tl.Nearest(3)!.Gap);
+
+        // Carro de tras mais proximo que o da frente.
+        var f = Car(0, 2); var a = Car(1, 1); var b = Car(3, 3); var t = new GpxSplitTracker();
+        t.Update(0, Session(f, a, b));
+        t.Update(1, Session(f, a with { Sector = 1 }, b));
+        t.Update(2, Session(f with { Sector = 1 }, a with { Sector = 1 }, b));
+        Assert.True(t.Nearest(2.1)!.Ahead);                                // de tras ainda correndo: fica a frente (gap 1)
+        t.Update(2.5, Session(f with { Sector = 1 }, a with { Sector = 1 }, b with { Sector = 1 }));
+        Assert.False(t.Nearest(2.5)!.Ahead);                               // 0,5 < 1
+        Assert.Equal(.5, t.Nearest(2.5)!.Gap);
+
+        // Carro de tras mais longe: fica o da frente.
+        var t3 = new GpxSplitTracker();
+        t3.Update(0, Session(f, a, b));
+        t3.Update(1, Session(f, a with { Sector = 1 }, b));
+        t3.Update(2, Session(f with { Sector = 1 }, a with { Sector = 1 }, b));
+        t3.Update(5, Session(f with { Sector = 1 }, a with { Sector = 1 }, b with { Sector = 1 }));
+        Assert.True(t3.Nearest(5)!.Ahead);
+
+        // Ultimo: so o da frente.
+        var tu = new GpxSplitTracker();
+        tu.Update(0, Session(f, a));
+        tu.Update(1, Session(f, a with { Sector = 1 }));
+        tu.Update(2, Session(f with { Sector = 1 }, a with { Sector = 1 }));
+        Assert.True(tu.Nearest(2)!.Ahead);
+        Assert.Null(tu.Nearest(20));
+    }
+
+    [Fact]
     public void Map_requires_observed_geometry_and_resets_for_a_different_track()
     {
         var map = new GpxTrackMap();

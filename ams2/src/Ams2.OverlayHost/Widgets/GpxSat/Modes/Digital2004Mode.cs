@@ -93,7 +93,8 @@ public sealed class Digital2004Mode : IGpxMode
         {
             "behind" => c.Split.Behind is { } gb && gb.ActiveAt(c.Now) ? GapBehind(c, gb) : null,
             "trap" => c.Split.Trap is { } tw && tw.ActiveAt(c.Now) ? SpeedTrap(c, tw) : null,
-            _ => c.Split.Ahead is { } ga && ga.ActiveAt(c.Now) ? GapAhead(c, ga) : null,
+            "ahead" => c.Split.Ahead is { } ga && ga.ActiveAt(c.Now) ? GapAhead(c, ga) : null,
+            _ => c.Split.Nearest(c.Now) is { } gn ? (gn.Ahead ? GapAhead(c, gn) : GapBehind(c, gn)) : null,
         };
         if (c.Options.Rotation)
         {

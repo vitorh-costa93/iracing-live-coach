@@ -100,7 +100,8 @@ public abstract class StaticGpxModeBase : IGpxMode
     {
         "trap" => c.Split.Trap is { } t && t.ActiveAt(c.Now) ? Trap(c, t) : null,
         "behind" => c.Split.Behind is { } b && b.ActiveAt(c.Now) ? Gap(c, b) : null,
-        _ => c.Split.Ahead is { } a && a.ActiveAt(c.Now) ? Gap(c, a) : null,
+        "ahead" => c.Split.Ahead is { } a && a.ActiveAt(c.Now) ? Gap(c, a) : null,
+        _ => c.Split.Nearest(c.Now) is { } n ? Gap(c, n) : null,
     };
 
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
