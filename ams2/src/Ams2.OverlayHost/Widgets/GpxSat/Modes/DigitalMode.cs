@@ -106,6 +106,15 @@ public sealed class DigitalMode : StaticGpxModeBase
         b.Add(Trans(Third, C, 2, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Previous is { } previous ? GpxFormat.Previous(previous) : "", GpxAlign.Center));
         b.Add(Tile(C, Y(2), F, right.Position)); b.Add(B(C + F, W - W / 4, 2, Blue, c.Name(right))); return Screen((w.Ahead ? "gapa:" : "gapb:") + w.Focus.Index + ":" + w.Pass, b);
     }
+    protected override GpxScreen LapCompare(GpxContext c, GpxLapCompare cmp)
+    {
+        var b = new List<GpxBox>();
+        b.Add(Tile(2 * F, Y(3), F, cmp.Focus.Position)); b.Add(B(3 * F, Third, 3, Blue, c.Name(cmp.Focus)));
+        b.Add(Trans(Third, C, 3, GpxFormat.LapTime(cmp.PlayerBest), GpxAlign.Center, twice: true));
+        b.Add(Trans(C, W - Third, 3, cmp.Delta is { } d ? GpxFormat.SignedGap(d) : "", ink: Yellow) with { Indent = F });
+        b.Add(Trans(Third, C, 2, GpxFormat.LapTime(cmp.OtherBest), GpxAlign.Center));
+        b.Add(Tile(C, Y(2), F, cmp.Other.Position)); b.Add(B(C + F, W - W / 4, 2, Blue, c.Name(cmp.Other))); return Screen("lapcmp:" + cmp.Focus.Index + ":" + cmp.Focus.LapsCompleted, b);
+    }
     protected override GpxScreen Trap(GpxContext c, GpxTrapWindow w)
     {
         var b = new List<GpxBox>

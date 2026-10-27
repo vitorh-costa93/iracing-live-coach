@@ -2,7 +2,7 @@ namespace Ams2.OverlayHost.Widgets.GpxSat;
 
 /// <summary>
 /// Peca da Exibicao (ShowCatalog "gpxsat") de cada tela despachada pelos modos, pela chave da tela ("modo:tipo:..."):
-/// time, sky, pittimer, split, standings e, no Digital 2010, tower/progression/logo. Telas sem peca (micro-time, info) ficam sempre.
+/// time, sky, pittimer, split, lapcompare (comparativo de melhor volta, so mescla), standings e, no Digital 2010, tower/progression/logo. Telas sem peca (micro-time, info) ficam sempre.
 /// </summary>
 public static class GpxPieces
 {
@@ -29,6 +29,7 @@ public static class GpxPieces
             "pitt" => "pittimer",
             "split" or "splitgreen" or "gapa" or "gapb" or "gap" or "trap" or "card" or "qualisplit" or "qualicard" => "split",
             "str" or "stq" or "stp" or "standings" or "quali" => "standings",
+            "lapcmp" => "lapcompare",
             "cap" => "caption",
             "qb" => "qboard",
             "tower" => "tower",

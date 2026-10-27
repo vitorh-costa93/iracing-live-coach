@@ -106,6 +106,21 @@ public sealed class ScriptedRaceTests(RaceRun run) : IClassFixture<RaceRun>
     }
 
     [Theory, MemberData(nameof(Themes))]
+    public void Best_lap_comparison_only_every_3_laps_for_about_6s_with_the_player_and_a_neighbor(string theme)
+    {
+        var ticks = run.Ticks[theme];
+        var wins = Windows(ticks, t => t.Main is { Piece: "lapcompare" } ? t.Main : t.Gap, s => s.Piece == "lapcompare");
+        // Linha do jogador em ~33+117k s: a volta 3 fecha em ~267 s e a 6 em ~617 s (a 9 passaria de 750 s); as voltas 1, 2, 4 e 5 nao abrem comparativo.
+        Assert.Equal(new[] { 3.0, 6.0 }, wins.Select(w => w.LapAt).ToArray());
+        Assert.All(wins, w => Assert.InRange(w.End - w.Start, 5.0, 6.5));
+        var shown = ticks.Select(t => t.Main is { Piece: "lapcompare" } ? t.Main : t.Gap is { Piece: "lapcompare" } ? t.Gap : null).Where(s => s is { Alpha: > 0.01f }).ToList();
+        Assert.NotEmpty(shown);
+        Assert.All(shown, s => Assert.Contains("lapcmp:", s!.Key));
+        // Conteudo: melhor volta do jogador (m:ss.fff) e a do vizinho; nunca "-:--.---" para o jogador (so abre com melhor volta valida).
+        Assert.All(shown, s => Assert.Matches(@"\d:\d\d\.\d\d\d", s!.Texts));
+    }
+
+    [Theory, MemberData(nameof(Themes))]
     public void Standings_open_once_per_leader_crossing_and_stay_frozen(string theme)
     {
         var ticks = run.Ticks[theme];

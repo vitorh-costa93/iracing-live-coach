@@ -118,9 +118,9 @@ public sealed class Digital2010Mode : IGpxMode
             {
                 if(c.Focus is { InPitLane:true } focus) list.Add(PitInfo(c,focus,true) with { Priority=90 });
                 else if(dc) AddDirector(c,list);
-                else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(LapStandings(c) is { } page) list.Add(page); }
+                else if(c.Options.Rotation) { if(GapNow(c,c.Options.SpeedSplitRace) is { } window) list.Add(window); else if(LapCompare(c) is { } cmp) list.Add(cmp); else if(LapStandings(c) is { } page) list.Add(page); }
                 else if(c.Options.RaceStandings is "standings" or "pitstops" or "interval" && FrozenStandings(c,c.Options.RaceStandings) is { Count:>0 } all) list.Add(all[c.PageOf(all.Count*StandingsPerPage(c),StandingsPerPage(c))]);
-                else if(GapNow(c,c.Options.SpeedSplitRace) is { } gap) list.Add(gap);
+                else if((GapNow(c,c.Options.SpeedSplitRace) ?? LapCompare(c)) is { } gap) list.Add(gap);
             }
             else if(dc) AddDirector(c,list,active?.Kind is GpxSkyKind.OutOfRace or GpxSkyKind.InPits);
             else if(active?.Kind is not (GpxSkyKind.OutOfRace or GpxSkyKind.InPits) && GapNow(c,c.Options.SpeedSplitRace) is { } gap) list.Add(gap);
@@ -354,6 +354,17 @@ public sealed class Digital2010Mode : IGpxMode
         if(direction=="behind" && c.Focus is { } f && f.Position==Rows(c).Count) w=c.Split.Ahead;
         return w is not null && w.ActiveAt(c.Now)?Gap(c,w):null;
     }
+    /// <summary>Comparativo de melhor volta (so mescla, a cada 3 voltas, so corrida): mesmo painel do gap, jogador em cima e vizinho embaixo com a melhor volta de cada um; a linha do meio traz a diferenca.</summary>
+    GpxScreen? LapCompare(GpxContext c) => c.LapCmp is { } m ? LapCompare(c,m) : null;
+    GpxScreen LapCompare(GpxContext c,GpxLapCompare m)
+    {
+        var boxes=new List<GpxBox>(); float x=X1-W(222), y=Base-3*Rh;
+        void Label(CarSnapshot car,double? best,float t) { boxes.Add(Box(Rect(x,t,W(222)),car.Position==1?First:Neutral) with { Asset="digital2010/"+(car.Position==1?"gap_first":"labeled_data_neutral") }); boxes.Add(Text(Rect(x,t,45),Number(car.Position))); boxes.Add(Text(Rect(x+45,t,W(222)-45),c.Name(car),GpxAlign.Left)); boxes.Add(Text(Rect(x+45,t,W(222)-45),GpxFormat.LapTime(best),GpxAlign.Right)); }
+        Label(m.Focus,m.PlayerBest,y); Label(m.Other,m.OtherBest,y+2*Rh);
+        float half=W(222)/2+2*Pad/9;
+        boxes.Add(Box(Rect(x,y+Rh,half),Neutral,m.Delta is { } d?GpxFormat.SignedGap(d):"",GpxAlign.Right) with { Asset="digital2010/race_gap",SourceRect=new(0,0,133,32) });
+        return Screen("gap","lapcmp:"+m.Focus.Index+":"+m.Focus.LapsCompleted,boxes,priority:30);
+    }
     GpxScreen Gap(GpxContext c,GpxGapWindow w)
     {
         var front=w.Ahead?w.Other:w.Focus; var rear=w.Ahead?w.Focus:w.Other;
@@ -471,6 +482,7 @@ public sealed class Digital2010Mode : IGpxMode
             "str"=>Standings(c,"standings"), "stp"=>Standings(c,"pitstops"), "sti"=>Standings(c,"interval"), "stq"=>QualiTower(c),
             "bottom"=>BottomTower(c,"standings"), "progression"=>Progression(c),
             "gapa"=>Gap(c,new GpxGapWindow(true,At(2),At(1),7,c.Now-1,c.Now+7,1.842,0,-.12)),
+            "lapcmp"=>LapCompare(c,new GpxLapCompare(At(2),At(1),true,82.154,81.943,.211)),
             "gapb"=>Gap(c,new GpxGapWindow(false,At(1),At(2),7,c.Now-1,c.Now+7,null,0,null)),
             "split"=>PreviewSplit(c,car,false), "splitgreen"=>PreviewSplit(c,car,true), _=>null,
         };

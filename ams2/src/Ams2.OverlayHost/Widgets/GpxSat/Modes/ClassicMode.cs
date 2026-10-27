@@ -140,6 +140,16 @@ public sealed class ClassicMode : StaticGpxModeBase
         b.Add(Text(0, y + 1.5f * F, W, w.Laps > 0 ? GpxFormat.LapsBehind(w.Laps) : w.Previous is { } previous ? GpxFormat.Previous(previous) : "", GpxAlign.Center, Y));
         b.Add(Text(0, y + 3 * F, W, SplitLabel(w.Split), GpxAlign.Center, Y)); return Screen((w.Ahead ? "gapa:" : "gapb:") + w.Focus.Index + ":" + w.Pass, b);
     }
+    protected override GpxScreen LapCompare(GpxContext c, GpxLapCompare cmp)
+    {
+        var b = Band(fixedAlpha: true); float y = Origin();
+        b.Add(Tile(F, y + F / 2, 2 * F, cmp.Focus.Position)); b.Add(Text(4 * F, y + 1.5f * F, C, c.Name(cmp.Focus)));
+        b.Add(Tile(W - 3 * F, y + F / 2, 2 * F, cmp.Other.Position)); b.Add(Text(C, y + 1.5f * F, W - 4 * F, c.Name(cmp.Other), GpxAlign.Right));
+        b.Add(Text(4 * F, y + 2.5f * F, C, GpxFormat.LapTime(cmp.PlayerBest), GpxAlign.Left, Y));
+        b.Add(Text(C, y + 2.5f * F, W - 4 * F, GpxFormat.LapTime(cmp.OtherBest), GpxAlign.Right, Y));
+        b.Add(Text(0, y + F / 2, W, cmp.Delta is { } d ? GpxFormat.SignedGap(d) : "", GpxAlign.Center, Y));
+        b.Add(Text(0, y + 3 * F, W, "Best lap", GpxAlign.Center, Y)); return Screen("lapcmp:" + cmp.Focus.Index + ":" + cmp.Focus.LapsCompleted, b);
+    }
     protected override GpxScreen Trap(GpxContext c, GpxTrapWindow w)
     {
         var b = Band(fixedAlpha: true); float y = Origin();

@@ -96,9 +96,11 @@ public sealed class Digital2004Mode : IGpxMode
             "ahead" => c.Split.Ahead is { } ga && ga.ActiveAt(c.Now) ? GapAhead(c, ga) : null,
             _ => c.Split.Nearest(c.Now) is { } gn ? (gn.Ahead ? GapAhead(c, gn) : GapBehind(c, gn)) : null,
         };
+        var cmp = split is null && c.LapCmp is { } lc ? LapCompareScreen(c, lc) : null;   // comparativo de melhor volta (a cada 3 voltas): abaixo do gap, acima dos standings extras
         if (c.Options.Rotation)
         {
             if (split is not null) list.Add(split with { Priority = 30 });
+            else if (cmp is not null) list.Add(cmp with { Priority = 30 });
             else if (LapStandings(c) is { } page) list.Add(page);
             return;
         }
@@ -108,6 +110,7 @@ public sealed class Digital2004Mode : IGpxMode
             return;
         }
         if (split is not null) list.Add(split with { Priority = 30 });
+        else if (cmp is not null) list.Add(cmp with { Priority = 30 });
     }
 
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
@@ -393,6 +396,25 @@ public sealed class Digital2004Mode : IGpxMode
         return new GpxScreen("main", $"{Key0}gapA:{w.Focus.Index}:{w.Pass}", boxes);
     }
 
+    /// <summary>Comparativo de melhor volta (so mescla, a cada 3 voltas): [P][jogador][delta][vizinho][P]; embaixo as melhores voltas de cada um e o rotulo.</summary>
+    GpxScreen LapCompareScreen(GpxContext c, GpxLapCompare m)
+    {
+        var g = c.G; float fh = g.FH, c2w = C1w - fh, t = g.Row(4), x = g.L0;
+        var boxes = new List<GpxBox>();
+        boxes.Add(PosSmall(x, t, fh, m.Focus.Position, 0)); x += fh;
+        float leftX = x;
+        boxes.Add(Bx(x, t, C1w, fh, GpxTextures.White, c.Name(m.Focus))); x += C1w;
+        float midX = x;
+        boxes.Add(Bx(x, t, c2w, fh, GpxTextures.Black, m.Delta is { } d ? GpxFormat.SignedGap(d) : "", GpxAlign.Center, Wh)); x += c2w;
+        float rightX = x;
+        boxes.Add(Bx(x, t, C1w, fh, GpxTextures.White, c.Name(m.Other), GpxAlign.Right)); x += C1w;
+        boxes.Add(PosSmall(x, t, fh, m.Other.Position, 0));
+        boxes.Add(Bx(leftX, g.Row(3), C1w, fh, GpxTextures.Black, GpxFormat.LapTime(m.PlayerBest), GpxAlign.Center, Wh, 1));
+        boxes.Add(Bx(midX, g.Row(3), c2w, fh, GpxTextures.Yellow, "BEST LAP", GpxAlign.Center, K, 1));
+        boxes.Add(Bx(rightX, g.Row(3), C1w, fh, GpxTextures.Black, GpxFormat.LapTime(m.OtherBest), GpxAlign.Center, Wh, 1));
+        return new GpxScreen("main", $"{Key0}lapcmp:{m.Focus.Index}:{m.Focus.LapsCompleted}", boxes);
+    }
+
     /// <summary>4.13 Gap para o carro de tras (espelho do 4.12): cronometro correndo ate o de tras cruzar, depois o gap congelado.</summary>
     GpxScreen? GapBehind(GpxContext c, GpxGapWindow w)
     {
@@ -514,6 +536,7 @@ public sealed class Digital2004Mode : IGpxMode
             "splitgreen" => QualiSplit(c, focus, GpxFormat.FinishLine, 80.874, -0.112, 1, "split"),
             "card" => GenericCard(c, focus, "card"),
             "gapa" => GapAhead(c, new GpxGapWindow(true, At(3) with { Position = 3 }, At(2) with { Position = 2 }, 7, now - 1, now + 7, 1.842, 0, 1.953)),
+            "lapcmp" => LapCompareScreen(c, new GpxLapCompare(At(3) with { Position = 3 }, At(2) with { Position = 2 }, true, 82.154, 81.943, 0.211)),
             "gapb" => GapBehind(c, new GpxGapWindow(false, At(3) with { Position = 3 }, At(4) with { Position = 4 }, 7, now - 0.9, now + 7, null, 0, null)),
             "trap" => SpeedTrap(c, new GpxTrapWindow(focus, 0, 298.4 / 3.6, 305.1 / 3.6, At(1), 312.7 / 3.6, now - 1, now + 7)),
             "str" => RaceStandings(c),

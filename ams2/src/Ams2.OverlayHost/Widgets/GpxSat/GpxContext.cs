@@ -149,6 +149,9 @@ public sealed class GpxContext
         }
     }
 
+    /// <summary>Comparativo de melhor volta (peca "lapcompare"): aberto so na corrida, na janela de "a cada 3 voltas", com o jogador com melhor volta valida e um vizinho na ultima linha.</summary>
+    public GpxLapCompare? LapCmp => IsRace && Open("lapcompare") ? GpxLapCompare.Resolve(Session, Split.LapNeighbor) : null;
+
     public bool Preview(string screen) => string.Equals(Options.PreviewScreen, screen, StringComparison.OrdinalIgnoreCase);
     public bool Previewing => !string.IsNullOrWhiteSpace(Options.PreviewScreen);
 }

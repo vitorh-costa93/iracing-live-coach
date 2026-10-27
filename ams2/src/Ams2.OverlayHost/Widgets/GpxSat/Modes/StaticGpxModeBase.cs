@@ -79,9 +79,9 @@ public abstract class StaticGpxModeBase : IGpxMode
         if (c.IsRace)
         {
             if (c.Options.DirectorsCut) main = DirectorsCut(c);
-            else if (c.Options.Rotation) main = ConfiguredSplit(c) ?? LapStandings(c);
+            else if (c.Options.Rotation) main = ConfiguredSplit(c) ?? LapCompareScreen(c) ?? LapStandings(c);
             else if (c.Options.RaceStandings is "standings" or "pitstops") main = FrozenStandings(c, RaceKind(c)) is { Count: > 0 } all ? all[c.PageOf(all.Count * CarsPerPage, CarsPerPage)] : null;
-            else main = ConfiguredSplit(c);
+            else main = ConfiguredSplit(c) ?? LapCompareScreen(c);
         }
         // Qualy Board mesclado: maquina de estados por volta (tabela estatica so na volta de saida, relogio, aproximacao, intermediaria, resultado).
         else if (c.Options.QualiMerged && c.Options.SpeedSplitQuali != "trap" && c.Focus is { } qf && c.Model.QualiLap is { } qq && qq.CarIndex == qf.Index) main = QualiMergedScreen(c, qf, qq);
@@ -103,6 +103,9 @@ public abstract class StaticGpxModeBase : IGpxMode
         "ahead" => c.Split.Ahead is { } a && a.ActiveAt(c.Now) ? Gap(c, a) : null,
         _ => c.Split.Nearest(c.Now) is { } n ? Gap(c, n) : null,
     };
+
+    /// <summary>Comparativo de melhor volta vs carro mais proximo (a cada 3 voltas): abaixo do gap (so entra com o slot livre) e acima dos standings.</summary>
+    GpxScreen? LapCompareScreen(GpxContext c) => c.LapCmp is { } cmp ? LapCompare(c, cmp) : null;
 
     /// <summary>Standings da corrida orientados a evento: so na janela aberta quando o lider fecha a volta (estaticos, uma passagem por pagina); fora dela, slot vazio.</summary>
     GpxScreen? LapStandings(GpxContext c)
@@ -236,6 +239,7 @@ public abstract class StaticGpxModeBase : IGpxMode
             "win" => Winner(c, c.Broadcast.Winner ?? new(At(1), 5534.532, 305.28, 198.721, c.Now)),
             "split" => Split(c, f, GpxFormat.Intermediate(1), 28.112, .204, 4), "splitgreen" => Split(c, f, GpxFormat.FinishLine, 80.874, -.112, 1),
             "gapa" => Gap(c, new(true, At(3) with { Position = 3 }, At(2) with { Position = 2 }, 7, c.Now - 1, c.Now + 7, 1.842, 0, -.12)),
+            "lapcmp" => LapCompare(c, new(f, At(f.Position > 1 ? f.Position - 1 : 2), f.Position > 1, f.BestLapTime > 0 ? f.BestLapTime : 82.154, 81.943, f.BestLapTime > 0 ? f.BestLapTime - 81.943 : .211)),
             "gapb" => Gap(c, new(false, At(3) with { Position = 3 }, At(4) with { Position = 4 }, 7, c.Now - .9, c.Now + 7, null, 0, null)),
             "trap" => Trap(c, new(f, 0, 298.4 / 3.6, 305.1 / 3.6, At(1), 312.7 / 3.6, c.Now - 1, c.Now + 7)),
             "str" or "stq" or "stp" => Standings(c, c.Options.PreviewScreen.ToLowerInvariant()), _ => null,
@@ -260,6 +264,7 @@ public abstract class StaticGpxModeBase : IGpxMode
     }
     protected abstract GpxScreen Split(GpxContext c, CarSnapshot car, string label, double? time, double? delta, int position);
     protected abstract GpxScreen Gap(GpxContext c, GpxGapWindow window);
+    protected abstract GpxScreen LapCompare(GpxContext c, GpxLapCompare cmp);
     protected abstract GpxScreen Trap(GpxContext c, GpxTrapWindow window);
     protected abstract GpxScreen Standings(GpxContext c, string kind, int? page = null);
 }

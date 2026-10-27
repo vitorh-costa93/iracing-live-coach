@@ -231,9 +231,10 @@ public sealed record ListDef(string DefaultForm, int DefaultRows, int MinRows, i
 /// Peça de um widget composto (Race Board / Qualy Board): liga/desliga, duração própria e gatilho próprio (padrão / por evento / periódico / a cada N voltas).
 /// <see cref="EveryLaps"/> (null = a peça não oferece o gatilho por voltas), <see cref="LapsOf"/> e <see cref="LapsSeconds"/> = padrões do gatilho por voltas (regra do Race Board mesclado).
 /// <see cref="LapsByDefault"/>: o gatilho por voltas é o padrão da peça (mescla); gatilho "native" gravado = puro GPxPatch.
+/// <see cref="MergedOnly"/>: a peça não existe no GPxPatch; com o gatilho "native" (puro GPxPatch) ela fica fechada.
 /// </summary>
 public sealed record PieceDef(string Id, string Label, TimingDef? Duration = null, string? LegacyToggle = null, bool DefaultEnabled = true,
-    int? EveryLaps = null, string LapsOf = ShowLapsOf.Player, double? LapsSeconds = null, bool LapsByDefault = false);
+    int? EveryLaps = null, string LapsOf = ShowLapsOf.Player, double? LapsSeconds = null, bool LapsByDefault = false, bool MergedOnly = false);
 
 /// <summary>Padrões da Exibição de um widget num tema (os antigos valores fixos do código).</summary>
 public sealed record ShowDef
@@ -426,12 +427,15 @@ public sealed class ShowPlan
     /// A peça está na janela do gatilho (ligada e dentro da duração, sem contar os fades)? Os modos usam para não deixar uma tela de peça
     /// fechada ocupar o slot e esconder as de menor prioridade (standings, legenda).
     /// </summary>
-    public bool PieceWindowOpen(string id) => PieceEnabledBase(id) && (_lastEvent is null || PieceGate(id, _now, _lastEvent, windowOnly: true) > 0f);
+    public bool PieceWindowOpen(string id) => PieceEnabledBase(id) && !Dormant(id) && (_lastEvent is null || PieceGate(id, _now, _lastEvent, windowOnly: true) > 0f);
+
+    /// <summary>Peça só da mescla (<see cref="PieceDef.MergedOnly"/>) em puro GPxPatch: não há tela equivalente, fica fechada (o liga/desliga do Control Center não muda).</summary>
+    bool Dormant(string id) => PieceDefOf(id) is { MergedOnly: true } && PieceTrigger(id) == ShowTriggers.Native;
 
     /// <summary>Alfa da peça no instante de <see cref="At"/> (sem instante = 1; desligada = 0).</summary>
     public float PieceAlpha(string id)
     {
-        if (!PieceEnabledBase(id)) return 0f;
+        if (!PieceEnabledBase(id) || Dormant(id)) return 0f;
         return _lastEvent is null ? 1f : PieceGate(id, _now, _lastEvent);
     }
 
@@ -511,7 +515,7 @@ public static class ShowCatalog
     public const double CaptionSeconds = 8, CaptionEvery = 25;
 
     /// <summary>
-    /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: voltas restantes (time) a cada 5 voltas por 6 s. Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
+    /// Regras do Race Board mesclado (ESPECIFICACAO-TEMAS secao 3) sobre as peças do GPxSAT: voltas restantes (time) a cada 5 voltas por 6 s e melhor volta comparada ao carro mais próximo (lapcompare) a cada 3 voltas por 6 s (só corrida; não existe no GPxPatch). Volta mais rápida, boxes parado (sky) e tabela na largada de volta (standings) já são
     /// por evento nas telas do GPxPatch. Desde o esquema 11 é o PADRÃO dos temas GPxSAT (<see cref="PieceDef.LapsByDefault"/>): normalizado vira vazio.
     /// </summary>
     public static ShowSettings RaceBoardRules => new()
@@ -519,6 +523,7 @@ public static class ShowCatalog
         Pieces = new(StringComparer.OrdinalIgnoreCase)
         {
             ["time"] = new ShowSettings { Trigger = ShowTriggers.Laps },
+            ["lapcompare"] = new ShowSettings { Trigger = ShowTriggers.Laps },
         },
     };
 
@@ -528,11 +533,12 @@ public static class ShowCatalog
         Pieces = new(StringComparer.OrdinalIgnoreCase)
         {
             ["time"] = new ShowSettings { Trigger = ShowTriggers.Native },
+            ["lapcompare"] = new ShowSettings { Trigger = ShowTriggers.Native },
         },
     };
 
     /// <summary>Peças cuja regra de voltas é o padrão (mescla) nos temas GPxSAT.</summary>
-    public static readonly string[] MergedPieces = ["time"];
+    public static readonly string[] MergedPieces = ["time", "lapcompare"];
 
     /// <summary>
     /// Peças do GPxSAT por tema (telas do GPxPatch agrupadas; o OverlayHost mapeia cada tela pela chave em GpxPieces). Todas ligadas por padrão;
@@ -546,6 +552,7 @@ public static class ShowCatalog
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, punição, riding with, vencedor)"),
             new("pittimer", "Cronômetro do jogador nos boxes"),
             new("split", "Splits, gaps (fim do S1 e do S2, toda volta), speed trap e cartão da classificação"),
+            new("lapcompare", "Melhor volta vs carro mais próximo (a cada 3 voltas, só corrida)", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true, MergedOnly: true),
             new("standings", "Standings (corrida, paradas, classificação)"),
             new("caption", "Legenda do piloto (nome, equipe, país, posição) recorrente"),
             new("qboard", "Qualy Board mesclado (volta de saída com tabela estática, relógio, aproximação, intermediária, resultado)"),
@@ -557,6 +564,7 @@ public static class ShowCatalog
             new("sky", "Sky messages (volta mais rápida, abandono, boxes, card do piloto, vencedor)"),
             new("pittimer", "Pit lane / pit stop do jogador"),
             new("split", "Gap (fim do S1 e do S2, toda volta), splits e cartão da classificação"),
+            new("lapcompare", "Melhor volta vs carro mais próximo (a cada 3 voltas, só corrida)", EveryLaps: 3, LapsSeconds: 6, LapsByDefault: true, MergedOnly: true),
             new("standings", "Standings e torre da classificação"),
             new("tower", "Torre inferior"),
             new("progression", "Progressão da corrida"),

@@ -15,6 +15,12 @@ public sealed record GpxGapWindow(bool Ahead, CarSnapshot Focus, CarSnapshot Oth
     public double Running(double now) => Math.Max(0, now - OpenT);
 }
 
+/// <summary>
+/// Carro mais proximo na linha de chegada do jogador (comparativo de melhor volta, a cada 3 voltas): o mesmo criterio do <see cref="GpxSplitTracker.Nearest"/>
+/// (menor gap; lider usa o de tras, ultimo o da frente), com o gap medido no fim do S2 da mesma volta. <see cref="Gap"/> null = sem medida.
+/// </summary>
+public sealed record GpxLapNeighbor(bool Ahead, int Focus, int Other, int Lap, double OpenT, double? Gap);
+
 /// <summary>Speed trap (4.14) numa passagem do carro em foco: velocidade agora, a melhor dele e a maior do trap na sessao.</summary>
 public sealed record GpxTrapWindow(CarSnapshot Focus, int Trap, double SpeedMps, double FocusBestMps, CarSnapshot? Top, double TopMps,
     double OpenT, double CloseT)
@@ -69,15 +75,23 @@ public sealed class GpxSplitTracker
         var a = Ahead is { } ga && ga.ActiveAt(now) ? ga : null;
         var b = Behind is { } gb && gb.ActiveAt(now) ? gb : null;
         if (a is null || b is null) return a ?? b;
-        double? ag = a.Laps == 0 ? a.Gap : null, bg = b.Laps == 0 ? b.Gap : null;
-        if (ag is null) return b;
-        if (bg is null) return a;
-        return bg < ag ? b : a;
+        return PickBehind(a.Laps == 0 ? a.Gap : null, b.Laps == 0 ? b.Gap : null) ? b : a;
     }
+
+    /// <summary>Regra comum do "mais proximo" com os dois lados presentes: true = o de tras (sem gap da frente, ou gap de tras menor); sem gap de tras = o da frente.</summary>
+    static bool PickBehind(double? aheadGap, double? behindGap)
+    {
+        if (aheadGap is null) return true;
+        if (behindGap is null) return false;
+        return behindGap < aheadGap;
+    }
+
+    /// <summary>Vizinho da ultima linha de chegada do jogador na corrida (null = nenhuma ainda / fora da corrida / nos boxes).</summary>
+    public GpxLapNeighbor? LapNeighbor { get; private set; }
 
     public void Reset()
     {
-        _cars.Clear(); _lastGap.Clear(); _key = null; _last = double.NegativeInfinity; Ahead = Behind = null; Trap = null; LeaderLapT = null;
+        _cars.Clear(); _lastGap.Clear(); _key = null; _last = double.NegativeInfinity; Ahead = Behind = null; Trap = null; LeaderLapT = null; LapNeighbor = null;
         for (int i = 0; i < 3; i++) _top[i] = (-1, 0);
     }
 
@@ -134,6 +148,18 @@ public sealed class GpxSplitTracker
         return previous;
     }
 
+    /// <summary>Mais proximo na linha: vizinhos P-1 e P+1 (em pista) com o gap do fim do S2 desta volta (o ultimo medido); mesma regra do <see cref="Nearest"/>.</summary>
+    GpxLapNeighbor? ResolveLapNeighbor(double now, SessionSnapshot s, CarSnapshot f, int pass)
+    {
+        var ahead = s.Cars.FirstOrDefault(c => c.Position == f.Position - 1 && Running(c));
+        var behind = s.Cars.FirstOrDefault(c => c.Position == f.Position + 1 && Running(c));
+        double? GapOf(bool isAhead, CarSnapshot? c) => c is not null && _lastGap.TryGetValue((isAhead, 2), out var g) && g.Other == c.Index && g.Pass == pass - 1 ? g.Gap : null;
+        double? ag = GapOf(true, ahead), bg = GapOf(false, behind);
+        bool pickBehind = ahead is null ? behind is not null : behind is not null && PickBehind(ag, bg);
+        var other = pickBehind ? behind : ahead;
+        return other is null ? null : new GpxLapNeighbor(!pickBehind, f.Index, other.Index, pass / 3, now, pickBehind ? bg : ag);
+    }
+
     void OnFocusPass(double now, SessionSnapshot s, CarSnapshot f, int pass, bool race)
     {
         int trap = pass % 3;
@@ -141,10 +167,10 @@ public sealed class GpxSplitTracker
         var top = _top[trap].Car >= 0 ? s.Cars.FirstOrDefault(c => c.Index == _top[trap].Car) : null;
         if (!f.InPitLane)
             Trap = new GpxTrapWindow(f, trap, f.SpeedMps, tr.BestTrap[trap], top, _top[trap].Mps, now, now + HoldSeconds);
-        if (!race || f.InPitLane || f.Position <= 0) return;
+        if (!race || f.InPitLane || f.Position <= 0) { if (pass % 3 == 0) LapNeighbor = null; return; }
 
         Ahead = null; Behind = null;
-        if (pass % 3 == 0) return;   // linha de chegada = so classificacao; o gap sai no fim do S1 e do S2
+        if (pass % 3 == 0) { LapNeighbor = ResolveLapNeighbor(now, s, f, pass); return; }   // linha de chegada = so classificacao; o gap sai no fim do S1 e do S2
         var ahead = s.Cars.FirstOrDefault(c => c.Position == f.Position - 1 && Running(c));
         if (ahead is not null && _cars.TryGetValue(ahead.Index, out var at))
         {

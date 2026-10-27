@@ -86,6 +86,41 @@ public sealed class GpxLapTriggerTests
     }
 
     [Fact]
+    public void Best_lap_comparison_opens_every_3_laps_for_6s_and_is_closed_in_pure_gpx()
+    {
+        foreach (var theme in new[] { "f1-1998", "f1-1999-digital", "f1-2004", "f1-2012" })
+        {
+            var plan = ShowPlan.For(new WidgetSettings { Id = "gpxsat" }.Normalized(theme), theme);
+            Assert.Equal((ShowTriggers.Laps, 3, ShowLapsOf.Player, 6d), (plan.PieceTrigger("lapcompare"), plan.PieceEveryLaps("lapcompare"), plan.PieceLapsOf("lapcompare"), plan.PieceDuration("lapcompare", 6)));
+            Func<string, double?> last = id => id == "playerLap" ? 100 : null;
+            float Alpha(int laps, double now) => plan.At(now, last, _ => laps).PieceAlpha("lapcompare");
+            Assert.Equal(1f, Alpha(3, 103)); Assert.Equal(1f, Alpha(6, 105));
+            Assert.Equal(0f, Alpha(3, 107));   // fora dos 6 s
+            foreach (int laps in new[] { 0, 1, 2, 4, 5, 7 }) Assert.Equal(0f, Alpha(laps, 101));
+            Assert.True(plan.At(103, last, _ => 3).PieceWindowOpen("lapcompare"));
+            Assert.False(plan.At(103, last, _ => 4).PieceWindowOpen("lapcompare"));
+            // Duracao e contagem configuraveis.
+            var custom = ShowPlan.For(new WidgetSettings { Id = "gpxsat", Show = new ShowSettings { Pieces = new() { ["lapcompare"] = new ShowSettings { Trigger = ShowTriggers.Laps, EveryLaps = 2, DurationSeconds = 9 } } } }.Normalized(theme), theme);
+            Assert.Equal((2, 9d), (custom.PieceEveryLaps("lapcompare"), custom.PieceDuration("lapcompare", 6)));
+            Assert.Equal(1f, custom.At(108, last, _ => 4).PieceAlpha("lapcompare"));
+            // Puro GPxPatch: a peca nao existe la, fica fechada (o liga/desliga do Control Center segue ligado).
+            var pure = ShowPlan.For(new WidgetSettings { Id = "gpxsat", Show = ShowCatalog.PureGpx }.Normalized(theme), theme);
+            Assert.Equal(ShowTriggers.Native, pure.PieceTrigger("lapcompare"));
+            Assert.True(pure.PieceEnabled("lapcompare"));
+            Assert.Equal(0f, pure.At(103, last, _ => 3).PieceAlpha("lapcompare"));
+            Assert.False(pure.At(103, last, _ => 3).PieceWindowOpen("lapcompare"));
+            // Desligada na Exibicao = fechada tambem na mescla.
+            var off = ShowPlan.For(new WidgetSettings { Id = "gpxsat", Show = new ShowSettings { Pieces = new() { ["lapcompare"] = new ShowSettings { Enabled = false } } } }.Normalized(theme), theme);
+            Assert.Equal(0f, off.At(103, last, _ => 3).PieceAlpha("lapcompare"));
+            // Perfil antigo (sem bloco da peca) ganha a peca ligada por padrao, sem migracao.
+            var fresh = ProfileFactory.CreateDefault("x", theme, 1920, 1080);
+            var old = (fresh with { SchemaVersion = 10 }).Normalized();
+            Assert.Equal(ShowTriggers.Laps, ShowPlan.For(old.Get("gpxsat")!, theme).PieceTrigger("lapcompare"));
+            Assert.Null(old.Get("gpxsat")!.Show);
+        }
+    }
+
+    [Fact]
     public void Migration_v11_keeps_pure_gpx_only_where_the_piece_was_customized()
     {
         foreach (var theme in new[] { "f1-1998", "f1-1999-digital", "f1-2004", "f1-2012" })
