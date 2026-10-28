@@ -192,6 +192,7 @@ public partial class TelemetryReader : IDisposable
     // retain the real transition locally and present its elapsed duration.  Once a car exits, the
     // last completed pit (lap + duration) remains available as useful race context.
     private readonly PitStopTracker _pitStops = new();
+    private readonly RaceOutTracker _outTracker = new();
     private readonly LapHistory _lapHistory = new();
 
     // Per-session state. A session = telemetry (SessionUniqueID, SessionNum); practice -> qualifying ->
@@ -973,6 +974,7 @@ public partial class TelemetryReader : IDisposable
         _lastP2PLogState.Clear();
         _p2pLogLines = 0;
         _pitStops.Reset();
+        _outTracker.Reset();
         _lapHistory.Reset();
         _estCurves.Clear();
         _flagBadges.Reset();
@@ -992,7 +994,7 @@ public partial class TelemetryReader : IDisposable
         _fuelLastPlayerLap = _fuelLastLeaderLap = int.MinValue;
     }
 
-    private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass);
+    private readonly record struct LivePositions(Dictionary<int, int> Overall, Dictionary<int, int> ByClass, HashSet<int>? Out = null);
 
     // 16/09/2026: iRacing's own CarIdxPosition/CarIdxClassPosition are documented to lag behind
     // the real order on track, especially right after an overtake -- this is exactly why
@@ -1078,15 +1080,21 @@ public partial class TelemetryReader : IDisposable
     private LivePositions ComputeLivePositions()
     {
         var maxCars = IRacingSdkConst.MaxNumCars;
-        var entries = new List<(int Idx, int Laps, float DistPct, int ClassId)>();
+        var samples = new List<OutCarSample>();
         for (var idx = 0; idx < maxCars; idx++)
         {
             var distPct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
-            if (distPct < 0) continue; // car not currently on track / not in this session
-            var laps = _sdk.Data.GetInt("CarIdxLapCompleted", idx);
-            var classId = _sdk.Data.GetInt("CarIdxClass", idx);
-            entries.Add((idx, laps, distPct, classId));
+            int surface = 0;
+            if (distPct < 0) { try { surface = _sdk.Data.GetInt("CarIdxTrackSurface", idx); } catch { surface = RaceOutTracker.NotInWorld; } }
+            samples.Add(new OutCarSample(idx, _sdk.Data.GetInt("CarIdxClass", idx), _sdk.Data.GetInt("CarIdxLapCompleted", idx), distPct,
+                distPct < 0 ? surface : 0));
         }
+        // Race only (this path is never used for practice/qualifying): a car that left the world stays parked at its last progress.
+        bool racing = _isRaceSession && _sessionState == SessionStateRacingState && _finalResults.Count == 0;
+        var resolved = _outTracker.Resolve(samples, racing);
+        var outCars = racing ? resolved.Where(e => e.Out).Select(e => e.CarIdx).ToHashSet() : new HashSet<int>();
+        var entries = (racing ? resolved : resolved.Where(e => !e.Out).ToList())
+            .Select(e => (Idx: e.CarIdx, e.Laps, DistPct: (float)e.DistPct, e.ClassId)).ToList();
 
         if (entries.Count == 0)
         {
@@ -1118,7 +1126,7 @@ public partial class TelemetryReader : IDisposable
                 .Select((e, i) => (e.Idx, Position: i + 1)))
             .ToDictionary(x => x.Idx, x => x.Position);
 
-        return new LivePositions(overall, byClass);
+        return new LivePositions(overall, byClass, outCars);
     }
 
     private void UpdateRelative(LivePositions positions)
@@ -1405,6 +1413,13 @@ public partial class TelemetryReader : IDisposable
                 bool towed = false;
                 if (idx == _playerCarIdx) { try { towed = _sdk.Data.GetFloat("PlayerCarTowTime") > 0; } catch { } }
                 var pitStatus = _pitStops.Update(idx, onPitRoad, lapsCompleted, stopsCount, now, towed);
+                // Race: a car that left the world stays listed parked at its last progress, flagged "OUT".
+                if (positions.Out?.Contains(idx) == true && _outTracker.TryGetProgress(idx, out var parked))
+                {
+                    pitStatus = "OUT";
+                    progress = Math.Max(0, parked.Laps + parked.Pct);
+                    estTime = null;
+                }
                 if (!_finalResults.ContainsKey(idx))
                     _lapHistory.Update(idx, _sdk.Data.GetInt("CarIdxLapCompleted", idx), _sdk.Data.GetFloat("CarIdxLastLapTime", idx), onPitRoad, _isRaceSession);
                 var (p2pActive, p2pSeconds, p2pCharging) = ReadP2P(idx);
