@@ -66,11 +66,11 @@ public static class ClassIntervals
             // of the final race times -- Kapps "17.5" for ResultsPositions Time 17.5409 vs the winner's 0.
             if (me.EstTime is null && ahead.EstTime is null && me.GapToLeader is double finalMe && ahead.GapToLeader is double finalAhead && finalMe - finalAhead >= 0)
                 return new IntervalValue(finalMe - finalAhead, null);
-            // Same-class EstTime curve as the Relative, retaining the forward race direction rather
-            // than folding to the physically nearest car. A nonuniform curve can take over half the
-            // reference lap time even between two spots less than half a lap apart.
-            if (diff >= 0 && RelativeGap.LiveSeconds(ahead.EstTime is > 0 ? ahead.EstTime : null,
-                me.EstTime is > 0 ? me.EstTime : null, classLapTime, diff, classLapTime, forward: true,
+            // Same number the Relative shows for the same two cars (EstTime difference on the class curve, the
+            // in-sim black box): forward along the race when the order agrees with progress, nearest way round
+            // when it does not. Never falls to the stale CarIdxF2Time while both EstTimes are live.
+            if (RelativeGap.LiveSeconds(ahead.EstTime is > 0 ? ahead.EstTime : null,
+                me.EstTime is > 0 ? me.EstTime : null, classLapTime, diff, classLapTime, forward: diff >= 0,
                 crossedLine: Math.Floor(theirs) > Math.Floor(mine)) is double seconds)
                 return new IntervalValue(seconds, null);
         }
