@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using IRSDKSharper;
 using IracingLiveCoach.Core.Coach;
 
@@ -13,7 +14,7 @@ public partial class TelemetryReader
     private const int PitRejoinRefreshTicks = 10;
     private const int PitSvFuelFlag = 0x10, PitSvTireFlags = 0x0F;
 
-    private readonly PitLossModel _pitLoss = new();
+    private readonly PitLossModel _pitLoss = new() { Store = new CarServiceStore() };
     private int _pitLossTrackId;
     private int _rejoinTick = PitRejoinRefreshTicks;
     private volatile PitRejoinPrediction? _lastRejoin;
@@ -73,6 +74,8 @@ public partial class TelemetryReader
         if (_playerCarIdx < 0) return PitRejoinPrediction.Unavailable("no player car");
         if (_trackId != _pitLossTrackId) { _pitLoss.Reset(); _pitLossTrackId = _trackId; _rejoinFrozenLoss = double.NaN; }
         RefreshRejoinDrivers(info);
+        var me0 = Read(() => info?.DriverInfo?.Drivers?.FirstOrDefault(d => d.CarIdx == _playerCarIdx), null);
+        _pitLoss.SetCar(CarServiceStore.CarKey(me0?.CarPath, me0?.CarScreenName));
 
         double t = data.GetDouble("SessionTime");
         _pitLoss.BeginTick(t);

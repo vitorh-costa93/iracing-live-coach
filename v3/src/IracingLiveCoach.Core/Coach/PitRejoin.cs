@@ -250,11 +250,37 @@ public sealed class PitLossModel
     public double? LearnedTireSec => Median(_tireSec);
     public double? TypicalStopSec => Median(_otherStops);
 
-    /// <summary>Forgets everything (other track).</summary>
+    /// <summary>Persistence of the per-car refuel rate / tyre time (null = none).</summary>
+    public CarServiceStore? Store { get; set; }
+    private string? _carKey;
+    private readonly List<double> _storedFill = new(), _storedTire = new();
+
+    /// <summary>Refuel rate / tyre time persisted for the current car (previous sessions), median; null when none.</summary>
+    public double? StoredFillRateLps => Median(_storedFill);
+    public double? StoredTireSec => Median(_storedTire);
+
+    /// <summary>Selects the player's car: drops the in-session service samples and loads the persisted ones.</summary>
+    public void SetCar(string? carKey)
+    {
+        if (carKey == _carKey) return;
+        _carKey = carKey;
+        _fillRate.Clear(); _tireSec.Clear(); _storedFill.Clear(); _storedTire.Clear();
+        if (carKey is null || Store?.Load(carKey) is not { } p) return;
+        _storedFill.AddRange(p.FillRateLps.Where(CarServiceStore.PlausibleFill));
+        _storedTire.AddRange(p.TireSec.Where(CarServiceStore.PlausibleTire));
+    }
+
+    /// <summary>Forgets the track-specific data (other track). The refuel rate / tyre time belong to the car and stay.</summary>
     public void Reset()
     {
         ResetVisits();
-        _laneLoss.Clear(); _otherStops.Clear(); _fillRate.Clear(); _tireSec.Clear(); _entryPct.Clear(); _exitPct.Clear();
+        _laneLoss.Clear(); _otherStops.Clear(); _entryPct.Clear(); _exitPct.Clear();
+    }
+
+    private void Persist()
+    {
+        if (_carKey is null || Store is null) return;
+        Store.Save(_carKey, new CarServiceProfile(new List<double>(_storedFill), new List<double>(_storedTire)));
     }
 
     /// <summary>Session change / time jump: drops the visits in progress, keeps what was learned.</summary>
@@ -309,12 +335,17 @@ public sealed class PitLossModel
             double added = fuelL >= 0 && visit.EnterFuel >= 0 ? fuelL - visit.EnterFuel : double.NaN;
             if (added >= 1 && !visit.Tires)
             {
-                Add(_fillRate, added / visit.StationarySec);
+                double rate = added / visit.StationarySec;
+                if (!CarServiceStore.PlausibleFill(rate)) { Log?.Invoke(Inv($"pit-loss player refuel {rate:F3} L/s discarded (implausible)")); return; }
+                Add(_fillRate, rate);
+                AddStored(_storedFill, rate);
                 Log?.Invoke(Inv($"pit-loss player refuel {added:F1} L in {visit.StationarySec:F1} s -> {added / visit.StationarySec:F3} L/s"));
             }
             else if (visit.Tires && !(added >= 0.5))
             {
+                if (!CarServiceStore.PlausibleTire(visit.StationarySec)) return;
                 Add(_tireSec, visit.StationarySec);
+                AddStored(_storedTire, visit.StationarySec);
                 Log?.Invoke(Inv($"pit-loss player tyres {visit.StationarySec:F1} s"));
             }
         }
@@ -378,9 +409,25 @@ public sealed class PitLossModel
         bool needsService = fuelUnknown || fuel > 0.05 || tires;
         if (needsService)
         {
-            double? fuelSec = fuel > 0.05 && LearnedFillRateLps is double r && r > 0 ? fuel / r : fuel <= 0.05 && !fuelUnknown ? 0 : null;
-            double? tireSec = tires ? LearnedTireSec : 0;
-            if (fuelSec is double fs && tireSec is double ts) service = Math.Max(fs, ts);
+            bool stored = false;
+            double? fuelSec = null;
+            if (fuel > 0.05)
+            {
+                if (LearnedFillRateLps is double r && r > 0) fuelSec = fuel / r;
+                else if (StoredFillRateLps is double sr && sr > 0) { fuelSec = fuel / sr; stored = true; }
+            }
+            else if (!fuelUnknown) fuelSec = 0;
+            double? tireSec = 0;
+            if (tires)
+            {
+                tireSec = LearnedTireSec;
+                if (tireSec == null && StoredTireSec is double st) { tireSec = st; stored = true; }
+            }
+            if (fuelSec is double fs && tireSec is double ts)
+            {
+                service = Math.Max(fs, ts);
+                if (stored) { est = true; notes.Add("service learned from previous session"); }
+            }
             else if (TypicalStopSec is double typical)
             {
                 service = Math.Max(typical, Math.Max(fuelSec ?? 0, tireSec ?? 0));
@@ -396,6 +443,13 @@ public sealed class PitLossModel
         }
         if (repairSec > 0 && !double.IsInfinity(repairSec)) service += repairSec;
         return new PitLossEstimate(true, lane, service, est, string.Join(", ", notes));
+    }
+
+    private void AddStored(List<double> list, double v)
+    {
+        list.Add(v);
+        if (list.Count > CarServiceStore.MaxSamples) list.RemoveAt(0);
+        Persist();
     }
 
     private static void Add(List<double> list, double v)
