@@ -77,6 +77,64 @@ public sealed class RelativeGapTests
         Assert.Null(RelativeGap.LiveSeconds(null, null, 70, .02, null));
     }
 
+    private static EstTimeCurves TwoClassCurves()
+    {
+        // Class 1 (player's, 100 s) is uniform; class 2 (120 s) loses 1.5 s in a slow corner at 0.50-0.52.
+        var curves = new EstTimeCurves();
+        for (int i = 0; i < 1000; i++)
+        {
+            double pct = i / 1000.0;
+            curves.Add(1, pct, pct * 100);
+            curves.Add(2, pct, pct * 120 + (pct > 0.5 ? Math.Min(pct - 0.5, 0.02) / 0.02 * 1.5 : 0));
+        }
+        return curves;
+    }
+
+    private static readonly Dictionary<int, double> TwoClassLaps = new() { [1] = 100, [2] = 120 };
+
+    [Fact]
+    public void Multiclass_car_two_ahead_never_reads_closer_than_the_car_ahead()
+    {
+        // Multiclass race 28/10/2026: a slow-class car just ahead (its own curve, through the slow corner)
+        // read 3.9 s, a same-class car physically beyond it 3.0 s -- the per-car formula alone inverts.
+        var curves = TwoClassCurves();
+        var player = new RelativeCar(1, 0.50, 50);
+        var slow = new RelativeCar(2, 0.52, 0.52 * 120 + 1.5);
+        var fast = new RelativeCar(1, 0.53, 53);
+        double slowAlone = RelativeGap.LiveSeconds(slow.EstTime, curves.At(2, 0.50), 120, .02, 100)!.Value;
+        double fastAlone = RelativeGap.LiveSeconds(fast.EstTime, player.EstTime, 100, .03, 100)!.Value;
+        Assert.True(fastAlone < slowAlone); // the reported bug, reproduced
+
+        var gaps = RelativeGap.SideGaps(player, [slow, fast], curves, TwoClassLaps, 100);
+        Assert.Equal(3.9, gaps[0], 6);
+        Assert.Equal(3.9, gaps[1], 6); // floored at the car ahead of it, never closer
+    }
+
+    [Fact]
+    public void Coherent_gaps_keep_the_exact_est_time_values_on_both_sides()
+    {
+        var curves = TwoClassCurves();
+        var player = new RelativeCar(1, 0.30, 30);
+        var ahead = RelativeGap.SideGaps(player, [new(1, 0.31, 31), new(2, 0.33, 0.33 * 120), new(1, 0.45, 45)], curves, TwoClassLaps, 100);
+        Assert.Equal(new[] { 1.0, 3.6, 15.0 }, ahead.Select(g => Math.Round(g, 6)));
+        var behind = RelativeGap.SideGaps(player, [new(1, 0.29, 29), new(2, 0.20, 24), new(1, 0.99, 99)], curves, TwoClassLaps, 100);
+        Assert.Equal(new[] { 1.0, 12.0, 31.0 }, behind.Select(g => Math.Round(g, 6)));
+    }
+
+    [Fact]
+    public void Behind_side_is_monotonic_and_unknown_gap_does_not_drop_to_zero()
+    {
+        var curves = TwoClassCurves();
+        var player = new RelativeCar(1, 0.53, 53);
+        // Slow class just behind, through its slow corner (3.9 s); fast car beyond it 3.0 s; then a class with
+        // no curve and no lap time at all (direct gap unknown = 0) must not read closer either.
+        var gaps = RelativeGap.SideGaps(player, [new(2, 0.505, curves.At(2, 0.505)!.Value), new(1, 0.50, 50), new(7, 0.49, null)],
+            curves, TwoClassLaps, 0);
+        Assert.True(gaps[0] > 3.0);
+        Assert.Equal(gaps[0], gaps[1], 6);
+        Assert.Equal(gaps[1], gaps[2], 6);
+    }
+
     [Fact]
     public void Directed_gap_wraps_reference_time_while_relative_always_takes_the_nearest_time()
     {

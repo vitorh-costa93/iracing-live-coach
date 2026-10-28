@@ -1,5 +1,8 @@
 namespace IracingLiveCoach.Core.Telemetry;
 
+/// <summary>A car as the Relative gap sees it: class, CarIdxLapDistPct and CarIdxEstTime.</summary>
+public readonly record struct RelativeCar(int ClassId, double Pct, double? EstTime);
+
 /// <summary>
 /// Live reference-curve gap calculation and the linear distance fallback used when a curve is unknown.
 /// Relative uses the nearest gap on the other car's class curve; standings retain the forward interval.
@@ -28,6 +31,32 @@ public static class RelativeGap
         }
         return fallbackLapSeconds is > 0 and double fallback && double.IsFinite(fallback) && double.IsFinite(lapDelta)
             ? Math.Abs(lapDelta) * fallback : null;
+    }
+
+    /// <summary>
+    /// Relative gaps (seconds, &gt;= 0) for one side of the player, cars ordered nearest first. Each car's own
+    /// gap is the Kapps formula (EstTime difference on THAT car's class curve, nearest way round). Across
+    /// classes those are different time scales: a slow-class car through a slow corner can read 3.9 s while
+    /// a same-class car physically beyond it reads 3.0 s (both true "time since it passed my spot", since the
+    /// faster car is overtaking). The Relative is a distance-ordered list, so a gap is floored at the one
+    /// before it: coherent values stay exact, an inversion shows the nearest consistent value (a tie) instead
+    /// of adding a cross-class segment (which would compound the scale mismatch) or going backwards.
+    /// </summary>
+    public static double[] SideGaps(RelativeCar player, IReadOnlyList<RelativeCar> side, EstTimeCurves curves,
+        IReadOnlyDictionary<int, double> classLapById, double playerLapSeconds)
+    {
+        var gaps = new double[side.Count];
+        double floor = 0;
+        for (int i = 0; i < side.Count; i++)
+        {
+            var car = side[i];
+            double theirLap = classLapById.TryGetValue(car.ClassId, out var l) ? l : playerLapSeconds;
+            bool sameClass = car.ClassId == player.ClassId;
+            double? origin = sameClass && player.EstTime > 0 && car.EstTime > 0 && theirLap > 0 ? player.EstTime : curves.At(car.ClassId, player.Pct);
+            double direct = LiveSeconds(car.EstTime, origin, theirLap, WrappedDelta(car.Pct, player.Pct), playerLapSeconds) ?? 0;
+            gaps[i] = floor = Math.Max(direct, floor);
+        }
+        return gaps;
     }
 
     /// <summary>Lap fraction from the player to the other car, wrapped to (-0.5, 0.5]; &gt; 0 = ahead.</summary>

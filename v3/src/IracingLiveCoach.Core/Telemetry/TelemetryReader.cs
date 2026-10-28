@@ -1210,27 +1210,22 @@ public partial class TelemetryReader : IDisposable
                 if (pct < 0 || IsPaceCar(idx)) continue;
                 _estCurves.Add(_sdk.Data.GetInt("CarIdxClass", idx), pct, _sdk.Data.GetFloat("CarIdxEstTime", idx));
             }
-            double GapTo(int idx, double delta)
-            {
-                // The in-sim black box Relative: EstTime difference (smooth while the gap is steady). The player's
-                // own-lap trace (OwnLapTrace) swung 2-4.5 s around a steady 3.3 s gap, as it follows the player's
-                // speed profile instead of the real interval (live check 09/10/2026).
-                int cls = _sdk.Data.GetInt("CarIdxClass", idx);
-                double theirLap = _classLapTimeById.TryGetValue(cls, out var l) ? l : lapTime;
-                double mine = _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx);
-                double theirs = _sdk.Data.GetFloat("CarIdxEstTime", idx);
-                bool sameClass = cls == _sdk.Data.GetInt("CarIdxClass", _playerCarIdx);
-                double? origin = sameClass && mine > 0 && theirs > 0 && theirLap > 0 ? mine : _estCurves.At(cls, myPct);
-                return RelativeGap.LiveSeconds(theirs, origin, theirLap, delta, lapTime) ?? 0;
-            }
+            // The in-sim black box Relative: EstTime difference (smooth while the gap is steady). The player's
+            // own-lap trace (OwnLapTrace) swung 2-4.5 s around a steady 3.3 s gap, as it follows the player's
+            // speed profile instead of the real interval (live check 09/10/2026). SideGaps keeps each side
+            // monotonic across classes (multiclass race 28/10/2026: a car two ahead read less than the one ahead).
+            RelativeCar Car(int idx) => new(_sdk.Data.GetInt("CarIdxClass", idx), _sdk.Data.GetFloat("CarIdxLapDistPct", idx), _sdk.Data.GetFloat("CarIdxEstTime", idx));
+            var player = new RelativeCar(_sdk.Data.GetInt("CarIdxClass", _playerCarIdx), myPct, _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx));
             var ahead = around.Where(c => c.Delta > 0).OrderBy(c => c.Delta).Take(RelativeCarsMax).ToList();
             var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
+            var aheadGaps = RelativeGap.SideGaps(player, ahead.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
+            var behindGaps = RelativeGap.SideGaps(player, behind.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
 
             var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
             for (int i = 0; i < ahead.Count; i++)
-                rows.Add(BuildRelativeRow(ahead[i].Idx, -(i + 1), -GapTo(ahead[i].Idx, ahead[i].Delta), positions));
+                rows.Add(BuildRelativeRow(ahead[i].Idx, -(i + 1), -aheadGaps[i], positions));
             for (int i = 0; i < behind.Count; i++)
-                rows.Add(BuildRelativeRow(behind[i].Idx, i + 1, GapTo(behind[i].Idx, behind[i].Delta), positions));
+                rows.Add(BuildRelativeRow(behind[i].Idx, i + 1, behindGaps[i], positions));
 
             FullRelativeUpdated?.Invoke(rows.OrderBy(row => row.PositionOffset).ToList());
         }
@@ -1522,9 +1517,13 @@ public partial class TelemetryReader : IDisposable
                 {
                     // CarIdxF2Time is authoritative across different laps but only advances at timing
                     // lines; on the same lap CarIdxEstTime moves continuously.
-                    gapToLeader = r.Gap;
-                    if (r.Position != leader.Position && r.Laps == leader.Laps && r.EstTime is double ce && leader.EstTime is double le)
-                        gapToLeader = Math.Max(0, ce - le);
+                    // The old "Math.Max(0, ce - le)" had the sign reversed (the car behind has the smaller
+                    // EstTime) and mixed class curves, so every same-lap row read an invented 0.
+                    gapToLeader = r.Position == leader.Position ? r.Gap
+                        : ClassIntervals.RaceGapToLeader(
+                            new IntervalInput(r.ClassId, r.Position, r.ClassPosition, r.Progress, r.EstTime, r.Gap),
+                            new IntervalInput(leader.ClassId, leader.Position, leader.ClassPosition, leader.Progress, leader.EstTime, leader.Gap),
+                            _classLapTimeById.TryGetValue(r.ClassId, out var gapLap) && gapLap > 1 ? gapLap : null);
                 }
 
                 var interval = intervals[i];

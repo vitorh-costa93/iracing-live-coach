@@ -79,6 +79,16 @@ public static class ClassIntervals
         return IntervalValue.None;
     }
 
+    /// <summary>Race gap to the overall leader. Same class and under a lap apart: the live forward EstTime
+    /// difference on that class's curve (RaceInterval). Otherwise -- another class's curve is a different
+    /// time scale, a lapped car has no seconds gap -- CarIdxF2Time. Never negative, never a made-up 0.</summary>
+    public static double? RaceGapToLeader(IntervalInput me, IntervalInput leader, double? classLapTime)
+    {
+        if (me.ClassId == leader.ClassId && RaceInterval(me, leader, classLapTime) is { Seconds: double seconds })
+            return seconds;
+        return me.GapToLeader is double gap && double.IsFinite(gap) && gap >= 0 ? gap : null;
+    }
+
     public static IntervalValue TimedInterval(IntervalInput me, IntervalInput ahead) =>
         me.BestLap is > 0 and double mine && ahead.BestLap is > 0 and double theirs && mine - theirs >= 0
             ? new IntervalValue(mine - theirs, null)

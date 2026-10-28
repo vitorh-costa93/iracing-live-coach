@@ -125,6 +125,19 @@ public class ClassIntervalsTests
     }
 
     [Fact]
+    public void Gap_to_leader_is_the_forward_est_time_gap_never_an_invented_zero()
+    {
+        // Same class, same lap: leader 3.3 s up the road (the old "max(0, mine - leader)" read 0).
+        Assert.Equal(3.3, ClassIntervals.RaceGapToLeader(Car(1, 2, 2, 5.50, 30, gap: 4.0), Car(1, 1, 1, 5.52, 33.3, gap: 0), 67)!.Value, 6);
+        // Across the line: leader just crossed, I have not.
+        Assert.Equal(2, ClassIntervals.RaceGapToLeader(Car(1, 2, 2, 5.99, 66, gap: 1.8), Car(1, 1, 1, 6.01, 1, gap: 0), 67)!.Value, 6);
+        // Another class's curve is another time scale: F2Time. Lapped: F2Time. Negative/missing: null.
+        Assert.Equal(12.5, ClassIntervals.RaceGapToLeader(Car(2, 5, 1, 5.50, 30, gap: 12.5), Car(1, 1, 1, 5.60, 40, gap: 0), 67));
+        Assert.Equal(70, ClassIntervals.RaceGapToLeader(Car(1, 9, 9, 4.50, 30, gap: 70), Car(1, 1, 1, 5.60, 40, gap: 0), 67));
+        Assert.Null(ClassIntervals.RaceGapToLeader(Car(2, 5, 1, 5.50, 30, gap: -1), Car(1, 1, 1, 5.60, 40, gap: 0), 67));
+    }
+
+    [Fact]
     public void Missing_est_time_uses_forward_distance_times_class_lap()
     {
         var v = ClassIntervals.RaceInterval(Car(1, 2, 2, 5.1, null), Car(1, 1, 1, 5.9, 90), 100);
