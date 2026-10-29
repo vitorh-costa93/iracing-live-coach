@@ -56,5 +56,12 @@ public sealed class PassageHistory
     public double? SecondsSince(int car, double pct, double now) =>
         TimeAt(car, pct) is double t && now - t >= 0 ? now - t : null;
 
+    /// <summary>The passage time is only trusted while it agrees with the EstTime-curve gap (within 1 s or 30 %).
+    /// A parked car (grid, pit stall, stopped on track) keeps "passing my spot" further into the past, so its
+    /// passage time grows without bound while the black box still reads the small distance (photo, 29/10/2026:
+    /// 1.6 vs 0.1 on the grid). Disagreement = fall back to the curve gap.</summary>
+    public static double Trusted(double? passage, double curveGap) =>
+        passage is double p && Math.Abs(p - curveGap) <= Math.Max(1.0, 0.3 * curveGap) ? p : curveGap;
+
     public void Clear() => _trails.Clear();
 }

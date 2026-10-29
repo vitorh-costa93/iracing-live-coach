@@ -1223,8 +1223,8 @@ public partial class TelemetryReader : IDisposable
             var behindDetail = RelativeGap.SideGapsDetailed(player, behind.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
             // The black box number: real time since the car ahead passed my spot / since I passed the spot of the
             // car behind (PassageHistory). The EstTime-curve gap stays as the fallback while a trail is short.
-            var aheadGaps = aheadDetail.Select((g, i) => _passages.SecondsSince(ahead[i].Idx, myPct, sessionTime) ?? g.Shown).ToArray();
-            var behindGaps = behindDetail.Select((g, i) => _passages.SecondsSince(_playerCarIdx, _sdk.Data.GetFloat("CarIdxLapDistPct", behind[i].Idx), sessionTime) ?? g.Shown).ToArray();
+            var aheadGaps = aheadDetail.Select((g, i) => PassageHistory.Trusted(_passages.SecondsSince(ahead[i].Idx, myPct, sessionTime), g.Shown)).ToArray();
+            var behindGaps = behindDetail.Select((g, i) => PassageHistory.Trusted(_passages.SecondsSince(_playerCarIdx, _sdk.Data.GetFloat("CarIdxLapDistPct", behind[i].Idx), sessionTime), g.Shown)).ToArray();
             LogRelativeDebug(sessionTime, player, ahead, behind, aheadDetail, behindDetail, lapTime);
 
             var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
@@ -1585,8 +1585,9 @@ public partial class TelemetryReader : IDisposable
                         if (intervalsDetailed[ranked[k]].Branch is not ("estTime-forward" or "estTime-nearest")) continue;
                         var me = ordered[ranked[k]];
                         if (me.Progress is not double mine || ordered[ranked[k - 1]].Progress is not double theirs || theirs - mine is < 0 or >= 1) continue;
-                        if (_passages.SecondsSince(ordered[ranked[k - 1]].Idx, mine - Math.Floor(mine), _sdk.Data.GetDouble("SessionTime")) is double secs)
-                            intervals[ranked[k]] = new IntervalValue(secs, null);
+                        if (intervals[ranked[k]].Seconds is double curveGap)
+                            intervals[ranked[k]] = new IntervalValue(PassageHistory.Trusted(
+                                _passages.SecondsSince(ordered[ranked[k - 1]].Idx, mine - Math.Floor(mine), _sdk.Data.GetDouble("SessionTime")), curveGap), null);
                     }
                 }
             LogStandingsDebug(_sdk.Data.GetDouble("SessionTime"), ordered.Select(o => (o.Idx, o.ClassId, o.ClassPosition, o.Progress, o.EstTime)).ToList(), intervalsDetailed);

@@ -35,3 +35,10 @@ public class PassageHistoryTests
         Assert.Null(h.SecondsSince(99, 0.12, 5));
     }
 }
+
+public class PassageTrustTests
+{
+    [Fact] public void Trusted_KeepsPassageNearCurveGap() => Assert.Equal(5.55, PassageHistory.Trusted(5.55, 4.83), 3);
+    [Fact] public void Trusted_ParkedCarFallsBackToCurveGap() => Assert.Equal(0.1, PassageHistory.Trusted(1.6, 0.1), 3);
+    [Fact] public void Trusted_NoPassageUsesCurveGap() => Assert.Equal(2.0, PassageHistory.Trusted(null, 2.0), 3);
+}

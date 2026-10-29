@@ -48,6 +48,14 @@
       <BarlowFontFiles Include="$(MSBuildThisFileDirectory)..\IracingLiveCoach.OverlayHost\Assets\Fonts\*.ttf" />
     </ItemGroup>
     <Copy SourceFiles="@(BarlowFontFiles)" DestinationFolder="$(PublishDir)Assets\Fonts" SkipUnchangedFiles="true" />
+    <!-- Flags and brand logos too: the published folder was found with both empty (29/10/2026), so every
+         flag/emblem cell rendered blank. -->
+    <ItemGroup>
+      <FlagFiles Include="$(MSBuildThisFileDirectory)..\IracingLiveCoach.OverlayHost\Assets\Flags\*.png" />
+      <BrandFiles Include="$(MSBuildThisFileDirectory)..\IracingLiveCoach.OverlayHost\Assets\Brands\*.png" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FlagFiles)" DestinationFolder="$(PublishDir)Assets\Flags" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BrandFiles)" DestinationFolder="$(PublishDir)Assets\Brands" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
