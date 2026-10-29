@@ -52,6 +52,14 @@ if (-not (Test-Path $controlCenterExe)) {
 }
 Write-Host "Publicado: $controlCenterExe"
 
+# Bandeiras e emblemas: o publish de arquivo unico nao os copia (pastas saiam vazias), entao vao daqui.
+$assetsSrc = Join-Path $PSScriptRoot "..\v3\src\IracingLiveCoach.OverlayHost\Assets"
+foreach ($sub in "Flags", "Brands") {
+    $dst = Join-Path $publishDir "Assets\$sub"
+    New-Item -ItemType Directory -Force $dst | Out-Null
+    Copy-Item (Join-Path $assetsSrc "$sub\*.png") $dst -Force
+}
+
 Write-Host "Espelhando build para $desktopInstallDir ..."
 $desktopOverlayExe = Join-Path $desktopInstallDir "IracingLiveCoach.OverlayHost.exe"
 $desktopControlCenterExe = Join-Path $desktopInstallDir "IracingLiveCoach.ControlCenter.exe"
