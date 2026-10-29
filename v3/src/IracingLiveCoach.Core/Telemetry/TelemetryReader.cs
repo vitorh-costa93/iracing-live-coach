@@ -1218,8 +1218,11 @@ public partial class TelemetryReader : IDisposable
             var player = new RelativeCar(_sdk.Data.GetInt("CarIdxClass", _playerCarIdx), myPct, _sdk.Data.GetFloat("CarIdxEstTime", _playerCarIdx));
             var ahead = around.Where(c => c.Delta > 0).OrderBy(c => c.Delta).Take(RelativeCarsMax).ToList();
             var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
-            var aheadGaps = RelativeGap.SideGaps(player, ahead.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
-            var behindGaps = RelativeGap.SideGaps(player, behind.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
+            var aheadDetail = RelativeGap.SideGapsDetailed(player, ahead.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
+            var behindDetail = RelativeGap.SideGapsDetailed(player, behind.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
+            var aheadGaps = aheadDetail.Select(g => g.Shown).ToArray();
+            var behindGaps = behindDetail.Select(g => g.Shown).ToArray();
+            LogRelativeDebug(sessionTime, player, ahead, behind, aheadDetail, behindDetail, lapTime);
 
             var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
             for (int i = 0; i < ahead.Count; i++)
@@ -1233,6 +1236,63 @@ public partial class TelemetryReader : IDisposable
         {
             // Skip this tick -- same defensive posture as every other telemetry read in this class.
         }
+    }
+
+    // Always-on, light debug logs for the post-race analysis of Relative/Standings (RelativeDebugLog.cs).
+    private readonly DebugSampler _relDebugSampler = new(TimeSpan.FromMilliseconds(500));
+    private readonly DebugSampler _standDebugSampler = new(TimeSpan.FromMilliseconds(1000));
+    private DebugCsvWriter? _relDebugWriter, _standDebugWriter;
+    private string? _debugStamp;
+
+    private bool DebugLogActive => _sessionKind is not null && _sessionState > 0;
+
+    private void LogRelativeDebug(double sessionTime, RelativeCar player, List<(int Idx, double Delta)> ahead, List<(int Idx, double Delta)> behind,
+        RelativeGap.SideGap[] aheadDetail, RelativeGap.SideGap[] behindDetail, double playerLapSeconds)
+    {
+        try
+        {
+            var now = DateTime.Now;
+            if (!DebugLogActive || !_relDebugSampler.Due(now)) return;
+            _relDebugWriter ??= new DebugCsvWriter(DebugCsvWriter.DefaultPath("relative-debug", now), RelativeDebugFormat.RelativeHeader);
+            var kind = _sessionKind!.Value.ToString();
+            double? Est(int idx) { var e = _sdk.Data.GetFloat("CarIdxEstTime", idx); return e >= 0 ? e : null; }
+            RelativeDebugRow Row(string side, int offset, int idx, double delta, RelativeGap.SideGap? g)
+            {
+                int cls = _sdk.Data.GetInt("CarIdxClass", idx);
+                double pct = _sdk.Data.GetFloat("CarIdxLapDistPct", idx);
+                bool pit = false; int surface = -1;
+                try { pit = _sdk.Data.GetBool("CarIdxOnPitRoad", idx); surface = _sdk.Data.GetInt("CarIdxTrackSurface", idx); } catch { }
+                double classLap = g?.LapSeconds ?? (_classLapTimeById.TryGetValue(cls, out var l) ? l : playerLapSeconds);
+                return new RelativeDebugRow(side, offset, idx, cls, classLap, cls == player.ClassId, pct, delta, Est(idx), player.EstTime is > 0 ? player.EstTime : null,
+                    player.Pct, g?.Origin ?? _estCurves.At(cls, player.Pct), g?.Direct, g?.Shown, pit, surface, _sdk.Data.GetInt("CarIdxLapCompleted", idx));
+            }
+            var lines = new List<string> { RelativeDebugFormat.RelativeLine(now, sessionTime, kind, _sessionState, Row("player", 0, _playerCarIdx, 0, null)) };
+            for (int i = 0; i < ahead.Count; i++)
+                lines.Add(RelativeDebugFormat.RelativeLine(now, sessionTime, kind, _sessionState, Row("ahead", -(i + 1), ahead[i].Idx, ahead[i].Delta, aheadDetail[i])));
+            for (int i = 0; i < behind.Count; i++)
+                lines.Add(RelativeDebugFormat.RelativeLine(now, sessionTime, kind, _sessionState, Row("behind", i + 1, behind[i].Idx, behind[i].Delta, behindDetail[i])));
+            _relDebugWriter.Append(lines);
+        }
+        catch { /* debug log must never break the reader */ }
+    }
+
+    private void LogStandingsDebug(double sessionTime, IReadOnlyList<(int Idx, int ClassId, int ClassPosition, double? Progress, double? EstTime)> cars,
+        (IntervalValue Value, string Branch)[] intervals)
+    {
+        try
+        {
+            var now = DateTime.Now;
+            if (!DebugLogActive || !_standDebugSampler.Due(now)) return;
+            _standDebugWriter ??= new DebugCsvWriter(DebugCsvWriter.DefaultPath("standings-debug", now), RelativeDebugFormat.StandingsHeader);
+            var kind = _sessionKind!.Value.ToString();
+            var lines = new List<string>();
+            for (int i = 0; i < cars.Count; i++)
+                lines.Add(RelativeDebugFormat.StandingsLine(now, sessionTime, kind, _sessionState,
+                    new StandingsDebugRow(cars[i].Idx, cars[i].ClassId, cars[i].ClassPosition, cars[i].Progress, cars[i].EstTime,
+                        RelativeDebugFormat.Interval(intervals[i].Value), intervals[i].Branch)));
+            _standDebugWriter.Append(lines);
+        }
+        catch { }
     }
 
     private readonly CarFlagBadgeTracker _flagBadges = new();
@@ -1495,9 +1555,11 @@ public partial class TelemetryReader : IDisposable
                     foreach (var kv in IRatingProjection.Compute(cls.Select(r => new IRatingEntry(r.Idx, r.IRating, r.ClassPosition > 0 ? r.ClassPosition : r.Position))))
                         deltaByIdx[kv.Key] = kv.Value;
 
-            var intervals = ClassIntervals.Compute(
+            var intervalsDetailed = ClassIntervals.ComputeWithBranch(
                 ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Progress, o.EstTime, o.Gap, o.BestLap)).ToList(),
                 raceMode: !timed, _classLapTimeById);
+            var intervals = intervalsDetailed.Select(x => x.Value).ToArray();
+            LogStandingsDebug(_sdk.Data.GetDouble("SessionTime"), ordered.Select(o => (o.Idx, o.ClassId, o.ClassPosition, o.Progress, o.EstTime)).ToList(), intervalsDetailed);
 
             // Practice/qualifying gap: best lap minus the class's best lap.
             var classBest = ordered.Where(r => r.BestLap is not null).GroupBy(r => r.ClassId).ToDictionary(g => g.Key, g => g.Min(r => r.BestLap!.Value));

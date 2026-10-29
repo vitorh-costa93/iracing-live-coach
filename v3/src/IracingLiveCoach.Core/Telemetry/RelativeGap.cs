@@ -43,9 +43,17 @@ public static class RelativeGap
     /// of adding a cross-class segment (which would compound the scale mismatch) or going backwards.
     /// </summary>
     public static double[] SideGaps(RelativeCar player, IReadOnlyList<RelativeCar> side, EstTimeCurves curves,
+        IReadOnlyDictionary<int, double> classLapById, double playerLapSeconds) =>
+        SideGapsDetailed(player, side, curves, classLapById, playerLapSeconds).Select(g => g.Shown).ToArray();
+
+    /// <summary>One side-gap with its inputs: Direct = before the monotonic floor, Shown = after it,
+    /// Origin = the curve value at the player's spot that was used, LapSeconds = that car's class lap.</summary>
+    public readonly record struct SideGap(double Direct, double Shown, double? Origin, double LapSeconds);
+
+    public static SideGap[] SideGapsDetailed(RelativeCar player, IReadOnlyList<RelativeCar> side, EstTimeCurves curves,
         IReadOnlyDictionary<int, double> classLapById, double playerLapSeconds)
     {
-        var gaps = new double[side.Count];
+        var gaps = new SideGap[side.Count];
         double floor = 0;
         for (int i = 0; i < side.Count; i++)
         {
@@ -54,7 +62,8 @@ public static class RelativeGap
             bool sameClass = car.ClassId == player.ClassId;
             double? origin = sameClass && player.EstTime > 0 && car.EstTime > 0 && theirLap > 0 ? player.EstTime : curves.At(car.ClassId, player.Pct);
             double direct = LiveSeconds(car.EstTime, origin, theirLap, WrappedDelta(car.Pct, player.Pct), playerLapSeconds) ?? 0;
-            gaps[i] = floor = Math.Max(direct, floor);
+            floor = Math.Max(direct, floor);
+            gaps[i] = new SideGap(direct, floor, origin, theirLap);
         }
         return gaps;
     }
