@@ -976,7 +976,7 @@ public partial class TelemetryReader : IDisposable
         _pitStops.Reset();
         _outTracker.Reset();
         _lapHistory.Reset();
-        _estCurves.Clear();
+        _estCurves.Clear(); _passages.Clear();
         _flagBadges.Reset();
         _preGreenGrid.Clear();
         _grid = new();
@@ -1210,6 +1210,7 @@ public partial class TelemetryReader : IDisposable
                 if (pct < 0 || IsPaceCar(idx)) continue;
                 _estCurves.Add(_sdk.Data.GetInt("CarIdxClass", idx), pct, _sdk.Data.GetFloat("CarIdxEstTime", idx));
             }
+            RecordPassages(sessionTime);
             // The in-sim black box Relative: EstTime difference (smooth while the gap is steady). The player's
             // own-lap trace (OwnLapTrace) swung 2-4.5 s around a steady 3.3 s gap, as it follows the player's
             // speed profile instead of the real interval (live check 09/10/2026). SideGaps keeps each side
@@ -1220,8 +1221,10 @@ public partial class TelemetryReader : IDisposable
             var behind = around.Where(c => c.Delta <= 0).OrderByDescending(c => c.Delta).Take(RelativeCarsMax).ToList();
             var aheadDetail = RelativeGap.SideGapsDetailed(player, ahead.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
             var behindDetail = RelativeGap.SideGapsDetailed(player, behind.Select(c => Car(c.Idx)).ToList(), _estCurves, _classLapTimeById, lapTime);
-            var aheadGaps = aheadDetail.Select(g => g.Shown).ToArray();
-            var behindGaps = behindDetail.Select(g => g.Shown).ToArray();
+            // The black box number: real time since the car ahead passed my spot / since I passed the spot of the
+            // car behind (PassageHistory). The EstTime-curve gap stays as the fallback while a trail is short.
+            var aheadGaps = aheadDetail.Select((g, i) => _passages.SecondsSince(ahead[i].Idx, myPct, sessionTime) ?? g.Shown).ToArray();
+            var behindGaps = behindDetail.Select((g, i) => _passages.SecondsSince(_playerCarIdx, _sdk.Data.GetFloat("CarIdxLapDistPct", behind[i].Idx), sessionTime) ?? g.Shown).ToArray();
             LogRelativeDebug(sessionTime, player, ahead, behind, aheadDetail, behindDetail, lapTime);
 
             var rows = new List<RelativeRow> { BuildRelativeRow(_playerCarIdx, 0, 0, positions) };
@@ -1236,6 +1239,17 @@ public partial class TelemetryReader : IDisposable
         {
             // Skip this tick -- same defensive posture as every other telemetry read in this class.
         }
+    }
+
+    private readonly PassageHistory _passages = new();
+    private double _lastPassageStamp = double.NaN;
+
+    private void RecordPassages(double sessionTime)
+    {
+        if (sessionTime == _lastPassageStamp) return;
+        _lastPassageStamp = sessionTime;
+        for (var idx = 0; idx < IRacingSdkConst.MaxNumCars; idx++)
+            _passages.Record(idx, sessionTime, _sdk.Data.GetFloat("CarIdxLapDistPct", idx));
     }
 
     // Always-on, light debug logs for the post-race analysis of Relative/Standings (RelativeDebugLog.cs).
@@ -1559,6 +1573,22 @@ public partial class TelemetryReader : IDisposable
                 ordered.Select(o => new IntervalInput(o.ClassId, o.Position, o.ClassPosition, o.Progress, o.EstTime, o.Gap, o.BestLap)).ToList(),
                 raceMode: !timed, _classLapTimeById);
             var intervals = intervalsDetailed.Select(x => x.Value).ToArray();
+            RecordPassages(_sdk.Data.GetDouble("SessionTime"));
+            if (!timed)
+                foreach (var cls in Enumerable.Range(0, ordered.Count).GroupBy(i => ordered[i].ClassId))
+                {
+                    var ranked = cls.OrderBy(i => ordered[i].ClassPosition > 0 ? ordered[i].ClassPosition : int.MaxValue)
+                        .ThenBy(i => ordered[i].Position > 0 ? ordered[i].Position : int.MaxValue).ToList();
+                    for (int k = 1; k < ranked.Count; k++)
+                    {
+                        // Same-lap interval = real time since the car ahead in class passed my spot (the Relative's number).
+                        if (intervalsDetailed[ranked[k]].Branch is not ("estTime-forward" or "estTime-nearest")) continue;
+                        var me = ordered[ranked[k]];
+                        if (me.Progress is not double mine || ordered[ranked[k - 1]].Progress is not double theirs || theirs - mine is < 0 or >= 1) continue;
+                        if (_passages.SecondsSince(ordered[ranked[k - 1]].Idx, mine - Math.Floor(mine), _sdk.Data.GetDouble("SessionTime")) is double secs)
+                            intervals[ranked[k]] = new IntervalValue(secs, null);
+                    }
+                }
             LogStandingsDebug(_sdk.Data.GetDouble("SessionTime"), ordered.Select(o => (o.Idx, o.ClassId, o.ClassPosition, o.Progress, o.EstTime)).ToList(), intervalsDetailed);
 
             // Practice/qualifying gap: best lap minus the class's best lap.
